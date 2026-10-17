@@ -19,7 +19,15 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const readJSON = (f, d = {}) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return d; } };
 const writeJSON = (f, o) => { const t = f + '.tmp'; fs.writeFileSync(t, JSON.stringify(o, null, 1), { mode: 0o600 }); fs.renameSync(t, f); };
 
-async function http(method, url, { headers = {}, body, timeout = 20000 } = {}) {
+// `retries` covers dropped connections only (an engine restarting), never HTTP error answers.
+async function http(method, url, { headers = {}, body, timeout = 20000, retries = 0 } = {}) {
+  for (let i = 0; ; i++) {
+    try { return await once(method, url, { headers, body, timeout }); }
+    catch (e) { if (e.status || i >= retries) throw e; await sleep(3000); }
+  }
+}
+
+async function once(method, url, { headers, body, timeout }) {
   const opts = { method, headers: { Accept: 'application/json', ...headers }, signal: AbortSignal.timeout(timeout) };
   if (body !== undefined) { opts.body = typeof body === 'string' ? body : JSON.stringify(body); opts.headers['Content-Type'] = opts.headers['Content-Type'] || 'application/json'; }
   const r = await fetch(url, opts);
@@ -108,38 +116,45 @@ async function wireProwlarr(keys, s, on) {
 
 // ---------- Jellyfin ----------
 const JF = E.url('jellyfin');
+// Jellyfin 10.11+ first serves a temporary "starting up" server, then swaps to the real one and briefly drops
+// connections, so every Jellyfin call rides through up to a minute of that.
+const jf = (method, path, opts = {}) => http(method, `${JF}${path}`, { retries: 20, ...opts });
 const jfAuth = token => `MediaBrowser Client="GoatMediaStackarr", Device="Container", DeviceId="goat-wire", Version="1.0"${token ? `, Token="${token}"` : ''}`;
 
 async function wireJellyfin(s, on) {
-  const info = await waitFor('Jellyfin', async () => (await http('GET', `${JF}/System/Info/Public`)).data);
+  const info = await waitFor('Jellyfin', async () => {
+    const d = (await http('GET', `${JF}/System/Info/Public`)).data;
+    if (!d || !d.Version || !('StartupWizardCompleted' in d)) throw new Error('Jellyfin is still starting');
+    return d;
+  });
   const out = {};
   const h = { Authorization: jfAuth() };
   if (!info.StartupWizardCompleted) {
-    await http('POST', `${JF}/Startup/Configuration`, { headers: h, body: { UICulture: 'en-US', MetadataCountryCode: 'US', PreferredMetadataLanguage: 'en' } });
-    await http('GET', `${JF}/Startup/User`, { headers: h });
-    await http('POST', `${JF}/Startup/User`, { headers: h, body: { Name: s.jellyfinUser, Password: s.jellyfinPass } });
-    await http('POST', `${JF}/Startup/RemoteAccess`, { headers: h, body: { EnableRemoteAccess: true, EnableAutomaticPortMapping: false } });
-    await http('POST', `${JF}/Startup/Complete`, { headers: h });
+    await jf('POST', `/Startup/Configuration`, { headers: h, body: { UICulture: 'en-US', MetadataCountryCode: 'US', PreferredMetadataLanguage: 'en' } });
+    await jf('GET', `/Startup/User`, { headers: h });
+    await jf('POST', `/Startup/User`, { headers: h, body: { Name: s.jellyfinUser, Password: s.jellyfinPass } });
+    await jf('POST', `/Startup/RemoteAccess`, { headers: h, body: { EnableRemoteAccess: true, EnableAutomaticPortMapping: false } });
+    await jf('POST', `/Startup/Complete`, { headers: h });
     out.setup = 'done';
   } else out.setup = 'already done';
-  const login = await waitFor('Jellyfin sign-in', async () => (await http('POST', `${JF}/Users/AuthenticateByName`, { headers: h, body: { Username: s.jellyfinUser, Pw: s.jellyfinPass } })).data, 2);
+  const login = await waitFor('Jellyfin sign-in', async () => (await jf('POST', `/Users/AuthenticateByName`, { headers: h, body: { Username: s.jellyfinUser, Pw: s.jellyfinPass } })).data, 2);
   const th = { Authorization: jfAuth(login.AccessToken) };
 
-  const libs = (await http('GET', `${JF}/Library/VirtualFolders`, { headers: th })).data || [];
+  const libs = (await jf('GET', `/Library/VirtualFolders`, { headers: th })).data || [];
   const want = [['Movies', 'movies', E.DIRS.movies, 'radarr'], ['TV Shows', 'tvshows', E.DIRS.tv, 'sonarr'], ['Music', 'music', E.DIRS.music, 'lidarr']];
   for (const [name, type, dir, needs] of want) {
     if (!on.includes(needs)) continue;
     if (libs.some(l => (l.Locations || []).includes(dir) || l.Name === name)) { out[name] = 'already there'; continue; }
     const q = new URLSearchParams({ name, collectionType: type, refreshLibrary: 'false', paths: dir });
-    await http('POST', `${JF}/Library/VirtualFolders?${q}`, { headers: th, body: { LibraryOptions: {} } });
+    await jf('POST', `/Library/VirtualFolders?${q}`, { headers: th, body: { LibraryOptions: {} } });
     out[name] = 'added';
   }
 
-  let keys = (await http('GET', `${JF}/Auth/Keys`, { headers: th })).data;
+  let keys = (await jf('GET', `/Auth/Keys`, { headers: th })).data;
   let k = (keys.Items || []).find(x => x.AppName === 'GoatMediaStackarr');
   if (!k) {
-    await http('POST', `${JF}/Auth/Keys?app=GoatMediaStackarr`, { headers: th });
-    keys = (await http('GET', `${JF}/Auth/Keys`, { headers: th })).data;
+    await jf('POST', `/Auth/Keys?app=GoatMediaStackarr`, { headers: th });
+    keys = (await jf('GET', `/Auth/Keys`, { headers: th })).data;
     k = (keys.Items || []).find(x => x.AppName === 'GoatMediaStackarr');
   }
   out.apiKey = k ? 'ready' : 'missing';
@@ -201,12 +216,26 @@ async function run() {
     if (x && x.apiKey !== v) { x.apiKey = v; writeJSON(mf, m); }
   };
 
-  if (on.includes('sonarr')) await step('sonarr', () => wireArr('sonarr', keys, s, on, E.DIRS.tv, 'tv'));
-  if (on.includes('radarr')) await step('radarr', () => wireArr('radarr', keys, s, on, E.DIRS.movies, 'movies'));
-  if (on.includes('lidarr')) await step('lidarr', () => wireArr('lidarr', keys, s, on, E.DIRS.music, 'music'));
-  if (on.includes('prowlarr')) await step('prowlarr', () => wireProwlarr(keys, s, on));
-  if (on.includes('jellyfin')) await step('jellyfin', async () => { const r = await wireJellyfin(s, on); setKey('jellyfin', r.apiKey); return r.out; });
-  if (on.includes('seerr')) await step('seerr', async () => { const r = await wireSeerr(s, keys, on); setKey('seerr', r.apiKey); return r.out; });
+  const steps = [
+    ['sonarr', () => wireArr('sonarr', keys, s, on, E.DIRS.tv, 'tv')],
+    ['radarr', () => wireArr('radarr', keys, s, on, E.DIRS.movies, 'movies')],
+    ['lidarr', () => wireArr('lidarr', keys, s, on, E.DIRS.music, 'music')],
+    ['prowlarr', () => wireProwlarr(keys, s, on)],
+    ['jellyfin', async () => { const r = await wireJellyfin(s, on); setKey('jellyfin', r.apiKey); return r.out; }],
+    ['seerr', async () => {
+      // Seerr signs in through Jellyfin, so it can only be set up once Jellyfin is.
+      if (on.includes('jellyfin') && !(state.steps.jellyfin && state.steps.jellyfin.ok)) throw new Error('waiting for Jellyfin to be set up first');
+      const r = await wireSeerr(s, keys, on); setKey('seerr', r.apiKey); return r.out;
+    }],
+  ].filter(([k]) => on.includes(k));
+  // A step that fails (an engine still busy with its first start, say) is tried again a few times.
+  const rounds = Number(process.env.GOAT_WIRE_ROUNDS || 4), pause = Number(process.env.GOAT_WIRE_PAUSE || 30000);
+  for (let round = 1; round <= rounds; round++) {
+    const todo = steps.filter(([k]) => !(state.steps[k] && state.steps[k].ok));
+    if (!todo.length) break;
+    if (round > 1) { log(`trying again in ${pause / 1000}s: ${todo.map(([k]) => k).join(', ')}`); await sleep(pause); }
+    for (const [k, fn] of todo) await step(k, fn);
+  }
   const bad = Object.entries(state.steps).filter(([, v]) => !v.ok).map(([k]) => k);
   log(bad.length ? `finished with problems in: ${bad.join(', ')}. These are retried at the next container start.` : 'all engines connected.');
   return state;

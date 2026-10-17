@@ -37,12 +37,15 @@ function fakeArr(base, key, ver, kind) {
   return { srv, st };
 }
 
-function fakeJellyfin(user, pass) {
-  const st = { done: false, user: null, libs: [], keys: [] };
+function fakeJellyfin(user, pass, { drops = 0 } = {}) {
+  const st = { done: false, user: null, libs: [], keys: [], dropped: 0 };
   const srv = http.createServer(async (req, res) => {
-    const u = new URL(req.url, 'http://x'), p = u.pathname, b = req.method === 'POST' ? await body(req) : null;
+    const u = new URL(req.url, 'http://x'), p = u.pathname;
+    // Like Jellyfin 10.11 swapping its "starting up" server for the real one: a few connections are cut.
+    if (p.startsWith('/Startup/') && st.dropped < drops) { st.dropped++; return req.socket.destroy(); }
+    const b = req.method === 'POST' ? await body(req) : null;
+    if (p === '/System/Info/Public') return json(res, 200, { Version: '10.11.0', StartupWizardCompleted: st.done });
     const authed = /Token="tok"/.test(req.headers.authorization || '');
-    if (p === '/System/Info/Public') return json(res, 200, { StartupWizardCompleted: st.done });
     if (p.startsWith('/Startup/')) {
       if (st.done) return json(res, 401, {});
       if (p === '/Startup/User' && b) st.user = b;
@@ -99,7 +102,7 @@ test('wire connects every engine and running it again changes nothing', async ()
   const sonarr = fakeArr('/engines/sonarr', a.keys.sonarr, 'v3', 'sonarr');
   const radarr = fakeArr('/engines/radarr', a.keys.radarr, 'v3', 'radarr');
   const prowlarr = fakeArr('/engines/prowlarr', a.keys.prowlarr, 'v1', 'prowlarr');
-  const jf = fakeJellyfin(a.secrets.jellyfinUser, a.secrets.jellyfinPass);
+  const jf = fakeJellyfin(a.secrets.jellyfinUser, a.secrets.jellyfinPass, { drops: 3 });
   const seerr = fakeSeerr(path.join(root, 'config/seerr/settings.json'));
   const all = [[sonarr, 'sonarr'], [radarr, 'radarr'], [prowlarr, 'prowlarr'], [jf, 'jellyfin'], [seerr, 'seerr']];
   await Promise.all(all.map(([f, k]) => new Promise(r => f.srv.listen(ports[k], '127.0.0.1', r))));
@@ -119,6 +122,7 @@ test('wire connects every engine and running it again changes nothing', async ()
     assert.equal(field(prowlarr.st.applications.find(x => x.implementation === 'Sonarr'), 'apiKey'), a.keys.sonarr);
     assert.equal(prowlarr.st.applications[0].syncLevel, 'fullSync');
 
+    assert.equal(jf.st.dropped, 3, 'dropped connections were retried');
     assert.equal(jf.st.user.Name, a.secrets.jellyfinUser);
     assert.deepEqual(jf.st.libs.map(l => l.CollectionType).sort(), ['movies', 'tvshows']);
     assert.equal(seerr.st.initialized, true);
