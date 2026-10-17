@@ -42,9 +42,9 @@ test('Plex is linked, gets libraries, and Seerr and Tautulli use it', async () =
     json(res, 404, {});
   });
 
-  const seerr = { initialized: false, plex: null, dvr: {}, enabled: '' };
+  const seerr = { initialized: false, plex: null, dvr: {}, enabled: '', libs: [{ id: '1', enabled: false }, { id: '2', enabled: false }] };
   const seerrSrv = http.createServer(async (req, res) => {
-    const u = new URL(req.url, 'http://x'), p = u.pathname, b = req.method === 'POST' ? await body(req) : null;
+    const u = new URL(req.url, 'http://x'), p = u.pathname, b = ['POST', 'PUT'].includes(req.method) ? await body(req) : null;
     if (p === '/api/v1/settings/public') return json(res, 200, { initialized: seerr.initialized });
     if (p === '/api/v1/auth/plex') {
       if (b.authToken !== 'plextok') return json(res, 403, {});
@@ -53,7 +53,9 @@ test('Plex is linked, gets libraries, and Seerr and Tautulli use it', async () =
     }
     if (req.headers.cookie !== 'connect.sid=p') return json(res, 403, {});
     if (p === '/api/v1/settings/plex' && req.method === 'POST') { seerr.plex = b; return json(res, 200, b); }
-    if (p === '/api/v1/settings/plex/library') { if (u.searchParams.get('enable')) seerr.enabled = u.searchParams.get('enable'); return json(res, 200, [{ id: '1' }, { id: '2' }]); }
+    if (p === '/api/v1/settings/plex/library/sync' && req.method === 'POST') return json(res, 200, seerr.libs);
+    const lm = p.match(/^\/api\/v1\/settings\/plex\/library\/(\w+)$/);
+    if (lm && req.method === 'PUT') { seerr.libs.find(l => l.id === lm[1]).enabled = b.enabled; seerr.enabled = seerr.libs.filter(l => l.enabled).map(l => l.id).join(','); return json(res, 200, {}); }
     const m = p.match(/^\/api\/v1\/settings\/(sonarr|radarr)$/); if (m) { seerr.dvr[m[1]] = b; return json(res, 201, b); }
     if (p === '/api/v1/settings/initialize') { seerr.initialized = true; return json(res, 200, {}); }
     json(res, 404, {});

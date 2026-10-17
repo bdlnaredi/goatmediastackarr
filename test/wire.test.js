@@ -64,21 +64,25 @@ function fakeJellyfin(user, pass, { drops = 0 } = {}) {
 }
 
 function fakeSeerr(settingsFile) {
-  const st = { initialized: false, dvr: {}, enabled: '' };
+  const st = { initialized: false, dvr: {}, enabled: '', configured: false, logins: 0, libs: [{ id: 'a', name: 'Movies', enabled: false }, { id: 'b', name: 'TV Shows', enabled: false }] };
   const srv = http.createServer(async (req, res) => {
-    const u = new URL(req.url, 'http://x'), p = u.pathname, b = req.method === 'POST' ? await body(req) : null;
+    const u = new URL(req.url, 'http://x'), p = u.pathname, b = ['POST', 'PUT'].includes(req.method) ? await body(req) : null;
     const ok = (req.headers.cookie || '') === 'connect.sid=abc';
     if (p === '/api/v1/settings/public') return json(res, 200, { initialized: st.initialized });
     if (p === '/api/v1/auth/jellyfin') {
-      if (b.hostname !== '127.0.0.1' || b.serverType !== 2) return json(res, 400, {});
+      st.logins++;
+      // Like Seerr: the address may only be sent once; later sign-ins must leave it out.
+      if (st.configured && b.hostname) return json(res, 500, { error: 'Jellyfin hostname already configured' });
+      if (!st.configured && (b.hostname !== '127.0.0.1' || b.serverType !== 2)) return json(res, 400, {});
+      st.configured = true;
+      if (st.logins === 1) return json(res, 502, { error: 'pretend the first attempt broke off after saving the address' });
       fs.writeFileSync(settingsFile, JSON.stringify({ main: { apiKey: 'seerrkey' } }));
       res.setHeader('Set-Cookie', 'connect.sid=abc; Path=/; HttpOnly'); return json(res, 200, { id: 1 });
     }
     if (!ok) return json(res, 403, {});
-    if (p === '/api/v1/settings/jellyfin/library') {
-      if (u.searchParams.get('enable')) st.enabled = u.searchParams.get('enable');
-      return json(res, 200, [{ id: 'a', name: 'Movies' }, { id: 'b', name: 'TV Shows' }]);
-    }
+    if (p === '/api/v1/settings/jellyfin/library/sync' && req.method === 'POST') return json(res, 200, st.libs);
+    const lm = p.match(/^\/api\/v1\/settings\/jellyfin\/library\/(\w+)$/);
+    if (lm && req.method === 'PUT') { st.libs.find(l => l.id === lm[1]).enabled = b.enabled; st.enabled = st.libs.filter(l => l.enabled).map(l => l.id).join(','); return json(res, 200, {}); }
     const m = p.match(/^\/api\/v1\/settings\/(sonarr|radarr)$/);
     if (m) { st.dvr[m[1]] = b; return json(res, 201, b); }
     if (p === '/api/v1/settings/initialize') { st.initialized = true; return json(res, 200, {}); }
@@ -95,6 +99,7 @@ test('wire connects every engine and running it again changes nothing', async ()
   process.env.MEDIA_DIR = path.join(root, 'media');
   process.env.DOWNLOADS_DIR = path.join(root, 'downloads');
   process.env.GOAT_ENGINES = 'sonarr,radarr,prowlarr,qbittorrent,sabnzbd,jellyfin,seerr';
+  process.env.GOAT_WIRE_PAUSE = '10';
   const init = require('../goat/init');
   const a = init.run(process.env);
   fs.mkdirSync(path.join(root, 'config/seerr'), { recursive: true });

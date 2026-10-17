@@ -211,15 +211,25 @@ async function wireSeerr(s, keys, on) {
       if (!token) throw new Error('Plex is not linked to a Plex account yet');
       r = await http('POST', `${SEERR}/api/v1/auth/plex`, { body: { authToken: token } });
     } else {
-      r = await http('POST', `${SEERR}/api/v1/auth/jellyfin`, { body: {
-        username: s.jellyfinUser, password: s.jellyfinPass, hostname: '127.0.0.1', port: E.ENGINES.jellyfin.port,
-        useSsl: false, urlBase: '', email: 'admin@goatmediastackarr.local', serverType: 2 } });
+      const who = { username: s.jellyfinUser, password: s.jellyfinPass, email: 'admin@goatmediastackarr.local' };
+      try {
+        r = await http('POST', `${SEERR}/api/v1/auth/jellyfin`, { body: {
+          ...who, hostname: '127.0.0.1', port: E.ENGINES.jellyfin.port, useSsl: false, urlBase: '', serverType: 2 } });
+      } catch (e) {
+        // A setup that stopped half way already saved Jellyfin's address; Seerr then wants a plain sign-in.
+        if (!/already configured/i.test(e.message)) throw e;
+        r = await http('POST', `${SEERR}/api/v1/auth/jellyfin`, { body: who });
+      }
     }
     const cookie = (r.headers.get('set-cookie') || '').split(';')[0];
     const ch = { Cookie: cookie };
     if (server === 'plex') await http('POST', `${SEERR}/api/v1/settings/plex`, { headers: ch, body: { ip: '127.0.0.1', port: E.ENGINES.plex.port, useSsl: false } });
-    const libs = (await http('GET', `${SEERR}/api/v1/settings/${server}/library?sync=true`, { headers: ch })).data || [];
-    if (libs.length) await http('GET', `${SEERR}/api/v1/settings/${server}/library?enable=${libs.map(l => l.id).join(',')}`, { headers: ch });
+    // Seerr 3.5+: read the server's libraries with a sync call, then turn each one on.
+    const libs = (await http('POST', `${SEERR}/api/v1/settings/${server}/library/sync`, { headers: ch })).data || [];
+    for (const l of libs) {
+      if (!l.enabled) await http('PUT', `${SEERR}/api/v1/settings/${server}/library/${encodeURIComponent(l.id)}`, { headers: ch, body: { enabled: true } });
+    }
+    out.libraries = libs.length;
     out.mediaServer = server;
     for (const [k, dir, extra] of [
       ['sonarr', E.DIRS.tv, { seriesType: 'standard', animeSeriesType: 'anime', enableSeasonFolders: true, monitorNewItems: 'all' }],
