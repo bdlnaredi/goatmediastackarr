@@ -23,15 +23,16 @@ FROM node:${NODE_VERSION}-bookworm-slim AS node
 FROM ubuntu:24.04
 
 ARG VERSION=dev
-ARG S6_OVERLAY_VERSION=v3.2.3.2
-ARG SONARR_VERSION=v6.4.4.10685
-ARG RADARR_VERSION=v6.4.4.10685
-ARG LIDARR_VERSION=v3.1.6.5078
-ARG PROWLARR_VERSION=v2.6.5.5623
-ARG BAZARR_VERSION=v1.6.2
-ARG SABNZBD_VERSION=5.1.3
-ARG TAUTULLI_VERSION=v2.18.2
-ARG QBITTORRENT_TAG=release-5.2.4_v2.0.15
+# Each engine version can be pinned at build time (--build-arg SONARR_VERSION=v4.0.0.1); "latest" takes the newest stable release.
+ARG S6_OVERLAY_VERSION=latest
+ARG SONARR_VERSION=latest
+ARG RADARR_VERSION=latest
+ARG LIDARR_VERSION=latest
+ARG PROWLARR_VERSION=latest
+ARG BAZARR_VERSION=latest
+ARG SABNZBD_VERSION=latest
+ARG TAUTULLI_VERSION=latest
+ARG QBITTORRENT_TAG=latest
 
 LABEL org.opencontainers.image.title="GoatMediaStackarr" \
       org.opencontainers.image.description="A whole self-hosted media stack in one container: Sonarr, Radarr, Lidarr, Prowlarr, Bazarr, qBittorrent, SABnzbd, Jellyfin, Seerr and Tautulli behind one interface, with a built-in VPN" \
@@ -112,8 +113,11 @@ RUN --mount=type=secret,id=GITHUB_TOKEN,env=GITHUB_TOKEN \
     (cd /opt/sabnzbd && /opt/sabnzbd/venv/bin/python tools/make_mo.py >/dev/null 2>&1 || true)
 
 # Tautulli (Plex statistics) ships its own libraries.
-RUN mkdir -p /opt/tautulli && \
-    curl -fsSL "https://github.com/Tautulli/Tautulli/archive/refs/tags/${TAUTULLI_VERSION}.tar.gz" | tar -xz -C /opt/tautulli --strip-components=1
+RUN --mount=type=secret,id=GITHUB_TOKEN,env=GITHUB_TOKEN \
+    mkdir -p /opt/tautulli && \
+    tag="${TAUTULLI_VERSION}"; [ "$tag" = latest ] && tag=$(curl -fsSL ${GITHUB_TOKEN:+-H "Authorization: Bearer $GITHUB_TOKEN"} https://api.github.com/repos/Tautulli/Tautulli/releases/latest | jq -r .tag_name); \
+    echo "Tautulli $tag" && \
+    curl -fsSL "https://github.com/Tautulli/Tautulli/archive/refs/tags/${tag}.tar.gz" | tar -xz -C /opt/tautulli --strip-components=1
 
 # Build tools are no longer needed once the Python packages are in.
 RUN apt-get purge -y build-essential python3-dev libxml2-dev libxslt1-dev && apt-get autoremove -y && rm -rf /var/lib/apt/lists/* /root/.cache
