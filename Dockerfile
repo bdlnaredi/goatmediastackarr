@@ -77,6 +77,10 @@ RUN chmod +x /usr/local/bin/fetch-release && \
     echo "deb [signed-by=/etc/apt/keyrings/jellyfin.gpg] https://repo.jellyfin.org/ubuntu noble main" > /etc/apt/sources.list.d/jellyfin.list && \
     apt-get update && \
     apt-get install -y --no-install-recommends jellyfin-server jellyfin-web && \
+    # Newer Jellyfin no longer pulls in its ffmpeg automatically, and refuses to start without one: install the newest.
+    ff=$(apt-cache search --names-only '^jellyfin-ffmpeg[0-9]*$' | awk '{print $1}' | sort -V | tail -n1) && \
+    echo "Installing $ff" && apt-get install -y --no-install-recommends "$ff" && \
+    test -x /usr/lib/jellyfin-ffmpeg/ffmpeg && /usr/lib/jellyfin-ffmpeg/ffmpeg -hide_banner -version | head -n1 && \
     rm -rf /var/lib/apt/lists/*
 
 # s6-overlay (process supervisor that keeps every engine running and restarts the one that stops).

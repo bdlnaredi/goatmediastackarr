@@ -34,8 +34,10 @@ case "$name" in
     cmd=(/opt/sabnzbd/venv/bin/python /opt/sabnzbd/SABnzbd.py --config-file /config/sabnzbd/sabnzbd.ini --browser 0) ;;
   jellyfin)
     cmd=(/usr/bin/jellyfin --datadir /config/jellyfin/data --configdir /config/jellyfin/config
-         --cachedir /config/jellyfin/cache --logdir /config/jellyfin/log
-         --webdir /usr/share/jellyfin/web --ffmpeg /usr/lib/jellyfin-ffmpeg/ffmpeg) ;;
+         --cachedir /config/jellyfin/cache --logdir /config/jellyfin/log --webdir /usr/share/jellyfin/web)
+    # Jellyfin will not start without a working ffmpeg, so point it at whichever one is installed.
+    for ff in /usr/lib/jellyfin-ffmpeg/ffmpeg /usr/bin/ffmpeg; do [[ -x "$ff" ]] && { cmd+=(--ffmpeg "$ff"); break; }; done
+    export TMPDIR=/config/jellyfin/tmp; mkdir -p "$TMPDIR" && chown "$PUID:$PGID" "$TMPDIR" ;;
   seerr)
     cd /opt/seerr || exit 1
     export NODE_ENV=production CONFIG_DIRECTORY=/config/seerr HOST=127.0.0.1 PORT=5055
