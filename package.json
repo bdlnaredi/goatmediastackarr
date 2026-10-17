@@ -1,0 +1,14 @@
+{
+  "name": "goatmediastackarr",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A whole self-hosted media stack in one container, behind one interface, with a built-in VPN.",
+  "license": "GPL-3.0-or-later",
+  "repository": { "type": "git", "url": "git+https://github.com/bdlnaredi/goatmediastackarr.git" },
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "test": "node --test test/*.test.js && cd ui && node --test test/*.test.js",
+    "test:vpn": "sudo bash test/vpn-killswitch.sh",
+    "check": "node --check goat/init.js && node --check goat/wire.js && cd ui && npm run check"
+  }
+}

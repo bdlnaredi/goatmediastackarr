@@ -1,0 +1,13 @@
+.git
+.github
+test
+ui/test
+ui/scripts
+unraid
+docs
+*.md
+.gitignore
+.dockerignore
+config
+data
+node_modules

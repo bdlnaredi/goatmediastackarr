@@ -1,0 +1,106 @@
+name: CI
+on:
+  push: { branches: [main] }
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: sudo apt-get update && sudo apt-get install -y wireguard-tools shellcheck
+      - run: npm run check
+      - run: npm test
+      - name: Shell scripts
+        run: shellcheck -S error -s bash goat/*.sh test/*.sh
+      - name: VPN kill switch (real network namespaces)
+        run: sudo bash test/vpn-killswitch.sh
+
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: goat:ci
+          build-args: VERSION=ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          secrets: |
+            GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
+      - name: Start it
+        run: |
+          mkdir -p /tmp/goat/config /tmp/goat/data
+          docker run -d --name goat -p 5080:5080 -p 8096:8096 \
+            -e PUID=1001 -e PGID=121 -e TZ=Asia/Kolkata \
+            -e GOAT_ENGINES=sonarr,radarr,lidarr,prowlarr,bazarr,qbittorrent,sabnzbd,jellyfin,seerr,tautulli \
+            -v /tmp/goat/config:/config -v /tmp/goat/data:/data \
+            --cap-add=NET_ADMIN --device=/dev/net/tun \
+            --sysctl net.ipv4.conf.all.src_valid_mark=1 --sysctl net.ipv4.conf.all.rp_filter=2 \
+            goat:ci
+      - name: Every engine answers
+        run: |
+          check() { docker exec goat curl -fsS -o /dev/null --max-time 5 "$2"; }
+          declare -A urls=(
+            [sonarr]=http://127.0.0.1:8989/engines/sonarr/ping
+            [radarr]=http://127.0.0.1:7878/engines/radarr/ping
+            [lidarr]=http://127.0.0.1:8686/engines/lidarr/ping
+            [prowlarr]=http://127.0.0.1:9696/engines/prowlarr/ping
+            [bazarr]=http://127.0.0.1:6767/engines/bazarr/
+            [qbittorrent]=http://127.0.0.1:8080/api/v2/app/version
+            [sabnzbd]=http://127.0.0.1:8085/engines/sabnzbd/
+            [jellyfin]=http://127.0.0.1:8096/health
+            [seerr]=http://127.0.0.1:5055/api/v1/status
+            [tautulli]=http://127.0.0.1:8181/engines/tautulli/
+            [ui]=http://127.0.0.1:5080/api/health )
+          for i in $(seq 1 90); do
+            missing=""
+            for k in "${!urls[@]}"; do check "$k" "${urls[$k]}" || missing="$missing $k"; done
+            [ -z "$missing" ] && { echo "All engines answer."; exit 0; }
+            echo "waiting for:$missing"; sleep 10
+          done
+          docker logs goat | tail -200; exit 1
+      - name: Engines are connected to each other
+        run: |
+          for i in $(seq 1 60); do
+            if docker exec goat test -f /config/goat/wired.json; then
+              docker exec goat cat /config/goat/wired.json | jq -c '.steps | to_entries[] | {(.key): .value.ok}'
+              if docker exec goat jq -e '[.steps[] | .ok] | length >= 6 and all' /config/goat/wired.json >/dev/null; then exit 0; fi
+            fi
+            sleep 10
+          done
+          docker exec goat cat /config/goat/wired.json || true; docker logs goat | tail -200; exit 1
+      - name: Files belong to PUID/PGID
+        run: |
+          test "$(stat -c %u:%g /tmp/goat/config/sonarr/config.xml)" = "1001:121"
+          test "$(stat -c %u:%g /tmp/goat/data/media/tv)" = "1001:121"
+      - name: Restart keeps everything
+        run: |
+          docker restart goat
+          for i in $(seq 1 60); do curl -fsS http://127.0.0.1:5080/api/health && break; sleep 5; done
+          sleep 60
+          docker exec goat jq -e '[.steps[] | .ok] | all' /config/goat/wired.json
+      - name: VPN on without a VPN file keeps the download apps offline
+        run: |
+          docker rm -f goat
+          docker run -d --name goatvpn -e VPN_ENABLED=true -e PUID=1001 -e PGID=121 \
+            -v /tmp/goat/config:/config -v /tmp/goat/data:/data \
+            --cap-add=NET_ADMIN --device=/dev/net/tun \
+            --sysctl net.ipv4.conf.all.src_valid_mark=1 --sysctl net.ipv4.conf.all.rp_filter=2 goat:ci
+          sleep 45
+          docker exec goatvpn cat /run/goat/vpn.json
+          docker exec goatvpn jq -e '.state == "waiting"' /run/goat/vpn.json
+          # The VPN group has no internet; the other apps do.
+          ! docker exec goatvpn s6-applyuidgid -u 1001 -g 121 -G 121,9000 curl -fsS --max-time 8 https://1.1.1.1/cdn-cgi/trace
+          docker exec goatvpn s6-applyuidgid -u 1001 -g 121 -G 121 curl -fsS --max-time 8 https://1.1.1.1/cdn-cgi/trace >/dev/null
+          docker exec goatvpn curl -fsS --max-time 5 http://127.0.0.1:8080/api/v2/app/version
+      - if: always()
+        run: docker logs goat 2>/dev/null | tail -100 || docker logs goatvpn | tail -100

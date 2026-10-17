@@ -1,0 +1,7 @@
+# Runtime folders: never commit these, they hold keys and passwords.
+config/
+data/
+node_modules/
+.env
+.DS_Store
+Thumbs.db

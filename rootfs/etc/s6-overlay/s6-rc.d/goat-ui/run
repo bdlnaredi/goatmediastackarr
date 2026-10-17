@@ -1,0 +1,2 @@
+#!/bin/sh
+exec /opt/goat/bin/engine.sh ui

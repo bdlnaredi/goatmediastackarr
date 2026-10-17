@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><link rel="icon" type="image/png" href="/favicon.png">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Status</title>
+<link rel="stylesheet" href="/statuskit.css">
+<style>html,body{margin:0;min-height:100%;background:#0a0b14}body.l{background:#f1f0fa}@media(prefers-color-scheme:light){body.a{background:#f1f0fa}}.stx{min-height:100vh;border-radius:0}.stx-err{margin-top:30vh;text-align:center;font-size:20px}</style>
+</head><body>
+<main class="stx" id="sk" data-look="auto">
+  <div class="stx-top"><div class="stx-ttl"><h1 id="t">Status</h1></div>
+    <button class="stx-live hold" id="lv" type="button" title="Pause or resume live updates" aria-label="Live updates"><i></i><span>Connecting</span></button>
+    <button class="stx-ib stx-ctl" id="fs" type="button" title="Full screen" aria-label="Full screen"></button></div>
+  <div id="body"></div>
+</main>
+<script src="/statuskit.js"></script>
+<script>
+const tok=location.pathname.split('/')[2]||'',sk=document.getElementById('sk'),K=window.StatusKit,st={};
+let paused=false,iv=null,fails=0;
+if(/[?&]kiosk=1/.test(location.search))sk.dataset.kiosk='1';
+document.getElementById('fs').innerHTML=K.ICON.full;
+K.attach(sk);
+function pill(cls,txt){const l=document.getElementById('lv');l.className='stx-live '+cls;l.lastChild.textContent=txt}
+async function load(){
+  try{const r=await fetch('/api/public/'+encodeURIComponent(tok));if(!r.ok)throw new Error(r.status===404?'This link is not valid or was turned off.':'Could not load');const d=await r.json();
+    fails=0;pill('on','Live');document.title=d.name;document.getElementById('t').textContent=d.name;
+    const look=['dark','light'].includes(d.look)?d.look:'auto';sk.dataset.look=look;document.body.className=look==='light'?'l':look==='auto'?'a':'';
+    document.getElementById('body').innerHTML=K.html(d,st);
+  }catch(e){fails++;pill('off','Reconnecting');if(/not valid/.test(e.message)){clearInterval(iv);document.getElementById('body').innerHTML='<p class="stx-err">'+K.esc(e.message)+'</p>';pill('hold','Off')}}
+}
+function run(){clearInterval(iv);iv=setInterval(()=>{if(!document.hidden&&!paused)load()},4000)}
+document.getElementById('lv').onclick=()=>{paused=!paused;if(paused)pill('hold','Paused');else{pill('on','Live');load()}};
+document.getElementById('fs').onclick=()=>{document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen()};
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&!paused)load()});
+load();run();
+</script></body></html>

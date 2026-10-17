@@ -1,0 +1,27 @@
+services:
+  goatmediastackarr:
+    image: ghcr.io/bdlnaredi/goatmediastackarr:latest
+    container_name: goatmediastackarr
+    restart: unless-stopped
+    ports:
+      - "5080:5080"   # GoatMediaStackarr
+      - "8096:8096"   # Jellyfin for TV and phone apps
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Kolkata
+      - VPN_ENABLED=false          # true: download apps go through the VPN, with a kill switch
+      - VPN_TYPE=wireguard         # or openvpn; put the provider's file in ./config/vpn
+      # - VPN_USER=                # OpenVPN only
+      # - VPN_PASS=
+      # - VPN_PORT_FORWARD=natpmp  # ProtonVPN and other NAT-PMP providers
+    volumes:
+      - ./config:/config           # every app's settings: back this up
+      - ./data:/data               # data/media/{tv,movies,music} and data/downloads
+    cap_add:
+      - NET_ADMIN                  # needed for the VPN and its kill switch
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv4.conf.all.rp_filter=2

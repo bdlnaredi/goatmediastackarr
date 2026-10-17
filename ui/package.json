@@ -1,0 +1,15 @@
+{
+  "name": "goatmediastackarr-ui",
+  "version": "0.1.0",
+  "description": "A self-hosted dashboard for your media server apps: Sonarr, Radarr, qBittorrent, Seerr, Plex, Unraid and more.",
+  "license": "GPL-3.0-or-later",
+  "repository": { "type": "git", "url": "git+https://github.com/bdlnaredi/mediahub.git" },
+  "bugs": { "url": "https://github.com/bdlnaredi/mediahub/issues" },
+  "homepage": "https://github.com/bdlnaredi/mediahub#readme",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node server.js",
+    "check": "node --check server.js && node scripts/check-ui.js",
+    "test": "node --test test/*.test.js"
+  }
+}
