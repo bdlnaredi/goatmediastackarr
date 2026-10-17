@@ -116,9 +116,14 @@ jobs:
           # One shared folder for both also works (MEDIA_DIR / DOWNLOADS_DIR inside /data).
           test -d /tmp/goat/shared/media/tv && test -d /tmp/goat/shared/downloads/torrents/complete
           docker exec goatvpn jq -e '.state == "waiting"' /run/goat/vpn.json
-          # The VPN group has no internet; the other apps do.
-          ! docker exec goatvpn s6-applyuidgid -u 1001 -g 121 -G 121,9000 curl -fsS --max-time 8 https://1.1.1.1/cdn-cgi/trace
-          docker exec goatvpn s6-applyuidgid -u 1001 -g 121 -G 121 curl -fsS --max-time 8 https://1.1.1.1/cdn-cgi/trace >/dev/null
+          # The VPN group has no internet; the other apps do. The check must fail with a network error
+          # (curl 6, 7, 28 or 35), not because the command could not be run.
+          set +e
+          docker exec goatvpn /command/s6-applyuidgid -u 1001 -g 121 -G 121,9000 curl -sS --max-time 8 -o /dev/null https://1.1.1.1/cdn-cgi/trace
+          rc=$?; set -e
+          echo "VPN group curl exit code: $rc"
+          case "$rc" in 6|7|28|35|56) echo "blocked, as it should be";; *) echo "::error::VPN app was not blocked (exit $rc)"; exit 1;; esac
+          docker exec goatvpn /command/s6-applyuidgid -u 1001 -g 121 -G 121 curl -fsS --max-time 8 -o /dev/null https://1.1.1.1/cdn-cgi/trace
           docker exec goatvpn curl -fsS --max-time 5 http://127.0.0.1:8080/api/v2/app/version
       - name: Diagnostics
         if: failure()

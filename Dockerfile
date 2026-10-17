@@ -41,6 +41,7 @@ LABEL org.opencontainers.image.title="GoatMediaStackarr" \
       org.opencontainers.image.version="${VERSION}"
 
 ENV DEBIAN_FRONTEND=noninteractive \
+    PATH=/command:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     LANG=C.UTF-8 \
     S6_BEHAVIOUR_IF_STAGE2_FAILS=0 \
     S6_CMD_WAIT_FOR_SERVICES_MAXTIME=0 \
