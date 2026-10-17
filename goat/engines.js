@@ -1,6 +1,6 @@
 'use strict';
 // One place that knows where every engine lives inside the container.
-// Ports are internal: everything except the UI (2806) and Jellyfin (8096) listens on 127.0.0.1 only.
+// Ports are internal: everything except the UI (2806), Jellyfin (8096) and Plex (32400) listens on 127.0.0.1 only.
 
 const CONFIG = process.env.GOAT_CONFIG_DIR || '/config';
 // Media library and downloads are separate container folders by default (/media and /downloads).
@@ -21,6 +21,9 @@ const ENGINES = {
   jellyfin:    { name: 'Jellyfin',    port: 8096, base: '' },
   seerr:       { name: 'Seerr',       port: 5055, base: '' },
   tautulli:    { name: 'Tautulli',    port: 8181, base: '/engines/tautulli' },
+  // Off unless added to GOAT_ENGINES. Plex is free to use but not open source, so it is downloaded from
+  // plex.tv on first start (like the official Plex image) instead of being shipped in this image.
+  plex:        { name: 'Plex',        port: 32400, base: '' },
 };
 
 // Tests run fake engines on spare ports: GOAT_PORT_SONARR=12345 and so on.
@@ -41,6 +44,13 @@ const DEFAULT_VPN_APPS = 'qbittorrent,sabnzbd,prowlarr';
 const list = (v, def) => String(v == null || v === '' ? def : v).split(',').map(s => s.trim().toLowerCase()).filter(s => ENGINES[s]);
 const enabled = (env = process.env) => list(env.GOAT_ENGINES, DEFAULT_ENGINES);
 const vpnApps = (env = process.env) => String(env.VPN_ENABLED).toLowerCase() === 'true' ? list(env.VPN_APPS, DEFAULT_VPN_APPS) : [];
+// Seerr works with one media server. SEERR_MEDIA_SERVER picks it; otherwise Jellyfin if it runs, else Plex.
+const seerrServer = (env = process.env, on = enabled(env)) => {
+  const want = String(env.SEERR_MEDIA_SERVER || '').toLowerCase();
+  if ((want === 'plex' || want === 'jellyfin') && on.includes(want)) return want;
+  return on.includes('jellyfin') ? 'jellyfin' : on.includes('plex') ? 'plex' : '';
+};
+const PLEX_PREFS = () => `${CONFIG}/plex/Library/Application Support/Plex Media Server/Preferences.xml`;
 const url = key => `http://127.0.0.1:${ENGINES[key].port}${ENGINES[key].base}`;
 
-module.exports = { CONFIG, MEDIA, DOWNLOADS, ENGINES, DIRS, DEFAULT_ENGINES, DEFAULT_VPN_APPS, enabled, vpnApps, url, list };
+module.exports = { CONFIG, MEDIA, DOWNLOADS, ENGINES, DIRS, DEFAULT_ENGINES, DEFAULT_VPN_APPS, enabled, vpnApps, url, list, seerrServer, PLEX_PREFS };

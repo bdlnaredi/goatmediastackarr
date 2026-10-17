@@ -12,6 +12,7 @@
 
 const fs = require('fs');
 const E = require('./engines');
+const { plexPrefs } = require('./init');
 
 const C = E.CONFIG;
 const log = (...a) => console.log('[goat-wire]', ...a);
@@ -161,6 +162,39 @@ async function wireJellyfin(s, on) {
   return { out, apiKey: k && k.AccessToken };
 }
 
+// ---------- Plex (optional) ----------
+const PLEX = E.url('plex');
+
+async function wirePlex(on) {
+  // The first start downloads Plex from plex.tv, so allow plenty of time.
+  const ident = await waitFor('Plex', async () => (await http('GET', `${PLEX}/identity`, { headers: { Accept: 'application/json' } })).data, 15);
+  const id = ident && ident.MediaContainer && ident.MediaContainer.machineIdentifier;
+  if (!id) throw new Error('Plex answered without a server ID');
+  const out = {};
+  let p = plexPrefs();
+  if (!p.token) {
+    const claim = String(process.env.PLEX_CLAIM || '').trim();
+    if (!claim) throw new Error('Plex is not linked to your Plex account yet: get a code from https://plex.tv/claim, put it in PLEX_CLAIM and restart within 4 minutes');
+    await http('POST', `${PLEX}/myplex/claim?token=${encodeURIComponent(claim)}`, { headers: { 'X-Plex-Client-Identifier': id, Accept: 'application/json' } });
+    p = await waitFor('Plex account link', async () => { const q = plexPrefs(); if (!q.token) throw new Error('not linked yet'); return q; }, 2);
+    out.account = 'linked';
+  } else out.account = 'already linked';
+  const h = { 'X-Plex-Token': p.token, Accept: 'application/json' };
+  const secs = ((await http('GET', `${PLEX}/library/sections`, { headers: h })).data.MediaContainer || {}).Directory || [];
+  const want = [
+    ['Movies', 'movie', 'tv.plex.agents.movie', 'Plex Movie', E.DIRS.movies, 'radarr'],
+    ['TV Shows', 'show', 'tv.plex.agents.series', 'Plex TV Series', E.DIRS.tv, 'sonarr'],
+    ['Music', 'artist', 'tv.plex.agents.music', 'Plex Music', E.DIRS.music, 'lidarr']];
+  for (const [name, type, agent, scanner, dir, needs] of want) {
+    if (!on.includes(needs)) continue;
+    if (secs.some(d => (d.Location || []).some(l => l.path === dir) || d.title === name)) { out[name] = 'already there'; continue; }
+    const q = new URLSearchParams({ name, type, agent, scanner, language: 'en-US', location: dir });
+    await http('POST', `${PLEX}/library/sections?${q}`, { headers: h });
+    out[name] = 'added';
+  }
+  return { out, token: p.token };
+}
+
 // ---------- Seerr ----------
 const SEERR = E.url('seerr');
 
@@ -169,14 +203,24 @@ async function wireSeerr(s, keys, on) {
   const out = {};
   const settingsFile = `${C}/seerr/settings.json`;
   if (!pub.initialized) {
-    if (!on.includes('jellyfin')) throw new Error('Seerr setup needs Jellyfin turned on');
-    const r = await http('POST', `${SEERR}/api/v1/auth/jellyfin`, { body: {
-      username: s.jellyfinUser, password: s.jellyfinPass, hostname: '127.0.0.1', port: E.ENGINES.jellyfin.port,
-      useSsl: false, urlBase: '', email: 'admin@goatmediastackarr.local', serverType: 2 } });
+    const server = E.seerrServer(process.env, on);
+    if (!server) throw new Error('Seerr needs Jellyfin or Plex turned on');
+    let r;
+    if (server === 'plex') {
+      const token = plexPrefs().token;
+      if (!token) throw new Error('Plex is not linked to a Plex account yet');
+      r = await http('POST', `${SEERR}/api/v1/auth/plex`, { body: { authToken: token } });
+    } else {
+      r = await http('POST', `${SEERR}/api/v1/auth/jellyfin`, { body: {
+        username: s.jellyfinUser, password: s.jellyfinPass, hostname: '127.0.0.1', port: E.ENGINES.jellyfin.port,
+        useSsl: false, urlBase: '', email: 'admin@goatmediastackarr.local', serverType: 2 } });
+    }
     const cookie = (r.headers.get('set-cookie') || '').split(';')[0];
     const ch = { Cookie: cookie };
-    const libs = (await http('GET', `${SEERR}/api/v1/settings/jellyfin/library?sync=true`, { headers: ch })).data || [];
-    if (libs.length) await http('GET', `${SEERR}/api/v1/settings/jellyfin/library?enable=${libs.map(l => l.id).join(',')}`, { headers: ch });
+    if (server === 'plex') await http('POST', `${SEERR}/api/v1/settings/plex`, { headers: ch, body: { ip: '127.0.0.1', port: E.ENGINES.plex.port, useSsl: false } });
+    const libs = (await http('GET', `${SEERR}/api/v1/settings/${server}/library?sync=true`, { headers: ch })).data || [];
+    if (libs.length) await http('GET', `${SEERR}/api/v1/settings/${server}/library?enable=${libs.map(l => l.id).join(',')}`, { headers: ch });
+    out.mediaServer = server;
     for (const [k, dir, extra] of [
       ['sonarr', E.DIRS.tv, { seriesType: 'standard', animeSeriesType: 'anime', enableSeasonFolders: true, monitorNewItems: 'all' }],
       ['radarr', E.DIRS.movies, { minimumAvailability: 'released' }]]) {
@@ -222,9 +266,11 @@ async function run() {
     ['lidarr', () => wireArr('lidarr', keys, s, on, E.DIRS.music, 'music')],
     ['prowlarr', () => wireProwlarr(keys, s, on)],
     ['jellyfin', async () => { const r = await wireJellyfin(s, on); setKey('jellyfin', r.apiKey); return r.out; }],
+    ['plex', async () => { const r = await wirePlex(on); setKey('plex', r.token); return r.out; }],
     ['seerr', async () => {
-      // Seerr signs in through Jellyfin, so it can only be set up once Jellyfin is.
-      if (on.includes('jellyfin') && !(state.steps.jellyfin && state.steps.jellyfin.ok)) throw new Error('waiting for Jellyfin to be set up first');
+      // Seerr signs in through its media server, so it can only be set up once that server is.
+      const ms = E.seerrServer(process.env, on);
+      if (ms && !(state.steps[ms] && state.steps[ms].ok)) throw new Error(`waiting for ${E.ENGINES[ms].name} to be set up first`);
       const r = await wireSeerr(s, keys, on); setKey('seerr', r.apiKey); return r.out;
     }],
   ].filter(([k]) => on.includes(k));

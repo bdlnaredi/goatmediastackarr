@@ -53,6 +53,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     MEDIA_DIR=/media \
     DOWNLOADS_DIR=/downloads \
     GOAT_ENGINES=sonarr,radarr,lidarr,prowlarr,bazarr,qbittorrent,sabnzbd,jellyfin,seerr \
+    PLEX_UPDATE=true \
     VPN_ENABLED=false \
     VPN_TYPE=wireguard \
     VPN_APPS=qbittorrent,sabnzbd,prowlarr \
@@ -138,8 +139,8 @@ RUN chmod +x /opt/goat/bin/*.sh /opt/goat/bin/*.js && \
 
 # /media and /downloads are not declared as volumes, so mapping one shared folder instead leaves no stray volumes behind.
 VOLUME ["/config"]
-# 2806 = GoatMediaStackarr, 8096 = Jellyfin for TV and phone apps, 6881 = torrent port when the VPN is off.
-EXPOSE 2806 8096 6881 6881/udp
+# 2806 = GoatMediaStackarr, 8096 = Jellyfin, 32400 = Plex (when turned on), 6881 = torrent port when the VPN is off.
+EXPOSE 2806 8096 32400 6881 6881/udp
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
   CMD curl -fsS http://127.0.0.1:2806/api/health >/dev/null || exit 1

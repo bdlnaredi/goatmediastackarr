@@ -6,6 +6,7 @@ services:
     ports:
       - "2806:2806"   # GoatMediaStackarr
       - "8096:8096"   # Jellyfin for TV and phone apps
+      # - "32400:32400" # Plex, if you add plex to GOAT_ENGINES
     environment:
       - PUID=1000
       - PGID=1000
@@ -15,6 +16,8 @@ services:
       # - VPN_USER=                # OpenVPN only
       # - VPN_PASS=
       # - VPN_PORT_FORWARD=natpmp  # ProtonVPN and other NAT-PMP providers
+      # - GOAT_ENGINES=sonarr,radarr,lidarr,prowlarr,bazarr,qbittorrent,sabnzbd,jellyfin,seerr,plex,tautulli
+      # - PLEX_CLAIM=claim-xxxx    # from https://plex.tv/claim, to link the built-in Plex to your account
     volumes:
       - ./config:/config           # every app's settings: back this up
       - ./media:/media             # library: tv, movies, music

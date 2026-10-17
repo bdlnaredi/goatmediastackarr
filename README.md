@@ -8,7 +8,7 @@
 
 ---
 
-Install one container and you get Sonarr, Radarr, Lidarr, Prowlarr, Bazarr, qBittorrent, SABnzbd, Jellyfin, Seerr and (optionally) Tautulli, already set up and connected to each other. You don't install, configure or link the separate apps.
+Install one container and you get Sonarr, Radarr, Lidarr, Prowlarr, Bazarr, qBittorrent, SABnzbd, Jellyfin, Seerr and (optionally) Plex and Tautulli, already set up and connected to each other. You don't install, configure or link the separate apps.
 
 > **Status: early (0.1).** This first stage is the container foundation: every engine bundled, wired together automatically, the VPN with its kill switch, and the interface (built from [MediaHub](https://github.com/bdlnaredi/mediahub)) with the built-in apps added for you. A setup wizard, a VPN badge and a usenet-server screen come next.
 
@@ -54,6 +54,7 @@ Use the template in [`unraid/goatmediastackarr.xml`](unraid/goatmediastackarr.xm
 | Repository | `ghcr.io/bdlnaredi/goatmediastackarr:latest` |
 | Port 2806 | GoatMediaStackarr |
 | Port 8096 | Jellyfin |
+| Port 32400 | Plex, only if turned on |
 | `/config` | `/mnt/user/appdata/goatmediastackarr` (every app's settings; back this up) |
 | `/media` | `/mnt/user/media` (your library) |
 | `/downloads` | `/mnt/user/downloads` (torrent and usenet downloads) |
@@ -121,7 +122,26 @@ Jellyfin is at port 8096. Its admin user is `goat-admin`; the password is `jelly
 
 ## Choosing apps
 
-`GOAT_ENGINES` lists the apps to run. Remove any you don't want. Add `tautulli` if you use Plex (Tautulli only works with Plex).
+`GOAT_ENGINES` lists the apps to run. Remove any you don't want.
+
+- Add `plex` for a built-in Plex server (see below).
+- Add `tautulli` for Plex statistics. Tautulli only works with Plex.
+
+## Plex
+
+There are two ways to use Plex. You can also use both Plex and Jellyfin together on the same media folders.
+
+**Your existing Plex server.** Add it in Settings → Apps with its address and token, as with any other app. Nothing else changes.
+
+**Built-in Plex** (off by default):
+
+1. Add `plex` to `GOAT_ENGINES` and map port 32400.
+2. Get a claim code from [plex.tv/claim](https://plex.tv/claim), put it in `PLEX_CLAIM`, and start the container within 4 minutes. This links the new server to your Plex account. It's only needed once.
+3. GoatMediaStackarr then creates Movies, TV Shows and Music libraries on your media folders. If Tautulli is turned on, it is connected to Plex automatically.
+
+Plex is free to use but not open source. So it isn't shipped inside this image. It is downloaded from plex.tv on first start, the same way the official Plex container does it. `PLEX_UPDATE=false` keeps the installed version. Hardware transcoding needs Plex Pass, as usual.
+
+**Seerr** works with one media server. It uses Jellyfin when Jellyfin runs, otherwise Plex. Set `SEERR_MEDIA_SERVER=plex` to use Plex while both run. This choice is made on Seerr's first setup.
 
 ## Other settings
 

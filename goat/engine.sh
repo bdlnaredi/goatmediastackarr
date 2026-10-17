@@ -41,7 +41,25 @@ case "$name" in
     export NODE_ENV=production CONFIG_DIRECTORY=/config/seerr HOST=127.0.0.1 PORT=5055
     cmd=(/usr/local/bin/node dist/index.js) ;;
   tautulli)
+    if in_list plex "${GOAT_ENGINES,,}"; then
+      # When Plex is being linked (PLEX_CLAIM), give it up to 10 minutes to download and link first,
+      # so Tautulli starts already connected to it.
+      prefs="/config/plex/Library/Application Support/Plex Media Server/Preferences.xml"
+      [[ -n "${PLEX_CLAIM:-}" ]] && for _ in $(seq 1 120); do grep -q 'PlexOnlineToken="[^"]' "$prefs" 2>/dev/null && break; sleep 5; done
+      /usr/local/bin/node /opt/goat/bin/init.js tautulli
+    fi
     cmd=(/usr/bin/python3 /opt/tautulli/Tautulli.py --datadir /config/tautulli --config /config/tautulli/config.ini --nolaunch) ;;
+  plex)
+    mkdir -p /config/plex && chown "$PUID:$PGID" /config/plex
+    if ! s6-applyuidgid -u "$PUID" -g "$PGID" -G "$PGID" /opt/goat/bin/plex-install.sh; then sleep 60; exit 1; fi
+    export PLEX_MEDIA_SERVER_HOME=/config/plex/pms/usr/lib/plexmediaserver
+    export PLEX_MEDIA_SERVER_APPLICATION_SUPPORT_DIR="/config/plex/Library/Application Support"
+    export PLEX_MEDIA_SERVER_MAX_PLUGIN_PROCS=6 PLEX_MEDIA_SERVER_INFO_VENDOR=Docker PLEX_MEDIA_SERVER_INFO_DEVICE="GoatMediaStackarr"
+    export LD_LIBRARY_PATH="$PLEX_MEDIA_SERVER_HOME/lib" TMPDIR=/config/plex/tmp
+    mkdir -p "$PLEX_MEDIA_SERVER_APPLICATION_SUPPORT_DIR" /config/plex/tmp && chown "$PUID:$PGID" /config/plex/Library "$PLEX_MEDIA_SERVER_APPLICATION_SUPPORT_DIR" /config/plex/tmp
+    # Plex leaves a PID file behind when the container stops; a stale one stops it starting again.
+    rm -f "$PLEX_MEDIA_SERVER_APPLICATION_SUPPORT_DIR/Plex Media Server/plexmediaserver.pid"
+    cmd=("$PLEX_MEDIA_SERVER_HOME/Plex Media Server") ;;
   ui)
     cd /opt/goat/ui || exit 1
     export HOME=/config/ui PORT=2806 DATA_DIR=/config/ui GOAT_MANAGED=/config/goat/managed.json GOAT_RUN=/run/goat GOAT_WIRED=/config/goat/wired.json

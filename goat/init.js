@@ -144,7 +144,14 @@ function bazarrConfig(s) {
   }) + '\n';
 }
 
-function tautulliConfig(existing, s) {
+// Plex keeps its sign-in token and server ID in Preferences.xml once it is claimed.
+function plexPrefs(file = E.PLEX_PREFS()) {
+  const x = readText(file) || '';
+  const attr = n => { const m = x.match(new RegExp(`\\b${n}="([^"]*)"`)); return m ? m[1] : ''; };
+  return { token: attr('PlexOnlineToken'), id: attr('ProcessedMachineIdentifier') };
+}
+
+function tautulliConfig(existing, s, plex) {
   let x = existing || '';
   const set = (k, v) => { x = iniSet(x, 'General', k, v, ' = '); };
   set('http_host', '127.0.0.1');
@@ -154,6 +161,13 @@ function tautulliConfig(existing, s) {
   set('api_key', s.tautulli);
   set('launch_browser', '0');
   set('check_github', '0');
+  // Connect Tautulli to the built-in Plex once Plex has been claimed.
+  if (plex && plex.token && plex.id) {
+    const pms = (k, v) => { x = iniSet(x, 'PMS', k, v, ' = '); };
+    pms('pms_ip', '127.0.0.1'); pms('pms_port', E.ENGINES.plex.port); pms('pms_ssl', '0'); pms('pms_is_remote', '0');
+    pms('pms_url', E.url('plex')); pms('pms_token', plex.token); pms('pms_identifier', plex.id);
+    set('first_run_complete', '1');
+  }
   return x;
 }
 
@@ -195,7 +209,8 @@ function run(env = process.env) {
   if (!fs.existsSync(bf)) writeText(bf, bazarrConfig({ ...s, ...keys }));
 
   const tf = `${C}/tautulli/config.ini`;
-  writeText(tf, tautulliConfig(readText(tf), s));
+  const plex = on.includes('plex') ? plexPrefs() : null;
+  writeText(tf, tautulliConfig(readText(tf), s, plex));
 
   // Tells the UI which apps exist and how to reach them. wire.js adds Jellyfin and Seerr keys once they exist.
   const mf = `${goatDir}/managed.json`;
@@ -213,6 +228,7 @@ function run(env = process.env) {
     tautulli: svc('tautulli', { apiKey: s.tautulli }),
     jellyfin: svc('jellyfin', { apiKey: (managed.services || []).find(x => x.key === 'jellyfin')?.apiKey || '' }),
     seerr: svc('seerr', { apiKey: (managed.services || []).find(x => x.key === 'seerr')?.apiKey || '' }),
+    plex: svc('plex', { apiKey: (plex && plex.token) || (managed.services || []).find(x => x.key === 'plex')?.apiKey || '' }),
   };
   managed = { version: 1, services: on.map(k => want[k]).filter(Boolean), vpn: { enabled: vpn.length > 0, apps: vpn } };
   fs.writeFileSync(mf, JSON.stringify(managed, null, 1), { mode: 0o600 });
@@ -237,7 +253,13 @@ function run(env = process.env) {
   return { secrets: s, keys, managed, made };
 }
 
-if (require.main === module) {
+if (require.main === module && process.argv[2] === 'tautulli') {
+  // Called just before Tautulli starts: point it at the built-in Plex if Plex is linked by now.
+  const tf = `${E.CONFIG}/tautulli/config.ini`, p = plexPrefs();
+  writeText(tf, tautulliConfig(readText(tf), loadSecrets(`${E.CONFIG}/goat/secrets.json`).secrets, p));
+  try { fs.chownSync(tf, Number(process.env.PUID || 99), Number(process.env.PGID || 100)); } catch {}
+  console.log(p.token ? '[goat-init] Tautulli connected to the built-in Plex.' : '[goat-init] Plex is not linked yet, Tautulli starts without it.');
+} else if (require.main === module) {
   try {
     const r = run();
     console.log(`[goat-init] ready. Engines: ${r.managed.services.map(x => x.name).join(', ')}. VPN apps: ${r.managed.vpn.apps.join(', ') || 'none'}.`);
@@ -247,4 +269,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { run, iniSet, xmlSet, xmlGet, qbitHash, arrConfig, qbitConfig, sabConfig, bazarrConfig, tautulliConfig, loadSecrets };
+module.exports = { run, plexPrefs, iniSet, xmlSet, xmlGet, qbitHash, arrConfig, qbitConfig, sabConfig, bazarrConfig, tautulliConfig, loadSecrets };
