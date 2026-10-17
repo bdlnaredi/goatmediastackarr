@@ -44,7 +44,7 @@ case "$name" in
     cmd=(/usr/bin/python3 /opt/tautulli/Tautulli.py --datadir /config/tautulli --config /config/tautulli/config.ini --nolaunch) ;;
   ui)
     cd /opt/goat/ui || exit 1
-    export HOME=/config/ui PORT=5080 DATA_DIR=/config/ui GOAT_MANAGED=/config/goat/managed.json GOAT_RUN=/run/goat GOAT_WIRED=/config/goat/wired.json
+    export HOME=/config/ui PORT=2806 DATA_DIR=/config/ui GOAT_MANAGED=/config/goat/managed.json GOAT_RUN=/run/goat GOAT_WIRED=/config/goat/wired.json
     cmd=(/usr/local/bin/node server.js) ;;
   wire)
     export HOME=/config/goat

@@ -15,10 +15,10 @@ Install one container and you get Sonarr, Radarr, Lidarr, Prowlarr, Bazarr, qBit
    - Bazarr fetches subtitles for Sonarr and Radarr
    - Jellyfin is set up with Movies, TV Shows and Music libraries
    - Seerr signs in through Jellyfin and sends requests to Sonarr and Radarr
-3. **Open `http://YOUR-SERVER:5080`** and create your admin account. All the built-in apps are already listed.
+3. **Open `http://YOUR-SERVER:2806`** and create your admin account. All the built-in apps are already listed.
 4. **Add indexers** in Prowlarr (from the indexer screen, or Advanced → Prowlarr), and your usenet server in SABnzbd if you use usenet.
 
-The engines listen only inside the container. The only ways in are GoatMediaStackarr (port 5080) and Jellyfin (port 8096, for TV and phone apps).
+The engines listen only inside the container. The only ways in are GoatMediaStackarr (port 2806) and Jellyfin (port 8096, for TV and phone apps).
 
 ## Install on Unraid
 
@@ -27,27 +27,38 @@ Use the template in [`unraid/goatmediastackarr.xml`](unraid/goatmediastackarr.xm
 | Setting | Value |
 |---|---|
 | Repository | `ghcr.io/bdlnaredi/goatmediastackarr:latest` |
-| Port 5080 | GoatMediaStackarr |
+| Port 2806 | GoatMediaStackarr |
 | Port 8096 | Jellyfin |
 | `/config` | `/mnt/user/appdata/goatmediastackarr` (every app's settings; back this up) |
-| `/data` | `/mnt/user/data` (media and downloads together) |
+| `/media` | `/mnt/user/media` (your library) |
+| `/downloads` | `/mnt/user/downloads` (torrent and usenet downloads) |
 | Extra parameters | `--cap-add=NET_ADMIN --device=/dev/net/tun --sysctl net.ipv4.conf.all.src_valid_mark=1 --sysctl net.ipv4.conf.all.rp_filter=2` |
 
 Other systems: see [`docker-compose.yml`](docker-compose.yml).
 
 ### Folders
 
-Media and downloads share one mount so finished downloads are moved or hardlinked into the library instantly, without copying:
+By default the library and the downloads are two separate folders:
 
 ```
-/data/media/tv          TV shows (Sonarr, Jellyfin "TV Shows")
-/data/media/movies      Movies (Radarr, Jellyfin "Movies")
-/data/media/music       Music (Lidarr, Jellyfin "Music")
-/data/downloads/torrents
-/data/downloads/usenet
+/media/tv               TV shows (Sonarr, Jellyfin "TV Shows")
+/media/movies           Movies (Radarr, Jellyfin "Movies")
+/media/music            Music (Lidarr, Jellyfin "Music")
+/downloads/torrents     qBittorrent (incomplete and complete)
+/downloads/usenet       SABnzbd (incomplete and complete)
 ```
 
-Existing files in `/data` are never re-owned or moved.
+**Both inside one folder.** If you prefer one share for everything, map a single folder and point both settings inside it:
+
+| Setting | Value |
+|---|---|
+| `/data` | `/mnt/user/data` |
+| `MEDIA_DIR` | `/data/media` |
+| `DOWNLOADS_DIR` | `/data/downloads` |
+
+This has one advantage: finished downloads are moved into the library instantly (hardlinked) instead of copied. With two separate mappings they are copied, which is slower and briefly uses double the space, even when both folders are on the same disk.
+
+Existing files in your media and downloads folders are never re-owned or moved.
 
 ## The VPN
 

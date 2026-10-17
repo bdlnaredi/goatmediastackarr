@@ -1,9 +1,14 @@
 'use strict';
 // One place that knows where every engine lives inside the container.
-// Ports are internal: everything except the UI (5080) and Jellyfin (8096) listens on 127.0.0.1 only.
+// Ports are internal: everything except the UI (2806) and Jellyfin (8096) listens on 127.0.0.1 only.
 
 const CONFIG = process.env.GOAT_CONFIG_DIR || '/config';
-const DATA = process.env.GOAT_DATA_DIR || '/data';
+// Media library and downloads are separate container folders by default (/media and /downloads).
+// Both can be pointed inside one mapped folder instead (MEDIA_DIR=/data/media, DOWNLOADS_DIR=/data/downloads),
+// which lets finished downloads be hardlinked into the library instead of copied.
+const trim = p => String(p).replace(/\/+$/, '') || '/';
+const MEDIA = trim(process.env.MEDIA_DIR || '/media');
+const DOWNLOADS = trim(process.env.DOWNLOADS_DIR || '/downloads');
 
 const ENGINES = {
   sonarr:      { name: 'Sonarr',      port: 8989, base: '/engines/sonarr',   kind: 'arr', api: 'v3' },
@@ -21,13 +26,13 @@ const ENGINES = {
 // Tests run fake engines on spare ports: GOAT_PORT_SONARR=12345 and so on.
 for (const [k, e] of Object.entries(ENGINES)) { const v = Number(process.env[`GOAT_PORT_${k.toUpperCase()}`]); if (v) e.port = v; }
 
-// Folder layout under /data. One mount means downloads can be hardlinked or moved instantly into the library.
+// Folder layout.
 const DIRS = {
-  tv: `${DATA}/media/tv`,
-  movies: `${DATA}/media/movies`,
-  music: `${DATA}/media/music`,
-  torrents: `${DATA}/downloads/torrents`,
-  usenet: `${DATA}/downloads/usenet`,
+  tv: `${MEDIA}/tv`,
+  movies: `${MEDIA}/movies`,
+  music: `${MEDIA}/music`,
+  torrents: `${DOWNLOADS}/torrents`,
+  usenet: `${DOWNLOADS}/usenet`,
 };
 
 const DEFAULT_ENGINES = 'sonarr,radarr,lidarr,prowlarr,bazarr,qbittorrent,sabnzbd,jellyfin,seerr';
@@ -38,4 +43,4 @@ const enabled = (env = process.env) => list(env.GOAT_ENGINES, DEFAULT_ENGINES);
 const vpnApps = (env = process.env) => String(env.VPN_ENABLED).toLowerCase() === 'true' ? list(env.VPN_APPS, DEFAULT_VPN_APPS) : [];
 const url = key => `http://127.0.0.1:${ENGINES[key].port}${ENGINES[key].base}`;
 
-module.exports = { CONFIG, DATA, ENGINES, DIRS, DEFAULT_ENGINES, DEFAULT_VPN_APPS, enabled, vpnApps, url, list };
+module.exports = { CONFIG, MEDIA, DOWNLOADS, ENGINES, DIRS, DEFAULT_ENGINES, DEFAULT_VPN_APPS, enabled, vpnApps, url, list };

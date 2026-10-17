@@ -89,7 +89,8 @@ test('wire connects every engine and running it again changes nothing', async ()
   const ports = {};
   for (const k of ['sonarr', 'radarr', 'prowlarr', 'jellyfin', 'seerr']) { ports[k] = await free(); process.env[`GOAT_PORT_${k.toUpperCase()}`] = String(ports[k]); }
   process.env.GOAT_CONFIG_DIR = path.join(root, 'config');
-  process.env.GOAT_DATA_DIR = path.join(root, 'data');
+  process.env.MEDIA_DIR = path.join(root, 'media');
+  process.env.DOWNLOADS_DIR = path.join(root, 'downloads');
   process.env.GOAT_ENGINES = 'sonarr,radarr,prowlarr,qbittorrent,sabnzbd,jellyfin,seerr';
   const init = require('../goat/init');
   const a = init.run(process.env);
@@ -107,7 +108,7 @@ test('wire connects every engine and running it again changes nothing', async ()
     const s1 = await wire.run();
     for (const [k, v] of Object.entries(s1.steps)) assert.ok(v.ok, `${k}: ${v.error}`);
 
-    assert.equal(sonarr.st.rootfolder[0].path, path.join(root, 'data/media/tv'));
+    assert.equal(sonarr.st.rootfolder[0].path, path.join(root, 'media/tv'));
     const q = sonarr.st.downloadclient.find(x => x.implementation === 'QBittorrent');
     const field = (x, n) => x.fields.find(f => f.name === n).value;
     assert.equal(field(q, 'tvCategory'), 'tv');
@@ -123,7 +124,7 @@ test('wire connects every engine and running it again changes nothing', async ()
     assert.equal(seerr.st.initialized, true);
     assert.equal(seerr.st.enabled, 'a,b');
     assert.equal(seerr.st.dvr.sonarr.apiKey, a.keys.sonarr);
-    assert.equal(seerr.st.dvr.sonarr.activeDirectory, path.join(root, 'data/media/tv'));
+    assert.equal(seerr.st.dvr.sonarr.activeDirectory, path.join(root, 'media/tv'));
     assert.equal(seerr.st.dvr.radarr.baseUrl, '/engines/radarr');
     assert.equal(seerr.st.dvr.radarr.activeProfileId, 4);
 

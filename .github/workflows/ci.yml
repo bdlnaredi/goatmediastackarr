@@ -41,11 +41,11 @@ jobs:
         run: echo "::notice::Image size $(docker image inspect goat:ci --format '{{.Size}}' | numfmt --to=iec)"
       - name: Start it
         run: |
-          mkdir -p /tmp/goat/config /tmp/goat/data
-          docker run -d --name goat -p 5080:5080 -p 8096:8096 \
+          mkdir -p /tmp/goat/config /tmp/goat/media /tmp/goat/downloads
+          docker run -d --name goat -p 2806:2806 -p 8096:8096 \
             -e PUID=1001 -e PGID=121 -e TZ=Asia/Kolkata \
             -e GOAT_ENGINES=sonarr,radarr,lidarr,prowlarr,bazarr,qbittorrent,sabnzbd,jellyfin,seerr,tautulli \
-            -v /tmp/goat/config:/config -v /tmp/goat/data:/data \
+            -v /tmp/goat/config:/config -v /tmp/goat/media:/media -v /tmp/goat/downloads:/downloads \
             --cap-add=NET_ADMIN --device=/dev/net/tun \
             --sysctl net.ipv4.conf.all.src_valid_mark=1 --sysctl net.ipv4.conf.all.rp_filter=2 \
             goat:ci
@@ -63,7 +63,7 @@ jobs:
             [jellyfin]=http://127.0.0.1:8096/health
             [seerr]=http://127.0.0.1:5055/api/v1/status
             [tautulli]=http://127.0.0.1:8181/engines/tautulli/
-            [ui]=http://127.0.0.1:5080/api/health )
+            [ui]=http://127.0.0.1:2806/api/health )
           for i in $(seq 1 90); do
             missing=""
             for k in "${!urls[@]}"; do check "$k" "${urls[$k]}" || missing="$missing $k"; done
@@ -86,22 +86,26 @@ jobs:
       - name: Files belong to PUID/PGID
         run: |
           test "$(stat -c %u:%g /tmp/goat/config/sonarr/config.xml)" = "1001:121"
-          test "$(stat -c %u:%g /tmp/goat/data/media/tv)" = "1001:121"
+          test "$(stat -c %u:%g /tmp/goat/media/tv)" = "1001:121"
+          test "$(stat -c %u:%g /tmp/goat/downloads/torrents/complete)" = "1001:121"
       - name: Restart keeps everything
         run: |
           docker restart goat
-          for i in $(seq 1 60); do curl -fsS http://127.0.0.1:5080/api/health && break; sleep 5; done
+          for i in $(seq 1 60); do curl -fsS http://127.0.0.1:2806/api/health && break; sleep 5; done
           sleep 60
           docker exec goat jq -e '[.steps[] | .ok] | all' /config/goat/wired.json
       - name: VPN on without a VPN file keeps the download apps offline
         run: |
           docker rm -f goat
           docker run -d --name goatvpn -e VPN_ENABLED=true -e PUID=1001 -e PGID=121 \
-            -v /tmp/goat/config:/config -v /tmp/goat/data:/data \
+            -e MEDIA_DIR=/data/media -e DOWNLOADS_DIR=/data/downloads \
+            -v /tmp/goat/config:/config -v /tmp/goat/shared:/data \
             --cap-add=NET_ADMIN --device=/dev/net/tun \
             --sysctl net.ipv4.conf.all.src_valid_mark=1 --sysctl net.ipv4.conf.all.rp_filter=2 goat:ci
           sleep 45
           docker exec goatvpn cat /run/goat/vpn.json
+          # One shared folder for both also works (MEDIA_DIR / DOWNLOADS_DIR inside /data).
+          test -d /tmp/goat/shared/media/tv && test -d /tmp/goat/shared/downloads/torrents/complete
           docker exec goatvpn jq -e '.state == "waiting"' /run/goat/vpn.json
           # The VPN group has no internet; the other apps do.
           ! docker exec goatvpn s6-applyuidgid -u 1001 -g 121 -G 121,9000 curl -fsS --max-time 8 https://1.1.1.1/cdn-cgi/trace

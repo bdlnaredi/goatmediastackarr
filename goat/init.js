@@ -217,7 +217,8 @@ function run(env = process.env) {
   managed = { version: 1, services: on.map(k => want[k]).filter(Boolean), vpn: { enabled: vpn.length > 0, apps: vpn } };
   fs.writeFileSync(mf, JSON.stringify(managed, null, 1), { mode: 0o600 });
 
-  // Hand everything to the user the engines run as. Only folders made just now are changed under /data,
+  // Hand everything to the user the engines run as. Only folders made just now are changed under the media
+  // and downloads folders,
   // so an existing media library is never re-owned.
   const chownTree = d => {
     try { fs.chownSync(d, puid, pgid); } catch { return; }
@@ -231,7 +232,7 @@ function run(env = process.env) {
       if (st.uid !== puid || st.gid !== pgid) chownTree(d);
       else for (const f of fs.readdirSync(d)) { const q = path.join(d, f); try { const s2 = fs.statSync(q); if (s2.isFile() && (s2.uid !== puid || s2.gid !== pgid)) fs.chownSync(q, puid, pgid); } catch {} }
     }
-    for (const d of made.filter(d => d.startsWith(E.DATA))) try { fs.chownSync(d, puid, pgid); } catch {}
+    for (const d of made.filter(d => !d.startsWith(C + '/'))) try { fs.chownSync(d, puid, pgid); } catch {}
   }
   return { secrets: s, keys, managed, made };
 }

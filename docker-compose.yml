@@ -4,7 +4,7 @@ services:
     container_name: goatmediastackarr
     restart: unless-stopped
     ports:
-      - "5080:5080"   # GoatMediaStackarr
+      - "2806:2806"   # GoatMediaStackarr
       - "8096:8096"   # Jellyfin for TV and phone apps
     environment:
       - PUID=1000
@@ -17,7 +17,10 @@ services:
       # - VPN_PORT_FORWARD=natpmp  # ProtonVPN and other NAT-PMP providers
     volumes:
       - ./config:/config           # every app's settings: back this up
-      - ./data:/data               # data/media/{tv,movies,music} and data/downloads
+      - ./media:/media             # library: tv, movies, music
+      - ./downloads:/downloads     # torrents and usenet downloads
+      # To let downloads be hardlinked into the library, map one folder instead and set:
+      # - ./data:/data   with   MEDIA_DIR=/data/media  and  DOWNLOADS_DIR=/data/downloads
     cap_add:
       - NET_ADMIN                  # needed for the VPN and its kill switch
     devices:

@@ -5,7 +5,8 @@ const fs = require('node:fs'), os = require('node:os'), path = require('node:pat
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'goat-init-'));
 process.env.GOAT_CONFIG_DIR = path.join(root, 'config');
-process.env.GOAT_DATA_DIR = path.join(root, 'data');
+process.env.MEDIA_DIR = path.join(root, 'media');
+process.env.DOWNLOADS_DIR = path.join(root, 'downloads');
 const init = require('../goat/init');
 const read = f => fs.readFileSync(path.join(root, 'config', f), 'utf8');
 
@@ -45,8 +46,8 @@ test('first start writes every engine, later starts keep keys and personal chang
   const baz = read('bazarr/config/config.yaml');
   assert.match(baz, new RegExp(`apikey: '${a.keys.radarr}'`));
   assert.match(baz, /use_sonarr: true/);
-  assert.ok(fs.existsSync(path.join(root, 'data/media/tv')));
-  assert.ok(fs.existsSync(path.join(root, 'data/downloads/torrents/incomplete')));
+  assert.ok(fs.existsSync(path.join(root, 'media/tv')));
+  assert.ok(fs.existsSync(path.join(root, 'downloads/torrents/incomplete')));
   const m = JSON.parse(read('goat/managed.json'));
   assert.deepEqual(m.services.map(x => x.key), ['sonarr', 'radarr', 'lidarr', 'prowlarr', 'bazarr', 'qbittorrent', 'sabnzbd', 'jellyfin', 'seerr']);
   assert.deepEqual(m.vpn, { enabled: true, apps: ['qbittorrent', 'sabnzbd', 'prowlarr'] });

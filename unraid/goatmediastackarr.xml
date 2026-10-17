@@ -9,16 +9,19 @@
   <Project>https://github.com/bdlnaredi/goatmediastackarr</Project>
   <Overview>A whole media stack in one container: Sonarr, Radarr, Lidarr, Prowlarr, Bazarr, qBittorrent, SABnzbd, Jellyfin, Seerr and Tautulli, already connected to each other, behind one interface and one login. Built-in VPN with a kill switch for the download apps (WireGuard or OpenVPN). Put your media in the Data share; everything else is set up on first start.</Overview>
   <Category>MediaApp:Video MediaApp:Music MediaServer:Video Downloaders:</Category>
-  <WebUI>http://[IP]:[PORT:5080]/</WebUI>
+  <WebUI>http://[IP]:[PORT:2806]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/bdlnaredi/goatmediastackarr/main/unraid/goatmediastackarr.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/bdlnaredi/goatmediastackarr/main/ui/public/icon-192.png</Icon>
   <ExtraParams>--cap-add=NET_ADMIN --device=/dev/net/tun --sysctl net.ipv4.conf.all.src_valid_mark=1 --sysctl net.ipv4.conf.all.rp_filter=2</ExtraParams>
-  <Config Name="Web port" Target="5080" Default="5080" Mode="tcp" Description="GoatMediaStackarr web page" Type="Port" Display="always" Required="true" Mask="false">5080</Config>
+  <Config Name="Web port" Target="2806" Default="2806" Mode="tcp" Description="GoatMediaStackarr web page" Type="Port" Display="always" Required="true" Mask="false">2806</Config>
   <Config Name="Jellyfin port" Target="8096" Default="8096" Mode="tcp" Description="For Jellyfin apps on TVs and phones" Type="Port" Display="always" Required="true" Mask="false">8096</Config>
   <Config Name="Torrent port" Target="6881" Default="6881" Mode="tcp" Description="Incoming torrent connections when the VPN is off. Not used with the VPN on." Type="Port" Display="advanced" Required="false" Mask="false">6881</Config>
   <Config Name="Torrent port (UDP)" Target="6881" Default="6881" Mode="udp" Description="Same as above, UDP" Type="Port" Display="advanced" Required="false" Mask="false">6881</Config>
   <Config Name="App data" Target="/config" Default="/mnt/user/appdata/goatmediastackarr" Mode="rw" Description="Settings and databases of every app, plus the vpn folder for your VPN file. Back this up." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/goatmediastackarr</Config>
-  <Config Name="Data" Target="/data" Default="/mnt/user/data" Mode="rw" Description="Media and downloads together (data/media/tv, movies, music and data/downloads), so finished downloads move into the library instantly." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/data</Config>
+  <Config Name="Media" Target="/media" Default="/mnt/user/media" Mode="rw" Description="Your library: tv, movies and music folders are made inside it" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/media</Config>
+  <Config Name="Downloads" Target="/downloads" Default="/mnt/user/downloads" Mode="rw" Description="Torrent and usenet downloads" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/downloads</Config>
+  <Config Name="Media folder in container" Target="MEDIA_DIR" Default="/media" Mode="" Description="Change only if you map one shared folder for both (for example /data/media), so downloads can be hardlinked instead of copied" Type="Variable" Display="advanced" Required="false" Mask="false">/media</Config>
+  <Config Name="Downloads folder in container" Target="DOWNLOADS_DIR" Default="/downloads" Mode="" Description="Change only if you map one shared folder for both (for example /data/downloads)" Type="Variable" Display="advanced" Required="false" Mask="false">/downloads</Config>
   <Config Name="VPN on" Target="VPN_ENABLED" Default="false|true" Mode="" Description="true sends the download apps through your VPN with a kill switch" Type="Variable" Display="always" Required="false" Mask="false">false</Config>
   <Config Name="VPN type" Target="VPN_TYPE" Default="wireguard|openvpn" Mode="" Description="wireguard: put the provider's .conf in App data/vpn. openvpn: put the .ovpn there." Type="Variable" Display="always" Required="false" Mask="false">wireguard</Config>
   <Config Name="VPN username" Target="VPN_USER" Default="" Mode="" Description="OpenVPN only, if your provider needs it" Type="Variable" Display="always" Required="false" Mask="false"></Config>

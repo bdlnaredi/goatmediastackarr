@@ -50,6 +50,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PGID=100 \
     UMASK=002 \
     TZ=Etc/UTC \
+    MEDIA_DIR=/media \
+    DOWNLOADS_DIR=/downloads \
     GOAT_ENGINES=sonarr,radarr,lidarr,prowlarr,bazarr,qbittorrent,sabnzbd,jellyfin,seerr \
     VPN_ENABLED=false \
     VPN_TYPE=wireguard \
@@ -134,11 +136,12 @@ RUN chmod +x /opt/goat/bin/*.sh /opt/goat/bin/*.js && \
     find /etc/s6-overlay/s6-rc.d \( -name run -o -name finish \) -exec chmod +x {} + && \
     echo "${VERSION}" > /opt/goat/VERSION
 
-VOLUME ["/config", "/data"]
-# 5080 = GoatMediaStackarr, 8096 = Jellyfin for TV and phone apps, 6881 = torrent port when the VPN is off.
-EXPOSE 5080 8096 6881 6881/udp
+# /media and /downloads are not declared as volumes, so mapping one shared folder instead leaves no stray volumes behind.
+VOLUME ["/config"]
+# 2806 = GoatMediaStackarr, 8096 = Jellyfin for TV and phone apps, 6881 = torrent port when the VPN is off.
+EXPOSE 2806 8096 6881 6881/udp
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
-  CMD curl -fsS http://127.0.0.1:5080/api/health >/dev/null || exit 1
+  CMD curl -fsS http://127.0.0.1:2806/api/health >/dev/null || exit 1
 
 ENTRYPOINT ["/init"]
