@@ -24,7 +24,7 @@ function create(o) {
     try { r = await fetch(url, { signal: AbortSignal.timeout(15000), ...opt }); } catch { throw bad(`${who} could not be reached right now.`, 502); }
     if (r.status === 401 || r.status === 403) throw bad(`${who} did not accept the key. Check it in Settings, under Discover lists.`, 401);
     if (!r.ok) throw bad(`${who} answered with an error (${r.status}).`, 502);
-    try { return await r.json(); } catch { throw bad(`${who} gave a reply MediaHub could not read.`, 502); }
+    try { return await r.json(); } catch { throw bad(`${who} gave a reply GoatMediaStackarr could not read.`, 502); }
   }
 
   const item = (kind, v) => ({

@@ -202,7 +202,7 @@ test('weekly newsletter: preview, send to every channel, and the schedule is sav
     const { a, ids } = w;
     assert.equal((await a.post('/api/weekly/send')).status, 400, 'needs a channel first');
     await a.post('/api/alerts/channels', { type: 'webhook', target: `http://127.0.0.1:${hook.address().port}/` });
-    const pr = (await a.get('/api/weekly/preview')).data, pv = pr.text; assert.match(pr.html, /Your week on MediaHub/); assert.doesNotMatch(pr.html, /<script/i); assert.match(pv, /Downloads finished: \d+/); assert.match(pv, /Requests this week: 0 made/); assert.match(pv, /apps are responding|not responding/);
+    const pr = (await a.get('/api/weekly/preview')).data, pv = pr.text; assert.match(pr.html, /Your week on GoatMediaStackarr/); assert.doesNotMatch(pr.html, /<script/i); assert.match(pv, /Downloads finished: \d+/); assert.match(pv, /Requests this week: 0 made/); assert.match(pv, /apps are responding|not responding/);
     assert.equal((await a.post('/api/weekly/send')).status, 200); assert.equal(got.length, 1); assert.match(got[0].title, /weekly newsletter/i); assert.match(got[0].message, /Downloads finished/);
     await a.put('/api/weekly', { on: true, day: 5, hour: 18 });
     const cfg = (await a.get('/api/weekly')).data; assert.equal(cfg.on, true); assert.equal(cfg.day, 5); assert.equal(cfg.hour, 18); assert.ok(cfg.last > 0, 'turning it on does not send one straight away');

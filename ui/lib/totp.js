@@ -39,7 +39,7 @@ function verify(secret, code, t = Date.now(), lastUsed = 0, window = 1) {
   }
   return 0;
 }
-const uri = (secret, account, issuer = 'MediaHub') => `otpauth://totp/${encodeURIComponent(issuer + ':' + account)}?secret=${secret}&issuer=${encodeURIComponent(issuer)}`;
+const uri = (secret, account, issuer = 'GoatMediaStackarr') => `otpauth://totp/${encodeURIComponent(issuer + ':' + account)}?secret=${secret}&issuer=${encodeURIComponent(issuer)}`;
 function recoveryCodes(n = 8) {
   const al = 'abcdefghjkmnpqrstuvwxyz23456789', pick = () => al[crypto.randomInt(al.length)];
   return Array.from({ length: n }, () => Array.from({ length: 4 }, pick).join('') + '-' + Array.from({ length: 4 }, pick).join(''));

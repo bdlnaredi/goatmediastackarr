@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="GoatMediaStackarr">
+<defs>
+<linearGradient id="bg" x1="0" y1="0" x2="0.35" y2="1"><stop offset="0" stop-color="rgb(36, 22, 74)"/><stop offset="1" stop-color="rgb(12, 70, 78)"/></linearGradient>
+<linearGradient id="horn" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="rgb(255, 205, 92)"/><stop offset="1" stop-color="rgb(236, 112, 52)"/></linearGradient>
+</defs>
+<rect width="512" height="512" rx="116" fill="url(#bg)"/>
+<path d="M192 230 C150 186 100 146 96 88 C94 52 126 34 158 46 C140 62 146 104 186 136 C216 160 240 176 254 206 Z" fill="url(#horn)"/>
+<path d="M320 230 C362 186 412 146 416 88 C418 52 386 34 354 46 C372 62 366 104 326 136 C296 160 272 176 258 206 Z" fill="url(#horn)"/>
+<path d="M182 246 C150 236 112 244 86 268 C116 286 152 290 186 280 Z" fill="rgb(246, 240, 229)" opacity="0.92"/>
+<path d="M330 246 C362 236 400 244 426 268 C396 286 360 290 326 280 Z" fill="rgb(246, 240, 229)" opacity="0.92"/>
+<path d="M256 190 C300 190 330 206 338 236 C346 268 336 300 316 336 C302 362 300 396 282 414 C272 424 240 424 230 414 C212 396 210 362 196 336 C176 300 166 268 174 236 C182 206 212 190 256 190 Z" fill="rgb(246, 240, 229)"/>
+<path d="M236 414 C246 430 250 452 256 474 C262 452 266 430 276 414 Z" fill="rgb(246, 240, 229)"/>
+<path d="M204 284 C210 270 234 268 242 282 C236 298 210 300 204 284 Z" fill="rgb(36, 22, 74)"/>
+<path d="M308 284 C302 270 278 268 270 282 C276 298 302 300 308 284 Z" fill="rgb(36, 22, 74)"/>
+<path d="M236 376 C240 368 250 370 250 380 C246 386 238 384 236 376 Z" fill="rgb(36, 22, 74)"/>
+<path d="M276 376 C272 368 262 370 262 380 C266 386 274 384 276 376 Z" fill="rgb(36, 22, 74)"/>
+<path d="M242 226 L242 266 L276 246 Z" fill="rgb(236, 112, 52)" stroke="rgb(236, 112, 52)" stroke-width="6" stroke-linejoin="round"/>
+</svg>

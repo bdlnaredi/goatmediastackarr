@@ -18,7 +18,7 @@ test('codes are accepted once, only inside the time window', () => {
   assert.ok(totp.verify(s, totp.totp(s, now - 30000), now) > 0, 'one step old is fine');
   assert.equal(totp.verify(s, totp.totp(s, now - 120000), now), 0, 'two minutes old is not');
   assert.equal(totp.verify(s, '12345', now), 0); assert.equal(totp.verify(s, 'abcdef', now), 0);
-  assert.match(totp.uri(s, 'jane'), /^otpauth:\/\/totp\/MediaHub%3Ajane\?secret=[A-Z2-7]+&issuer=MediaHub$/);
+  assert.match(totp.uri(s, 'jane'), /^otpauth:\/\/totp\/GoatMediaStackarr%3Ajane\?secret=[A-Z2-7]+&issuer=GoatMediaStackarr$/);
   const rc = totp.recoveryCodes(); assert.equal(rc.length, 8); assert.match(rc[0], /^[a-z0-9]{4}-[a-z0-9]{4}$/);
 });
 

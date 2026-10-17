@@ -1,4 +1,4 @@
-// MediaHub: a self-hosted dashboard for your media apps.
+// GoatMediaStackarr: a self-hosted dashboard for your media apps.
 // Copyright (C) 2026 bdlnaredi
 // This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License
 // as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
@@ -480,7 +480,7 @@ const bz = async (s, pth, opt = {}) => {
 };
 // Jackett's own settings API. It answers to the same API key that the searches use.
 const jkCookies = new Map();
-// Jackett's settings door wants either no password at all, or a login. With an admin password saved for the app, MediaHub signs in like the browser does.
+// Jackett's settings door wants either no password at all, or a login. With an admin password saved for the app, GoatMediaStackarr signs in like the browser does.
 async function jkSession(s, force) {
   if (!s.pass) return '';
   const c = jkCookies.get(s.id);
@@ -549,7 +549,7 @@ async function newsData() {
 }
 const when = t => { const d = new Date(t); return isNaN(d) ? '' : d.toLocaleDateString('en', { weekday: 'short', day: 'numeric', month: 'short' }); };
 function newsText(n) {
-  const l = ['MediaHub weekly newsletter', ''];
+  const l = ['GoatMediaStackarr weekly newsletter', ''];
   if (n.added.length) { l.push('Added this week'); n.added.forEach(x => l.push(`  ${x.title}${x.year ? ' (' + x.year + ')' : ''}`)); l.push(''); }
   if (n.soon.length) { l.push('Coming up'); n.soon.forEach(x => l.push(`  ${when(x.at)}  ${x.title} ${x.sub}`)); l.push(''); }
   l.push(`Downloads finished: ${n.hist}${n.hist ? ' (' + GB(n.size) + ')' : ''}`);
@@ -570,15 +570,15 @@ function newsHtml(n, link) {
   const li = t => `<li style="${F};font-size:13px;color:#222;margin:4px 0">${t}</li>`;
   return `<!doctype html><html><body style="margin:0;background:#e9ecf2"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:20px 10px">
 <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#fff;border-radius:12px"><tr><td style="padding:26px 26px 8px">
-<div style="${F};font-size:12px;color:#667">${hx(when(Date.now()))}</div><div style="${F};font-size:24px;font-weight:700;color:#111;margin-top:2px">Your week on MediaHub</div>
+<div style="${F};font-size:12px;color:#667">${hx(when(Date.now()))}</div><div style="${F};font-size:24px;font-weight:700;color:#111;margin-top:2px">Your week on GoatMediaStackarr</div>
 ${n.added.length ? h('Added this week') + `<table role="presentation" cellpadding="0" cellspacing="0">${rows}</table>` : ''}
 ${n.soon.length ? h('Coming up') + `<ul style="margin:0;padding-left:18px">${n.soon.map(x => li(`<b>${hx(when(x.at))}</b> &nbsp;${hx(x.title)} <span style="color:#667">${hx(x.sub)}</span>`)).join('')}</ul>` : ''}
 ${h('This week in numbers')}<table role="presentation" width="100%" cellpadding="0" cellspacing="6"><tr>${stat(n.hist, 'downloads finished')}${stat(n.made, 'requests made')}${stat(n.ready, 'ready to watch')}</tr></table>
 <ul style="margin:12px 0 0;padding-left:18px">${n.waiting ? li(`${n.waiting} request${n.waiting > 1 ? 's' : ''} waiting for approval`) : ''}${n.reports ? li(`${n.reports} open problem report${n.reports > 1 ? 's' : ''}`) : ''}${li(n.off.length ? 'Not responding: ' + hx(n.off.join(', ')) : 'All apps are responding')}${n.arrays.map(a => li(`${hx(a.name)} array is ${a.pct}% full`)).join('')}</ul>
-${link ? `<p style="margin:26px 0 0"><a href="${hx(link)}" style="${F};display:inline-block;background:#4f7cff;color:#fff;text-decoration:none;font-size:14px;font-weight:600;padding:10px 18px;border-radius:8px">Open MediaHub</a></p>` : ''}
-</td></tr><tr><td style="padding:22px 26px;${F};font-size:11px;color:#889">You get this because the weekly newsletter is on in MediaHub, under Settings, Alerts.</td></tr></table></td></tr></table></body></html>`;
+${link ? `<p style="margin:26px 0 0"><a href="${hx(link)}" style="${F};display:inline-block;background:#4f7cff;color:#fff;text-decoration:none;font-size:14px;font-weight:600;padding:10px 18px;border-radius:8px">Open GoatMediaStackarr</a></p>` : ''}
+</td></tr><tr><td style="padding:22px 26px;${F};font-size:11px;color:#889">You get this because the weekly newsletter is on in GoatMediaStackarr, under Settings, Alerts.</td></tr></table></td></tr></table></body></html>`;
 }
-const sendNews = async () => { const n = await newsData(); return notify('MediaHub weekly newsletter', newsText(n), newsHtml(n, baseUrl())); };
+const sendNews = async () => { const n = await newsData(); return notify('GoatMediaStackarr weekly newsletter', newsText(n), newsHtml(n, baseUrl())); };
 const BK = path.join(DATA, 'backups'), BKRE = /^(auto|pre-restore)-\d{4}-\d{2}-\d{2}-\d{4}\.json$/;
 function backupNow(kind = 'auto') {
   fs.mkdirSync(BK, { recursive: true, mode: 0o700 });
@@ -660,10 +660,10 @@ async function monitor() {
       let streams = 0; if (th0.on) for (const pl of db.services.filter(isMS)) streams += (await streamsOf(pl)).length;
       for (const s of db.services.filter(x => x.type === 'qbittorrent')) {
         const slow = Number(await qb(s, '/api/v2/transfer/speedLimitsMode')) === 1, ours = !!held[s.id];
-        if (th0.on && streams > 0) { mon.idle[s.id] = 0; if (!slow && !ours) { await qb(s, '/api/v2/transfer/toggleSpeedLimitsMode', {}); db.settings.throttle.held = { ...held, [s.id]: 1 }; held[s.id] = 1; save(); audit('MediaHub', 'Slowed downloads', `${streams} stream${streams === 1 ? '' : 's'} playing`); } }
+        if (th0.on && streams > 0) { mon.idle[s.id] = 0; if (!slow && !ours) { await qb(s, '/api/v2/transfer/toggleSpeedLimitsMode', {}); db.settings.throttle.held = { ...held, [s.id]: 1 }; held[s.id] = 1; save(); audit('GoatMediaStackarr', 'Slowed downloads', `${streams} stream${streams === 1 ? '' : 's'} playing`); } }
         else if (ours && (!th0.on || (mon.idle[s.id] = (mon.idle[s.id] || 0) + 1) >= 2)) {
           if (slow) await qb(s, '/api/v2/transfer/toggleSpeedLimitsMode', {});
-          delete held[s.id]; db.settings.throttle.held = { ...held }; save(); audit('MediaHub', 'Restored download speed', 'No one is streaming');
+          delete held[s.id]; db.settings.throttle.held = { ...held }; save(); audit('GoatMediaStackarr', 'Restored download speed', 'No one is streaming');
         }
       }
     });
@@ -784,13 +784,13 @@ const mailer = () => ((db.alerts || {}).channels || []).find(c => c.type === 'em
 const baseUrl = () => String(process.env.PUBLIC_URL || (db.settings || {}).publicUrl || '').replace(/\/+$/, '');
 const sendRecovery = (c, to, subject, text) => require('./lib/smtp').sendMail({ host: c.host, port: c.port, secure: c.secure, user: c.user, pass: c.pass, from: c.from, insecure: !!c.insecure, to, subject, text });
 
-// ---- Sign in with Plex: people open Plex's own sign-in window (so MediaHub never sees their password and keeps no Plex token),
-// then MediaHub checks that their Plex account can reach YOUR Plex server and signs them in to a regular (never admin) profile. ----
+// ---- Sign in with Plex: people open Plex's own sign-in window (so GoatMediaStackarr never sees their password and keeps no Plex token),
+// then GoatMediaStackarr checks that their Plex account can reach YOUR Plex server and signs them in to a regular (never admin) profile. ----
 const PLEXTV = () => String(process.env.PLEX_TV_URL || (DEMO ? `http://127.0.0.1:${PORT}/__demo/plextv` : 'https://plex.tv')).replace(/\/+$/, '');
 const PLEXAUTH = () => process.env.PLEX_AUTH_URL || (DEMO ? '/__demo/plextv/auth' : 'https://app.plex.tv/auth');
 function plexCid() { if (!db.settings.plexClientId) { db.settings.plexClientId = crypto.randomBytes(16).toString('hex'); save(); } return db.settings.plexClientId; }
 async function ptv(pth, opt = {}) {
-  const r = await fetch(PLEXTV() + pth, { signal: AbortSignal.timeout(10000), ...opt, headers: { Accept: 'application/json', 'X-Plex-Product': 'MediaHub', 'X-Plex-Version': VERSION, 'X-Plex-Client-Identifier': plexCid(), 'X-Plex-Device-Name': 'MediaHub', 'X-Plex-Platform': 'Web', ...(opt.headers || {}) } });
+  const r = await fetch(PLEXTV() + pth, { signal: AbortSignal.timeout(10000), ...opt, headers: { Accept: 'application/json', 'X-Plex-Product': 'GoatMediaStackarr', 'X-Plex-Version': VERSION, 'X-Plex-Client-Identifier': plexCid(), 'X-Plex-Device-Name': 'GoatMediaStackarr', 'X-Plex-Platform': 'Web', ...(opt.headers || {}) } });
   if (!r.ok) throw new Error('plex.tv answered ' + r.status);
   return r.json();
 }
@@ -803,14 +803,14 @@ function plexCfg() {
 }
 const plexPend = new Map(), plexAsk = {}, plexBad = {};
 class PlexDeny extends Error { constructor(m, code = 403) { super(m); this.code = code; } }
-// Turns a Plex token into a MediaHub profile (found, linked or created). The token is thrown away afterwards.
+// Turns a Plex token into a GoatMediaStackarr profile (found, linked or created). The token is thrown away afterwards.
 async function plexProfile(token) {
   const cfg = plexCfg(); if (!cfg.on) throw new PlexDeny('Sign in with Plex is turned off.');
   const h = { 'X-Plex-Token': token }, who = await ptv('/api/v2/user', { headers: h });
   const pid = String(who.uuid || who.id || ''), pname = cut(who.username || who.title || '', 60).trim();
   if (!pid || !pname) throw new PlexDeny('Plex did not say who you are. Please try again.', 502);
   let mid = ''; try { mid = ((await (await fetch(cfg.s.url.replace(/\/+$/, '') + '/identity', { signal: AbortSignal.timeout(8000), headers: { Accept: 'application/json', 'X-Plex-Token': cfg.s.apiKey || '' } })).json()).MediaContainer || {}).machineIdentifier || ''; } catch {}
-  if (!mid) throw new PlexDeny('MediaHub could not reach the Plex server to check your access. Ask the server owner.', 502);
+  if (!mid) throw new PlexDeny('GoatMediaStackarr could not reach the Plex server to check your access. Ask the server owner.', 502);
   const res = await ptv('/api/v2/resources?includeHttps=1&includeRelay=1', { headers: h });
   const srvRes = (Array.isArray(res) ? res : []).find(x => x.clientIdentifier === mid && /server/.test(x.provides || ''));
   if (!srvRes) throw new PlexDeny('This Plex account does not have access to this Plex server.');
@@ -820,9 +820,9 @@ async function plexProfile(token) {
     if (!cfg.auto) throw new PlexDeny(`The server owner has not added you yet. Ask them to add the Plex name "${pname}".`);
     let name = pname, n = 1; while (db.users.some(x => x.name.trim().toLowerCase() === name.toLowerCase())) name = `${pname} (Plex${n > 1 ? ' ' + n : ''})`, n++;
     u = mkUser(name, crypto.randomBytes(24).toString('hex'), 'user'); u.access = cfg.access; u.perms = cfg.perms; u.plex = { id: pid, name: pname };
-    db.users.push(u); audit('MediaHub', 'Created a profile from Plex', name);
+    db.users.push(u); audit('GoatMediaStackarr', 'Created a profile from Plex', name);
   }
-  if (u.role === 'admin') throw new PlexDeny('Admins sign in with their MediaHub password.');
+  if (u.role === 'admin') throw new PlexDeny('Admins sign in with their GoatMediaStackarr password.');
   u.plex.name = pname; u.plexLibs = await plexLibs(cfg.s, srvRes.accessToken || ''); { const rr = await plexRestrict(cfg.s, who.id, pname); if (rr) u.plexRules = rr; } save();
   return u;
 }
@@ -889,7 +889,7 @@ const goatServer = http.createServer(async (req, res) => {
       let pin; try { pin = await ptv('/api/v2/pins?strong=true', { method: 'POST' }); } catch (e) { return send(res, 502, { error: 'Could not reach plex.tv: ' + e.message }); }
       if (!pin || !pin.id || !pin.code) return send(res, 502, { error: 'plex.tv gave an unexpected answer.' });
       const ticket = crypto.randomBytes(18).toString('hex'); plexPend.set(ticket, { id: String(Math.round(+pin.id)), at: now });
-      return send(res, 200, { ticket, url: `${PLEXAUTH()}#?clientID=${encodeURIComponent(plexCid())}&code=${encodeURIComponent(pin.code)}&context%5Bdevice%5D%5Bproduct%5D=MediaHub` });
+      return send(res, 200, { ticket, url: `${PLEXAUTH()}#?clientID=${encodeURIComponent(plexCid())}&code=${encodeURIComponent(pin.code)}&context%5Bdevice%5D%5Bproduct%5D=GoatMediaStackarr` });
     }
     if (p === '/api/plexlogin/poll' && m === 'GET') {
       const tk = String(new URL(req.url, 'http://x').searchParams.get('t') || ''), e = plexPend.get(tk);
@@ -917,7 +917,7 @@ const goatServer = http.createServer(async (req, res) => {
       if (!u || !u.email || !mc || !base || (u.reset && now - (u.reset.at || 0) < 60000)) return;
       const token = crypto.randomBytes(32).toString('base64url');
       u.reset = { h: th(token), exp: now + RESET_MS, at: now }; save(); audit(u.name, 'Asked for a password reset email', res.info.ip);
-      sendRecovery(mc, u.email, 'Reset your MediaHub password', `Hi ${u.name},\n\nSomeone asked to reset the MediaHub password for this profile. To choose a new password, open this link within 30 minutes:\n\n${base}/#reset=${token}\n\nIf this was not you, ignore this message. Nothing changes until the link is used.\n`)
+      sendRecovery(mc, u.email, 'Reset your GoatMediaStackarr password', `Hi ${u.name},\n\nSomeone asked to reset the GoatMediaStackarr password for this profile. To choose a new password, open this link within 30 minutes:\n\n${base}/#reset=${token}\n\nIf this was not you, ignore this message. Nothing changes until the link is used.\n`)
         .catch(e => audit(u.name, 'Could not send the reset email', cut(e.message, 120)));
       return;
     }
@@ -1617,7 +1617,7 @@ const goatServer = http.createServer(async (req, res) => {
       me.notify = v.slice(0, 500); save(); return send(res, 200, {});
     }
     if (p === '/api/me/notify/test' && m === 'POST') {
-      try { if (!(await pushTo(me.notify, 'MediaHub test', 'Phone messages are working.'))) return send(res, 400, { error: 'Save an address first' }); }
+      try { if (!(await pushTo(me.notify, 'GoatMediaStackarr test', 'Phone messages are working.'))) return send(res, 400, { error: 'Save an address first' }); }
       catch (e) { return send(res, 400, { error: e.message }); }
       return send(res, 200, {});
     }
@@ -1826,7 +1826,7 @@ const goatServer = http.createServer(async (req, res) => {
       const s = svcOf(r[1], 'jackett'); if (!s) return send(res, 404, { error: 'Not found' });
       const path = '/' + encodeURIComponent(r[2]) + '/config'; let cur;
       try { cur = await jk(s, path); } catch (e) { return send(res, 502, { error: [400, 401, 403, 404].includes(e.code) ? (s.pass ? 'Jackett would not open this indexer\'s settings (' + e.code + '). Check the admin password saved in Settings, Apps, Jackett.'
-        : 'Jackett would not open this indexer\'s settings for MediaHub (' + e.code + '). If Jackett has an admin password, add it in Settings, Apps, Jackett, then try again. Otherwise add this one in Jackett\'s own page.') : e.message }); }
+        : 'Jackett would not open this indexer\'s settings for GoatMediaStackarr (' + e.code + '). If Jackett has an admin password, add it in Settings, Apps, Jackett, then try again. Otherwise add this one in Jackett\'s own page.') : e.message }); }
       if (m === 'GET') return send(res, 200, (Array.isArray(cur) ? cur : []).map(jkField).filter(Boolean));
       if (m === 'POST') {
         const b = await readBody(req), vals = b.values && typeof b.values === 'object' ? b.values : {};
@@ -1951,7 +1951,7 @@ const goatServer = http.createServer(async (req, res) => {
     if (p === '/api/alerts/test' && m === 'POST') {
       const b = await readBody(req), list = ((db.alerts || {}).channels || []).filter(c => !b.id || c.id === b.id);
       if (!list.length) return send(res, 400, { error: 'Add a channel first' });
-      const results = await Promise.all(list.map(async c => { try { await channels.send(c, 'MediaHub test', 'Alerts are working.'); return { id: c.id, ok: true }; } catch (e) { return { id: c.id, ok: false, error: String(e.message).slice(0, 200) }; } }));
+      const results = await Promise.all(list.map(async c => { try { await channels.send(c, 'GoatMediaStackarr test', 'Alerts are working.'); return { id: c.id, ok: true }; } catch (e) { return { id: c.id, ok: false, error: String(e.message).slice(0, 200) }; } }));
       return send(res, 200, { results });
     }
     const SCOPES = ['apps', 'traffic', 'downloads', 'upcoming', 'watching'], LOOKS = ['auto', 'dark', 'light'];
@@ -2001,7 +2001,7 @@ const goatServer = http.createServer(async (req, res) => {
     if (p === '/api/signin/test' && m === 'POST') {
       const mc = mailer(); if (!mc) return send(res, 400, { error: 'Add an email alert channel first (Settings, then Alerts)' });
       if (!me.email) return send(res, 400, { error: 'Save your own email address first (Settings, then Account)' });
-      await sendRecovery(mc, me.email, 'MediaHub test email', 'Password recovery emails will arrive like this one.'); return send(res, 200, {});
+      await sendRecovery(mc, me.email, 'GoatMediaStackarr test email', 'Password recovery emails will arrive like this one.'); return send(res, 200, {});
     }
     if (p === '/api/statuslinks' && m === 'GET') return send(res, 200, db.statusLinks.map(x => ({ id: x.id, name: x.name, scopes: x.scopes, note: x.note || '', look: x.look || 'auto', at: x.at, used: x.used || 0, lastUsed: x.lastUsed || 0 })));
     if (p === '/api/statuslinks/preview' && m === 'GET') {
@@ -2099,7 +2099,7 @@ const goatServer = http.createServer(async (req, res) => {
       if ('perms' in b) u.perms = b.perms ? Object.fromEntries(['add', 'control', 'remove', 'request'].map(k => [k, b.perms[k] !== false])) : undefined;
       if ('reqLimit' in b) { const n = Math.round(+(b.reqLimit || {}).n), d = Math.round(+(b.reqLimit || {}).days); u.reqLimit = n > 0 ? { n: Math.min(n, 1000), days: Math.min(Math.max(d || 7, 1), 365) } : undefined; }
       if ('autoApprove' in b) u.autoApprove = !!b.autoApprove;
-      if ('plexName' in b) { const v = cut(b.plexName, 60).trim(); if (v && u.role === 'admin') return send(res, 400, { error: 'Admins sign in with their MediaHub password.' }); u.plexName = v || undefined; if (!v) delete u.plex; }
+      if ('plexName' in b) { const v = cut(b.plexName, 60).trim(); if (v && u.role === 'admin') return send(res, 400, { error: 'Admins sign in with their GoatMediaStackarr password.' }); u.plexName = v || undefined; if (!v) delete u.plex; }
       if ('notify' in b) { const v = String(b.notify || '').trim(); if (v && !/^https?:\/\//i.test(v)) return send(res, 400, { error: 'Enter a web address starting with https://' }); u.notify = v.slice(0, 500); }
       save(); audit(me.name, 'Changed a profile', u.name); return send(res, 200, pubUser(u));
     }
@@ -2114,7 +2114,7 @@ const goatServer = http.createServer(async (req, res) => {
       const b = await readBody(req), k = b.backup || {}; let obj;
       try { const d = crypto.createDecipheriv('aes-256-gcm', crypto.scryptSync(String(b.passphrase || ''), Buffer.from(k.salt, 'base64'), 32), Buffer.from(k.iv, 'base64'));
         d.setAuthTag(Buffer.from(k.tag, 'base64')); obj = JSON.parse(Buffer.concat([d.update(Buffer.from(k.data, 'base64')), d.final()]).toString('utf8')); }
-      catch { return send(res, 400, { error: 'Wrong passphrase, or this is not a MediaHub backup' }); }
+      catch { return send(res, 400, { error: 'Wrong passphrase, or this is not a GoatMediaStackarr backup' }); }
       const n = obj && obj.db;
       if (!n || !Array.isArray(n.users) || !n.users.some(u => u.role === 'admin') || !Array.isArray(n.services)) return send(res, 400, { error: 'That backup looks incomplete' });
       db = defaults({ alerts: null, ...n });
@@ -2163,7 +2163,7 @@ const goatServer = http.createServer(async (req, res) => {
     }
     send(res, 404, { error: 'Not found' });
   } catch (e) { if (e && e.plain) return send(res, 502, { error: e.message }); console.error(req.method, p, e); send(res, 500, { error: 'Server error: ' + e.message }); }
-}).listen(PORT, () => console.log('MediaHub running' + (DEMO ? ' in demo mode' : '') + ' on port ' + PORT));
+}).listen(PORT, () => console.log('GoatMediaStackarr running' + (DEMO ? ' in demo mode' : '') + ' on port ' + PORT));
 // Live updates in the engines' own pages (Sonarr and Radarr use WebSockets) go through the same sign-in check.
 goatServer.on('upgrade', (req, sock, head) => {
   const t = goatTarget(req.url);
@@ -2180,7 +2180,7 @@ goatServer.on('upgrade', (req, sock, head) => {
 const MON_MS = Math.max(500, +process.env.MONITOR_MS || 30000);
 setInterval(() => monitor().catch(() => {}), MON_MS);
 setInterval(() => { for (const k in fails) if (Date.now() - fails[k].t > 600000) delete fails[k]; }, 600000).unref();
-for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => { console.log('MediaHub stopping'); process.exit(0); });
+for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => { console.log('GoatMediaStackarr stopping'); process.exit(0); });
 setTimeout(() => monitor().catch(() => {}), Math.min(3000, MON_MS));
 setTimeout(() => wpSync(), +process.env.WP_DELAY_MS || 20000).unref();
 setInterval(() => wpSync(), 6 * 3600e3).unref();

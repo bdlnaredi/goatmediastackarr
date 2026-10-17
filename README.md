@@ -1,10 +1,35 @@
-# GoatMediaStackarr
+<p align="center"><img src="docs/logo/logo.svg" alt="GoatMediaStackarr logo" width="160"></p>
 
-A whole self-hosted media stack in **one container**, behind **one interface** and **one login**, with a **built-in VPN** for the download apps.
+<h1 align="center">GoatMediaStackarr</h1>
+
+<p align="center">A whole self-hosted media stack in <b>one container</b>, behind <b>one interface</b> and <b>one login</b>, with a <b>built-in VPN</b> for the download apps.</p>
+
+<p align="center"><img src="docs/screenshots/dashboard.png" alt="GoatMediaStackarr dashboard" width="900"></p>
+
+---
 
 Install one container and you get Sonarr, Radarr, Lidarr, Prowlarr, Bazarr, qBittorrent, SABnzbd, Jellyfin, Seerr and (optionally) Tautulli, already set up and connected to each other. You don't install, configure or link the separate apps.
 
-> **Status: early (0.1).** This first stage is the container foundation: every engine bundled, wired together automatically, the VPN with its kill switch, and the interface from [MediaHub](https://github.com/bdlnaredi/mediahub) with the built-in apps added for you. A GoatMediaStackarr-branded interface, a setup wizard, a VPN badge and a usenet-server screen come next.
+> **Status: early (0.1).** This first stage is the container foundation: every engine bundled, wired together automatically, the VPN with its kill switch, and the interface (built from [MediaHub](https://github.com/bdlnaredi/mediahub)) with the built-in apps added for you. A setup wizard, a VPN badge and a usenet-server screen come next.
+
+## Screenshots
+
+| | |
+|---|---|
+| ![Dashboard](docs/screenshots/dashboard.png) | ![Discover](docs/screenshots/discover.png) |
+| **Dashboard**: every app's status, what's downloading and what's new | **Discover**: trending and popular titles to request |
+| ![Library](docs/screenshots/library.png) | ![Downloads](docs/screenshots/downloads.png) |
+| **Library**: your shows, movies and music | **Downloads**: torrents and usenet in one list |
+| ![Requests](docs/screenshots/requests.png) | ![Upcoming](docs/screenshots/upcoming.png) |
+| **Requests**: approve what others ask for | **Upcoming**: release calendar |
+| ![Indexers](docs/screenshots/indexers.png) | ![Health](docs/screenshots/health.png) |
+| **Indexers**: add and test Prowlarr sites | **Health**: problems that need attention |
+| ![Stats](docs/screenshots/stats.png) | ![Sign in](docs/screenshots/login.png) |
+| **Stats**: what's been watched and downloaded | **Sign in** |
+
+<p align="center"><img src="docs/screenshots/phone-dashboard.png" alt="On a phone" width="300"></p>
+
+Screenshots are taken in demo mode with pretend apps. To refresh them after interface changes, run **Update screenshots** from the repository's Actions tab.
 
 ## What happens when you install it
 
@@ -130,3 +155,5 @@ sudo bash test/vpn-killswitch.sh # the kill switch for real, in Linux network na
 ```
 
 CI also builds the image, starts it, and checks that every engine answers and is connected.
+
+The logo is drawn by `docs/logo/make_logo.py`, which also writes the app icons in `ui/public`.

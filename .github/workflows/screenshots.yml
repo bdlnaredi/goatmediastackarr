@@ -1,0 +1,27 @@
+name: Update screenshots
+# Run by hand from the Actions tab. Takes fresh README screenshots in demo mode and commits them to docs/screenshots.
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  shots:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Install a headless browser
+        run: |
+          npm install --no-save playwright@1
+          npx playwright install --with-deps chromium
+      - name: Take the screenshots
+        run: node scripts/screenshots.js
+      - name: Save them in the repo
+        run: |
+          git add docs/screenshots
+          if git diff --cached --quiet; then echo "Screenshots unchanged"; exit 0; fi
+          git -c user.name="github-actions[bot]" -c user.email="41898283+github-actions[bot]@users.noreply.github.com" \
+            commit -m "Update README screenshots"
+          git push
