@@ -86,6 +86,8 @@ This has one advantage: finished downloads are moved into the library instantly 
 
 Existing files in your media and downloads folders are never re-owned or moved.
 
+**Space.** The image is about 2.8 GB. Jellyfin refuses to start when the app data folder has less than 2 GB free, so leave some room there.
+
 ## The VPN
 
 Only the apps that need it use the VPN. By default those are qBittorrent, SABnzbd and Prowlarr. Jellyfin streaming, Seerr, Sonarr, Radarr and the interface keep using your normal internet.

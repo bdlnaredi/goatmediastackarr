@@ -24,6 +24,13 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
+      - name: Free disk space
+        # The image is ~2.8 GB and Jellyfin will not start with less than 2 GB free, so remove the runner's
+        # preinstalled SDKs first.
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          sudo docker image prune -af >/dev/null 2>&1 || true
+          df -h / | tail -1 | awk '{print "::notice::Free disk space before building: " $4}'
       - uses: docker/setup-buildx-action@v3
       - name: Build the image
         env:
@@ -37,6 +44,8 @@ jobs:
             exit 1
           fi
           grep -E '^#[0-9]+ [0-9.]+ fetch-release: [A-Za-z0-9_-]+/[A-Za-z0-9_-]+ ' build.log | sed 's/^/::notice::/' || true
+          docker buildx prune -af >/dev/null 2>&1 || true
+          df -h / | tail -1 | awk '{print "::notice::Free disk space after building: " $4}'
       - name: Image size
         run: echo "::notice::Image size $(docker image inspect goat:ci --format '{{.Size}}' | numfmt --to=iec)"
       - name: Start it
