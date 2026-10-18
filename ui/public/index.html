@@ -2013,7 +2013,7 @@ function discView(){
 function discOpen(x){
   const sk=ofType('seerr')[0],tv=x.mediaType==='tv';
   const o=modal(`<button class="pgback" data-x>${ic('back')}Back</button><div class="row" style="align-items:flex-start;gap:16px;flex-wrap:wrap">${x.poster?`<img src="${esc(x.poster)}" alt="" style="width:140px;border-radius:10px;aspect-ratio:2/3;object-fit:cover">`:''}<div class="grow" style="min-width:220px"><h2 style="margin:0">${esc(x.title)} <span class="mute">${esc(x.year)}</span></h2><div class="mute">${tv?'TV show':'Movie'}${x.rating?', rated '+x.rating.toFixed(1):''}</div>${x.overview?`<p>${esc(x.overview)}</p>`:''}${idChips({type:x.mediaType,imdb:x.imdb,tmdb:x.tmdb,tvdb:x.tvdb})}<div id="rqs" style="margin-top:12px"></div></div></div><div class="row" style="margin-top:14px"><button data-x>Close</button></div>`,true);
-  pageBg(o,x.backdrop||x.poster);o.querySelectorAll('[data-x]').forEach(b=>b.onclick=o.close);
+  pageBg(o,x.backdrop||x.poster);if(!x.backdrop&&x.tmdb)api(`/api/title?type=${tv?'tv':'movie'}&id=${x.tmdb}`).then(t=>{if(t.backdrop&&document.contains(o)){o.querySelectorAll('.pgbg').forEach(e=>e.remove());pageBg(o,t.backdrop)}}).catch(()=>{});o.querySelectorAll('[data-x]').forEach(b=>b.onclick=o.close);
   const box=o.querySelector('#rqs');
   if(!sk){box.innerHTML='<span class="mute">Connect Seerr to request things from here.</span>';return}
   if(!can('request')){box.innerHTML='<span class="mute">Requests are off for your profile.</span>';return}
