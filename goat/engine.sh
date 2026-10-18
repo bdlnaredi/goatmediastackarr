@@ -29,7 +29,14 @@ case "$name" in
     bin="/opt/$name/${name^}"; cmd=("$bin" -nobrowser "-data=/config/$name") ;;
   bazarr)
     cd /opt/bazarr || exit 1
-    cmd=(/opt/bazarr/venv/bin/python bazarr.py --no-update --config /config/bazarr) ;;
+    # Run Bazarr's worker directly. Its bazarr.py launcher does not pass a stop on to the worker, which then keeps
+    # port 6767 and makes every later start fail ("port already in use", code -105). Bazarr's own restart and
+    # shutdown write these files and exit; s6 then starts it again.
+    export STOPFILE=/config/bazarr/bazarr.stop RESTARTFILE=/config/bazarr/bazarr.restart
+    rm -f "$STOPFILE" "$RESTARTFILE"
+    # A worker left behind by an older version of this container still holds the port; stop it first.
+    pkill -f 'bazarr/main\.py --no-update' 2>/dev/null && sleep 2
+    cmd=(/opt/bazarr/venv/bin/python -u /opt/bazarr/bazarr/main.py --no-update --config /config/bazarr) ;;
   qbittorrent)
     cmd=(/usr/local/bin/qbittorrent-nox --profile=/config/qbittorrent --webui-port=8080) ;;
   sabnzbd)

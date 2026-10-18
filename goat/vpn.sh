@@ -82,10 +82,20 @@ ovpn_up() {
     printf '%s\n%s\n' "$VPN_USER" "${VPN_PASS:-}" > "$RUN/vpn-auth"; chmod 600 "$RUN/vpn-auth"; auth=(--auth-user-pass "$RUN/vpn-auth")
   elif [ -f /config/vpn/credentials.conf ]; then
     auth=(--auth-user-pass /config/vpn/credentials.conf)
+  else
+    # The file asks for a username and password. It may name its own file for them (e.g. "auth-user-pass credentials.conf"),
+    # which is looked for next to the .ovpn file; without one, say what to do instead of letting OpenVPN fail.
+    local want
+    want=$(grep -iE '^[[:space:]]*auth-user-pass([[:space:]]|$)' "$src" | head -n1 | tr -d '\r' | awk '{print $2}')
+    if grep -qiE '^[[:space:]]*auth-user-pass([[:space:]]|$)' "$src" && { [ -z "$want" ] || [ ! -f "/config/vpn/$want" -a ! -f "$want" ]; }; then
+      status error "Your .ovpn file needs your VPN username and password. Enter them on the Stack page under VPN (or set VPN_USER and VPN_PASS), then press Apply."
+      return 1
+    fi
   fi
   rm -f "$RUN/ovpn-ready"
   # Our options come after --config so they override the file: fixed interface name, no routes in the main table.
-  openvpn --config "$src" --dev "$IF" --dev-type tun --route-noexec \
+  # --cd: files the .ovpn names without a folder (ca.crt, keys, credentials) are found next to it in the vpn folder.
+  openvpn --cd /config/vpn --config "$src" --dev "$IF" --dev-type tun --route-noexec \
     --pull-filter ignore route-ipv6 --pull-filter ignore ifconfig-ipv6 --pull-filter ignore block-outside-dns \
     --script-security 2 --up /opt/goat/bin/ovpn-up.sh --up-restart --down /opt/goat/bin/ovpn-down.sh \
     --connect-retry-max 3 --auth-nocache "${auth[@]}" --verb 3 &
