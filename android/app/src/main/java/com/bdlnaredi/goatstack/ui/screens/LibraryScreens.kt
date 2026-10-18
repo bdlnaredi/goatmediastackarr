@@ -166,9 +166,11 @@ fun DetailScreen(sid: String, kind: String, id: Long) {
 
     LoadView(item) { x ->
         val mon = monitored ?: x.monitored
+        Box(Modifier.fillMaxSize()) {
+        com.bdlnaredi.goatstack.ui.PageBackground(ctx.api.abs(x.fanart) ?: x.poster)
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
             item {
-                Backdrop(ctx.api.abs(x.fanart) ?: x.poster, height = 300.dp) {
+                Backdrop(ctx.api.abs(x.fanart) ?: x.poster, height = 300.dp, overPicture = true) {
                     IconButton(onClick = { ctx.back() }, modifier = Modifier.statusBarsPadding().padding(8.dp).clip(CircleShape).background(g.bg.copy(alpha = 0.6f))) {
                         Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back", tint = g.text)
                     }
@@ -279,6 +281,7 @@ fun DetailScreen(sid: String, kind: String, id: Long) {
                     }
                 }
             }
+        }
         }
         if (remove) Confirm(
             "Remove ${x.title}?", "It is taken out of ${if (tv) "Sonarr" else "Radarr"} and will not be downloaded again.", "Remove", danger = true,

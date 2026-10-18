@@ -150,3 +150,28 @@ test('streaming data: counted per person per month from Plex and Jellyfin, limit
     assert.equal((await a.put('/api/streaming', { wanOnly: true })).data.wanOnly, true);
   } finally { await s.stop(); srv.close(); }
 });
+
+test('request stages follow the real download: searching, downloading with progress, importing, in the library, available on Plex', async () => {
+  const fake = fakes.create(), srv = http.createServer((req, res) => fake.handle(req, res, req.url)).listen(0);
+  await new Promise(r => srv.once('listening', r));
+  const fb = `http://127.0.0.1:${srv.address().port}`, st = fake.state;
+  const s = await boot({ MONITOR_MS: '60000', REQ_REFRESH_MS: '0' }), a = client(s.base); await setup(a);
+  try {
+    const ids = {};
+    for (const t of ['radarr', 'seerr', 'plex']) ids[t] = (await a.post('/api/services', { type: t, name: t === 'plex' ? 'Plex' : t, url: `${fb}/${t}`, apiKey: 'k' })).data.id;
+    // 5004 is Parallel Sundays (Radarr movie 4), which has no file yet.
+    const made = (await a.post('/api/requests', { sid: ids.seerr, mediaType: 'movie', mediaId: 5004, title: 'Parallel Sundays', year: '2025' })).data;
+    assert.equal(made.stage, 'approved');
+    const stage = async () => (await a.get('/api/requests')).data.find(x => x.id === made.id);
+    assert.equal((await stage()).stage, 'searching', 'in Radarr, nothing downloading yet');
+    st.queueDetails = [{ movieId: 4, size: 4e9, sizeleft: 1e9, timeleft: '00:10:00', status: 'downloading', trackedDownloadState: 'downloading' }];
+    let x = await stage(); assert.equal(x.stage, 'downloading'); assert.equal(x.progress, 0.75); assert.equal(x.eta, '00:10:00');
+    st.queueDetails = [{ movieId: 4, size: 4e9, sizeleft: 0, status: 'completed', trackedDownloadState: 'importing' }];
+    assert.equal((await stage()).stage, 'importing', 'being copied or hardlinked into the library');
+    st.queueDetails = []; st.movies[3].hasFile = true;
+    assert.equal((await stage()).stage, 'library', 'the file is there, Plex has not found it yet');
+    assert.ok(st.calls.includes('plex refresh'), 'Plex was asked to look for new files');
+    st.plexLib = [{ type: 'movie', title: 'Parallel Sundays', year: 2025, Guid: [{ id: 'tmdb://5004' }] }];
+    x = await stage(); assert.equal(x.stage, 'available'); assert.equal(x.where, 'Plex');
+  } finally { await s.stop(); srv.close(); }
+});

@@ -110,9 +110,11 @@ private fun TitleBody(t: TitleInfo, requested: Boolean, onAsk: (TitleInfo) -> Un
     val state = availability(t, requested)
     val canAsk = t.seerr.isNotEmpty() && ctx.user.can("request") && t.available != 5 && !requested && t.request?.stage.let { it == null || it == "declined" }
 
+    Box(Modifier.fillMaxSize()) {
+    com.bdlnaredi.goatstack.ui.PageBackground(t.backdrop.ifEmpty { t.poster })
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
         item {
-            Backdrop(t.backdrop.ifEmpty { t.poster }, height = 280.dp) {
+            Backdrop(t.backdrop.ifEmpty { t.poster }, height = 280.dp, overPicture = true) {
                 IconButton(onClick = { ctx.back() }, modifier = Modifier.statusBarsPadding().padding(8.dp).clip(CircleShape).background(g.bg.copy(alpha = 0.6f))) {
                     Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back", tint = g.text)
                 }
@@ -186,5 +188,6 @@ private fun TitleBody(t: TitleInfo, requested: Boolean, onAsk: (TitleInfo) -> Un
             Text(listOf(t.status, if (t.date.isNotEmpty()) (if (t.type == "tv") "First aired " else "Released ") + Format.day(t.date) else "").filter { it.isNotBlank() }.joinToString(" · "),
                 style = MaterialTheme.typography.labelSmall, color = g.muted, modifier = Modifier.padding(horizontal = 20.dp).offset(y = (-30).dp))
         }
+    }
     }
 }

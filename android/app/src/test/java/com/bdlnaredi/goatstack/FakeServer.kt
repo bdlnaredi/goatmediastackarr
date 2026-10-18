@@ -96,9 +96,9 @@ class FakeServer(private val server: MockWebServer) : Dispatcher() {
 
     private fun requests(): String {
         val st = listOf("pending", "pending", "approved", "available", "declined", "approved")
-        val stage = listOf("pending", "pending", "downloading", "available", "declined", "searching")
+        val stage = listOf("pending", "pending", "downloading", "available", "declined", "importing")
         val who = listOf("Ravi", "Mira", "Ann", "Ravi", "Leo", "Mira")
-        return "[" + st.indices.joinToString(",") { i -> """{"id":"r$i","sid":"e1","uid":"u$i","user":"${who[i]}","mediaType":"${if (i % 2 == 0) "movie" else "tv"}","mediaId":${200 + i},"title":"${titles[(i + 5) % 12]}","year":"${2019 + i}","poster":"${img(i + 6)}","status":"${st[i]}","stage":"${stage[i]}","at":${System.currentTimeMillis() - (i + 1) * 3_600_000L * (i + 1)}}""" } + "]"
+        return "[" + st.indices.joinToString(",") { i -> """{"id":"r$i","sid":"e1","uid":"u$i","user":"${who[i]}","mediaType":"${if (i % 2 == 0) "movie" else "tv"}","mediaId":${200 + i},"title":"${titles[(i + 5) % 12]}","year":"${2019 + i}","poster":"${img(i + 6)}","status":"${st[i]}","stage":"${stage[i]}","progress":${if (i == 2) 0.64 else null},"eta":"${if (i == 2) "00:12:40" else ""}","where":"${if (i == 3) "Plex" else ""}","at":${System.currentTimeMillis() - (i + 1) * 3_600_000L * (i + 1)}}""" } + "]"
     }
 
     private fun discover() = "[" + (0..11).joinToString(",") { i -> """{"mediaType":"movie","title":"${titles[(i + 4) % 12]}","year":"${2020 + i % 6}","overview":"","poster":"${img(i + 5)}","rating":${7.0 + (i % 5) * 0.4},"tmdb":${300 + i}}""" } + "]"

@@ -84,6 +84,7 @@ function create(opts = {}) {
     if (p === '/api/v3/qualityprofile') return json(res, st.profiles);
     if (p === '/api/v3/rootfolder') return json(res, [{ path: tv ? '/tv' : '/movies' }]);
     if (p === '/api/v3/command' && m === 'POST') return json(res, { id: 1, name: data.name });
+    if (p === '/api/v3/queue/details') return json(res, (st.queueDetails || []).filter(r => (q.get('movieId') && +r.movieId === +q.get('movieId')) || (q.get('seriesId') && +r.seriesId === +q.get('seriesId'))));
     if (p === '/api/v3/queue') return json(res, { records: [{ id: 1, title: 'Harbor.Lights.S04E06', size: 1.4e9, sizeleft: 5e8, timeleft: '00:12:00', status: 'downloading', trackedDownloadStatus: 'ok', series: { title: 'Harbor Lights' }, movie: { title: 'Glass Meridian' } },
       { id: 2, title: 'Stuck.Release.1080p', size: 2e9, sizeleft: 2e9, status: 'warning', trackedDownloadStatus: 'warning', statusMessages: [{ messages: ['No files found are eligible for import'] }], series: { title: 'Night Shift' } }].slice(0, tv ? 2 : 1), totalRecords: 2 });
     if (p === '/api/v3/release') return json(res, [
@@ -259,6 +260,8 @@ function create(opts = {}) {
       if (sub === '/library/sections') { const all = [{ key: '1', title: 'Movies' }, { key: '2', title: 'TV Shows' }, { key: '3', title: 'Private' }], tk = req.headers['x-plex-token'] || ''; return json(res, { MediaContainer: { Directory: tk.startsWith('demo-user-tok') && !st.plexAll ? all.slice(0, 2) : all } }); }
       { const sm = sub.match(/^\/library\/sections\/(\d+)\/recentlyAdded/); if (sm) return json(res, { MediaContainer: { Metadata: [{ type: 'movie', ratingKey: '8' + sm[1], title: 'Library ' + sm[1] + ' item', year: 2024, addedAt: 1000 + +sm[1], thumb: '/library/metadata/9' + sm[1] + '/thumb' }, { type: 'movie', ratingKey: '7' + sm[1], title: 'Library ' + sm[1] + ' scary item', year: 2023, addedAt: 900 + +sm[1], thumb: '/library/metadata/6' + sm[1] + '/thumb' }] } }); }
       { const dm = sub.match(/^\/library\/metadata\/(\d+)$/); if (dm) { const k = dm[1], scary = k[0] === '7'; return json(res, { MediaContainer: { Metadata: [{ ratingKey: k, contentRating: scary ? 'R' : 'PG', Genre: [{ tag: scary ? 'Horror' : 'Comedy' }], ...(scary ? { Label: [{ tag: 'Adult' }] } : {}) }] } }); } }
+      if (sub === '/hubs/search') { const t = String(q.get('query') || '').toLowerCase(); return json(res, { MediaContainer: { Hub: [{ type: 'movie', Metadata: (st.plexLib || []).filter(m => m.title.toLowerCase().includes(t)) }] } }); }
+      if (sub === '/library/sections/all/refresh') { st.calls.push('plex refresh'); res.writeHead(200); return res.end(''); }
       if (sub === '/status/sessions/terminate') { st.calls.push('plex terminate ' + q.get('sessionId') + ' ' + q.get('reason')); res.writeHead(200); return res.end(''); }
       if (sub === '/status/sessions') return json(res, { MediaContainer: { Metadata: Array.from({ length: st.streams }, (_, i) => {
         const movie = i % 2 === 1, off = 9e5 + (Date.now() % 6e5) + i * 7e5, mv = st.movies[i % st.movies.length], tc = movie;

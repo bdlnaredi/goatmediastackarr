@@ -709,13 +709,82 @@ async function vpnStatus(s) {
   const r = { ip, conn: st.connection_status, vpn: ip && homeIp.v ? ip !== homeIp.v : null };
   vpnCache[s.id] = { t: Date.now(), r }; return r;
 }
+// ---------- Where each request really is ----------
+// requested (pending) → approved → searching → downloading (with progress) → importing (copied or hardlinked into
+// the library) → library (the files are there, Plex or Jellyfin has not found them yet) → available.
+// Read straight from Radarr or Sonarr (queue and files) and from Plex and Jellyfin, so it does not wait on Seerr.
+async function onMediaServer(x) {
+  const tv = x.mediaType === 'tv', id = String(x.mediaId), title = String(x.title || '').trim().toLowerCase(), yr = +x.year || 0;
+  const same = (t, y) => String(t || '').trim().toLowerCase() === title && (!yr || !y || Math.abs(+y - yr) <= 1);
+  for (const s of db.services.filter(isMS)) { try {
+    if (s.type === 'plex') {
+      const d = await plexGet(s, `/hubs/search?query=${encodeURIComponent(x.title)}&includeGuids=1&limit=20`);
+      const items = (((d.MediaContainer || {}).Hub) || []).flatMap(h => h.Metadata || []).filter(m => m.type === (tv ? 'show' : 'movie'));
+      if (items.some(m => (m.Guid || []).some(g => g.id === 'tmdb://' + id) || same(m.title, m.year))) return s.name;
+    } else {
+      const d = await (await jfGet(s, `/Items?Recursive=true&IncludeItemTypes=${tv ? 'Series' : 'Movie'}&searchTerm=${encodeURIComponent(x.title)}&Fields=ProviderIds&Limit=20`)).json();
+      if (((d && d.Items) || []).some(m => String((m.ProviderIds || {}).Tmdb || '') === id || same(m.Name, m.ProductionYear))) return s.name;
+    }
+  } catch {} }
+  return '';
+}
+// Ask the media servers to look for new files (once per request), so "available" does not wait for their next scan.
+async function askScan() {
+  for (const s of db.services.filter(isMS)) {
+    if (s.type === 'jellyfin') await jfGet(s, '/Library/Refresh', { method: 'POST' }).catch(() => {});
+    else await fetch(s.url.replace(/\/+$/, '') + '/library/sections/all/refresh', { signal: AbortSignal.timeout(8000), headers: { 'X-Plex-Token': s.apiKey || '' } }).catch(() => {});
+  }
+}
+async function stageOf(x, cache) {
+  const tv = x.mediaType === 'tv', kind = tv ? 'sonarr' : 'radarr', want = Array.isArray(x.seasons) && x.seasons.length ? x.seasons : null;
+  let item = null, svc = null;
+  for (const s of db.services.filter(y => y.type === kind)) { try {
+    if (tv) { const l = cache[s.id] || (cache[s.id] = await arrGet(s, '/api/v3/series')); item = (Array.isArray(l) ? l : []).find(y => +y.tmdbId === +x.mediaId) || null; }
+    else { const l = await arrGet(s, '/api/v3/movie?tmdbId=' + encodeURIComponent(x.mediaId)); item = Array.isArray(l) && l[0] || null; }
+    if (item) { svc = s; break; }
+  } catch {} }
+  if (!item) return { stage: 'approved' };
+  const q = await arrGet(svc, tv ? `/api/v3/queue/details?seriesId=${item.id}` : `/api/v3/queue/details?movieId=${item.id}`).catch(() => []);
+  const recs = (Array.isArray(q) ? q : (q && q.records) || []).filter(r => !want || want.includes(r.seasonNumber != null ? r.seasonNumber : (r.episode || {}).seasonNumber));
+  let have = 0, total = 0;
+  if (tv) {
+    const full = await arrGet(svc, `/api/v3/series/${item.id}`).catch(() => item);
+    for (const se of (full.seasons || [])) if (se.seasonNumber > 0 && (!want || want.includes(se.seasonNumber))) { const st = se.statistics || {}; have += +st.episodeFileCount || 0; total += +st.episodeCount || 0; }
+  } else { have = item.hasFile ? 1 : 0; total = 1; }
+  const imp = r => /^import/i.test(r.trackedDownloadState || '') || (r.status === 'completed' && r.trackedDownloadState !== 'imported' && !/fail/i.test(r.trackedDownloadState || ''));
+  const bad = r => /fail/i.test(r.trackedDownloadState || '') || r.status === 'failed';
+  const dl = recs.filter(r => !imp(r) && !bad(r));
+  if (total > 0 && have >= total) {
+    if (!db.services.some(isMS)) return { stage: 'available' };
+    const where = await onMediaServer(x);
+    if (where) return { stage: 'available', where };
+    if (!x.scanAsked) { x.scanAsked = Date.now(); askScan(); }
+    return { stage: 'library' };
+  }
+  if (recs.some(imp)) return { stage: 'importing' };
+  if (dl.length) {
+    const size = dl.reduce((a, r) => a + (+r.size || 0), 0), left = dl.reduce((a, r) => a + (+r.sizeleft || 0), 0);
+    return { stage: 'downloading', progress: size > 0 ? Math.max(0, Math.min(1, 1 - left / size)) : 0, eta: cut(dl.map(r => r.timeleft).filter(Boolean).sort().pop() || '', 20), paused: dl.every(r => r.status === 'paused') };
+  }
+  if (recs.length && recs.every(bad)) return { stage: 'failed' };
+  if (have > 0) return { stage: (await onMediaServer(x)) ? 'partial' : 'library' };
+  return { stage: 'searching' };
+}
 async function refreshRequests() {
-  const open = db.requests.filter(x => x.status === 'approved' && x.seerrId && x.stage !== 'available').slice(0, 30); let changed = false;
+  const open = db.requests.filter(x => x.status === 'approved' && x.stage !== 'available' && x.stage !== 'declined').slice(-40); let changed = false;
+  const cache = {};
+  if (open.some(x => x.mediaType === 'tv')) await Promise.all(db.services.filter(y => y.type === 'sonarr').map(async y => { cache[y.id] = await arrGet(y, '/api/v3/series').catch(() => []); }));
   await Promise.all(open.map(async x => { try {
-    const s = db.services.find(y => y.id === x.sid); if (!s) return;
-    const r = await fetch(s.url.replace(/\/+$/, '') + '/api/v1/request/' + x.seerrId, { signal: AbortSignal.timeout(8000), headers: { 'X-Api-Key': s.apiKey } }); if (!r.ok) return;
-    const d = await r.json(), ms = (d.media || {}).status, stage = d.status === 3 ? 'declined' : ms === 5 ? 'available' : ms === 4 ? 'partial' : ms === 3 ? 'downloading' : 'approved';
-    if (stage !== x.stage) { x.stage = stage; changed = true; if (stage === 'available') await notifyUser(userOf(x.uid), 'Ready to watch', `${x.title} is now available.`).catch(() => {}); }
+    // Seerr still has the last word on a declined request.
+    const sv = x.seerrId && db.services.find(y => y.id === x.sid);
+    if (sv) { const r = await fetch(sv.url.replace(/\/+$/, '') + '/api/v1/request/' + x.seerrId, { signal: AbortSignal.timeout(8000), headers: { 'X-Api-Key': sv.apiKey } }).catch(() => null);
+      const d = r && r.ok ? await r.json().catch(() => null) : null; if (d && d.status === 3) { x.stage = 'declined'; changed = true; return; }
+      if (d && (d.media || {}).status === 5 && !db.services.some(y => y.type === (x.mediaType === 'tv' ? 'sonarr' : 'radarr'))) { x.stage = 'available'; changed = true; return; } }
+    const st = await stageOf(x, cache);
+    const before = JSON.stringify([x.stage, x.progress, x.eta, x.where]);
+    x.stage = st.stage; x.progress = st.progress; x.eta = st.eta || undefined; x.where = st.where || undefined; x.paused = st.paused || undefined; x.checked = Date.now();
+    if (JSON.stringify([x.stage, x.progress, x.eta, x.where]) !== before) changed = true;
+    if (st.stage === 'available' && !x.toldReady) { x.toldReady = Date.now(); await notifyUser(userOf(x.uid), 'Ready to watch', `${x.title} is now available${st.where ? ' on ' + st.where : ''}.`).catch(() => {}); }
   } catch {} }));
   if (changed) save();
 }
@@ -852,7 +921,7 @@ async function monitor() {
     for (const [k, v] of tickets) if (v.exp < Date.now()) tickets.delete(k);
     if (mon.n % 10 === 0) uptSave();
     await safe(streamTick);
-    if (++mon.n % 10 === 0) await safe(refreshRequests);
+    if (++mon.n % 2 === 0) await safe(refreshRequests);
   } finally { mon.busy = false; }
 }
 
@@ -1630,7 +1699,7 @@ const goatServer = http.createServer(async (req, res) => {
     }
     if (p === '/api/reports' && m === 'GET') return send(res, 200, db.reports.filter(x => me.role === 'admin' || x.uid === me.id).slice(-100).reverse());
     if (p === '/api/requests' && m === 'GET') {
-      if (Date.now() - mon.reqT > 60000) { mon.reqT = Date.now(); await refreshRequests().catch(() => {}); }
+      if (Date.now() - mon.reqT > REQ_MS) { mon.reqT = Date.now(); await refreshRequests().catch(() => {}); }
       return send(res, 200, db.requests.filter(x => me.role === 'admin' || x.uid === me.id).slice(-100).reverse().map(x => ({ ...x, stage: x.stage || x.status })));
     }
     if (p === '/api/library' && m === 'GET') {
@@ -2527,7 +2596,7 @@ goatServer.on('upgrade', (req, sock, head) => {
   const done = () => { up.destroy(); sock.destroy(); };
   up.on('error', done); sock.on('error', done);
 });
-const MON_MS = Math.max(500, +process.env.MONITOR_MS || 30000);
+const MON_MS = Math.max(500, +process.env.MONITOR_MS || 30000), REQ_MS = process.env.REQ_REFRESH_MS != null ? +process.env.REQ_REFRESH_MS : 15000;
 setInterval(() => monitor().catch(() => {}), MON_MS);
 setInterval(() => { for (const k in fails) if (Date.now() - fails[k].t > 600000) delete fails[k]; }, 600000).unref();
 for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => { console.log('GoatMediaStackarr stopping'); process.exit(0); });

@@ -55,14 +55,16 @@ import kotlinx.coroutines.launch
 
 /** What a request's stage means, in words. */
 fun stageText(s: String): String = when (s) {
-    "pending" -> "Waiting for approval"
+    "pending" -> "Requested"
     "approved" -> "Approved"
-    "searching" -> "Searching"
+    "searching" -> "Approved, looking for a download"
     "downloading" -> "Downloading"
-    "available", "done" -> "Ready to watch"
+    "importing" -> "Copying to the library"
+    "library" -> "In the library, waiting for Plex"
+    "available", "done" -> "Available"
     "partial" -> "Partly available"
     "declined" -> "Declined"
-    "failed" -> "Problem"
+    "failed" -> "Download failed"
     else -> s.replaceFirstChar { it.uppercase() }
 }
 
@@ -118,7 +120,13 @@ fun RequestsScreen() {
                                     style = MaterialTheme.typography.labelMedium, color = g.muted)
                                 Text("${r.user} · ${Format.ago(r.at)}", style = MaterialTheme.typography.labelSmall, color = g.muted)
                                 Spacer(Modifier.height(8.dp))
-                                Badge(stageText(stage), stageColor(stage))
+                                Badge(stageText(stage) + (if (stage == "downloading" && r.progress != null) " ${(r.progress * 100).toInt()}%" else "") + (if (stage == "available" && r.where.isNotEmpty()) " on ${r.where}" else ""), stageColor(stage))
+                                if (stage == "pending") Text("Waiting for an admin", style = MaterialTheme.typography.labelSmall, color = g.muted, modifier = Modifier.padding(top = 4.dp))
+                                if (stage == "downloading" && r.progress != null) {
+                                    Spacer(Modifier.height(8.dp))
+                                    Bar(r.progress.toFloat(), height = 4.dp)
+                                    if (r.eta.isNotEmpty()) Text("${r.eta} left" + if (r.paused) ", paused" else "", style = MaterialTheme.typography.labelSmall, color = g.muted, modifier = Modifier.padding(top = 4.dp))
+                                }
                             }
                         }
                         if (ctx.user.admin && r.status == "pending") {

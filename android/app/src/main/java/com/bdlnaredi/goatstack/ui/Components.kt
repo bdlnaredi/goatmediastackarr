@@ -168,12 +168,12 @@ fun Poster(url: String?, title: String, modifier: Modifier = Modifier, corner: D
 
 /** A wide picture with a fade into the page, for the top of detail pages and the home screen. */
 @Composable
-fun Backdrop(url: String?, modifier: Modifier = Modifier, height: Dp = 260.dp, content: @Composable BoxScope.() -> Unit = {}) {
+fun Backdrop(url: String?, modifier: Modifier = Modifier, height: Dp = 260.dp, overPicture: Boolean = false, content: @Composable BoxScope.() -> Unit = {}) {
     val g = LocalGoat.current
     Box(modifier.fillMaxWidth().height(height)) {
         if (!url.isNullOrBlank()) SubcomposeAsyncImage(model = url, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
         else Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(g.primary.copy(alpha = 0.35f), g.accent.copy(alpha = 0.18f), g.bg))))
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, g.bg.copy(alpha = 0.55f), g.bg))))
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, g.bg.copy(alpha = 0.45f), if (overPicture) g.bg.copy(alpha = 0.55f) else g.bg))))
         content()
     }
 }
@@ -287,5 +287,16 @@ fun Avatar(url: String, name: String, size: Dp, modifier: Modifier = Modifier) {
         val full = ctx.api.abs(url)
         if (full == null) letter()
         else SubcomposeAsyncImage(model = full, contentDescription = name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(), loading = { letter() }, error = { letter() })
+    }
+}
+
+/** A faded picture of the title filling the whole page behind its content (fixed, it does not scroll). */
+@Composable
+fun PageBackground(url: String?) {
+    val g = LocalGoat.current
+    if (url.isNullOrBlank()) return
+    Box(Modifier.fillMaxSize()) {
+        SubcomposeAsyncImage(model = url, contentDescription = null, contentScale = ContentScale.Crop, alpha = 0.3f, modifier = Modifier.fillMaxSize())
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to g.bg.copy(alpha = 0.25f), 0.45f to g.bg.copy(alpha = 0.7f), 1f to g.bg.copy(alpha = 0.95f))))
     }
 }

@@ -73,7 +73,7 @@ data class MediaRequest(
     val id: String = "", val sid: String = "", val uid: String = "", val user: String = "",
     val mediaType: String = "movie", val mediaId: Long = 0, val title: String = "", val year: String = "",
     val poster: String = "", val status: String = "pending", val stage: String = "", val at: Long = 0,
-    val seasons: List<Int> = emptyList(),
+    val seasons: List<Int> = emptyList(), val progress: Double? = null, val eta: String = "", val where: String = "", val paused: Boolean = false,
 )
 
 @Serializable

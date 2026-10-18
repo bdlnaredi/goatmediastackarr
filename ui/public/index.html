@@ -426,6 +426,9 @@ main.sx #m .panel{max-width:760px!important}
 .ov.pg>.dlg{width:100%!important;max-width:1000px!important;max-height:none!important;min-height:100%;border-radius:0!important;border:0;box-shadow:none;background:transparent;-webkit-backdrop-filter:none;backdrop-filter:none;animation:none;padding:18px 18px calc(40px + env(safe-area-inset-bottom))!important;overflow:visible}
 .pgback{display:inline-flex;align-items:center;gap:6px;margin-bottom:6px}
 .epo{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:13px;margin-top:3px;cursor:pointer}.epo.o{display:block}
+.pgbg{position:fixed;inset:0;z-index:0;pointer-events:none;background-size:cover;background-position:center 20%;opacity:.28;filter:blur(1px) saturate(1.1)}
+.pgbg::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,color-mix(in srgb,var(--bg) 30%,transparent) 0%,color-mix(in srgb,var(--bg) 70%,transparent) 45%,var(--bg) 92%)}
+.ov.pg>.dlg{position:relative;z-index:1}
 </style></head><body>
 <div id="app"></div><div id="toasts" aria-live="polite"></div>
 <link rel="stylesheet" href="/statuskit.css"><link rel="stylesheet" href="/cinema.css"><script src="/statuskit.js"></script><script src="/scenes.js"></script><script src="/cinema.js"></script><script src="/qr.js"></script>
@@ -1285,6 +1288,8 @@ function modal(html,page){
   document.addEventListener('keydown',k);o.addEventListener('click',e=>{if(e.target===o&&!page)o.close()});document.body.append(o);
   const first=dlg.querySelector('input:not([type=hidden]):not([type=checkbox]),textarea,select')||dlg.querySelector('button');dlg.setAttribute('tabindex','-1');(first||dlg).focus();return o;
 }
+// A faded picture of the title behind its page.
+function pageBg(o,url){if(!url||!o)return;const b=document.createElement('div');b.className='pgbg';b.setAttribute('aria-hidden','true');b.style.backgroundImage='url("'+String(url).replace(/"/g,'%22')+'")';o.prepend(b)}
 function dlView(){
   const s=first('qbittorrent');if(!s)return noSvc('qBittorrent');
   const admin=me.role==='admin',act=b=>api(`/api/qb/${s.id}/act`,'POST',b);
@@ -1647,7 +1652,7 @@ function openLibItem(s,x,cb){
 }
 async function seriesDialog(s,x,cb){
   const admin=me.role==='admin',canAdd=can('add'),z2=n=>String(n).padStart(2,'0');
-  const o=modal(`<button class="pgback" data-x>${ic('back')}Back</button><h2 style="margin:4px 0 0;word-break:break-word">${esc(x.title)}</h2><div id="sd" style="margin-top:12px">${skel(4)}</div>`,true);o.querySelector('[data-x]').onclick=o.close;
+  const o=modal(`<button class="pgback" data-x>${ic('back')}Back</button><h2 style="margin:4px 0 0;word-break:break-word">${esc(x.title)}</h2><div id="sd" style="margin-top:12px">${skel(4)}</div>`,true);pageBg(o,x.fanart||x.poster);o.querySelector('[data-x]').onclick=o.close;
   let d;try{d=await api(`/api/series/${s.id}/${x.id}`)}catch(e){o.querySelector('#sd').innerHTML=`<div class="err">${esc(e.message)}</div>`;return}
   const nums=[...new Set([...d.seasons.map(q=>q.n),...d.episodes.map(q=>q.season)])].sort((a,b)=>(a===0)-(b===0)||b-a);
   const open=new Set(nums.filter(n=>n>0).slice(0,1));
@@ -1704,7 +1709,7 @@ function idChips(i){if(!i)return '';const L=(n,v,u,t)=>`<a class="pill" href="${
   return o.length?`<div class="chips" style="margin-top:6px">${o.join('')}</div>`:''}
 function showDetail(x){
   const o=document.createElement('div');o.className='ov pg';
-  o.innerHTML=`<div class="dlg" role="dialog" aria-modal="true" aria-label="${esc(x.title)}"><button class="pgback" id="bk" style="flex-basis:100%;width:max-content">${ic('back')}Back</button>${x.fanart?'<div class="dbd"></div>':''}${x.poster?`<img src="${esc(x.poster)}" alt="" style="width:160px;border-radius:8px;align-self:flex-start">`:''}
+  o.innerHTML=`<div class="dlg" role="dialog" aria-modal="true" aria-label="${esc(x.title)}"><button class="pgback" id="bk" style="flex-basis:100%;width:max-content">${ic('back')}Back</button>${x.poster?`<img src="${esc(x.poster)}" alt="" style="width:160px;border-radius:8px;align-self:flex-start">`:''}
     <div style="flex:1;min-width:220px"><h2 style="margin:0">${esc(x.title)}</h2>
     <div class="mute">${esc(x.sub||'')}${x.date?' · '+new Date(x.date).toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'}):''}</div>
     ${x.meta?`<div class="mute">${esc(x.meta)}</div>`:''}
@@ -1715,7 +1720,7 @@ function showDetail(x){
   const k=e=>{if(e.key==='Escape')close()},close=()=>{o.remove();document.removeEventListener('keydown',k)};
   document.addEventListener('keydown',k);
   document.body.append(o);const q=s=>o.querySelector(s),st=q('#st');q('#cl').onclick=close;q('#bk').onclick=close;q('#bk').focus();
-  if(x.fanart&&q('.dbd'))q('.dbd').style.backgroundImage='url("'+String(x.fanart).replace(/"/g,'%22')+'")';
+  pageBg(o,x.fanart||x.poster);
   if(q('#fs'))api(`/api/filestatus?sid=${encodeURIComponent(x.sid)}&id=${x.id}`).then(f=>{const b=q('#fs');if(!b)return;
     if(f.have){const fl=f.file||{};b.innerHTML=`<span class="pill ok">File available</span>${fl.quality?`<span class="pill">${esc(fl.quality)}</span>`:''}${fl.codec?`<span class="pill">${esc(fl.codec)}</span>`:''}${(fl.langs||[]).length?`<span class="pill">${esc(fl.langs.join(', '))}</span>`:''}${fl.size?`<span class="pill">${fmt(fl.size)}</span>`:''}${fl.name?`<div class="mute" style="flex-basis:100%;overflow-wrap:anywhere;font-size:12.5px">${esc(fl.name)}</div>`:''}`}
     else b.innerHTML=!f.released?'<span class="pill">Not released yet</span>':`<span class="pill bad">No file yet</span><span class="mute">${f.monitored?'Monitored, waiting for a download.':'Not monitored, so nothing will be downloaded.'}</span>`;if(f.ids)b.insertAdjacentHTML('afterend',idChips(f.ids))}).catch(()=>{const b=q('#fs');if(b)b.remove()});
@@ -1741,7 +1746,9 @@ function showDetail(x){
         catch(e){b.disabled=false;b.textContent='Grab';st.textContent=e.message}});
     }catch(e){rl.innerHTML=`<div class="err">${esc(e.message)}</div>`}};
 }
-const STAGE={pending:['Waiting for approval',''],approved:['Approved','acc'],downloading:['Downloading','acc'],partial:['Partly available','ok'],available:['Available','ok'],declined:['Declined','bad']};
+const STAGE={pending:['Requested','warn'],approved:['Approved','acc'],searching:['Approved, looking for a download','acc'],downloading:['Downloading','acc'],importing:['Copying to the library','acc'],library:['In the library, waiting for Plex','acc'],partial:['Partly available','ok'],available:['Available','ok'],failed:['Download failed','bad'],declined:['Declined','bad']};
+const stagePill=x=>{const k=x.stage||x.status,st=STAGE[k]||[k,''],pct=k==='downloading'&&x.progress!=null?' '+Math.round(x.progress*100)+'%':'';
+  return `<span class="grow" style="min-width:150px;max-width:260px"><span class="pill ${st[1]}">${esc(st[0]+pct)}${k==='available'&&x.where?' on '+esc(x.where):''}</span>${k==='downloading'&&x.progress!=null?`<div class="bar" style="margin-top:6px"><i style="width:${Math.round(x.progress*100)}%"></i></div>${x.eta?`<div class="mute" style="font-size:12px">${esc(x.eta)} left${x.paused?', paused':''}</div>`:''}`:''}${k==='pending'?'<div class="mute" style="font-size:12px">Waiting for an admin</div>':''}</span>`};
 let upMode='list',upMonth=null;
 async function upView(){
   $('#m').innerHTML=`<div class="row" style="margin-bottom:14px"><div class="seg" id="um"><button data-k="list" class="${upMode==='list'?'on':''}">Next 14 days</button><button data-k="cal" class="${upMode==='cal'?'on':''}">Calendar</button></div></div><div id="uc2">${skel(6)}</div>`;
@@ -2006,7 +2013,7 @@ function discView(){
 function discOpen(x){
   const sk=ofType('seerr')[0],tv=x.mediaType==='tv';
   const o=modal(`<button class="pgback" data-x>${ic('back')}Back</button><div class="row" style="align-items:flex-start;gap:16px;flex-wrap:wrap">${x.poster?`<img src="${esc(x.poster)}" alt="" style="width:140px;border-radius:10px;aspect-ratio:2/3;object-fit:cover">`:''}<div class="grow" style="min-width:220px"><h2 style="margin:0">${esc(x.title)} <span class="mute">${esc(x.year)}</span></h2><div class="mute">${tv?'TV show':'Movie'}${x.rating?', rated '+x.rating.toFixed(1):''}</div>${x.overview?`<p>${esc(x.overview)}</p>`:''}${idChips({type:x.mediaType,imdb:x.imdb,tmdb:x.tmdb,tvdb:x.tvdb})}<div id="rqs" style="margin-top:12px"></div></div></div><div class="row" style="margin-top:14px"><button data-x>Close</button></div>`,true);
-  o.querySelectorAll('[data-x]').forEach(b=>b.onclick=o.close);
+  pageBg(o,x.backdrop||x.poster);o.querySelectorAll('[data-x]').forEach(b=>b.onclick=o.close);
   const box=o.querySelector('#rqs');
   if(!sk){box.innerHTML='<span class="mute">Connect Seerr to request things from here.</span>';return}
   if(!can('request')){box.innerHTML='<span class="mute">Requests are off for your profile.</span>';return}
@@ -2043,7 +2050,7 @@ function rqView(){
     $('#q').innerHTML=l.map(x=>`<div class="box row">${x.poster?`<img src="${esc(x.poster)}" alt="" style="width:40px;border-radius:6px">`:''}
       <div style="flex:1;min-width:0"><b>${esc(x.title)}</b> <span class="mute">${esc(x.year||'')}</span><div class="mute">Requested by ${esc(x.user)}</div></div>
       ${x.seasons&&x.seasons.length?`<span class="mute" title="Seasons requested">S${x.seasons.join(', ')}</span>`:''}
-      ${admin&&x.status==='pending'?`<button class="primary" data-ap="${x.id}">Approve</button><button data-dc="${x.id}">Decline</button>`:`<span class="pill ${(STAGE[x.stage]||['',''])[1]}">${esc((STAGE[x.stage]||[x.stage])[0])}</span>`}
+      ${admin&&x.status==='pending'?`<button class="primary" data-ap="${x.id}">Approve</button><button data-dc="${x.id}">Decline</button>`:stagePill(x)}
       ${x.status==='approved'&&(admin||x.uid===me.id)?`<button data-rp="${x.id}" title="Tell the admin something is wrong and search again">Report a problem</button>`:''}</div>`).join('')||'<p class="mute">No requests yet.</p>';
     document.querySelectorAll('[data-rp]').forEach(b=>b.onclick=()=>{const o=modal(`<h2 style="margin-top:0">Report a problem</h2><p class="mute">Say what is wrong (no sound, wrong language, will not play…). The admin is told, and GoatMediaStackarr searches for a new copy.</p><form id="rf4"><textarea name="text" rows="3" maxlength="500" placeholder="What is wrong?" required style="width:100%"></textarea><div class="err" id="re4"></div><div class="row"><button class="primary">Send report</button><button type="button" data-x>Cancel</button></div></form>`);
       o.querySelector('[data-x]').onclick=o.close;o.querySelector('textarea').focus();

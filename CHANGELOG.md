@@ -16,6 +16,8 @@
 
 ## Fixes
 
+- Requests show where they really are, read from Radarr or Sonarr and from Plex or Jellyfin instead of waiting on Seerr: Requested (waiting for an admin), Approved, looking for a download, Downloading (with how far along and time left), Copying to the library, In the library (waiting for Plex), and Available (on Plex or Jellyfin). Plex and Jellyfin are asked to look for the new files, and the person is told when it is ready. Before, a finished download could stay on "Downloading".
+- Movie and show pages (web page and app) have the title's picture faded in behind them.
 - Health page: disk space is shown once (not under every app), each folder says what it is (Media library, Downloads, App data, the container's Docker image), big disks are shown in TB with how full they are, and an app's name is no longer repeated next to it.
 - Web page: movies and shows (from the Library, Discover, Search, Wanted and Upcoming) open as their own full page with a Back button, instead of a pop-up; each episode shows its story (tap it to read all of it) and its length.
 - Adding a download category says what went wrong (a name already taken, or one starting or ending with a slash) instead of failing silently.
