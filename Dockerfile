@@ -107,9 +107,9 @@ RUN chmod +x /usr/local/bin/fetch-release && \
     ff=$(apt-cache search --names-only '^jellyfin-ffmpeg[0-9]*$' | awk '{print $1}' | sort -V | tail -n1) && \
     echo "Installing $ff" && apt-get install -y --no-install-recommends "$ff" && \
     test -x /usr/lib/jellyfin-ffmpeg/ffmpeg && /usr/lib/jellyfin-ffmpeg/ffmpeg -hide_banner -version | head -n1 && \
-    # Bazarr reads subtitles inside video files with ffprobe. Its download only has one for x86, so on ARM it
-    # would refuse to start; give it Jellyfin's, which exists on both.
-    test -x /usr/lib/jellyfin-ffmpeg/ffprobe && ln -sf /usr/lib/jellyfin-ffmpeg/ffprobe /usr/local/bin/ffprobe && \
+    # Bazarr needs ffmpeg and ffprobe. Its download only has them for x86, so on ARM it would refuse to start;
+    # give it Jellyfin's, which exist on both.
+    for b in ffmpeg ffprobe; do test -x "/usr/lib/jellyfin-ffmpeg/$b" && ln -sf "/usr/lib/jellyfin-ffmpeg/$b" "/usr/local/bin/$b" || exit 1; done && \
     apt-get purge -y gnupg && apt-get autoremove -y && \
     find /usr/share/doc -type f ! -name copyright -delete && rm -rf /var/lib/apt/lists/* /var/cache/apt /usr/share/man/*
 
