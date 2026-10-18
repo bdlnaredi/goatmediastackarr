@@ -2409,7 +2409,9 @@ async function goatView(){
   let plan=null;
   const impProg=async()=>{const el=$('#gip');if(!el||tab!=='goat')return;let j;try{j=await api('/api/goat/import')}catch{return}
     if(j.state==='idle')return;
-    el.innerHTML=`<div class="box" style="margin-top:10px"><b>${j.state==='running'?'Bringing in '+esc(j.kind)+'…':j.state==='done'?'Finished '+esc(j.kind):'Stopped'}</b>
+    const S=j.settings,cnt=(o,n)=>`${o.added} ${n}${o.added===1?'':'s'} added, ${o.updated} replaced`;
+    el.innerHTML=`<div class="box" style="margin-top:10px"><b>${j.state==='running'?(j.phase==='profiles'?'Copying quality profiles and custom formats…':'Bringing in '+esc(j.kind)+'…'):j.state==='done'?'Finished '+esc(j.kind):'Stopped'}</b>
+      ${S?`<div class="mute">Quality profiles: ${cnt(S.profiles,'profile')}. Custom formats: ${cnt(S.formats,'format')}.</div>`:''}
       <progress value="${j.done||0}" max="${j.total||1}" style="width:100%;margin:8px 0"></progress>
       <div class="mute">${j.added||0} added, ${j.skipped||0} already there${(j.failed||[]).length?', '+j.failed.length+' could not be added':''}${j.error?' · '+esc(j.error):''}</div>
       ${(j.failed||[]).length?`<details style="margin-top:6px"><summary>What could not be added</summary>${j.failed.slice(0,100).map(f=>`<div class="mute">${esc(f.name)}: ${esc(f.error)}</div>`).join('')}</details>`:''}
@@ -2425,11 +2427,13 @@ async function goatView(){
         ${plan.kind==='prowlarr'?'':`<div style="margin-top:10px"><b>Where are these folders in GoatMediaStackarr?</b><div class="mute">The old app saw your media at the paths on the left. Enter where the same files are inside this container (your Media folder is ${esc(plan.newRoots[0]||'/media')}).</div>
           ${plan.suggest.map(([a,c],i)=>`<div class="row" style="gap:8px;margin:6px 0"><code style="min-width:160px">${esc(a)}</code><span>→</span><input data-gm="${i}" data-from="${esc(a)}" value="${esc(c)}" list="ginr" style="flex:1" aria-label="New folder for ${esc(a)}"></div>`).join('')}
           <datalist id="ginr">${plan.newRoots.map(r=>`<option value="${esc(r)}">`).join('')}</datalist>
-          ${Object.entries(plan.profiles).some(([a,c])=>a!==c)?`<div class="mute">Quality profiles without a match here use ${esc(Object.values(plan.profiles)[0]||'the default')}.</div>`:''}</div>`}
+          ${plan.settings&&plan.settings.profiles.length?`<label class="row" style="gap:10px;margin-top:12px;align-items:flex-start;cursor:pointer"><input type="checkbox" id="gisp" checked style="margin-top:3px"><span><b>Also bring in your ${plan.settings.profiles.length} quality profile${plan.settings.profiles.length===1?'':'s'}${plan.settings.formats?` and ${plan.settings.formats} custom format${plan.settings.formats===1?'':'s'}`:''}</b><div class="mute">${esc(plan.settings.profiles.slice(0,6).join(', '))}${plan.settings.profiles.length>6?'…':''}. Ones with the same name here are replaced by yours, so every ${lbl.replace(/s$/,'')} keeps the profile it had.</div></span></label>`:''}
+          ${Object.entries(plan.profiles).some(([a,c])=>a!==c)?`<div class="mute" id="gisn">Without them, quality profiles that have no match here use ${esc(Object.values(plan.profiles)[0]||'the default')}.</div>`:''}</div>`}
         <div class="row" style="margin-top:10px"><button class="primary" id="gis"${plan.todo?'':' disabled'}>${ic('dl')}Bring in ${plan.todo} ${lbl}</button><span class="mute">Nothing is downloaded or searched for.</span></div></div>`;
       const go=$('#gis');if(go)go.onclick=async()=>{busy(go,'Starting…');
         const map=[...document.querySelectorAll('[data-gm]')].map(x=>[x.dataset.from,x.value.trim()]).filter(x=>x[1]);
-        try{await api('/api/goat/import/start','POST',{...plan.req,map});impProg()}catch(x){$('#gie').textContent=x.message;idle(go)}};
+        const sp=$('#gisp');
+        try{await api('/api/goat/import/start','POST',{...plan.req,map,settings:!!(sp&&sp.checked)});impProg()}catch(x){$('#gie').textContent=x.message;idle(go)}};
     }catch(x){$('#gie').textContent=x.message}idle(b)};
   $('#grw').onclick=async e=>{const b=e.currentTarget;busy(b,'Starting…');try{await api('/api/goat/rewire','POST',{});toast('Connecting the apps again. This page updates when it finishes.','ok');goatPoll=setTimeout(()=>{if(tab==='goat'){goatQuiet=true;goatView()}},3000)}catch(x){toast(x.message,'bad')}idle(b)};
   $('#m').onclick=async e=>{

@@ -137,7 +137,9 @@ Settings changed here are saved in `appdata/goatmediastackarr/goat/settings.json
 
 On the Stack page, under **Bring in your current setup**, pick Sonarr, Radarr, Lidarr or Prowlarr, then enter your current app's address and API key (found in that app under Settings → General). **Check** shows how many shows, movies, artists or indexers there are, and how many are already here.
 
-Then say where each old folder is inside GoatMediaStackarr. For example, if your old Sonarr saw your shows at `/tv` and GoatMediaStackarr sees the same share at `/media/tv`, map `/tv` → `/media/tv`. **Bring in** copies everything that's missing. It keeps each item's monitored state, seasons and quality profile (matched by name), and doesn't search or download anything. The built-in app then rescans the folders and finds your files where they already are.
+Then say where each old folder is inside GoatMediaStackarr. For example, if your old Sonarr saw your shows at `/tv` and GoatMediaStackarr sees the same share at `/media/tv`, map `/tv` → `/media/tv`. **Bring in** copies everything that's missing. It keeps each item's monitored state, seasons and quality profile, and doesn't search or download anything.
+
+With **Also bring in your quality profiles and custom formats** ticked (the default), those are copied first: a profile or custom format with the same name here is replaced by yours, and the scores in each profile follow their custom formats by name. Prowlarr indexers come across with their settings except tags. Not copied: release and delay profiles, file naming rules and download clients (the built-in ones are already set up). The built-in app then rescans the folders and finds your files where they already are.
 
 - Your old apps are only read from, never changed. Running the import again adds only what's new.
 - Download history and episode-by-episode settings aren't copied.

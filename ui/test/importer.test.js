@@ -14,7 +14,17 @@ function fakeArr(ver, key, data) {
     const json = (c, o) => { res.writeHead(c, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(o)); };
     if (req.method === 'GET') return st[p] ? json(200, st[p]) : json(404, { message: 'nope' });
     let b = ''; for await (const c of req) b += c; b = JSON.parse(b);
-    st.writesToOld++; st.posts.push({ p, b });
+    st.writesToOld++; st.posts.push({ p, b, method: req.method });
+    // Like the real apps: a profile must list every custom format there is.
+    if (/^qualityprofile/.test(p) && st.customformat) {
+      const ids = (b.formatItems || []).map(i => i.format).sort().join(), want = st.customformat.map(f => f.id).sort().join();
+      if (ids !== want) return json(400, [{ errorMessage: 'All Custom Formats and no extra ones need to be included' }]);
+    }
+    if (req.method === 'PUT') {
+      const [k, id] = p.split('/'), list = st[k] || [], i = list.findIndex(x => String(x.id) === id);
+      if (i < 0) return json(404, {});
+      list[i] = { ...b, id: Number(id) }; return json(202, list[i]);
+    }
     if (b.title === 'Broken Show') return json(400, [{ errorMessage: 'Path does not exist' }]);
     (st[p] = st[p] || []).push({ id: st[p].length + 100, ...b });
     json(201, b);
@@ -114,4 +124,55 @@ test('import from the Stack page: check, start, follow progress', async () => {
     assert.equal(j.state, 'done'); assert.equal(j.added, 1);
     assert.equal(neu.st.posts[0].b.path, '/media/tv/Show A');
   } finally { await s.stop(); old.srv.close(); neu.srv.close(); }
+});
+
+test('quality profiles and custom formats come first, with scores following each format by name', async () => {
+  const old = fakeArr('v3', 'oldkey-123456', {
+    series: [{ id: 1, title: 'Show A', tvdbId: 11, path: '/tv/Show A', rootFolderPath: '/tv', monitored: true, qualityProfileId: 5, seasons: [] }],
+    rootfolder: [{ path: '/tv' }],
+    customformat: [{ id: 3, name: 'x265', includeCustomFormatWhenRenaming: false, specifications: [{ name: 'x265', implementation: 'ReleaseTitleSpecification', fields: [{ name: 'value', value: 'x265' }] }] },
+                   { id: 4, name: 'Bad Groups', includeCustomFormatWhenRenaming: false, specifications: [{ name: 'g', implementation: 'ReleaseGroupSpecification', fields: [{ name: 'value', value: 'BAD' }] }] }],
+    qualityprofile: [{ id: 5, name: 'My 4K', upgradeAllowed: true, cutoff: 19, minFormatScore: 10, items: [{ quality: { id: 19, name: 'Bluray-2160p' }, allowed: true }], formatItems: [{ format: 3, name: 'x265', score: 50 }, { format: 4, name: 'Bad Groups', score: -1000 }] },
+                     { id: 6, name: 'Any', upgradeAllowed: false, cutoff: 1, items: [], formatItems: [{ format: 3, name: 'x265', score: 5 }] }] });
+  const neu = fakeArr('v3', 'newkey-123456', {
+    series: [], rootfolder: [{ path: '/media/tv' }],
+    customformat: [{ id: 1, name: 'Bad Groups', includeCustomFormatWhenRenaming: false, specifications: [] }],
+    qualityprofile: [{ id: 1, name: 'Any', upgradeAllowed: true, cutoff: 4, items: [], formatItems: [{ format: 1, name: 'Bad Groups', score: 0 }] }] });
+  const [ou, nu] = [await old.listen(), await neu.listen()];
+  try {
+    const from = { url: ou, apiKey: 'oldkey-123456' }, to = { url: nu, apiKey: 'newkey-123456' };
+    const pl = await importer.plan('sonarr', from, to);
+    assert.deepEqual(pl.settings, { profiles: ['My 4K', 'Any'], formats: 2 });
+    const phases = [];
+    const r = await importer.run('sonarr', from, to, [['/tv', '/media/tv']], x => x.phase && phases.push(x.phase), { settings: true });
+    assert.deepEqual(r.failed, []);
+    assert.deepEqual(phases.slice(0, 2), ['profiles', 'items'], 'profiles before the shows');
+    assert.deepEqual(r.settings, { formats: { added: 1, updated: 1 }, profiles: { added: 1, updated: 1 } });
+    const cf = Object.fromEntries(neu.st.customformat.map(f => [f.name, f]));
+    assert.equal(cf['Bad Groups'].id, 1, 'the existing one is replaced in place');
+    assert.equal(cf['Bad Groups'].specifications[0].fields[0].value, 'BAD');
+    const q = Object.fromEntries(neu.st.qualityprofile.map(x => [x.name, x]));
+    const sc = p => Object.fromEntries(p.formatItems.map(i => [i.name, [i.format, i.score]]));
+    assert.deepEqual(sc(q['My 4K']), { 'Bad Groups': [1, -1000], x265: [cf.x265.id, 50] }, 'scores follow the format by name, with the new ids');
+    assert.equal(q['My 4K'].minFormatScore, 10); assert.equal(q['My 4K'].cutoff, 19);
+    assert.equal(q.Any.id, 1); assert.equal(q.Any.upgradeAllowed, false, 'a profile with the same name is replaced by yours');
+    assert.deepEqual(sc(q.Any), { 'Bad Groups': [1, 0], x265: [cf.x265.id, 5] });
+    assert.equal(neu.st.posts.find(x => x.p === 'series').b.qualityProfileId, q['My 4K'].id, 'the show keeps its own profile');
+    assert.equal(old.st.writesToOld, 0, 'the old app is only read');
+    // Again: nothing to change in the custom formats, profiles written again, no duplicates.
+    const r2 = await importer.run('sonarr', from, to, [['/tv', '/media/tv']], () => {}, { settings: true });
+    assert.deepEqual(r2.settings.formats, { added: 0, updated: 0 });
+    assert.equal(neu.st.qualityprofile.length, 2); assert.equal(neu.st.customformat.length, 2);
+  } finally { old.srv.close(); neu.srv.close(); }
+});
+
+test('an app version without custom formats still gets its profiles', async () => {
+  const old = fakeArr('v1', 'oldkey-123456', { artist: [], rootfolder: [{ path: '/music' }], qualityprofile: [{ id: 2, name: 'Lossless', cutoff: 7, items: [] }] });
+  const neu = fakeArr('v1', 'newkey-123456', { artist: [], rootfolder: [{ path: '/media/music' }], qualityprofile: [{ id: 1, name: 'Any', items: [] }], metadataprofile: [{ id: 1, name: 'Standard' }] });
+  const [ou, nu] = [await old.listen(), await neu.listen()];
+  try {
+    const r = await importer.run('lidarr', { url: ou, apiKey: 'oldkey-123456' }, { url: nu, apiKey: 'newkey-123456' }, [['/music', '/media/music']], () => {}, { settings: true });
+    assert.deepEqual(r.settings.profiles, { added: 1, updated: 0 });
+    assert.deepEqual(neu.st.qualityprofile.map(x => x.name), ['Any', 'Lossless']);
+  } finally { old.srv.close(); neu.srv.close(); }
 });
