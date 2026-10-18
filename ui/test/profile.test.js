@@ -108,3 +108,45 @@ test('episodes carry their overview; download categories can be added, with clea
     assert.ok(!(await a.get(`/api/qb/${q}/meta`)).data.categories.some(c => c.name === 'kids'));
   } finally { await w.stop(); }
 });
+
+test('streaming data: counted per person per month from Plex and Jellyfin, limited, and streams stopped at the limit', async () => {
+  const fake = fakes.create({ streams: 2 }), srv = http.createServer((req, res) => fake.handle(req, res, req.url)).listen(0);
+  await new Promise(r => srv.once('listening', r));
+  const fb = `http://127.0.0.1:${srv.address().port}`;
+  const s = await boot({ MONITOR_MS: '300' }), a = client(s.base); await setup(a);
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  try {
+    for (const t of ['plex', 'jellyfin']) await a.post('/api/services', { type: t, name: t, url: `${fb}/${t}`, apiKey: 'k' });
+    await a.post('/api/users', { name: 'kid', password: 'kidkidkid', role: 'user' });
+    await a.post('/api/users', { name: 'riley', password: 'rileyriley', role: 'user' });
+    const users = (await a.get('/api/users')).data, kid = users.find(u => u.name === 'kid'), riley = users.find(u => u.name === 'riley');
+    // The default is 100 GB a month; kid (Plex user "alex") gets a tiny custom limit so the test reaches it.
+    assert.deepEqual((await a.get('/api/streaming')).data.defaultGb, 100);
+    assert.equal(kid.streamLimit, null);
+    assert.equal((await a.put(`/api/users/${kid.id}`, { plexName: 'alex', streamLimit: 0.001 })).data.streamLimit, 0.001);
+    for (let i = 0; i < 40 && !fake.state.calls.some(c => c.startsWith('plex terminate s0')); i++) await sleep(150);
+    const stop = fake.state.calls.find(c => c.startsWith('plex terminate s0'));
+    assert.ok(stop, 'kid\'s Plex stream was stopped'); assert.match(stop, /streamed your 0\.001 GB for this month/);
+    assert.ok(!fake.state.calls.some(c => c.startsWith('jellyfin Playing/Stop')), 'riley is under the default limit');
+
+    const k = client(s.base); await k.post('/api/login', { name: 'kid', password: 'kidkidkid' });
+    const mine = (await k.get('/api/usage')).data.stream;
+    assert.ok(mine.bytes >= 1e6); assert.equal(mine.limitGb, 0.001); assert.equal(mine.custom, true); assert.equal(mine.defaultGb, 100);
+    assert.equal((await k.get('/api/streaming')).status, 403, 'everyone\'s use is for admins only');
+    const all = (await a.get('/api/streaming')).data.users;
+    assert.ok(all.find(x => x.name === 'riley' && x.profile && x.bytes > 0), 'Jellyfin user matched by profile name');
+    assert.ok(all.find(x => x.name === 'sam' && !x.profile && x.bytes > 0), 'a Plex account without a profile is counted');
+    assert.equal(all.find(x => x.name === 'admin').limitGb, 0, 'admins have no limit');
+
+    // Lowering the default applies to riley (Jellyfin): the stream gets a message, then is stopped.
+    assert.equal((await a.put('/api/streaming', { defaultGb: 0.001 })).data.defaultGb, 0.001);
+    for (let i = 0; i < 40 && !fake.state.calls.some(c => c.startsWith('jellyfin Playing/Stop')); i++) await sleep(150);
+    assert.ok(fake.state.calls.some(c => c === 'jellyfin Message a1b2c3d4e5f60718293a4b5c6d7e8f90'));
+    assert.ok(fake.state.calls.some(c => c === 'jellyfin Playing/Stop a1b2c3d4e5f60718293a4b5c6d7e8f90'));
+    // Back to the default, or no limit at all (0).
+    assert.equal((await a.put(`/api/users/${kid.id}`, { streamLimit: null })).data.streamLimit, null);
+    assert.equal((await a.put(`/api/users/${riley.id}`, { streamLimit: 0 })).data.streamLimit, 0);
+    assert.equal((await a.get('/api/streaming')).data.users.find(x => x.name === 'riley').limitGb, 0);
+    assert.equal((await a.put('/api/streaming', { wanOnly: true })).data.wanOnly, true);
+  } finally { await s.stop(); srv.close(); }
+});

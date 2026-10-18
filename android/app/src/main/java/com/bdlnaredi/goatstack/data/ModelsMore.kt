@@ -85,7 +85,7 @@ data class Unraid(
 
 // ---------- Profiles (users) ----------
 @Serializable
-data class Profile2(val id: String = "", val name: String = "", val role: String = "user", val email: String = "", val twofa: Boolean = false, val plex: PlexName? = null, val avatar: String = "", val dataLimit: Int = 0)
+data class Profile2(val id: String = "", val name: String = "", val role: String = "user", val email: String = "", val twofa: Boolean = false, val plex: PlexName? = null, val avatar: String = "", val dataLimit: Int = 0, val streamLimit: Double? = null)
 
 // ---------- Bringing in an existing setup ----------
 @Serializable

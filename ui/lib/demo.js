@@ -259,6 +259,7 @@ function create(opts = {}) {
       if (sub === '/library/sections') { const all = [{ key: '1', title: 'Movies' }, { key: '2', title: 'TV Shows' }, { key: '3', title: 'Private' }], tk = req.headers['x-plex-token'] || ''; return json(res, { MediaContainer: { Directory: tk.startsWith('demo-user-tok') && !st.plexAll ? all.slice(0, 2) : all } }); }
       { const sm = sub.match(/^\/library\/sections\/(\d+)\/recentlyAdded/); if (sm) return json(res, { MediaContainer: { Metadata: [{ type: 'movie', ratingKey: '8' + sm[1], title: 'Library ' + sm[1] + ' item', year: 2024, addedAt: 1000 + +sm[1], thumb: '/library/metadata/9' + sm[1] + '/thumb' }, { type: 'movie', ratingKey: '7' + sm[1], title: 'Library ' + sm[1] + ' scary item', year: 2023, addedAt: 900 + +sm[1], thumb: '/library/metadata/6' + sm[1] + '/thumb' }] } }); }
       { const dm = sub.match(/^\/library\/metadata\/(\d+)$/); if (dm) { const k = dm[1], scary = k[0] === '7'; return json(res, { MediaContainer: { Metadata: [{ ratingKey: k, contentRating: scary ? 'R' : 'PG', Genre: [{ tag: scary ? 'Horror' : 'Comedy' }], ...(scary ? { Label: [{ tag: 'Adult' }] } : {}) }] } }); } }
+      if (sub === '/status/sessions/terminate') { st.calls.push('plex terminate ' + q.get('sessionId') + ' ' + q.get('reason')); res.writeHead(200); return res.end(''); }
       if (sub === '/status/sessions') return json(res, { MediaContainer: { Metadata: Array.from({ length: st.streams }, (_, i) => {
         const movie = i % 2 === 1, off = 9e5 + (Date.now() % 6e5) + i * 7e5, mv = st.movies[i % st.movies.length], tc = movie;
         return { type: movie ? 'movie' : 'episode', ...(movie ? { title: mv.title, year: mv.year, thumb: '/library/metadata/' + mv.id + '/thumb' } : { grandparentTitle: st.shows[i % st.shows.length].title, parentIndex: 1, index: i + 2, title: 'Demo episode', grandparentThumb: '/library/metadata/' + (i + 1) + '/thumb' }),
@@ -272,6 +273,7 @@ function create(opts = {}) {
     }
     if (type === 'jellyfin') {
       if (sub === '/System/Info' || sub === '/System/Info/Public') return json(res, { ServerName: 'Demo Jellyfin', Version: '10.10.0' });
+      { const sm = sub.match(/^\/Sessions\/(\w+)\/(Message|Playing\/Stop)$/); if (sm && req.method === 'POST') { st.calls.push('jellyfin ' + sm[2] + ' ' + sm[1]); res.writeHead(204); return res.end(); } }
       if (sub === '/Sessions') { const mv = st.movies[2 % st.movies.length];
         return json(res, [{ Id: 'a1b2c3d4e5f60718293a4b5c6d7e8f90', UserName: 'riley', DeviceName: 'Fire TV', Client: 'Jellyfin for Android TV', RemoteEndPoint: '192.168.1.40',
           PlayState: { PositionTicks: (6e5 + Date.now() % 6e5) * 1e4, IsPaused: false, PlayMethod: 'DirectPlay' },

@@ -53,6 +53,18 @@ object Format {
     /** Gigabytes the way disks and the server's limits count them (1 GB = 1,000,000,000 bytes). */
     fun gb(n: Long): String = if (n <= 0) "0 GB" else if (n >= 100_000_000_000) "${n / 1_000_000_000} GB" else String.format(Locale.US, "%.1f GB", n / 1e9)
 
+    /** A limit in GB as people write it: "100 GB", "0.5 GB", "1.5 TB". */
+    fun limit(gb: Double): String = when {
+        gb >= 1000 && gb % 100 == 0.0 -> (if (gb % 1000 == 0.0) "${(gb / 1000).toLong()}" else String.format(Locale.US, "%.1f", gb / 1000)) + " TB"
+        gb % 1 == 0.0 -> "${gb.toLong()} GB"
+        else -> String.format(Locale.US, "%s GB", java.math.BigDecimal(gb).round(java.math.MathContext(3)).stripTrailingZeros().toPlainString())
+    }
+
+    /** "October 2026" for "2026-10"; "Oct" when [short]. */
+    fun month(key: String, short: Boolean = false): String = try {
+        java.time.YearMonth.parse(key).format(DateTimeFormatter.ofPattern(if (short) "MMM" else "MMMM yyyy", Locale.getDefault()))
+    } catch (_: Exception) { key }
+
     /** "3 h 20 min" for a length of time in seconds. */
     fun hours(seconds: Long): String = when {
         seconds < 60 -> "0 min"

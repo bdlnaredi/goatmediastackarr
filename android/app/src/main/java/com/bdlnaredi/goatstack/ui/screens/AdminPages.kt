@@ -27,6 +27,7 @@ import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PersonAdd
+import androidx.compose.material.icons.rounded.Wifi
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -90,6 +91,7 @@ fun UsersScreen() {
         val data = rememberLoad { ctx.api.get<List<Profile2>>("/api/users") }
         LoadView(data) { list ->
             LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                item(key = "streaming") { StreamingOverview() }
                 items(list, key = { it.id }) { u ->
                     GoatCard(Modifier.fillMaxWidth(), padding = 14.dp, onClick = { ctx.profile(u.id) }) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -101,7 +103,8 @@ fun UsersScreen() {
                                     Badge(if (u.role == "admin") "Admin" else "Member", if (u.role == "admin") g.primary else g.muted)
                                     if (u.plex != null) Badge("Plex", g.warn)
                                     if (u.twofa) Badge("Two-step", g.good)
-                                    if (u.dataLimit > 0) Badge("${u.dataLimit} GB", g.accent)
+                                    if (u.dataLimit > 0) Badge("${u.dataLimit} GB disk", g.accent)
+                                    u.streamLimit?.let { Badge(if (it > 0) "${com.bdlnaredi.goatstack.ui.Format.limit(it)}/month" else "Unlimited streaming", g.good) }
                                 }
                             }
                             if (u.id != ctx.user.id) IconButton(onClick = { removing = u }) { Icon(Icons.Rounded.Delete, "Delete", tint = g.muted) }
@@ -270,5 +273,53 @@ fun ImportScreen() {
                 }
             }
         }
+    }
+}
+
+/** Streaming this month for everyone, and the default monthly limit (with "only outside the home"). */
+@Composable
+private fun StreamingOverview() {
+    val ctx = LocalCtx.current
+    val g = LocalGoat.current
+    val scope = rememberCoroutineScope()
+    val toast = toaster()
+    val data = rememberLoad { ctx.api.get<com.bdlnaredi.goatstack.data.StreamAll>("/api/streaming") }
+    val d = data.value ?: return
+    var text by remember(d) { mutableStateOf(if (d.defaultGb > 0) d.defaultGb.toString().removeSuffix(".0") else "0") }
+    var wan by remember(d) { mutableStateOf(d.wanOnly) }
+    var busy by remember { mutableStateOf(false) }
+    GoatCard(Modifier.fillMaxWidth()) {
+        Text("Streaming in ${com.bdlnaredi.goatstack.ui.Format.month(d.month)}", style = MaterialTheme.typography.titleSmall, color = g.text)
+        Text("From Plex and Jellyfin. Admins are never limited; accounts that match no profile are counted but not limited.", style = MaterialTheme.typography.bodySmall, color = g.muted)
+        Spacer(Modifier.height(10.dp))
+        val shown = d.users.filter { it.bytes > 0 }.take(6)
+        if (shown.isEmpty()) Text("Nobody has streamed this month yet.", style = MaterialTheme.typography.bodySmall, color = g.muted)
+        shown.forEach { r ->
+            val lim = (r.limitGb * 1e9).toLong()
+            Column(Modifier.padding(vertical = 4.dp)) {
+                Row {
+                    Text(r.name + if (r.profile) "" else " (no profile)", style = MaterialTheme.typography.bodyMedium, color = g.text, modifier = Modifier.weight(1f))
+                    Text(com.bdlnaredi.goatstack.ui.Format.gb(r.bytes) + if (lim > 0) " / ${com.bdlnaredi.goatstack.ui.Format.limit(r.limitGb)}" else "", style = MaterialTheme.typography.labelMedium, color = if (lim in 1..r.bytes) g.bad else g.muted)
+                }
+                if (lim > 0) { val f = (r.bytes.toDouble() / lim).toFloat().coerceIn(0f, 1f); com.bdlnaredi.goatstack.ui.Bar(f, color = if (f >= 1f) g.bad else if (f >= 0.8f) g.warn else g.primary, height = 4.dp) }
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            GoatField(text, { v -> text = v.filter { it.isDigit() || it == '.' }.take(9) }, "Default GB a month (0 = none)", Icons.Rounded.Wifi, Modifier.weight(1f),
+                keyboard = androidx.compose.ui.text.input.KeyboardType.Decimal, ime = androidx.compose.ui.text.input.ImeAction.Done)
+            Spacer(Modifier.width(10.dp))
+            com.bdlnaredi.goatstack.ui.GhostButton(if (busy) "Saving…" else "Save", enabled = !busy, onClick = {
+                busy = true
+                scope.launch {
+                    try {
+                        ctx.api.send("PUT", "/api/streaming", buildJsonObject { put("defaultGb", text.toDoubleOrNull() ?: 0.0); put("wanOnly", wan) })
+                        toast("Saved"); data.reload()
+                    } catch (e: Exception) { toast(e.message ?: "That did not work") }
+                    busy = false
+                }
+            })
+        }
+        CheckLine("Only count streams from outside the home", wan) { wan = it }
     }
 }

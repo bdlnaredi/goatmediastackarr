@@ -108,7 +108,7 @@ const listKeys = () => { const l = (db.settings || {}).lists || {}; return { tra
 const lists = listsLib.create({ keys: listKeys,
   urls: new Proxy({}, { get: (_, k) => String(process.env[k.toUpperCase() + '_URL'] || (DEMO ? `http://127.0.0.1:${PORT}/__demo/${k}` : { trakt: 'https://api.trakt.tv', tmdb: 'https://api.themoviedb.org/3', tvdb: 'https://api4.thetvdb.com/v4' }[k])).replace(/\/+$/, '') }),
   seerrPoster: async (kind, id) => { const s = db.services.find(x => x.type === 'seerr'); if (!s) return ''; const r = await fetch(`${s.url.replace(/\/+$/, '')}/api/v1/${kind === 'tv' ? 'tv' : 'movie'}/${id}`, { signal: AbortSignal.timeout(8000), headers: { 'X-Api-Key': s.apiKey } }); return r.ok ? ((await r.json()).posterPath || '') : ''; } });
-const pubUser = u => ({ email: u.email || '', twofa: !!(u.totp && u.totp.on), id: u.id, name: u.name, role: u.role, access: u.access, perms: u.perms || null, notify: u.notify || '', dash: u.dash || null, reqLimit: u.reqLimit || null, autoApprove: !!u.autoApprove, plex: u.plex ? { name: u.plex.name } : null, hide: cleanHide(u.hide), restr: u.plexRules ? Object.fromEntries(['contentRating', 'contentRating!', 'label', 'label!'].filter(k => (u.plexRules[k] || []).length).map(k => [k, u.plexRules[k]])) : null, libs: u.plex ? { n: ((u.plexLibs || {}).mine || []).length, of: ((u.plexLibs || {}).all || []).length, limited: libLimited(u) } : null, plexName: u.plexName || '', lists: lists.enabled(), avatar: u.avatar ? `/api/avatar/${u.id}?v=${u.avatar.v}` : '', dataLimit: u.dataLimit || 0 });
+const pubUser = u => ({ email: u.email || '', twofa: !!(u.totp && u.totp.on), id: u.id, name: u.name, role: u.role, access: u.access, perms: u.perms || null, notify: u.notify || '', dash: u.dash || null, reqLimit: u.reqLimit || null, autoApprove: !!u.autoApprove, plex: u.plex ? { name: u.plex.name } : null, hide: cleanHide(u.hide), restr: u.plexRules ? Object.fromEntries(['contentRating', 'contentRating!', 'label', 'label!'].filter(k => (u.plexRules[k] || []).length).map(k => [k, u.plexRules[k]])) : null, libs: u.plex ? { n: ((u.plexLibs || {}).mine || []).length, of: ((u.plexLibs || {}).all || []).length, limited: libLimited(u) } : null, plexName: u.plexName || '', lists: lists.enabled(), avatar: u.avatar ? `/api/avatar/${u.id}?v=${u.avatar.v}` : '', dataLimit: u.dataLimit || 0, streamLimit: u.streamLimit == null ? null : u.streamLimit });
 const pubSvc = s => ({ id: s.id, type: s.type, name: s.name, url: s.url, managed: !!s.managed });
 
 // ---------- What each person uses: the space their requests take on the disks, and what they watched ----------
@@ -159,7 +159,7 @@ const usageOf = async u => {
   const now = Date.now(), mine = db.requests.filter(r => r.uid === u.id), n = st => mine.filter(r => r.status === st).length;
   const [space, watch] = await Promise.all([usedSpace(u).catch(() => null), watchOf(u).catch(() => null)]);
   return { id: u.id, name: u.name, requests: { total: mine.length, month: mine.filter(r => r.at > now - 30 * DAY).length, approved: n('approved'), pending: n('pending'), declined: n('declined') },
-    reqLimit: u.reqLimit || null, space: space ? { bytes: space.bytes, items: space.items.slice(0, 12) } : null, limitGb: u.dataLimit || 0, watch,
+    reqLimit: u.reqLimit || null, space: space ? { bytes: space.bytes, items: space.items.slice(0, 12) } : null, limitGb: u.dataLimit || 0, watch, stream: streamSummary(u),
     devices: [...sessions.values()].filter(v => v.uid === u.id).length };
 };
 
@@ -716,6 +716,71 @@ async function refreshRequests() {
   } catch {} }));
   if (changed) save();
 }
+// ---------- Streaming data: how much each person streams from Plex and Jellyfin, per calendar month ----------
+// Every check (MONITOR_MS, 30 seconds) adds bitrate × time for each stream that is playing. A person over their monthly
+// limit has their streams stopped with a message saying why; it starts again on the 1st. Admins are never limited,
+// and a media-server account that matches no profile here is counted but not limited.
+const monthKey = (t = Date.now()) => { const d = new Date(t); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); };
+const streamCfg = () => { const c = db.settings.stream || {}; return { defaultGb: c.defaultGb == null ? 100 : +c.defaultGb, wanOnly: !!c.wanOnly }; };
+const limitGb = v => { const n = Math.round((+v || 0) * 1000) / 1000; return n > 0 ? Math.min(n, 1e6) : 0; };
+const streamLimitOf = u => !u || u.role === 'admin' ? 0 : u.streamLimit != null ? +u.streamLimit : streamCfg().defaultGb;
+const streamOwner = name => {
+  const n = String(name || '').trim().toLowerCase(); if (!n) return null;
+  const is = x => x && String(x).trim().toLowerCase() === n;
+  return db.users.find(u => is(u.plex && u.plex.name) || is(u.plexName)) || db.users.find(u => is(u.name)) || null;
+};
+const streamUsed = (e, cfg = streamCfg()) => e ? (cfg.wanOnly ? e.w : e.b) || 0 : 0;
+const streamOf = (u, month = monthKey()) => ((db.streamUse || {})[month] || {})[u.id] || null;
+const nextMonth = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime(); };
+const streamSeen = {}, streamStopped = {};
+let streamSavedAt = 0;
+async function stopStream(s, x, why) {
+  if (s.type === 'jellyfin') {
+    await jfGet(s, `/Sessions/${x.id}/Message`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ Header: 'Streaming limit reached', Text: why, TimeoutMs: 15000 }) }).catch(() => {});
+    await jfGet(s, `/Sessions/${x.id}/Playing/Stop`, { method: 'POST' });
+  } else {
+    const r = await fetch(s.url.replace(/\/+$/, '') + `/status/sessions/terminate?sessionId=${encodeURIComponent(x.id)}&reason=${encodeURIComponent(why)}`, { signal: AbortSignal.timeout(8000), headers: { 'X-Plex-Token': s.apiKey || '' } });
+    if (!r.ok) throw new Error('Plex returned ' + r.status + (r.status === 401 || r.status === 403 ? ' (stopping streams needs Plex Pass on the server account)' : ''));
+  }
+}
+async function streamTick() {
+  const now = Date.now(), mk = monthKey(now), cfg = streamCfg(), use = db.streamUse || (db.streamUse = {}), month = use[mk] || (use[mk] = {});
+  let changed = false;
+  for (const s of db.services.filter(isMS)) {
+    let list; try { list = await mediaSessions(s); } catch { continue; }
+    const alive = new Set();
+    for (const x of list) {
+      if (!x.id) continue;
+      const k = s.id + ':' + x.id, last = streamSeen[k], playing = ['playing', 'buffering'].includes(x.state); alive.add(k); streamSeen[k] = now;
+      const u = streamOwner(x.user), key = u ? u.id : '@' + cut(String(x.user || '?').toLowerCase(), 60);
+      const e = month[key] || (month[key] = { b: 0, w: 0, n: u ? u.name : cut(x.user || '?', 60) });
+      if (last && playing && x.kbps > 0) {
+        const bytes = Math.round(x.kbps * 125 * Math.min(now - last, MON_MS * 3) / 1000);
+        e.b += bytes; if (x.where === 'wan') e.w += bytes; changed = true;
+      }
+      const lim = streamLimitOf(u); if (!u || !(lim > 0) || !playing) continue;
+      const used = streamUsed(e, cfg), pct = used / (lim * 1e9) * 100, gbs = gbText(used);
+      if (pct >= 80 && !(e.warn >= 80)) { e.warn = 80; changed = true; notifyUser(u, 'Streaming: 80% used', `You have streamed ${gbs} of your ${lim} GB for this month.`).catch(() => {}); }
+      if (pct < 100 || (cfg.wanOnly && x.where !== 'wan')) continue;
+      if (streamStopped[k] && now - streamStopped[k] < 60000) continue;
+      streamStopped[k] = now;
+      const why = `You have streamed your ${lim} GB for this month. It starts again on ${new Date(nextMonth()).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}. Ask the server owner if you need more.`;
+      try { await stopStream(s, x, why); audit('GoatMediaStackarr', 'Stopped a stream', `${u.name}: monthly streaming limit of ${lim} GB reached (${s.name})`); }
+      catch (err) { if (!e.stopErr) { e.stopErr = 1; audit('GoatMediaStackarr', 'Could not stop a stream', `${u.name} is over the streaming limit, but ${s.name} refused: ${cut(err.message, 160)}`); } }
+      if (!(e.warn >= 100)) { e.warn = 100; changed = true; notifyUser(u, 'Streaming limit reached', why).catch(() => {}); if ((db.alerts || {}).streamLimit !== false) notify('Streaming limit reached', `${u.name} has streamed ${gbs} of ${lim} GB this month. Their streams are stopped until the 1st.`).catch(() => {}); }
+    }
+    for (const k of Object.keys(streamSeen)) if (k.startsWith(s.id + ':') && !alive.has(k)) { delete streamSeen[k]; delete streamStopped[k]; }
+  }
+  // Keep a year of months.
+  for (const m of Object.keys(use).sort().slice(0, -12)) { delete use[m]; changed = true; }
+  if (changed && now - streamSavedAt > 60000) { streamSavedAt = now; save(); }
+}
+const streamSummary = u => {
+  const cfg = streamCfg(), e = streamOf(u), lim = streamLimitOf(u), months = Object.keys(db.streamUse || {}).sort().slice(-6);
+  return { month: monthKey(), bytes: streamUsed(e, cfg), all: e ? e.b : 0, wan: e ? e.w : 0, limitGb: lim, custom: u.streamLimit != null, defaultGb: cfg.defaultGb, wanOnly: cfg.wanOnly, resets: nextMonth(),
+    history: months.map(m => ({ month: m, bytes: streamUsed(((db.streamUse || {})[m] || {})[u.id], cfg) })) };
+};
+
 async function monitor() {
   if (mon.busy) return; mon.busy = true;
   try {
@@ -783,6 +848,7 @@ async function monitor() {
     if (bc.on && new Date(bc.last || 0).toDateString() !== new Date().toDateString() && new Date().getHours() >= (bc.hour ?? 3)) await safe(async () => { backupNow(); });
     for (const [k, v] of tickets) if (v.exp < Date.now()) tickets.delete(k);
     if (mon.n % 10 === 0) uptSave();
+    await safe(streamTick);
     if (++mon.n % 10 === 0) await safe(refreshRequests);
   } finally { mon.busy = false; }
 }
@@ -2362,6 +2428,7 @@ const goatServer = http.createServer(async (req, res) => {
       if ('reqLimit' in b) { const n = Math.round(+(b.reqLimit || {}).n), d = Math.round(+(b.reqLimit || {}).days); u.reqLimit = n > 0 ? { n: Math.min(n, 1000), days: Math.min(Math.max(d || 7, 1), 365) } : undefined; }
       if ('autoApprove' in b) u.autoApprove = !!b.autoApprove;
       if ('dataLimit' in b) { const gb = Math.round(+b.dataLimit || 0); u.dataLimit = gb > 0 ? Math.min(gb, 1e6) : undefined; }
+      if ('streamLimit' in b) { u.streamLimit = b.streamLimit == null || b.streamLimit === '' ? undefined : limitGb(b.streamLimit); const e = streamOf(u); if (e) { delete e.warn; delete e.stopErr; } }
       if ('plexName' in b) { const v = cut(b.plexName, 60).trim(); if (v && u.role === 'admin') return send(res, 400, { error: 'Admins sign in with their GoatMediaStackarr password.' }); u.plexName = v || undefined; if (!v) delete u.plex; }
       if ('notify' in b) { const v = String(b.notify || '').trim(); if (v && !/^https?:\/\//i.test(v)) return send(res, 400, { error: 'Enter a web address starting with https://' }); u.notify = v.slice(0, 500); }
       save(); audit(me.name, 'Changed a profile', u.name); return send(res, 200, pubUser(u));
@@ -2409,6 +2476,20 @@ const goatServer = http.createServer(async (req, res) => {
       audit(me.name, 'Ended a Plex stream', s.name); return send(res, 200, {});
     }
     if (p === '/api/users' && m === 'GET') return send(res, 200, db.users.map(pubUser));
+    // Streaming this month for everyone (profiles and media-server accounts that match no profile), and the defaults.
+    if (p === '/api/streaming' && m === 'GET') {
+      const cfg = streamCfg(), mk = new URL(req.url, 'http://x').searchParams.get('month') || monthKey(), month = (db.streamUse || {})[mk] || {};
+      const rows = Object.entries(month).map(([k, e]) => { const u = k.startsWith('@') ? null : userOf(k); return { id: u ? u.id : '', name: u ? u.name : e.n, profile: !!u, bytes: streamUsed(e, cfg), all: e.b, wan: e.w, limitGb: u ? streamLimitOf(u) : 0 }; });
+      for (const u of db.users) if (!month[u.id]) rows.push({ id: u.id, name: u.name, profile: true, bytes: 0, all: 0, wan: 0, limitGb: streamLimitOf(u) });
+      return send(res, 200, { month: mk, months: Object.keys(db.streamUse || {}).sort(), ...cfg, resets: nextMonth(), users: rows.sort((a, b) => b.bytes - a.bytes || a.name.localeCompare(b.name)) });
+    }
+    if (p === '/api/streaming' && m === 'PUT') {
+      const b = await readBody(req), c = { ...streamCfg() };
+      if ('defaultGb' in b) c.defaultGb = limitGb(b.defaultGb);
+      if ('wanOnly' in b) c.wanOnly = !!b.wanOnly;
+      db.settings.stream = c; for (const e of Object.values((db.streamUse || {})[monthKey()] || {})) { delete e.warn; delete e.stopErr; }
+      save(); audit(me.name, 'Changed streaming limits', `${c.defaultGb ? c.defaultGb + ' GB a month' : 'no limit'}${c.wanOnly ? ', outside the home only' : ''}`); return send(res, 200, c);
+    }
     if ((r = p.match(/^\/api\/users\/(\w+)\/usage$/)) && m === 'GET') { const u = userOf(r[1]); if (!u) return send(res, 404, { error: 'Not found' }); return send(res, 200, await usageOf(u)); }
     if (p === '/api/users' && m === 'POST') {
       const b = await readBody(req);

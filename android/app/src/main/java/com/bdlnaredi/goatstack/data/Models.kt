@@ -31,6 +31,7 @@ data class User(
     val avatar: String = "",
     val dataLimit: Int = 0,
     val notify: String = "",
+    val streamLimit: Double? = null,
 ) {
     val admin get() = role == "admin"
     // Same rule as the server: an admin can do everything; otherwise only what is not switched off.

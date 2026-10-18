@@ -23,7 +23,24 @@ data class TitleInfo(
 data class Usage(
     val id: String = "", val name: String = "", val requests: ReqCounts = ReqCounts(), val reqLimit: ReqLimit? = null,
     val space: Space? = null, val limitGb: Int = 0, val watch: List<WatchTime>? = null, val devices: Int = 0,
+    val stream: StreamUse? = null,
 )
+
+/** Streaming from Plex and Jellyfin this calendar month. [limitGb] 0 means no limit; [custom] false means the default applies. */
+@Serializable
+data class StreamUse(
+    val month: String = "", val bytes: Long = 0, val all: Long = 0, val wan: Long = 0, val limitGb: Double = 0.0, val custom: Boolean = false,
+    val defaultGb: Double = 100.0, val wanOnly: Boolean = false, val resets: Long = 0, val history: List<MonthUse> = emptyList(),
+)
+@Serializable data class MonthUse(val month: String = "", val bytes: Long = 0)
+
+/** Everyone's streaming this month (/api/streaming), for admins. */
+@Serializable
+data class StreamAll(
+    val month: String = "", val months: List<String> = emptyList(), val defaultGb: Double = 100.0, val wanOnly: Boolean = false,
+    val resets: Long = 0, val users: List<StreamRow> = emptyList(),
+)
+@Serializable data class StreamRow(val id: String = "", val name: String = "", val profile: Boolean = false, val bytes: Long = 0, val all: Long = 0, val wan: Long = 0, val limitGb: Double = 0.0)
 @Serializable data class ReqCounts(val total: Int = 0, val month: Int = 0, val approved: Int = 0, val pending: Int = 0, val declined: Int = 0)
 @Serializable data class ReqLimit(val n: Int = 0, val days: Int = 7)
 @Serializable data class Space(val bytes: Long = 0, val items: List<SpaceItem> = emptyList())

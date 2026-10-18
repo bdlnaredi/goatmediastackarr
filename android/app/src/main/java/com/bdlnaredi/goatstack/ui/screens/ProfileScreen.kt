@@ -32,6 +32,7 @@ import androidx.compose.material.icons.rounded.Inbox
 import androidx.compose.material.icons.rounded.PlayCircle
 import androidx.compose.material.icons.rounded.Save
 import androidx.compose.material.icons.rounded.Storage
+import androidx.compose.material.icons.rounded.Wifi
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -165,6 +166,11 @@ private fun UsageCards(u: Usage, own: Boolean, isAdmin: Boolean, reload: () -> U
     val ctx = LocalCtx.current
     val g = LocalGoat.current
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        u.stream?.let { st ->
+            SectionTitle("Streaming this month", Modifier.padding(top = 6.dp), trailing = { Icon(Icons.Rounded.Wifi, null, tint = g.primary, modifier = Modifier.size(18.dp)) })
+            StreamCard(st, own, isAdmin)
+            if (!own && ctx.user.admin && !isAdmin) StreamLimitEditor(u.id, st, reload)
+        }
         SectionTitle("Space on the server", Modifier.padding(top = 6.dp), trailing = { Icon(Icons.Rounded.Storage, null, tint = g.primary, modifier = Modifier.size(18.dp)) })
         GoatCard(Modifier.fillMaxWidth()) {
             val used = u.space?.bytes ?: 0L
@@ -257,6 +263,90 @@ private fun LimitEditor(u: Usage, reload: () -> Unit) {
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
             listOf(50, 250, 1000).forEach { n -> androidx.compose.material3.SuggestionChip(onClick = { text = n.toString() }, label = { Text(if (n >= 1000) "${n / 1000} TB" else "$n GB") }) }
+        }
+    }
+}
+
+/** How much has been streamed from Plex and Jellyfin this month, against the limit, with the last few months. */
+@Composable
+private fun StreamCard(st: com.bdlnaredi.goatstack.data.StreamUse, own: Boolean, isAdmin: Boolean) {
+    val g = LocalGoat.current
+    val limit = (st.limitGb * 1e9).toLong()
+    val f = if (limit > 0) (st.bytes.toDouble() / limit).toFloat().coerceIn(0f, 1f) else 0f
+    val resets = if (st.resets > 0) java.time.Instant.ofEpochMilli(st.resets).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+        .format(java.time.format.DateTimeFormatter.ofPattern("d MMMM", java.util.Locale.getDefault())) else "the 1st"
+    GoatCard(Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(Format.gb(st.bytes), style = MaterialTheme.typography.headlineMedium, color = g.text)
+            if (limit > 0) Text("  of ${Format.limit(st.limitGb)}", style = MaterialTheme.typography.titleMedium, color = g.muted, modifier = Modifier.padding(bottom = 3.dp))
+        }
+        Text(when {
+            isAdmin -> "Admins have no streaming limit."
+            limit <= 0 -> "No limit for ${if (own) "you" else "them"}."
+            st.bytes >= limit -> "The limit is reached. Streams are stopped until $resets."
+            else -> "${Format.gb(limit - st.bytes)} left · starts again on $resets" + if (!st.custom) " · the server's default" else ""
+        }, style = MaterialTheme.typography.bodySmall, color = if (limit in 1..st.bytes) g.bad else g.muted)
+        if (limit > 0) {
+            Spacer(Modifier.height(10.dp))
+            Bar(f, color = if (f >= 1f) g.bad else if (f >= 0.8f) g.warn else g.primary, height = 8.dp)
+        }
+        Text(if (st.wanOnly) "Only streams from outside the home count (${Format.gb(st.all)} in all this month)."
+            else "Everything played from Plex and Jellyfin counts" + if (st.wan > 0) ", ${Format.gb(st.wan)} of it from outside the home." else ".",
+            style = MaterialTheme.typography.labelSmall, color = g.muted, modifier = Modifier.padding(top = 10.dp))
+        val hist = st.history.filter { it.month != st.month || it.bytes > 0 }
+        if (hist.size > 1) {
+            Spacer(Modifier.height(12.dp))
+            val top = (hist.maxOf { it.bytes }.coerceAtLeast(limit)).coerceAtLeast(1)
+            Row(Modifier.fillMaxWidth().height(70.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Bottom) {
+                hist.forEach { m ->
+                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Box(Modifier.fillMaxWidth().height((48f * m.bytes / top).coerceAtLeast(2f).dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                            .background(if (m.month == st.month) g.primary else g.line))
+                        Text(Format.month(m.month, short = true), style = MaterialTheme.typography.labelSmall, color = g.muted)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** For an admin: this person's monthly streaming limit — the server default, their own number, or none. */
+@Composable
+private fun StreamLimitEditor(uid: String, st: com.bdlnaredi.goatstack.data.StreamUse, reload: () -> Unit) {
+    val ctx = LocalCtx.current
+    val g = LocalGoat.current
+    val scope = rememberCoroutineScope()
+    val toast = toaster()
+    var mode by remember(st) { mutableStateOf(if (!st.custom) "default" else if (st.limitGb <= 0) "none" else "own") }
+    var text by remember(st) { mutableStateOf(if (st.custom && st.limitGb > 0) st.limitGb.toString().removeSuffix(".0") else "") }
+    var busy by remember { mutableStateOf(false) }
+    fun save(v: Double?) {
+        busy = true
+        scope.launch {
+            try {
+                ctx.api.send("PUT", "/api/users/$uid", buildJsonObject { if (v == null) put("streamLimit", kotlinx.serialization.json.JsonNull) else put("streamLimit", v) })
+                toast(when { v == null -> "Uses the default now"; v <= 0 -> "No streaming limit now"; else -> "Limit set to ${Format.limit(v)} a month" }); reload()
+            } catch (e: Exception) { toast(e.message ?: "That did not work") }
+            busy = false
+        }
+    }
+    GoatCard(Modifier.fillMaxWidth()) {
+        Text("Streaming limit", style = MaterialTheme.typography.titleSmall, color = g.text)
+        Text("What they may stream each month. At the limit their Plex and Jellyfin streams are stopped, with a message, until the 1st.", style = MaterialTheme.typography.bodySmall, color = g.muted)
+        Spacer(Modifier.height(10.dp))
+        com.bdlnaredi.goatstack.ui.ChoiceRow(listOf("default" to "Default (${Format.limit(st.defaultGb)})", "own" to "Their own", "none" to "No limit"), mode, { m ->
+            mode = m; if (m == "default") save(null) else if (m == "none") save(0.0)
+        })
+        if (mode == "own") {
+            Spacer(Modifier.height(10.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                GoatField(text, { v -> text = v.filter { it.isDigit() || it == '.' }.take(9) }, "GB a month", Icons.Rounded.Wifi, Modifier.weight(1f), keyboard = KeyboardType.Decimal, ime = ImeAction.Done)
+                Spacer(Modifier.width(10.dp))
+                GhostButton(if (busy) "Saving…" else "Save", icon = Icons.Rounded.Save, enabled = !busy && (text.toDoubleOrNull() ?: 0.0) > 0, onClick = { save(text.toDoubleOrNull()) })
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+                listOf(50, 200, 500).forEach { n -> androidx.compose.material3.SuggestionChip(onClick = { text = n.toString() }, label = { Text("$n GB") }) }
+            }
         }
     }
 }
