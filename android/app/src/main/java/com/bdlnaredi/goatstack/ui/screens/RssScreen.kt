@@ -25,7 +25,7 @@ import androidx.compose.material.icons.rounded.DoneAll
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.RssFeed
-import androidx.compose.material.icons.rounded.Rule
+import androidx.compose.material.icons.automirrored.rounded.Rule
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
@@ -323,7 +323,7 @@ private fun Rules(sid: String, creating: Boolean, onCreated: () -> Unit) {
     }
 
     LoadView(data) { r ->
-        if (r.rules.isEmpty()) EmptyState(Icons.Rounded.Rule, "No rules yet", if (ctx.user.admin) "A rule downloads new articles that match some words, by itself. Add one with + above." else "An admin has not made any auto-download rules.")
+        if (r.rules.isEmpty()) EmptyState(Icons.AutoMirrored.Rounded.Rule, "No rules yet", if (ctx.user.admin) "A rule downloads new articles that match some words, by itself. Add one with + above." else "An admin has not made any auto-download rules.")
         else LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(r.rules, key = { it.str("name") }) { rule ->
                 val name = rule.str("name")
@@ -376,7 +376,7 @@ private fun NewRule(sid: String, feeds: List<RssFeedRef>, onDone: (Boolean) -> U
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 Text("New articles in every feed that match are downloaded by themselves.", style = MaterialTheme.typography.bodySmall, color = g.muted)
                 Spacer(Modifier.height(10.dp))
-                GoatField(name, { name = it }, "Rule name", Icons.Rounded.Rule)
+                GoatField(name, { name = it }, "Rule name", Icons.AutoMirrored.Rounded.Rule)
                 Spacer(Modifier.height(6.dp))
                 GoatField(must, { must = it }, "Must contain (e.g. 1080p)", Icons.Rounded.Add)
                 Spacer(Modifier.height(6.dp))
