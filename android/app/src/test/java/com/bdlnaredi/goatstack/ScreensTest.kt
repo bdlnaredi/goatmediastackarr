@@ -127,7 +127,7 @@ class ScreensTest {
         back()
         tap("Downloads"); waitFor("Downloading"); shot("07-downloads")
         tap("More"); waitFor("Go to"); shot("08-more")
-        openFromMore("Requests"); waitFor("Waiting for approval"); shot("09-requests"); back()
+        openFromMore("Requests"); waitFor("Waiting for an admin"); shot("09-requests"); back()
         openFromMore("Upcoming"); waitFor("Being downloaded"); shot("10-upcoming"); back()
         openFromMore("Stack"); waitFor("VPN connected"); shot("11-stack"); back()
         openFromMore("Settings"); waitFor("Appearance"); shot("12-settings")

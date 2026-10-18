@@ -758,7 +758,7 @@ async function stageOf(x, cache) {
     if (!db.services.some(isMS)) return { stage: 'available' };
     const where = await onMediaServer(x);
     if (where) return { stage: 'available', where };
-    if (!x.scanAsked) { x.scanAsked = Date.now(); askScan(); }
+    if (!x.scanAsked) { x.scanAsked = Date.now(); await askScan(); }
     return { stage: 'library' };
   }
   if (recs.some(imp)) return { stage: 'importing' };
