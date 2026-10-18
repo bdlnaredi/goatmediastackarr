@@ -46,7 +46,7 @@ async function handle(msg, exec = { run, restart }) {
     if (!i.ok) return { ok: false, error: 'Writing the app settings failed: ' + i.err };
     const k = await exec.run('/bin/bash', [`${BIN}/vpn-init.sh`]);
     if (!k.ok) return { ok: false, error: 'Setting up the kill switch failed: ' + k.err };
-    const steps = ['goat-vpn', 'qbittorrent', 'sabnzbd', 'prowlarr'];
+    const steps = ['goat-vpn', 'qbittorrent', 'sabnzbd', 'prowlarr', 'flaresolverr'];
     const failed = [];
     for (const s of steps) { const r = await exec.restart(s); if (!r.ok) failed.push(s); }
     return failed.length ? { ok: false, error: 'Could not restart ' + failed.join(', '), output: k.out } : { ok: true, output: k.out };

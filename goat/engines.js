@@ -24,6 +24,9 @@ const ENGINES = {
   // Off unless added to GOAT_ENGINES. Plex is free to use but not open source, so it is downloaded from
   // plex.tv on first start (like the official Plex image) instead of being shipped in this image.
   plex:        { name: 'Plex',        port: 32400, base: '' },
+  // Off unless added to GOAT_ENGINES: gets past Cloudflare checks on indexer sites. Downloaded on first start
+  // (it bundles its own Chromium), so it costs nothing for people who do not use it. x86 servers only.
+  flaresolverr: { name: 'FlareSolverr', port: 8191, base: '' },
 };
 
 // Tests run fake engines on spare ports: GOAT_PORT_SONARR=12345 and so on.
@@ -43,7 +46,13 @@ const DEFAULT_VPN_APPS = 'qbittorrent,sabnzbd,prowlarr';
 
 const list = (v, def) => String(v == null || v === '' ? def : v).split(',').map(s => s.trim().toLowerCase()).filter(s => ENGINES[s]);
 const enabled = (env = process.env) => list(env.GOAT_ENGINES, DEFAULT_ENGINES);
-const vpnApps = (env = process.env) => String(env.VPN_ENABLED).toLowerCase() === 'true' ? list(env.VPN_APPS, DEFAULT_VPN_APPS) : [];
+const vpnApps = (env = process.env) => {
+  if (String(env.VPN_ENABLED).toLowerCase() !== 'true') return [];
+  const l = list(env.VPN_APPS, DEFAULT_VPN_APPS);
+  // FlareSolverr is the one that actually visits indexer sites for Prowlarr, so it follows Prowlarr onto the VPN.
+  if (l.includes('prowlarr') && !l.includes('flaresolverr') && enabled(env).includes('flaresolverr')) l.push('flaresolverr');
+  return l;
+};
 // Seerr works with one media server. SEERR_MEDIA_SERVER picks it; otherwise Jellyfin if it runs, else Plex.
 const seerrServer = (env = process.env, on = enabled(env)) => {
   const want = String(env.SEERR_MEDIA_SERVER || '').toLowerCase();

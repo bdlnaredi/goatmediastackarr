@@ -14,7 +14,10 @@ if [[ "$name" != ui && "$name" != wire ]] && ! in_list "$name" "${GOAT_ENGINES,,
 fi
 
 groups="$PGID"
-if [[ "${VPN_ENABLED,,}" == "true" ]] && in_list "$name" "${VPN_APPS,,}"; then
+vpn_list="${VPN_APPS,,}"
+# FlareSolverr visits indexer sites on Prowlarr's behalf, so it uses the VPN whenever Prowlarr does.
+in_list prowlarr "$vpn_list" && vpn_list="$vpn_list,flaresolverr"
+if [[ "${VPN_ENABLED,,}" == "true" ]] && in_list "$name" "$vpn_list"; then
   if [[ ! -f /run/goat/killswitch-ok ]]; then
     echo "[goat] Not starting $name: the VPN kill switch is not active, and $name must only use the VPN."
     sleep 60; exit 1
@@ -53,6 +56,26 @@ case "$name" in
       /usr/local/bin/node /opt/goat/bin/init.js tautulli
     fi
     cmd=(/usr/bin/python3 /opt/tautulli/Tautulli.py --datadir /config/tautulli --config /config/tautulli/config.ini --nolaunch) ;;
+  flaresolverr)
+    if [[ "$(uname -m)" != x86_64 ]]; then
+      echo "[goat] FlareSolverr only offers a ready-made build for x86 servers, so it is not available on $(uname -m)."
+      exec sleep infinity
+    fi
+    # Its bundled Chromium needs some system libraries. They are added the first time it runs in this container,
+    # instead of making the image bigger for everyone.
+    if [[ ! -f /var/lib/goat/flaresolverr-libs ]]; then
+      echo "[goat] Adding the libraries FlareSolverr's browser needs (first start only)..."
+      if apt-get update -qq && apt-get install -y -qq --no-install-recommends libnss3 libatk-bridge2.0-0t64 libatk1.0-0t64 libgbm1 \
+           libxkbcommon0 libasound2t64 libcups2t64 libxcomposite1 libxdamage1 libxrandr2 libxfixes3 libpango-1.0-0 libcairo2 \
+           libxss1 libgtk-3-0t64 fonts-liberation xvfb >/dev/null; then
+        mkdir -p /var/lib/goat && touch /var/lib/goat/flaresolverr-libs; rm -rf /var/lib/apt/lists/*
+      else echo "[goat] Could not add them (no internet?). Trying again in a minute."; sleep 60; exit 1; fi
+    fi
+    mkdir -p /config/flaresolverr && chown "$PUID:$PGID" /config/flaresolverr
+    if ! s6-applyuidgid -u "$PUID" -g "$PGID" -G "$PGID" /opt/goat/bin/flaresolverr-install.sh; then sleep 60; exit 1; fi
+    export HOST=127.0.0.1 PORT=8191 HEADLESS=true LOG_LEVEL="${FLARESOLVERR_LOG_LEVEL:-info}" TZ="${TZ:-UTC}"
+    cd /config/flaresolverr/app/flaresolverr || exit 1
+    cmd=(./flaresolverr) ;;
   plex)
     mkdir -p /config/plex && chown "$PUID:$PGID" /config/plex
     if ! s6-applyuidgid -u "$PUID" -g "$PGID" -G "$PGID" /opt/goat/bin/plex-install.sh; then sleep 60; exit 1; fi

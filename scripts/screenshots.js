@@ -70,6 +70,18 @@ function goatDemo() {
     await page.locator('[data-t="dl"]:visible').first().click(); await sleep(800);
     await page.goBack(); await sleep(800);
     if (new URL(page.url()).pathname !== '/settings/apps') throw new Error('Back did not return to /settings/apps');
+    // A show or movie opened from the library gets its own address; Back closes it; the address opens it again.
+    await page.goto(BASE + '/library'); await sleep(2500);
+    await page.locator('#g [data-v]').first().click(); await sleep(1500);
+    const item = new URL(page.url()).pathname;
+    if (!/^\/library\/(tv|movies)\/[^/]+\/[^/]+$/.test(item)) throw new Error(`opening a library item gave the address ${item}`);
+    if (!(await page.locator('.ov').count())) throw new Error('the library item did not open');
+    await shot(page, 'library-item');
+    await page.goBack(); await sleep(800);
+    if (await page.locator('.ov').count()) throw new Error('Back did not close the library item');
+    if (new URL(page.url()).pathname !== '/library') throw new Error('Back from an item did not return to /library');
+    await page.goto(BASE + item); await sleep(3000);
+    if (!(await page.locator('.ov').count())) throw new Error(`opening ${item} directly did not show the item`);
     await ctx.close();
 
     // Phone.

@@ -686,14 +686,18 @@ function readPath(){
   const parts=location.pathname.split('/').filter(Boolean).map(x=>{try{return decodeURIComponent(x)}catch{return x}});
   if(!parts.length)return false;
   const k=UNSLUG[parts[0].toLowerCase()];if(!k)return false;
-  tab=k;if(k==='set')stSub=parts[1]||'acct';return true;
+  tab=k;if(k==='set')stSub=parts[1]||'acct';
+  // /library/tv/<app>/<id> and /library/movies/<app>/<id>: the library opens with that show or movie on top.
+  if(k==='lib'&&['tv','movies'].includes(parts[1])&&parts[2]&&parts[3]){libSel=parts[2];LIB_OPEN={sid:parts[2],id:parts[3]}}
+  return true;
 }
+let LIB_OPEN=null,NEXT_LAYER_URL=null;
 let routeQuiet=false;
 // ---------- Layers: a dialog opened over a page is a step in the browser history, so the back button
 // (and a phone's back gesture) closes the dialog instead of leaving the page.
 const LAYERS=[];let popsToIgnore=0;
 new MutationObserver(ms=>{for(const m of ms){
-  for(const n of m.addedNodes)if(n.classList&&n.classList.contains('ov')&&!LAYERS.includes(n)){LAYERS.push(n);history.pushState({layer:LAYERS.length},'',location.href)}
+  for(const n of m.addedNodes)if(n.classList&&n.classList.contains('ov')&&!LAYERS.includes(n)){LAYERS.push(n);history.pushState({layer:LAYERS.length},'',NEXT_LAYER_URL||location.href);NEXT_LAYER_URL=null}
   for(const n of m.removedNodes){const i=LAYERS.indexOf(n);if(i<0)continue;LAYERS.splice(i,1);
     // Closed with its own button: step back over its history entry, unless something else moved on meanwhile.
     if(!n._byBack&&history.state&&history.state.layer){popsToIgnore++;history.back()}}
@@ -1614,6 +1618,8 @@ async function statsView(){
 const libMeta=(x,tv)=>[fmt(x.size)+' on disk',x.missing?(tv?x.missing+' episodes missing':'file missing'):'',x.profile,LSTAT[x.status],(x.genres||[]).join(', '),x.maker,x.rating?'rating '+x.rating.toFixed(1):''].filter(Boolean).join(', ');
 function openLibItem(s,x,cb){
   cb=cb||{};
+  // The show or movie gets its own address while it is open, so it can be bookmarked or shared; Back closes it.
+  if(s&&x&&x.id!=null)NEXT_LAYER_URL=`/library/${s.type==='sonarr'?'tv':'movies'}/${encodeURIComponent(s.id)}/${encodeURIComponent(x.id)}`;
   if(s.type==='sonarr')return seriesDialog(s,x,cb);
   showDetail({title:x.title,sub:String(x.year||''),poster:x.poster,fanart:x.fanart,overview:x.overview,meta:libMeta(x,false),sid:s.id,id:x.id,scope:'',del:me.role==='admin',onremove:cb.onRemove,
     mon:{sid:s.id,kind:'movie',id:x.id,monitored:x.monitored,onChange:v=>{x.monitored=v;if(cb.onChange)cb.onChange()}}});
@@ -2130,7 +2136,10 @@ function libView(){
   if($('#pk'))$('#pk').onclick=async()=>{libPick=!libPick;libTicked.clear();$('#pk').setAttribute('aria-pressed',String(libPick));$('#pk').classList.toggle('primary',libPick);$('#pk').textContent=libPick?'Done selecting':'Select';
     if(libPick&&!libProf.length)try{libProf=await api('/api/profiles?sid='+libSel)}catch{}paint()};
   const readFilters=()=>{const v=i=>$(i)?$(i).value:'';LB.show=v('#f-show')||'all';LB.status=v('#f-status');LB.profile=v('#f-profile');LB.genre=v('#f-genre');LB.maker=v('#f-maker');LB.yf=v('#f-yf');LB.yt=v('#f-yt');LB.rmin=v('#f-rmin');libShown=120;paint()};
-  const load=async()=>{try{libData=await api('/api/library?sid='+libSel);if(tab!=='lib')return;libTicked=new Set([...libTicked].filter(i=>libData.some(x=>x.id===i)));libShown=120;buildFilters();paint()}catch(x){$('#e').textContent=x.message;$('#g').innerHTML=''}};
+  const load=async()=>{try{libData=await api('/api/library?sid='+libSel);if(tab!=='lib')return;libTicked=new Set([...libTicked].filter(i=>libData.some(x=>x.id===i)));libShown=120;buildFilters();paint();
+    // Opened from an address like /library/tv/<app>/<id>: show that item now.
+    if(LIB_OPEN&&LIB_OPEN.sid===libSel){const want=LIB_OPEN.id,it=libData.find(x=>String(x.id)===want);LIB_OPEN=null;
+      if(it)openLibItem(opts.find(s=>s.id===libSel),it,{onChange:paint,onRemove:load});else toast('That title is no longer in the library','bad')}}catch(x){$('#e').textContent=x.message;$('#g').innerHTML=''}};
   $('#fg').oninput=readFilters;$('#fg').onchange=readFilters;
   $('#lq').oninput=e=>{LB.q=e.target.value;libShown=120;paint()};
   $('#sb').onchange=e=>{LB.sort=e.target.value;LB.dir=LSORT[LB.sort][1];libShown=120;paint()};
@@ -2321,7 +2330,7 @@ async function subView(){
 
 // ---------- Stack: the apps inside the GoatMediaStackarr container
 const GOAT_PAGES={sonarr:1,radarr:1,lidarr:1,prowlarr:1,bazarr:1,qbittorrent:1,sabnzbd:1,tautulli:1};
-const GOAT_VPNAPPS=[['qbittorrent','qBittorrent'],['sabnzbd','SABnzbd'],['prowlarr','Prowlarr']];
+const GOAT_VPNAPPS=[['qbittorrent','qBittorrent'],['sabnzbd','SABnzbd'],['prowlarr','Prowlarr (and FlareSolverr)']];
 const goatOpen=k=>GOAT_PAGES[k]?`/engines/${k}/`:k==='jellyfin'?`${location.protocol}//${location.hostname}:8096/`:k==='plex'?`${location.protocol}//${location.hostname}:32400/web/`:'';
 async function goatView(){
   $('#m').innerHTML=skel(4);

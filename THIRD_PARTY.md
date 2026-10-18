@@ -14,6 +14,7 @@ GoatMediaStackarr bundles the following programs. Each is the official, unmodifi
 | SABnzbd | Usenet downloads | GPL-2.0-or-later | https://github.com/sabnzbd/sabnzbd |
 | Jellyfin (server, web, jellyfin-ffmpeg) | Media server and player | GPL-2.0 (ffmpeg: GPL-3.0) | https://github.com/jellyfin/jellyfin |
 | Plex Media Server (optional, not included in the image) | Media server, downloaded from plex.tv on first start when turned on | Proprietary freeware, under Plex's own terms | https://www.plex.tv |
+| FlareSolverr (optional, not included in the image) | Gets Prowlarr past Cloudflare checks; downloaded from its GitHub releases on first start when turned on, with its bundled Chromium | MIT (Chromium: BSD-3-Clause and others) | https://github.com/FlareSolverr/FlareSolverr |
 | Seerr | Requests | MIT | https://github.com/seerr-team/seerr |
 | MediaHub | The interface GoatMediaStackarr is built from | GPL-3.0-or-later | https://github.com/bdlnaredi/mediahub |
 | s6-overlay | Starts and watches every program | ISC | https://github.com/just-containers/s6-overlay |

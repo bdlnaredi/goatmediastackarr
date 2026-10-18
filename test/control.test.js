@@ -25,7 +25,7 @@ test('restart only accepts known apps', async () => {
 test('applying the VPN rewrites settings, rebuilds the kill switch, then restarts the tunnel and its apps', async () => {
   const x = fake();
   assert.equal((await handle({ cmd: 'apply-vpn' }, x)).ok, true);
-  assert.deepEqual(x.calls, [['run', 'init.js'], ['run', 'vpn-init.sh'], ['restart', 'goat-vpn'], ['restart', 'qbittorrent'], ['restart', 'sabnzbd'], ['restart', 'prowlarr']]);
+  assert.deepEqual(x.calls, [['run', 'init.js'], ['run', 'vpn-init.sh'], ['restart', 'goat-vpn'], ['restart', 'qbittorrent'], ['restart', 'sabnzbd'], ['restart', 'prowlarr'], ['restart', 'flaresolverr']]);
   const bad = { ...fake(), run: async (f, a) => ({ ok: !a[0].endsWith('vpn-init.sh'), err: 'no NET_ADMIN' }) };
   const r = await handle({ cmd: 'apply-vpn' }, bad);
   assert.equal(r.ok, false); assert.match(r.error, /kill switch/);

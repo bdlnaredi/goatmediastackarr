@@ -230,7 +230,9 @@ function run(env = process.env) {
     seerr: svc('seerr', { apiKey: (managed.services || []).find(x => x.key === 'seerr')?.apiKey || '' }),
     plex: svc('plex', { apiKey: (plex && plex.token) || (managed.services || []).find(x => x.key === 'plex')?.apiKey || '' }),
   };
-  managed = { version: 1, services: on.map(k => want[k]).filter(Boolean), vpn: { enabled: vpn.length > 0, apps: vpn } };
+  // Apps the interface has no screen of its own for (FlareSolverr) are listed separately, for the Stack page.
+  const extras = on.filter(k => !want[k]).map(k => ({ key: k, name: E.ENGINES[k].name }));
+  managed = { version: 1, services: on.map(k => want[k]).filter(Boolean), extras, vpn: { enabled: vpn.length > 0, apps: vpn } };
   fs.writeFileSync(mf, JSON.stringify(managed, null, 1), { mode: 0o600 });
 
   // Hand everything to the user the engines run as. Only folders made just now are changed under the media

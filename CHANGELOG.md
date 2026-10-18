@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Smaller image: Bazarr and SABnzbd are built in a separate stage, so compilers no longer ship in the image; identical .NET runtime files shared by Sonarr, Radarr, Lidarr and Prowlarr are stored once; Seerr's source maps and docs are dropped.
+- Runs on 64-bit ARM as well as x86: one image name for both, each built on its own native machine.
+- Weekly rebuild with the newest engines, published as `latest` only when every check passes.
+- Optional FlareSolverr, downloaded on first start, added to Prowlarr as a tagged proxy and kept on the VPN with Prowlarr.
+- Shows and movies have their own address (`/library/tv/<app>/<id>`); opening one updates the address and Back closes it.
+
 ## 0.1.0 (unreleased)
 
 First stage: the container foundation.

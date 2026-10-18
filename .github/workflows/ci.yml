@@ -2,6 +2,7 @@ name: CI
 on:
   push: { branches: [main] }
   pull_request:
+  workflow_call:   # the weekly rebuild runs these same checks before publishing
 permissions:
   contents: read
 jobs:
@@ -20,8 +21,15 @@ jobs:
         run: sudo bash test/vpn-killswitch.sh
 
   image:
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
+    name: image (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: amd64, runner: ubuntu-latest }
+          - { arch: arm64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
       - name: Free disk space
@@ -47,7 +55,7 @@ jobs:
           docker buildx prune -af >/dev/null 2>&1 || true
           df -h / | tail -1 | awk '{print "::notice::Free disk space after building: " $4}'
       - name: Image size
-        run: echo "::notice::Image size $(docker image inspect goat:ci --format '{{.Size}}' | numfmt --to=iec)"
+        run: echo "::notice::Image size (${{ matrix.arch }}) $(docker image inspect goat:ci --format '{{.Size}}' | numfmt --to=iec)"
       - name: Start it
         run: |
           mkdir -p /tmp/goat/config /tmp/goat/media /tmp/goat/downloads

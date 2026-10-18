@@ -162,6 +162,30 @@ async function wireJellyfin(s, on) {
   return { out, apiKey: k && k.AccessToken };
 }
 
+// ---------- FlareSolverr (optional) ----------
+// Added to Prowlarr as its FlareSolverr proxy, linked to a "flaresolverr" tag: indexers given that tag are fetched
+// through it, which gets them past Cloudflare's "checking your browser" page.
+async function wireFlareSolverr(keys) {
+  const FS = E.url('flaresolverr');
+  // The first start downloads FlareSolverr and its browser libraries, so allow plenty of time.
+  await waitFor('FlareSolverr', async () => (await http('GET', `${FS}/`)).data, 15);
+  const api = await waitFor('Prowlarr', () => arr('prowlarr', keys.prowlarr).ready());
+  const tags = await api.get('tag');
+  let tag = tags.find(t => t.label === 'flaresolverr');
+  if (!tag) tag = await api.post('tag', { label: 'flaresolverr' });
+  const out = { tag: tag.label };
+  const have = await api.get('indexerproxy');
+  if (have.some(x => x.implementation === 'FlareSolverr')) { out.proxy = 'already there'; return out; }
+  const schema = await api.get('indexerproxy/schema');
+  const t = schema.find(x => x.implementation === 'FlareSolverr');
+  if (!t) throw new Error('this Prowlarr version offers no FlareSolverr proxy');
+  t.name = 'FlareSolverr'; t.tags = [tag.id]; delete t.id;
+  for (const f of t.fields || []) { if (f.name === 'host') f.value = `${FS}/`; if (f.name === 'requestTimeout') f.value = 60; }
+  await api.post('indexerproxy?forceSave=true', t);
+  out.proxy = 'added';
+  return out;
+}
+
 // ---------- Plex (optional) ----------
 const PLEX = E.url('plex');
 
@@ -277,6 +301,7 @@ async function run() {
     ['prowlarr', () => wireProwlarr(keys, s, on)],
     ['jellyfin', async () => { const r = await wireJellyfin(s, on); setKey('jellyfin', r.apiKey); return r.out; }],
     ['plex', async () => { const r = await wirePlex(on); setKey('plex', r.token); return r.out; }],
+    ['flaresolverr', async () => { if (!on.includes('prowlarr')) return { proxy: 'Prowlarr is off' }; return wireFlareSolverr(keys); }],
     ['seerr', async () => {
       // Seerr signs in through its media server, so it can only be set up once that server is.
       const ms = E.seerrServer(process.env, on);

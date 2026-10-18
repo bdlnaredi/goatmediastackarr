@@ -143,7 +143,8 @@ const goatVpnFiles = () => { try { return fs.readdirSync(path.join(GOAT_CONFIG, 
 const goatStatus = () => {
   const sec = goatRead(path.join(GOAT_CONFIG, 'goat', 'secrets.json')) || {};
   return { vpn: goatRead(path.join(GOAT_RUN, 'vpn.json')) || { enabled: false, state: 'off' }, wired: GOAT_WIRED ? goatRead(GOAT_WIRED) : null,
-    engines: db.services.filter(x => x.managed).map(x => ({ id: x.id, key: x.managed, name: x.name, ok: health[x.id] ? health[x.id].ok : null })),
+    engines: [...db.services.filter(x => x.managed).map(x => ({ id: x.id, key: x.managed, name: x.name, ok: health[x.id] ? health[x.id].ok : null })),
+      ...((GOAT_MANAGED && (goatRead(GOAT_MANAGED) || {}).extras) || []).map(x => ({ key: x.key, name: x.name, ok: null }))],
     settings: goatSettings ? goatSettings.view() : null, vpnFiles: goatVpnFiles(), container: !!GOAT_MANAGED,
     logins: { jellyfin: sec.jellyfinUser ? { user: sec.jellyfinUser, pass: sec.jellyfinPass } : null, qbittorrent: sec.qbitUser ? { user: sec.qbitUser, pass: sec.qbitPass } : null } };
 };

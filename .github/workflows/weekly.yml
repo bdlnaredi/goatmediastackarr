@@ -1,0 +1,19 @@
+name: Weekly rebuild
+# Every Monday: rebuild with the newest release of every engine, run every check, and only if all of them pass,
+# publish it as :latest (plus :weekly and :weekly-YYYYMMDD). Version tags you create stay as they are.
+on:
+  schedule:
+    - cron: "17 3 * * 1"   # Mondays 03:17 UTC (08:47 in India)
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: write
+jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+  publish:
+    needs: checks
+    uses: ./.github/workflows/docker.yml
+    with:
+      weekly: true
+    secrets: inherit

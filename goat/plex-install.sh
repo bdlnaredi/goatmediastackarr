@@ -18,10 +18,11 @@ if [[ -z "$info" ]]; then
   exit 1
 fi
 want=$(jq -r '.computer.Linux.version' <<<"$info")
-url=$(jq -r '[.computer.Linux.releases[] | select(.build == "linux-x86_64" and .distro == "debian")][0].url // empty' <<<"$info")
+build=linux-x86_64; [[ "$(uname -m)" == aarch64 ]] && build=linux-aarch64
+url=$(jq -r --arg b "$build" '[.computer.Linux.releases[] | select(.build == $b and .distro == "debian")][0].url // empty' <<<"$info")
 if [[ -x "$BIN" && "$have" == "$want" ]]; then exit 0; fi
 if [[ -z "$url" ]]; then
-  echo "[goat-plex] plex.tv did not list a Linux x86_64 download."
+  echo "[goat-plex] plex.tv did not list a $build download."
   [[ -x "$BIN" ]] && exit 0 || exit 1
 fi
 

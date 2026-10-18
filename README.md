@@ -49,6 +49,11 @@ Screenshots are taken in demo mode with pretend apps. To refresh them after inte
 
 The engines listen only inside the container. The only ways in are GoatMediaStackarr (port 2806) and Jellyfin (port 8096, for TV and phone apps).
 
+## Updates and platforms
+
+- **Weekly rebuild**: every Monday, GitHub rebuilds the image with the newest release of every engine and runs every check. Only if all of them pass is it published as `latest` (also `weekly` and `weekly-YYYYMMDD`). Unraid then offers it as an update. Version tags such as `0.2.0` don't change.
+- **Intel/AMD and ARM**: the same image name works on x86 servers and on 64-bit ARM (Raspberry Pi 4/5 with a 64-bit OS, ARM NAS boxes, Apple-silicon hosts). FlareSolverr is the only part that's x86-only.
+
 ## Install on Unraid
 
 Use the template in [`unraid/goatmediastackarr.xml`](unraid/goatmediastackarr.xml), or add a container with:
@@ -148,7 +153,7 @@ On the Usenet page, admins can add their provider's news server (address, port, 
 
 ## Addresses
 
-Every page has its own address, such as `/downloads`, `/library`, `/stack` or `/settings/apps`. Bookmarks, links and the Back button work. A dialog opened over a page counts as a step back, so Back (or a phone's back gesture) closes it.
+Every page has its own address, such as `/downloads`, `/library`, `/stack` or `/settings/apps`. Shows and movies have one too (`/library/tv/<app>/<id>`), so you can bookmark or share one. Bookmarks, links and the Back button work. A dialog opened over a page counts as a step back, so Back (or a phone's back gesture) closes it.
 
 ## Advanced: each app's own page
 
@@ -164,6 +169,17 @@ Jellyfin is at port 8096. Its admin user is `goat-admin`; the password is `jelly
 
 - Add `plex` for a built-in Plex server (see below).
 - Add `tautulli` for Plex statistics. Tautulli only works with Plex.
+- Add `flaresolverr` if some indexer sites show Cloudflare's "checking your browser" page. See below.
+
+## FlareSolverr
+
+Some torrent sites sit behind Cloudflare, which blocks Prowlarr with a "checking your browser" page. FlareSolverr opens those sites in a real browser to get past it.
+
+1. Add `flaresolverr` to `GOAT_ENGINES`. On first start it downloads FlareSolverr (it brings its own Chromium browser) and adds the libraries that browser needs. Nothing is added to the image for people who don't use it.
+2. GoatMediaStackarr adds it to Prowlarr as a proxy with the tag `flaresolverr`.
+3. In Prowlarr (Indexers page, or Stack → Prowlarr → Open), give the sites that need it the `flaresolverr` tag.
+
+When Prowlarr uses the VPN, FlareSolverr does too, since it's the one visiting the sites. FlareSolverr only offers a ready-made build for x86 servers, so it isn't available on ARM.
 
 ## Plex
 
