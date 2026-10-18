@@ -133,10 +133,32 @@ const goatSync = () => {
   if (gone.length) { db.services = db.services.filter(x => !gone.includes(x.id)); db.users.forEach(u => u.access = (u.access || []).filter(a => !gone.includes(a))); changed = true; }
   if (changed) save();
 };
+const GOAT_CONFIG = process.env.GOAT_CONFIG_DIR || '/config', GOAT_SOCK = process.env.GOAT_CONTROL_SOCK || path.join(GOAT_RUN, 'control.sock');
+// The container's settings helper (goat/settings.js). Missing when the interface runs on its own, as plain MediaHub.
+const goatSettings = (() => { for (const p of [process.env.GOAT_BIN && path.join(process.env.GOAT_BIN, 'settings.js'), path.join(__dirname, '..', 'bin', 'settings.js'), path.join(__dirname, '..', 'goat', 'settings.js')]) { try { if (p && fs.existsSync(p)) return require(p); } catch {} } return null; })();
+const goatRead = f => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; } };
+const goatVpnFiles = () => { try { return fs.readdirSync(path.join(GOAT_CONFIG, 'vpn')).filter(f => /\.(conf|ovpn)$/i.test(f) && f !== 'credentials.conf'); } catch { return []; } };
 const goatStatus = () => {
-  const rd = f => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; } };
-  return { vpn: rd(path.join(GOAT_RUN, 'vpn.json')) || { enabled: false, state: 'off' }, wired: GOAT_WIRED ? rd(GOAT_WIRED) : null,
-    engines: db.services.filter(x => x.managed).map(x => ({ id: x.id, key: x.managed, name: x.name })) };
+  const sec = goatRead(path.join(GOAT_CONFIG, 'goat', 'secrets.json')) || {};
+  return { vpn: goatRead(path.join(GOAT_RUN, 'vpn.json')) || { enabled: false, state: 'off' }, wired: GOAT_WIRED ? goatRead(GOAT_WIRED) : null,
+    engines: db.services.filter(x => x.managed).map(x => ({ id: x.id, key: x.managed, name: x.name, ok: health[x.id] ? health[x.id].ok : null })),
+    settings: goatSettings ? goatSettings.view() : null, vpnFiles: goatVpnFiles(), container: !!GOAT_MANAGED,
+    logins: { jellyfin: sec.jellyfinUser ? { user: sec.jellyfinUser, pass: sec.jellyfinPass } : null, qbittorrent: sec.qbitUser ? { user: sec.qbitUser, pass: sec.qbitPass } : null } };
+};
+// Talks to the container's control service (goat/control.js) over its private socket.
+const goatControl = msg => new Promise(resolve => {
+  const sock = require('net').connect(GOAT_SOCK); let buf = '';
+  const done = r => { try { sock.destroy(); } catch {} resolve(r); };
+  sock.setTimeout(150000, () => done({ ok: false, error: 'The control service did not answer in time' }));
+  sock.on('connect', () => sock.write(JSON.stringify(msg) + '\n'));
+  sock.on('data', d => { buf += d; const nl = buf.indexOf('\n'); if (nl !== -1) { try { done(JSON.parse(buf.slice(0, nl))); } catch { done({ ok: false, error: 'Bad reply' }); } } });
+  sock.on('error', e => done({ ok: false, error: 'The control service is not running (' + e.code + ')' }));
+});
+// This server's own public address, to compare with the VPN's for the leak test.
+const goatPublicIp = async () => {
+  const t = await (await fetch(process.env.GOAT_IPCHECK_URL || 'https://1.1.1.1/cdn-cgi/trace', { signal: AbortSignal.timeout(8000) })).text();
+  const g = k => ((t.match(new RegExp('^' + k + '=(.*)$', 'm')) || [])[1] || '');
+  return { ip: g('ip'), country: g('loc') };
 };
 goatSync(); if (GOAT_MANAGED) setInterval(goatSync, 15000).unref();
 // Admins can open each built-in engine's own page at /engines/<name>/ (the "Advanced" pages), signed in through
@@ -1071,6 +1093,46 @@ const goatServer = http.createServer(async (req, res) => {
     const hs = v => { const a = Array.isArray(v) ? v : [v]; return a.length && a.length <= 500 && a.every(x => /^[0-9a-f]{40}([0-9a-f]{24})?$/i.test(x)) ? a.join('|') : null; };
     const adminOnly = () => me.role === 'admin' ? false : (send(res, 403, { error: 'Admins only' }), true);
     if (p === '/api/goat/status' && m === 'GET') { if (adminOnly()) return; return send(res, 200, goatStatus()); }
+    if (p.startsWith('/api/goat/') && m === 'POST') {
+      if (adminOnly()) return;
+      if (DEMO) return send(res, 403, { error: 'This is turned off in the demo' });
+      if (p === '/api/goat/settings') {
+        if (!goatSettings) return send(res, 404, { error: 'Not running inside GoatMediaStackarr' });
+        const b = await readBody(req);
+        try { goatSettings.update(b); } catch (e) { return send(res, 400, { error: e.message }); }
+        audit(me.name, 'Changed container settings', Object.keys(b).join(', ')); return send(res, 200, goatStatus());
+      }
+      if (p === '/api/goat/vpn-file') {
+        const b = await readBody(req), name = String(b.name || ''), text = String(b.content || '');
+        const ext = (name.match(/\.(conf|ovpn)$/i) || [])[1];
+        if (!ext) return send(res, 400, { error: 'Choose a WireGuard .conf or OpenVPN .ovpn file from your VPN provider' });
+        if (!text.trim() || text.length > 200000) return send(res, 400, { error: 'That file is empty or too large' });
+        if (ext.toLowerCase() === 'conf' && !/\[Interface\]/i.test(text)) return send(res, 400, { error: 'That does not look like a WireGuard file (no [Interface] section)' });
+        if (ext.toLowerCase() === 'ovpn' && !/^\s*remote\s/im.test(text)) return send(res, 400, { error: 'That does not look like an OpenVPN file (no "remote" line)' });
+        const dir = path.join(GOAT_CONFIG, 'vpn'); fs.mkdirSync(dir, { recursive: true });
+        // One provider file at a time: the VPN uses the first file it finds.
+        for (const f of goatVpnFiles()) fs.unlinkSync(path.join(dir, f));
+        const safe = path.basename(name.replace(/\\/g, '/')).replace(/[^\w.-]+/g, '_').replace(/^\.+/, '').slice(-80) || 'vpn.' + ext.toLowerCase();
+        const file = safe.toLowerCase().endsWith('.' + ext.toLowerCase()) ? safe : safe + '.' + ext.toLowerCase();
+        fs.writeFileSync(path.join(dir, file), text, { mode: 0o600 });
+        if (goatSettings) goatSettings.update({ vpn: { type: ext.toLowerCase() === 'ovpn' ? 'openvpn' : 'wireguard' } });
+        audit(me.name, 'Uploaded a VPN file', file); return send(res, 200, goatStatus());
+      }
+      if (p === '/api/goat/apply-vpn') { const r = await goatControl({ cmd: 'apply-vpn' }); audit(me.name, 'Applied VPN settings', r.ok ? '' : r.error); return send(res, r.ok ? 200 : 500, r.ok ? goatStatus() : { error: r.error }); }
+      if (p === '/api/goat/rewire') { const r = await goatControl({ cmd: 'rewire' }); return send(res, r.ok ? 200 : 500, r.ok ? {} : { error: r.error }); }
+      if (p === '/api/goat/restart') {
+        const b = await readBody(req), r = await goatControl({ cmd: 'restart', engine: String(b.engine || '') });
+        audit(me.name, 'Restarted an app', String(b.engine || '')); return send(res, r.ok ? 200 : 500, r.ok ? {} : { error: r.error });
+      }
+      if (p === '/api/goat/leaktest') {
+        const vpn = goatRead(path.join(GOAT_RUN, 'vpn.json')) || {};
+        let home; try { home = await goatPublicIp(); } catch { return send(res, 502, { error: 'Could not look up this server\'s own address' }); }
+        const up = vpn.state === 'up' && !!vpn.ip;
+        return send(res, 200, { vpn: { ip: vpn.ip || '', country: vpn.country || '', state: vpn.state || 'off' }, home,
+          safe: up && vpn.ip !== home.ip, verdict: !up ? 'The VPN is not connected, so the VPN apps are offline.' : vpn.ip !== home.ip ? 'The VPN apps use the VPN address, not yours.' : 'The VPN apps show your own address: the VPN is not hiding it.' });
+      }
+      return send(res, 404, { error: 'Not found' });
+    }
     if ((r = p.match(/^\/api\/qb\/(\w+)\/list$/))) {
       const s = svcOf(r[1], 'qbittorrent'); if (!s) return send(res, 404, { error: 'Not found' });
       const hit = qbListCache[s.id]; if (hit && Date.now() - hit.t < 800) return send(res, 200, hit.d);

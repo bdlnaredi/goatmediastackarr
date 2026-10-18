@@ -1,6 +1,8 @@
 #!/command/with-contenv bash
 # Starts one engine as the PUID/PGID user. Apps listed in VPN_APPS also get the VPN group,
 # which is what sends their traffic through the tunnel (see vpn-init.sh).
+# Settings changed in the interface (settings.json) take priority over the container template.
+eval "$(node "$(dirname "$0")/settings.js" env 2>/dev/null)"
 set -u
 name="$1"
 PUID="${PUID:-99}"; PGID="${PGID:-100}"; GID="${GOAT_VPN_GID:-9000}"

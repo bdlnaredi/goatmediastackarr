@@ -104,3 +104,55 @@ test('engine pages open through the sign-in, including live updates', async () =
     assert.equal((await fetch(s.base + '/engines/sonarr/', { redirect: 'manual', headers: { Cookie: v.cookie } })).status, 302, 'only admins');
   } finally { await s.stop(); eng.close(); }
 });
+
+test('container settings, VPN file upload, control commands and the leak test', async () => {
+  const net = require('node:net'), http = require('node:http');
+  const dir = tmp(), cfg = path.join(dir, 'config'), run = tmp();
+  fs.mkdirSync(path.join(cfg, 'goat'), { recursive: true });
+  fs.writeFileSync(path.join(cfg, 'goat', 'secrets.json'), JSON.stringify({ jellyfinUser: 'goat-admin', jellyfinPass: 'jfpw', qbitUser: 'goat', qbitPass: 'qbpw' }));
+  const mf = path.join(dir, 'managed.json'); fs.writeFileSync(mf, JSON.stringify({ services: [] }));
+  fs.writeFileSync(path.join(run, 'vpn.json'), JSON.stringify({ enabled: true, state: 'up', ip: '203.0.113.9', country: 'NL' }));
+  // Pretend control service.
+  const sockPath = path.join(run, 'control.sock'), got = [];
+  const ctl = net.createServer(s => s.on('data', d => { const m = JSON.parse(String(d)); got.push(m); s.end(JSON.stringify(m.cmd === 'restart' && m.engine === 'nope' ? { ok: false, error: 'Unknown app' } : { ok: true }) + '\n'); }));
+  await new Promise(r => ctl.listen(sockPath, r));
+  // Pretend "what is my address" service.
+  const ipsrv = http.createServer((q, s) => s.end('fl=1\nip=198.51.100.7\nloc=IN\n'));
+  await new Promise(r => ipsrv.listen(0, '127.0.0.1', r));
+  const s = await boot({ GOAT_MANAGED: mf, GOAT_RUN: run, GOAT_CONFIG_DIR: cfg, GOAT_CONTROL_SOCK: sockPath,
+    GOAT_BIN: path.join(__dirname, '..', '..', 'goat'), GOAT_IPCHECK_URL: `http://127.0.0.1:${ipsrv.address().port}/` }, dir);
+  try {
+    const c = client(s.base); await setup(c);
+    let r = await c.get('/api/goat/status');
+    assert.equal(r.data.logins.jellyfin.pass, 'jfpw');
+    assert.equal(r.data.container, true);
+
+    r = await c.post('/api/goat/settings', { vpn: { enabled: true, pass: 'secret' } });
+    assert.equal(r.status, 200); assert.equal(r.data.settings.vpn.enabled, true); assert.equal(r.data.settings.vpn.pass, '••••');
+    assert.equal((await c.post('/api/goat/settings', { vpn: { type: 'pptp' } })).status, 400);
+
+    assert.equal((await c.post('/api/goat/vpn-file', { name: 'x.txt', content: 'hi' })).status, 400);
+    assert.equal((await c.post('/api/goat/vpn-file', { name: 'p.conf', content: 'not wireguard' })).status, 400);
+    r = await c.post('/api/goat/vpn-file', { name: '../../proton NL#1.conf', content: '[Interface]\nPrivateKey = x\n[Peer]\n' });
+    assert.equal(r.status, 200); assert.deepEqual(r.data.vpnFiles, ['proton_NL_1.conf']);
+    assert.ok(fs.existsSync(path.join(cfg, 'vpn', 'proton_NL_1.conf')), 'saved inside the vpn folder only');
+    r = await c.post('/api/goat/vpn-file', { name: 'surf.ovpn', content: 'client\nremote nl.example 1194\n' });
+    assert.deepEqual(r.data.vpnFiles, ['surf.ovpn'], 'the old file is replaced'); assert.equal(r.data.settings.vpn.type, 'openvpn');
+
+    assert.equal((await c.post('/api/goat/apply-vpn', {})).status, 200);
+    assert.equal((await c.post('/api/goat/restart', { engine: 'sonarr' })).status, 200);
+    assert.equal((await c.post('/api/goat/restart', { engine: 'nope' })).status, 500);
+    assert.deepEqual(got.map(g => g.cmd + (g.engine ? ':' + g.engine : '')), ['apply-vpn', 'restart:sonarr', 'restart:nope']);
+
+    r = await c.post('/api/goat/leaktest', {});
+    assert.equal(r.data.safe, true); assert.equal(r.data.home.ip, '198.51.100.7'); assert.equal(r.data.vpn.country, 'NL');
+    fs.writeFileSync(path.join(run, 'vpn.json'), JSON.stringify({ enabled: true, state: 'up', ip: '198.51.100.7' }));
+    assert.equal((await c.post('/api/goat/leaktest', {})).data.safe, false, 'same address as home is a leak');
+
+    // Not for regular users.
+    await c.post('/api/users', { name: 'viewer', password: 'viewer-pass-1', role: 'user' });
+    const v = client(s.base); await v.post('/api/login', { name: 'viewer', password: 'viewer-pass-1' });
+    assert.equal((await v.get('/api/goat/status')).status, 403);
+    assert.equal((await v.post('/api/goat/restart', { engine: 'sonarr' })).status, 403);
+  } finally { await s.stop(); ctl.close(); ipsrv.close(); }
+});

@@ -6,6 +6,8 @@
 # which only has a route through the VPN interface (goatvpn). If the VPN is down that table
 # has no usable route and the firewall rejects anything not leaving through goatvpn or loopback,
 # so those apps simply lose internet instead of falling back to the home connection.
+# Settings changed in the interface (settings.json) take priority over the container template.
+eval "$(node "$(dirname "$0")/settings.js" env 2>/dev/null)"
 set -u
 
 GID="${GOAT_VPN_GID:-9000}"

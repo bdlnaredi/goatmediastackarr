@@ -1,0 +1,2 @@
+#!/command/with-contenv sh
+exec /usr/local/bin/node /opt/goat/bin/control.js

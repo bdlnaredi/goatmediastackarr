@@ -261,7 +261,7 @@ if (require.main === module && process.argv[2] === 'tautulli') {
   console.log(p.token ? '[goat-init] Tautulli connected to the built-in Plex.' : '[goat-init] Plex is not linked yet, Tautulli starts without it.');
 } else if (require.main === module) {
   try {
-    const r = run();
+    const r = run(require('./settings').effectiveEnv());
     console.log(`[goat-init] ready. Engines: ${r.managed.services.map(x => x.name).join(', ')}. VPN apps: ${r.managed.vpn.apps.join(', ') || 'none'}.`);
   } catch (e) {
     console.error('[goat-init] failed:', e && e.stack || e);

@@ -2,6 +2,8 @@
 # Keeps the VPN tunnel up for the apps in VPN_APPS. Runs as root under s6 and never exits on its own.
 # Supports WireGuard (a .conf file) and OpenVPN (a .ovpn file) placed in /config/vpn.
 # Writes its state to /run/goat/vpn.json for the GoatMediaStackarr dashboard.
+# Settings changed in the interface (settings.json) take priority over the container template.
+eval "$(node "$(dirname "$0")/settings.js" env 2>/dev/null)"
 set -u
 
 GID="${GOAT_VPN_GID:-9000}"

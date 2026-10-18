@@ -297,6 +297,10 @@ async function run() {
   return state;
 }
 
+if (require.main === module) {
+  // Settings changed in the interface (PLEX_CLAIM, SEERR_MEDIA_SERVER, ...) take priority over the template.
+  Object.assign(process.env, require('./settings').effectiveEnv());
+}
 if (require.main === module) run().catch(e => { log('stopped:', e && e.stack || e); process.exitCode = 1; });
 
 module.exports = { run, addFromSchema, arr, http };
