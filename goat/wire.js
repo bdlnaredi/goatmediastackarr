@@ -228,10 +228,12 @@ async function wireSeerr(s, keys, on) {
   const settingsFile = `${C}/seerr/settings.json`;
   if (!pub.initialized) {
     const server = E.seerrServer(process.env, on);
-    if (!server) throw new Error('Seerr needs Jellyfin or Plex turned on');
+    if (!server) throw new Error('Seerr needs a media server: turn on Jellyfin or Plex in this container, or add your own Plex server under Settings, then Apps');
+    // Plex outside this container (its own container, say): its address and token come from the interface.
+    const ext = server === 'plex' && !on.includes('plex') ? E.externalPlex() : null;
     let r;
     if (server === 'plex') {
-      const token = plexPrefs().token;
+      const token = ext ? ext.token : plexPrefs().token;
       if (!token) throw new Error('Plex is not linked to a Plex account yet');
       r = await http('POST', `${SEERR}/api/v1/auth/plex`, { body: { authToken: token } });
     } else {
@@ -247,7 +249,9 @@ async function wireSeerr(s, keys, on) {
     }
     const cookie = (r.headers.get('set-cookie') || '').split(';')[0];
     const ch = { Cookie: cookie };
-    if (server === 'plex') await http('POST', `${SEERR}/api/v1/settings/plex`, { headers: ch, body: { ip: '127.0.0.1', port: E.ENGINES.plex.port, useSsl: false } });
+    if (server === 'plex') await http('POST', `${SEERR}/api/v1/settings/plex`, { headers: ch,
+      body: ext ? { ip: ext.ip, port: ext.port, useSsl: ext.useSsl } : { ip: '127.0.0.1', port: E.ENGINES.plex.port, useSsl: false } });
+    out.via = ext ? `your Plex at ${ext.url}` : server;
     // Seerr 3.5+: read the server's libraries with a sync call, then turn each one on.
     const libs = (await http('POST', `${SEERR}/api/v1/settings/${server}/library/sync`, { headers: ch })).data || [];
     for (const l of libs) {
@@ -307,7 +311,7 @@ async function run() {
     ['seerr', async () => {
       // Seerr signs in through its media server, so it can only be set up once that server is.
       const ms = E.seerrServer(process.env, on);
-      if (ms && !(state.steps[ms] && state.steps[ms].ok)) throw new Error(`waiting for ${E.ENGINES[ms].name} to be set up first`);
+      if (ms && on.includes(ms) && !(state.steps[ms] && state.steps[ms].ok)) throw new Error(`waiting for ${E.ENGINES[ms].name} to be set up first`);
       const r = await wireSeerr(s, keys, on); setKey('seerr', r.apiKey); return r.out;
     }],
   ].filter(([k]) => on.includes(k));

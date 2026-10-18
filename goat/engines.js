@@ -54,12 +54,24 @@ const vpnApps = (env = process.env) => {
   return l;
 };
 // Seerr works with one media server. SEERR_MEDIA_SERVER picks it; otherwise Jellyfin if it runs, else Plex.
+// A Plex server outside this container (PLEX_URL and PLEX_TOKEN), or null.
+const externalPlex = (env = process.env) => {
+  const u = String(env.PLEX_URL || '').trim(), token = String(env.PLEX_TOKEN || '').trim();
+  if (!u || !token) return null;
+  try {
+    const x = new URL(u), ssl = x.protocol === 'https:';
+    return { ip: x.hostname, port: Number(x.port) || (ssl ? 443 : 32400), useSsl: ssl, token, url: u.replace(/\/+$/, '') };
+  } catch { return null; }
+};
+// The media server Seerr signs in through: a built-in one first, then a Plex server outside the container.
 const seerrServer = (env = process.env, on = enabled(env)) => {
   const want = String(env.SEERR_MEDIA_SERVER || '').toLowerCase();
   if ((want === 'plex' || want === 'jellyfin') && on.includes(want)) return want;
-  return on.includes('jellyfin') ? 'jellyfin' : on.includes('plex') ? 'plex' : '';
+  if (on.includes('jellyfin')) return 'jellyfin';
+  if (on.includes('plex') || externalPlex(env)) return 'plex';
+  return '';
 };
 const PLEX_PREFS = () => `${CONFIG}/plex/Library/Application Support/Plex Media Server/Preferences.xml`;
 const url = key => `http://127.0.0.1:${ENGINES[key].port}${ENGINES[key].base}`;
 
-module.exports = { CONFIG, MEDIA, DOWNLOADS, ENGINES, DIRS, DEFAULT_ENGINES, DEFAULT_VPN_APPS, enabled, vpnApps, url, list, seerrServer, PLEX_PREFS };
+module.exports = { CONFIG, MEDIA, DOWNLOADS, ENGINES, DIRS, DEFAULT_ENGINES, DEFAULT_VPN_APPS, enabled, vpnApps, url, list, seerrServer, externalPlex, PLEX_PREFS };
