@@ -37,7 +37,7 @@ function goatDemo() {
   try {
     for (let i = 0; i < 100; i++) { try { if ((await fetch(BASE + '/api/health')).ok) break; } catch {} await sleep(200); }
     const browser = await chromium.launch();
-    const shot = async (page, name) => { await sleep(2500); await page.screenshot({ path: path.join(OUT, name + '.png') }); console.log('saved', name); };
+    const shot = async (page, name, fullPage = false) => { await sleep(2500); await page.screenshot({ path: path.join(OUT, name + '.png'), fullPage }); console.log('saved', name); };
 
     // Sign-in page, before signing in.
     const anon = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, colorScheme: 'dark' });
@@ -57,8 +57,19 @@ function goatDemo() {
     for (const [tab, name] of PAGES) {
       const btn = page.locator(`[data-t="${tab}"]:visible`).first();
       if (!(await btn.count())) { console.log('no tab', tab); continue; }
-      await btn.click(); await shot(page, name);
+      await btn.click(); await shot(page, name, tab === 'goat');
+      // Every tab has its own address: the address bar must follow the click.
+      const want = { dash: '/', disc: '/discover', lib: '/library', dl: '/downloads', rq: '/requests', up: '/upcoming', idx: '/indexers', hl: '/health', stats: '/stats', goat: '/stack' }[tab];
+      const got = new URL(page.url()).pathname;
+      if (want && got !== want) throw new Error(`after opening ${tab} the address is ${got}, expected ${want}`);
     }
+    // Opening an address directly shows that page, and Back returns to the previous one.
+    await page.goto(BASE + '/settings/apps'); await sleep(1500);
+    if (!(await page.locator('[data-t="set"][aria-current="page"]').count())) throw new Error('/settings/apps did not open Settings');
+    await shot(page, 'settings-apps');
+    await page.locator('[data-t="dl"]:visible').first().click(); await sleep(800);
+    await page.goBack(); await sleep(800);
+    if (new URL(page.url()).pathname !== '/settings/apps') throw new Error('Back did not return to /settings/apps');
     await ctx.close();
 
     // Phone.

@@ -156,3 +156,17 @@ test('container settings, VPN file upload, control commands and the leak test', 
     assert.equal((await v.post('/api/goat/restart', { engine: 'sonarr' })).status, 403);
   } finally { await s.stop(); ctl.close(); ipsrv.close(); }
 });
+
+test('every page address opens the app, while files, the API and status pages keep working', async () => {
+  const s = await boot();
+  try {
+    for (const p of ['/downloads', '/settings/apps', '/library', '/stack', '/STACK']) {
+      const r = await fetch(s.base + p);
+      assert.equal(r.status, 200, p);
+      assert.match(r.headers.get('content-type'), /text\/html/, p);
+      assert.match(await r.text(), /<title>GoatMediaStackarr<\/title>/, p);
+    }
+    assert.match((await fetch(s.base + '/cinema.js')).headers.get('content-type'), /javascript/);
+    assert.equal((await fetch(s.base + '/api/health')).status, 200);
+  } finally { await s.stop(); }
+});

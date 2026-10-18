@@ -15,4 +15,6 @@ First stage: the container foundation.
 - Jellyfin's first-run setup survives its start-up restart, and failed connections are retried right away.
 - New goat logo and app icons; the interface is named GoatMediaStackarr.
 - README screenshots, refreshed by the "Update screenshots" workflow.
+- Every tab and Settings section has its own address (/downloads, /settings/apps); dialogs open as layers that the back button closes.
+- Stack page: setup checklist, VPN controls with file upload and leak test, app health and restarts, generated logins, Plex linking, connection results.
 - Unraid template and docker-compose example.

@@ -520,8 +520,10 @@ async function start(){
   if(rt)return resetView(rt);
   if(!s.user)return authView(s.setup,s.setupCode);
   DEMO=!!s.demo;me=s.user;await load();
+  // An address like /downloads opens that page; the plain address opens the dashboard.
+  const fromUrl=readPath();routeQuiet=true;
   // First visit to a new GoatMediaStackarr: open the Stack page, where the setup checklist is, until it is marked done.
-  if(GOAT&&me.role==='admin')try{const g=await api('/api/goat/status');if(!(g.settings&&g.settings.setup&&g.settings.setup.done))tab='goat'}catch{}
+  if(!fromUrl&&GOAT&&me.role==='admin')try{const g=await api('/api/goat/status');if(!(g.settings&&g.settings.setup&&g.settings.setup.done))tab='goat'}catch{}
   render();
 }
 async function load(){
@@ -674,6 +676,32 @@ const TYPE_TABS={find:['sonarr','radarr'],rq:['seerr'],lib:['sonarr','radarr'],w
 const PICK={sub:'bazarr',nzb:'sabnzbd',dl:'qbittorrent',rss:'qbittorrent',idx:'jackett',ur:'unraid',rq:'seerr',stats:'tautulli'};
 const visibleTabs=()=>TABS.filter(([k])=>!TYPE_TABS[k]||TYPE_TABS[k].some(t=>ofType(t).length)).filter(([k])=>k!=='disc'||Object.values(me.lists||{}).some(Boolean)).filter(([k])=>k!=='hl'||(me.role==='admin'&&services.some(s=>['sonarr','radarr','lidarr','readarr','prowlarr'].includes(s.type)))).filter(([k])=>k!=='goat'||(GOAT&&me.role==='admin'));
 let stSub='acct';
+// ---------- Addresses: every tab and every Settings section has its own address (/downloads, /settings/apps),
+// so the browser's back button, bookmarks and links work.
+const SLUG={dash:'dashboard',find:'search',disc:'discover',rq:'requests',lib:'library',wt:'wanted',dl:'downloads',rss:'rss',up:'upcoming',idx:'indexers',mb:'music',sub:'subtitles',nzb:'usenet',hl:'health',ur:'unraid',stats:'stats',goat:'stack',set:'settings'};
+const UNSLUG=Object.fromEntries(Object.entries(SLUG).map(([k,v])=>[v,k]));
+const pathFor=()=>tab==='dash'?'/':'/'+(SLUG[tab]||tab)+(tab==='set'&&stSub&&stSub!=='acct'?'/'+encodeURIComponent(stSub):'');
+// Reads the tab (and Settings section) from the address. Returns false when the address names no page.
+function readPath(){
+  const parts=location.pathname.split('/').filter(Boolean).map(x=>{try{return decodeURIComponent(x)}catch{return x}});
+  if(!parts.length)return false;
+  const k=UNSLUG[parts[0].toLowerCase()];if(!k)return false;
+  tab=k;if(k==='set')stSub=parts[1]||'acct';return true;
+}
+let routeQuiet=false;
+// ---------- Layers: a dialog opened over a page is a step in the browser history, so the back button
+// (and a phone's back gesture) closes the dialog instead of leaving the page.
+const LAYERS=[];let popsToIgnore=0;
+new MutationObserver(ms=>{for(const m of ms){
+  for(const n of m.addedNodes)if(n.classList&&n.classList.contains('ov')&&!LAYERS.includes(n)){LAYERS.push(n);history.pushState({layer:LAYERS.length},'',location.href)}
+  for(const n of m.removedNodes){const i=LAYERS.indexOf(n);if(i<0)continue;LAYERS.splice(i,1);
+    // Closed with its own button: step back over its history entry, unless something else moved on meanwhile.
+    if(!n._byBack&&history.state&&history.state.layer){popsToIgnore++;history.back()}}
+}}).observe(document.body,{childList:true});
+window.addEventListener('popstate',()=>{
+  if(popsToIgnore){popsToIgnore--;return}
+  if(LAYERS.length){const top=LAYERS[LAYERS.length-1];top._byBack=true;if(top.close)top.close();else top.remove();return}
+  if(!me)return;if(!readPath())tab='dash';routeQuiet=true;render()});
 function goto(k){if(String(k).includes(':')){const [t,s]=k.split(':');tab=t==='st'?'set':t;stSub=s}else tab=k;render()}
 function render(){
   hideStage();Cinema.ambient();Cinema.tilt();
@@ -697,6 +725,9 @@ $('#rl').onclick=()=>{UI.rail=!UI.rail;saveUI()};$('#qs').onclick=quick;
   [].concat(timer||[]).forEach(clearInterval);liveFns=[];LIVE.subs.clear();if(tab!=='dash'&&tab!=='ur')liveStop();
   const on=document.querySelector('.nv.on');if(on&&on.scrollIntoView)on.scrollIntoView({inline:'center',block:'nearest'});
   ({dash:dashView,find:findView,disc:discView,rq:rqView,lib:libView,wt:wtView,dl:dlView,rss:rssView,up:upView,idx:idxView,mb:mbView,sub:subView,nzb:nzbView,hl:hlView,ur:urView,stats:statsView,goat:goatView,set:setView})[tab]();
+  // Keep the address bar in step with what is on screen: a new history entry for each move, none for back/forward.
+  {const want=pathFor();if(location.pathname!==want){if(routeQuiet)history.replaceState(null,'',want+location.search);else history.pushState(null,'',want)}routeQuiet=false;
+   document.title=(tab==='dash'?'':(PAGES[tab]&&PAGES[tab][0]?PAGES[tab][0]+' · ':''))+'GoatMediaStackarr'}
   if(arrOnce())Cinema.load(api);
   const mm=$('#m');if(mm){mm.classList.remove('pgin');void mm.offsetWidth;mm.classList.add('pgin')}
 }
