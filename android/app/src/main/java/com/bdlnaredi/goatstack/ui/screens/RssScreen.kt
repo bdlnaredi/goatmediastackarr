@@ -142,8 +142,7 @@ private fun Articles(sid: String, feeds: List<RssFeed>) {
     }
     ChoiceRow(listOf("" to "Every feed") + feeds.map { it.path to (if (it.unread > 0) "${it.name} · ${it.unread}" else it.name) }, feed, { feed = it })
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        CheckLine("Only unread", unreadOnly) { unreadOnly = it }
-        Spacer(Modifier.weight(1f))
+        androidx.compose.foundation.layout.Box(Modifier.weight(1f)) { CheckLine("Only unread", unreadOnly) { unreadOnly = it } }
         TextButton(onClick = {
             scope.launch {
                 try {
