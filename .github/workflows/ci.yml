@@ -92,6 +92,22 @@ jobs:
           docker exec goat jq -r '.steps | to_entries[] | select(.value.ok | not) | "::error::\(.key): \(.value.error)"' /config/goat/wired.json || true
           docker logs goat 2>&1 | grep -E 'goat-wire.*FAILED' | tail -5 | cut -c1-900 | sed 's/^/::error::/'
           exit 1
+      - name: Stack page controls work inside the container
+        run: |
+          B=http://127.0.0.1:2806; J='Content-Type: application/json'
+          curl -fsS -c /tmp/ck -H "$J" -d '{"name":"admin","password":"ci-password-123"}' $B/api/setup >/dev/null
+          st=$(curl -fsS -b /tmp/ck $B/api/goat/status)
+          echo "$st" | jq -e '.container and (.logins.jellyfin.user == "goat-admin") and (.engines | length >= 9)' >/dev/null
+          before=$(docker exec goat sh -c 'pgrep -f "bazarr.py" | head -1')
+          curl -fsS -b /tmp/ck -H "$J" -H "Origin: $B" -d '{"engine":"bazarr"}' $B/api/goat/restart
+          sleep 15
+          after=$(docker exec goat sh -c 'pgrep -f "bazarr.py" | head -1')
+          echo "Bazarr process before $before, after $after"
+          [ -n "$after" ] && [ "$before" != "$after" ] || { echo "::error::Restart through the control service did not restart Bazarr"; exit 1; }
+          code=$(curl -s -o /dev/null -w '%{http_code}' -b /tmp/ck -H "$J" -H "Origin: $B" -d '{"engine":"nope"}' $B/api/goat/restart)
+          [ "$code" = 500 ] || { echo "::error::Unknown app was not refused ($code)"; exit 1; }
+          curl -fsS -b /tmp/ck -H "Origin: $B" -o /dev/null $B/engines/sonarr/
+          echo "::notice::Stack page controls work: status, restart, refusal, engine page"
       - name: Files belong to PUID/PGID
         run: |
           test "$(stat -c %u:%g /tmp/goat/config/sonarr/config.xml)" = "1001:121"
