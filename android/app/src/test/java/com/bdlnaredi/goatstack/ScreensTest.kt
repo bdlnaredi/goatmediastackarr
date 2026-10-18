@@ -3,6 +3,10 @@ package com.bdlnaredi.goatstack
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -133,8 +137,39 @@ class ScreensTest {
             compose.runOnUiThread { state.setTheme(t) }; compose.waitForIdle(); shot("15-home-$t")
         }
 
-        // Every call the screens made was one the server knows.
-        val unknown = fake.calls.filter { c -> listOf("/api/", "/img/").none { c.contains(it) } }
-        assertTrue("unexpected calls: $unknown", unknown.isEmpty())
+        assertTrue("calls the pretend server does not know: ${fake.misses}", fake.misses.isEmpty())
+    }
+
+    /** On the More page: scroll to an entry and open it. */
+    private fun openFromMore(text: String) {
+        compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText(text) and hasClickAction())
+        compose.waitForIdle()
+        tap(text)
+    }
+
+    @Test fun morePages() {
+        connect()
+        show()
+        waitFor("Playing now")
+        tap("More"); waitFor("Go to"); shot("20-more-v2")
+        for ((entry, wait, name) in listOf(
+            Triple("Wanted", "in total", "21-wanted"),
+            Triple("Music", "Aurora Lines", "22-music"),
+            Triple("Subtitles", "Hindi", "23-subtitles"),
+            Triple("Stats", "Plays per day", "24-stats"),
+            Triple("Health", "to look at", "25-health"),
+            Triple("Indexers", "Cloudy Site", "26-indexers"),
+            Triple("Usenet servers", "Newshosting", "27-usenet-servers"),
+            Triple("Unraid", "Array started", "28-unraid"),
+            Triple("Users", "Ravi", "29-users"),
+        )) {
+            openFromMore(entry); waitFor(wait); shot(name); back(); waitFor("Go to")
+        }
+        openFromMore("Bring in your setup"); waitFor("The old app")
+        tap("Sonarr")
+        compose.onNode(hasText("Its address", substring = true) and hasSetTextAction()).performTextInput("http://192.168.1.10:8989")
+        compose.onNode(hasText("Its API key", substring = true) and hasSetTextAction()).performTextInput("0123456789abcdef")
+        tap("Check"); waitFor("already here"); shot("30-import")
+        assertTrue("calls the pretend server does not know: ${fake.misses}", fake.misses.isEmpty())
     }
 }

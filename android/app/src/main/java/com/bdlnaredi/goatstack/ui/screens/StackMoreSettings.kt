@@ -27,7 +27,15 @@ import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.Hub
+import androidx.compose.material.icons.rounded.Group
+import androidx.compose.material.icons.rounded.HealthAndSafety
 import androidx.compose.material.icons.rounded.Inbox
+import androidx.compose.material.icons.rounded.Insights
+import androidx.compose.material.icons.rounded.LibraryMusic
+import androidx.compose.material.icons.rounded.MoveDown
+import androidx.compose.material.icons.rounded.Storage
+import androidx.compose.material.icons.rounded.Subtitles
+import androidx.compose.material.icons.rounded.TravelExplore
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.RestartAlt
@@ -206,6 +214,7 @@ private fun MenuRow(icon: ImageVector, title: String, text: String, onClick: () 
 fun MoreScreen() {
     val ctx = LocalCtx.current
     val g = LocalGoat.current
+    val svcs = services()
     LazyColumn(Modifier.fillMaxSize().statusBarsPadding(), contentPadding = PaddingValues(bottom = 24.dp)) {
         item { PageTitle("More") }
         item {
@@ -222,13 +231,37 @@ fun MoreScreen() {
                 }
             }
         }
+        val has = { t: String -> svcs.any { it.type == t } }
+        val admin = ctx.user.admin
         item { SectionTitle("Go to", Modifier.padding(top = 8.dp)) }
         item {
             Column(Modifier.padding(horizontal = 8.dp)) {
                 MenuRow(Icons.Rounded.Search, "Search", "Find a show or movie to request or add") { ctx.go("search") }
-                MenuRow(Icons.Rounded.Inbox, "Requests", if (ctx.user.admin) "Approve what people asked for" else "See what you asked for") { ctx.go("requests") }
+                MenuRow(Icons.Rounded.Inbox, "Requests", if (admin) "Approve what people asked for" else "See what you asked for") { ctx.go("requests") }
                 MenuRow(Icons.Rounded.CalendarMonth, "Upcoming", "New episodes and releases") { ctx.go("upcoming") }
-                if (ctx.user.admin && ctx.me.goat) MenuRow(Icons.Rounded.Shield, "Stack", "VPN, apps and connections") { ctx.go("stack") }
+                if (has("sonarr") || has("radarr")) MenuRow(Icons.Rounded.Search, "Wanted", "What is still being looked for") { ctx.go("wanted") }
+                if (has("lidarr")) MenuRow(Icons.Rounded.LibraryMusic, "Music", "Your artists, from Lidarr") { ctx.go("music") }
+                if (has("bazarr")) MenuRow(Icons.Rounded.Subtitles, "Subtitles", "Missing subtitles, from Bazarr") { ctx.go("subtitles") }
+                if (has("tautulli")) MenuRow(Icons.Rounded.Insights, "Stats", "What gets watched, and by whom") { ctx.go("stats") }
+            }
+        }
+        if (admin) {
+            item { SectionTitle("Server", Modifier.padding(top = 8.dp)) }
+            item {
+                Column(Modifier.padding(horizontal = 8.dp)) {
+                    if (ctx.me.goat) MenuRow(Icons.Rounded.Shield, "Stack", "VPN, apps and connections") { ctx.go("stack") }
+                    MenuRow(Icons.Rounded.HealthAndSafety, "Health", "Problems the apps report, disk space") { ctx.go("health") }
+                    if (has("prowlarr")) MenuRow(Icons.Rounded.TravelExplore, "Indexers", "The sites Prowlarr searches") { ctx.go("indexers") }
+                    if (has("sabnzbd")) MenuRow(Icons.Rounded.Dns, "Usenet servers", "Your provider's news servers") { ctx.go("newsservers") }
+                    if (has("unraid")) MenuRow(Icons.Rounded.Storage, "Unraid", "Array, disks and containers") { ctx.go("unraid") }
+                    MenuRow(Icons.Rounded.Group, "Users", "Who can sign in") { ctx.go("users") }
+                    if (ctx.me.goat) MenuRow(Icons.Rounded.MoveDown, "Bring in your setup", "From the apps you use now") { ctx.go("import") }
+                }
+            }
+        }
+        item { SectionTitle("App", Modifier.padding(top = 8.dp)) }
+        item {
+            Column(Modifier.padding(horizontal = 8.dp)) {
                 MenuRow(Icons.Rounded.Settings, "Settings", "Appearance, account and server") { ctx.go("settings") }
             }
         }

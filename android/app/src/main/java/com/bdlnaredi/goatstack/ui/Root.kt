@@ -137,6 +137,16 @@ private fun MainShell(state: AppState, me: Me, user: User) {
                 composable("upcoming") { UpcomingScreen() }
                 composable("stack") { StackScreen() }
                 composable("settings") { SettingsScreen() }
+                composable("wanted") { com.bdlnaredi.goatstack.ui.screens.WantedScreen() }
+                composable("subtitles") { com.bdlnaredi.goatstack.ui.screens.SubtitlesScreen() }
+                composable("music") { com.bdlnaredi.goatstack.ui.screens.MusicScreen() }
+                composable("health") { com.bdlnaredi.goatstack.ui.screens.HealthScreen() }
+                composable("indexers") { com.bdlnaredi.goatstack.ui.screens.IndexersScreen() }
+                composable("newsservers") { com.bdlnaredi.goatstack.ui.screens.NewsServersScreen() }
+                composable("stats") { com.bdlnaredi.goatstack.ui.screens.StatsScreen() }
+                composable("unraid") { com.bdlnaredi.goatstack.ui.screens.UnraidScreen() }
+                composable("users") { com.bdlnaredi.goatstack.ui.screens.UsersScreen() }
+                composable("import") { com.bdlnaredi.goatstack.ui.screens.ImportScreen() }
                 composable(
                     "item/{sid}/{kind}/{id}",
                     arguments = listOf(navArgument("sid") { type = NavType.StringType }, navArgument("kind") { type = NavType.StringType }, navArgument("id") { type = NavType.LongType }),

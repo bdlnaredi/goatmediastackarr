@@ -16,6 +16,8 @@ class FakeServer(private val server: MockWebServer) : Dispatcher() {
     @Volatile var signedIn = true
     @Volatile var admin = true
     val calls = java.util.concurrent.CopyOnWriteArrayList<String>()
+    /** Calls the app made that the pretend server does not know: each one is a mistake in the app (or here). */
+    val misses = java.util.concurrent.CopyOnWriteArrayList<String>()
 
     private fun img(n: Int) = server.url("/img/p${(n - 1) % 12 + 1}.png").toString()
     private fun json(body: String, code: Int = 200) = MockResponse().setResponseCode(code).setHeader("Content-Type", "application/json").setBody(body)
@@ -49,7 +51,19 @@ class FakeServer(private val server: MockWebServer) : Dispatcher() {
             p.matches(Regex("/api/qb/\\w+/list")) -> json(torrents())
             p.matches(Regex("/api/sab/\\w+/queue")) -> json(SAB)
             p == "/api/seerr/search" -> json("[" + (1..5).joinToString(",") { i -> """{"mediaType":"${if (i % 2 == 0) "tv" else "movie"}","id":${100 + i},"title":"${titles[i]}","year":"${2018 + i}","overview":"A story about ${titles[i].lowercase()} and the people who live there.","poster":"${img(i + 1)}","status":${listOf(0, 5, 0, 2, 0)[i - 1]}}""" } + "]")
-            else -> json("""{"error":"Not in the pretend server: $p"}""", 404)
+            p == "/api/wanted" -> json("""{"total":42,"items":[""" + (0..7).joinToString(",") { i -> """{"id":${i + 1},"title":"${titles[(i + 1) % 12]}","sub":"S0${1 + i % 3}E0${1 + i}  Chapter ${i + 1}","date":"${day(-i.toLong() * 3)}","poster":"${img(i + 2)}","overview":""}""" } + "]}")
+            p == "/api/bazarr/b1/wanted" -> json("""{"total":5,"movies":[{"id":3,"title":"Ember Falls","missing":[{"code":"en","name":"English","forced":false,"hi":false},{"code":"hi","name":"Hindi","forced":false,"hi":false}]}],"episodes":[""" + (0..3).joinToString(",") { i -> """{"id":${10 + i},"seriesId":1,"title":"${titles[i]}","ep":"1x0${i + 1}","name":"Chapter ${i + 1}","missing":[{"code":"en","name":"English","forced":${i == 2},"hi":false}]}""" } + "]}")
+            p == "/api/media/l1/library" -> json("""{"missing":3,"items":[""" + (0..8).joinToString(",") { i -> """{"id":${i + 1},"title":"${listOf("Aurora Lines", "The Night Choir", "Velvet Static", "Kilometre Zero", "Saffron Tide", "Hollow Pines", "Neon Ganges", "Paper Kites", "Low Orbit")[i]}","poster":"${img(i + 4)}","monitored":true,"count":${2 + i % 4},"have":${20 + i * 3},"total":${24 + i * 3},"size":${(i + 1) * 900_000_000L}}""" } + "]}")
+            p == "/api/libhealth" -> json(HEALTH)
+            p == "/api/prowlarr/p2/indexers" -> json(INDEXERS)
+            p == "/api/sab/z1/servers" -> json("""[{"name":"news_example_com","displayname":"Newshosting","host":"news.example.com","port":563,"ssl":true,"username":"ann","hasPassword":true,"connections":30,"enable":true,"priority":0},{"name":"block","displayname":"Backup block","host":"bonus.example.net","port":119,"ssl":false,"username":"ann","hasPassword":true,"connections":8,"enable":false,"priority":1}]""")
+            p == "/api/tautulli/t1/stats" -> json(stats())
+            p == "/api/tautulli/t1/img" -> png("p${(path.length % 12) + 1}.png")
+            p == "/api/unraid/u1" -> json(UNRAID)
+            p == "/api/users" -> json("""[{"id":"u1","name":"Ann","role":"admin","twofa":true},{"id":"u2","name":"Ravi","role":"user","plex":{"name":"ravi"}},{"id":"u3","name":"Mira","role":"user","plex":{"name":"mira"}},{"id":"u4","name":"Leo","role":"user"}]""")
+            p == "/api/goat/import" -> json("""{"state":"idle"}""")
+            p == "/api/goat/import/check" -> json("""{"kind":"sonarr","total":184,"already":12,"todo":172,"roots":["/tv"],"newRoots":["/media/tv"],"suggest":[["/tv","/media/tv"],["/anime","/media/tv"]],"settings":{"profiles":["Any","HD-1080p","Ultra-HD"],"formats":14}}""")
+            else -> { misses.add("${request.method} $p"); json("""{"error":"Not in the pretend server: $p"}""", 404) }
         }
     }
 
@@ -94,6 +108,15 @@ class FakeServer(private val server: MockWebServer) : Dispatcher() {
         return """{"id":1,"title":"Northwind","monitored":true,"seasons":[{"n":0,"monitored":false},{"n":1,"monitored":true},{"n":2,"monitored":true},{"n":3,"monitored":true}],"episodes":[$eps]}"""
     }
 
+    private fun stats(): String {
+        val days = (0..29).joinToString(",") { "\"${LocalDate.now().minusDays((29 - it).toLong())}\"" }
+        val plays = (0..29).joinToString(",") { ((it * 7 + 3) % 11 + (if (it % 7 >= 5) 6 else 1)).toString() }
+        val top = (0..5).joinToString(",") { i -> """{"title":"${titles[(i + 6) % 12]}","plays":${20 - i * 3},"thumb":"/library/metadata/${i + 1}/thumb"}""" }
+        return """{"days":30,"movies":[$top],"tv":[$top],"users":[{"title":"Ravi","plays":64,"seconds":198000},{"title":"Mira","plays":41,"seconds":120000},{"title":"Ann","plays":22,"seconds":70000}],
+            "totals":{"plays":127,"seconds":388000},"byDate":{"categories":[$days],"series":[{"name":"TV","data":[$plays]},{"name":"Movies","data":[$plays]}]},
+            "history":[""" + (0..5).joinToString(",") { i -> """{"user":"${listOf("Ravi", "Mira", "Ann")[i % 3]}","title":"${titles[i]} - Chapter ${i + 2}","type":"episode","at":${System.currentTimeMillis() - i * 5_400_000L},"player":"${listOf("Living room TV", "Phone", "Chrome")[i % 3]}","pct":${listOf(100, 46, 92, 100, 15, 100)[i]},"thumb":"/library/metadata/${i + 1}/thumb"}""" } + "]}"
+    }
+
     private fun torrents(): String {
         val states = listOf("downloading", "downloading", "stalledDL", "uploading", "stoppedUP", "pausedDL")
         val prog = listOf(0.72, 0.31, 0.08, 1.0, 1.0, 0.55)
@@ -103,8 +126,16 @@ class FakeServer(private val server: MockWebServer) : Dispatcher() {
     }
 
     companion object {
-        const val SERVICES = """[{"id":"s1","type":"sonarr","name":"Sonarr","managed":true},{"id":"r1","type":"radarr","name":"Radarr","managed":true},{"id":"q1","type":"qbittorrent","name":"qBittorrent","managed":true},{"id":"z1","type":"sabnzbd","name":"SABnzbd","managed":true},{"id":"e1","type":"seerr","name":"Seerr","managed":true},{"id":"j1","type":"jellyfin","name":"Jellyfin","managed":true}]"""
+        const val SERVICES = """[{"id":"l1","type":"lidarr","name":"Lidarr","managed":true},{"id":"b1","type":"bazarr","name":"Bazarr","managed":true},{"id":"p2","type":"prowlarr","name":"Prowlarr","managed":true},{"id":"t1","type":"tautulli","name":"Tautulli","managed":true},{"id":"u1","type":"unraid","name":"Tower"},{"id":"s1","type":"sonarr","name":"Sonarr","managed":true},{"id":"r1","type":"radarr","name":"Radarr","managed":true},{"id":"q1","type":"qbittorrent","name":"qBittorrent","managed":true},{"id":"z1","type":"sabnzbd","name":"SABnzbd","managed":true},{"id":"e1","type":"seerr","name":"Seerr","managed":true},{"id":"j1","type":"jellyfin","name":"Jellyfin","managed":true}]"""
         const val SAB = """{"paused":false,"status":"Downloading","speed":5200000,"slots":2,"left":"3.1 GB","timeleft":"0:10:12","jobs":[{"name":"Paper.Moon.S01E04.1080p.WEB","pct":46,"size":"2.2 GB","left":"0:06:10"},{"name":"Stormline.S03E01.2160p","pct":0,"size":"6.0 GB","left":"0:24:00"}]}"""
+        val HEALTH = """[{"id":"s1","name":"Sonarr","type":"sonarr","ok":true,"issues":[{"level":"warn","text":"Indexers unavailable due to failures for more than 6 hours: Cloudy Site"}],"disks":[{"path":"/media","free":1900000000000,"total":12000000000000},{"path":"/downloads","free":410000000000,"total":2000000000000}],"queue":[{"title":"Stormline.S03E01.2160p","message":"No files found are eligible for import"}],"missing":14},
+            {"id":"r1","name":"Radarr","type":"radarr","ok":true,"issues":[],"disks":[],"queue":[],"missing":3},{"id":"p2","name":"Prowlarr","type":"prowlarr","ok":true,"issues":[],"disks":[],"queue":[],"missing":null},
+            {"id":"l1","name":"Lidarr","type":"lidarr","ok":false,"error":"Connection refused","issues":[],"disks":[],"queue":[]}]""".replace("\n", "")
+        val INDEXERS = """{"health":[],"indexers":[{"id":1,"name":"Torrent Galaxy","protocol":"torrent","enabled":true,"priority":25,"status":"ok"},{"id":2,"name":"Cloudy Site","protocol":"torrent","enabled":true,"priority":25,"status":"failing","until":"2026-10-19T10:00:00Z"},
+            {"id":3,"name":"NZBgeek","protocol":"usenet","enabled":true,"priority":20,"status":"ok"},{"id":4,"name":"Old Tracker","protocol":"torrent","enabled":false,"priority":30,"status":"disabled"}]}""".replace("\n", "")
+        val UNRAID = """{"host":"Tower","arrayState":"STARTED","used":7400000000,"total":12000000000,"cpu":23.4,"mem":61.2,"uptime":"12 days","cpuInfo":{"brand":"Intel Core i5-12400","cores":6,"threads":12},
+            "containers":[{"id":"c1","name":"goatmediastackarr","state":"RUNNING"},{"id":"c2","name":"plex","state":"RUNNING"},{"id":"c3","name":"mediahub","state":"RUNNING"},{"id":"c4","name":"qbittorrentvpn","state":"EXITED"}],
+            "disks":[{"name":"parity","role":"Parity","temp":34,"status":"DISK_OK"},{"name":"disk1","role":"Data","temp":36,"status":"DISK_OK"},{"name":"disk2","role":"Data","temp":"*","status":"DISK_OK"},{"name":"cache","role":"Cache","temp":41,"status":"DISK_OK"}],"errors":[]}""".replace("\n", "")
         val STATUS = """{"vpn":{"enabled":true,"state":"up","ip":"185.107.56.12","country":"NL","port":"51234","type":"wireguard"},"container":true,
             "engines":[{"id":"1","key":"sonarr","name":"Sonarr","ok":true},{"id":"2","key":"radarr","name":"Radarr","ok":true},{"id":"3","key":"lidarr","name":"Lidarr","ok":true},{"id":"4","key":"prowlarr","name":"Prowlarr","ok":true},{"id":"5","key":"bazarr","name":"Bazarr","ok":true},{"id":"6","key":"qbittorrent","name":"qBittorrent","ok":true},{"id":"7","key":"sabnzbd","name":"SABnzbd","ok":true},{"id":"8","key":"jellyfin","name":"Jellyfin","ok":true},{"id":"9","key":"seerr","name":"Seerr","ok":false}],
             "wired":{"at":1,"running":false,"steps":{"sonarr":{"ok":true},"radarr":{"ok":true},"prowlarr":{"ok":true},"jellyfin":{"ok":true},"seerr":{"ok":false,"error":"waiting for Jellyfin to be set up first"}}},
