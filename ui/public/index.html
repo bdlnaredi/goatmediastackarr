@@ -2322,7 +2322,7 @@ async function subView(){
 // ---------- Stack: the apps inside the GoatMediaStackarr container
 const GOAT_PAGES={sonarr:1,radarr:1,lidarr:1,prowlarr:1,bazarr:1,qbittorrent:1,sabnzbd:1,tautulli:1};
 const GOAT_VPNAPPS=[['qbittorrent','qBittorrent'],['sabnzbd','SABnzbd'],['prowlarr','Prowlarr']];
-const goatOpen=k=>GOAT_PAGES[k]?`/engines/${k}/`:k==='jellyfin'?`${location.protocol}//${location.hostname}:8096/`:k==='plex'?`${location.protocol}//${location.hostname}:32400/web/`:'';
+const goatOpen=k=>GOAT_PAGES[k]?`/engines/${k}/`:k==='jellyfin'?`${location.protocol}//${location.hostname}:8096/`:k==='plex'?`${location.protocol}//${location.hostname}:32400/web/`:k==='seerr'?`${location.protocol}//${location.hostname}:5055/`:'';
 let goatPoll=0,goatQuiet=false;
 async function goatView(){
   clearTimeout(goatPoll);

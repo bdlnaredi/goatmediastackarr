@@ -47,7 +47,7 @@ Screenshots are taken in demo mode with pretend apps. To refresh them after inte
 3. **Open `http://YOUR-SERVER:2806`** and create your admin account. All the built-in apps are already listed.
 4. **Add indexers** in Prowlarr (from the indexer screen, or Advanced → Prowlarr), and your usenet server in SABnzbd if you use usenet.
 
-The engines listen only inside the container. The only ways in are GoatMediaStackarr (port 2806) and Jellyfin (port 8096, for TV and phone apps).
+The engines listen only inside the container. The only ways in are GoatMediaStackarr (port 2806), Jellyfin (port 8096, for TV and phone apps) and Seerr's request page (port 5055, with its own sign-in through Jellyfin or Plex).
 
 ## Install on Unraid
 
@@ -58,6 +58,7 @@ Use the template in [`unraid/goatmediastackarr.xml`](unraid/goatmediastackarr.xm
 | Repository | `ghcr.io/bdlnaredi/goatmediastackarr:latest` |
 | Port 2806 | GoatMediaStackarr |
 | Port 8096 | Jellyfin |
+| Port 5055 | Seerr request page |
 | Port 32400 | Plex, only if turned on |
 | `/config` | `/mnt/user/appdata/goatmediastackarr` (every app's settings; back this up) |
 | `/media` | `/mnt/user/media` (your library) |

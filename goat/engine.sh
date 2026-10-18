@@ -48,8 +48,9 @@ case "$name" in
     for ff in /usr/lib/jellyfin-ffmpeg/ffmpeg /usr/bin/ffmpeg; do [[ -x "$ff" ]] && { cmd+=(--ffmpeg "$ff"); break; }; done
     export TMPDIR=/config/jellyfin/tmp; mkdir -p "$TMPDIR" && chown "$PUID:$PGID" "$TMPDIR" ;;
   seerr)
+    # Seerr cannot run under a sub-address, so it has its own port (5055) for its request page. It has its own sign-in.
     cd /opt/seerr || exit 1
-    export NODE_ENV=production CONFIG_DIRECTORY=/config/seerr HOST=127.0.0.1 PORT=5055
+    export NODE_ENV=production CONFIG_DIRECTORY=/config/seerr HOST=0.0.0.0 PORT=5055
     cmd=(/usr/local/bin/node dist/index.js) ;;
   tautulli)
     if in_list plex "${GOAT_ENGINES,,}"; then

@@ -6,6 +6,7 @@ services:
     ports:
       - "2806:2806"   # GoatMediaStackarr
       - "8096:8096"   # Jellyfin for TV and phone apps
+      - "5055:5055"   # Seerr request page
       # - "32400:32400" # Plex, if you add plex to GOAT_ENGINES
     environment:
       - PUID=1000
