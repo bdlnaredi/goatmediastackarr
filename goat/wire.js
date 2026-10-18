@@ -257,7 +257,9 @@ async function run() {
   const on = E.enabled();
   const keys = {};
   for (const x of readJSON(mf).services || []) if (x.apiKey) keys[x.key] = x.apiKey;
-  const state = { at: Date.now(), steps: {} };
+  // `running` lets the Stack page show that connecting is still going on and refresh itself until it ends.
+  const state = { at: Date.now(), running: true, steps: {} };
+  writeJSON(`${C}/goat/wired.json`, state);
   const step = async (name, fn) => {
     try { state.steps[name] = { ok: true, result: await fn() }; log(`${name}: ok`, JSON.stringify(state.steps[name].result)); }
     catch (e) { state.steps[name] = { ok: false, error: e.message }; log(`${name}: FAILED - ${e.message}`); }
@@ -292,6 +294,8 @@ async function run() {
     if (round > 1) { log(`trying again in ${pause / 1000}s: ${todo.map(([k]) => k).join(', ')}`); await sleep(pause); }
     for (const [k, fn] of todo) await step(k, fn);
   }
+  state.running = false; state.finished = Date.now();
+  writeJSON(`${C}/goat/wired.json`, state);
   const bad = Object.entries(state.steps).filter(([, v]) => !v.ok).map(([k]) => k);
   log(bad.length ? `finished with problems in: ${bad.join(', ')}. These are retried at the next container start.` : 'all engines connected.');
   return state;
