@@ -180,7 +180,7 @@ class ScreensTest {
         val n = lists.fetchSemanticsNodes().size
         var last: Throwable? = null
         for (i in n - 1 downTo 0) {
-            try { lists[i].performScrollToNode(hasText(text, substring = true)); compose.waitForIdle(); return } catch (e: Throwable) { last = e }
+            try { lists[i].performScrollToNode(hasText(text, substring = true, ignoreCase = true)); compose.waitForIdle(); return } catch (e: Throwable) { last = e }
         }
         throw AssertionError("No list on screen has \"$text\"", last)
     }
