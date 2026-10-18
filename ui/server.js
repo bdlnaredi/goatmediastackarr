@@ -110,8 +110,8 @@ const lists = listsLib.create({ keys: listKeys,
   seerrPoster: async (kind, id) => { const s = db.services.find(x => x.type === 'seerr'); if (!s) return ''; const r = await fetch(`${s.url.replace(/\/+$/, '')}/api/v1/${kind === 'tv' ? 'tv' : 'movie'}/${id}`, { signal: AbortSignal.timeout(8000), headers: { 'X-Api-Key': s.apiKey } }); return r.ok ? ((await r.json()).posterPath || '') : ''; } });
 const pubUser = u => ({ email: u.email || '', twofa: !!(u.totp && u.totp.on), id: u.id, name: u.name, role: u.role, access: u.access, perms: u.perms || null, notify: u.notify || '', dash: u.dash || null, reqLimit: u.reqLimit || null, autoApprove: !!u.autoApprove, plex: u.plex ? { name: u.plex.name } : null, hide: cleanHide(u.hide), restr: u.plexRules ? Object.fromEntries(['contentRating', 'contentRating!', 'label', 'label!'].filter(k => (u.plexRules[k] || []).length).map(k => [k, u.plexRules[k]])) : null, libs: u.plex ? { n: ((u.plexLibs || {}).mine || []).length, of: ((u.plexLibs || {}).all || []).length, limited: libLimited(u) } : null, plexName: u.plexName || '', lists: lists.enabled(), avatar: u.avatar ? `/api/avatar/${u.id}?v=${u.avatar.v}` : '', dataLimit: u.dataLimit || 0, streamLimit: u.streamLimit == null ? null : u.streamLimit });
 // What the folders the apps report mean, in words (these are the container's own folders).
-const DISK_NAMES = { '/media': 'Media library', '/data': 'Media library', '/downloads': 'Downloads', '/config': 'App data (settings and databases)', '/': 'Container (Docker image)' };
-const DISK_ORDER = ['Media library', 'Downloads', '', 'App data (settings and databases)', 'Container (Docker image)'];
+const DISK_NAMES = { '/media': 'Media library', '/data': 'Media library', '/downloads': 'Downloads', '/config': 'App data', '/': 'Container (Docker image)' };
+const DISK_ORDER = ['Media library', 'Downloads', '', 'App data', 'Container (Docker image)'];
 const pubSvc = s => ({ id: s.id, type: s.type, name: s.name, url: s.url, managed: !!s.managed });
 
 // ---------- What each person uses: the space their requests take on the disks, and what they watched ----------
