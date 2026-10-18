@@ -1,15 +1,24 @@
 package com.bdlnaredi.goatstack.data
 
 import android.content.Context
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
+import androidx.datastore.preferences.preferencesDataStoreFile
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
-private val Context.store by preferencesDataStore(name = "goat")
+/** One settings file for the whole app; opening it twice in one process is not allowed. */
+private object Files {
+    @Volatile private var ds: DataStore<Preferences>? = null
+    fun of(ctx: Context): DataStore<Preferences> = ds ?: synchronized(this) {
+        ds ?: PreferenceDataStoreFactory.create { ctx.applicationContext.preferencesDataStoreFile("goat") }.also { ds = it }
+    }
+}
+private val Context.store: DataStore<Preferences> get() = Files.of(this)
 
 /** What the app keeps on this phone: the server's address, the sign-in, and the chosen look. All private to the app. */
 class Store(private val ctx: Context) {

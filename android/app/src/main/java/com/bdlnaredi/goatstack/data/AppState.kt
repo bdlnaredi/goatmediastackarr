@@ -35,12 +35,16 @@ class AppState(private val store: Store) {
 
     init {
         scope.launch {
-            val s = store.load()
+            // Settings that cannot be read are treated like a first start, never as a reason to hang.
+            val s = try { store.load() } catch (_: Exception) { Store.Saved("", null, "goat", "") }
             _theme.value = s.theme
-            server = s.server
             lastLibrary = s.library
-            if (s.server.isEmpty()) _phase.value = Phase.NeedServer
-            else { api.configure(s.server, s.sid); refresh() }
+            // Only if nothing else (a sign-in, a new server) happened while the settings were being read.
+            if (_phase.value is Phase.Starting) {
+                server = s.server
+                if (s.server.isEmpty()) _phase.value = Phase.NeedServer
+                else { api.configure(s.server, s.sid); refresh() }
+            }
         }
         scope.launch { api.signedOut.collect { if (_phase.value is Phase.Ready) refresh() } }
     }

@@ -53,7 +53,6 @@ class ScreensTest {
         val store = Store(ApplicationProvider.getApplicationContext())
         runBlocking { store.setServer("") }
         state = AppState(store)
-        compose.waitUntil(10_000) { state.phase.value !is Phase.Starting }
     }
 
     @After fun stop() { server.shutdown() }
