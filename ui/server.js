@@ -1158,15 +1158,15 @@ const goatServer = http.createServer(async (req, res) => {
         if (p.endsWith('/check')) {
           let pl; try { pl = await importer.plan(kind, from, to); } catch (e) { return send(res, 502, { error: e.message }); }
           const suggest = kind === 'prowlarr' ? [] : pl.roots.map(r => [r, pl.newRoots[0] || '']);
-          return send(res, 200, { kind, total: pl.total, already: pl.already, todo: pl.todo, roots: pl.roots, newRoots: pl.newRoots, profiles: pl.profiles, suggest });
+          return send(res, 200, { kind, total: pl.total, already: pl.already, todo: pl.todo, roots: pl.roots, newRoots: pl.newRoots, profiles: pl.profiles, settings: pl.settings || null, suggest });
         }
         if (goatImport && goatImport.state === 'running') return send(res, 409, { error: 'An import is already running' });
         const map = Array.isArray(b.map) ? b.map.filter(x => Array.isArray(x) && x.length === 2).map(([a, c]) => [String(a), String(c)]).slice(0, 50) : [];
         if (kind !== 'prowlarr' && !map.length) return send(res, 400, { error: 'Say where each old folder is inside GoatMediaStackarr' });
         goatImport = { state: 'running', kind, done: 0, total: 0, added: 0, skipped: 0, failed: [], at: Date.now() };
         audit(me.name, 'Started an import', kind + ' from ' + from.url);
-        importer.run(kind, from, to, map, pr => { Object.assign(goatImport, pr); })
-          .then(r => { Object.assign(goatImport, r, { state: 'done', finished: Date.now() }); audit('GoatMediaStackarr', 'Import finished', `${kind}: ${r.added} added, ${r.skipped} already there, ${r.failed.length} failed`); })
+        importer.run(kind, from, to, map, pr => { Object.assign(goatImport, pr); }, { settings: b.settings === true })
+          .then(r => { Object.assign(goatImport, r, { state: 'done', finished: Date.now() }); audit('GoatMediaStackarr', 'Import finished', `${kind}: ${r.added} added, ${r.skipped} already there, ${r.failed.length} failed${r.settings ? `; profiles ${r.settings.profiles.added} added, ${r.settings.profiles.updated} replaced; custom formats ${r.settings.formats.added} added, ${r.settings.formats.updated} replaced` : ''}`); })
           .catch(e => { Object.assign(goatImport, { state: 'error', error: e.message }); });
         return send(res, 200, goatImport);
       }
