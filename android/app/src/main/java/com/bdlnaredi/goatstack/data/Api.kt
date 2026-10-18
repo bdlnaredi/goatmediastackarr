@@ -126,10 +126,12 @@ class Api(private val onSession: (String?) -> Unit) {
                         if (line.startsWith("data:")) {
                             val data = line.removePrefix("data:").trim()
                             if (data.isNotEmpty()) emit(json.decodeFromString<Live>(data))
+                            if (com.bdlnaredi.goatstack.ui.Tuning.still) return@flow
                         }
                     }
                 }
             } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
+            if (com.bdlnaredi.goatstack.ui.Tuning.still) return@flow
             delay(3000)
         }
     }.flowOn(Dispatchers.IO)

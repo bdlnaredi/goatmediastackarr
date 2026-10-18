@@ -182,9 +182,11 @@ fun Backdrop(url: String?, modifier: Modifier = Modifier, height: Dp = 260.dp, c
 
 @Composable
 fun LoadingBlock(modifier: Modifier = Modifier, rows: Int = 4) {
-    val t = rememberInfiniteTransition(label = "shimmer")
-    val a by t.animateFloat(0.35f, 0.75f, infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "a")
     val g = LocalGoat.current
+    val a = if (Tuning.still) 0.5f else {
+        val t = rememberInfiniteTransition(label = "shimmer")
+        t.animateFloat(0.35f, 0.75f, infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "a").value
+    }
     Column(modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         repeat(rows) { i ->
             Box(Modifier.fillMaxWidth(if (i % 2 == 0) 1f else 0.7f).height(if (i == 0) 120.dp else 56.dp).clip(RoundedCornerShape(18.dp)).background(g.card.copy(alpha = a)))

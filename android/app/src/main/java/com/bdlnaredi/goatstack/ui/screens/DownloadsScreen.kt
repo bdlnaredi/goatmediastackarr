@@ -85,7 +85,7 @@ fun DownloadsScreen() {
 /** Asks again every [ms] while the screen is open, keeping what is shown until the new answer arrives. */
 @Composable
 fun AutoRefresh(ms: Long, reload: () -> Unit) {
-    LaunchedEffect(ms) { while (true) { delay(ms); reload() } }
+    LaunchedEffect(ms) { if (!com.bdlnaredi.goatstack.ui.Tuning.still) while (true) { delay(ms); reload() } }
 }
 
 @Composable

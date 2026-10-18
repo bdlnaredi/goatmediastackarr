@@ -21,7 +21,8 @@ class GoatApp : Application(), ImageLoaderFactory {
     // sign-in) loads too. Kept on disk so posters do not download again every time.
     override fun newImageLoader(): ImageLoader = ImageLoader.Builder(this)
         .okHttpClient(state.api.client)
-        .crossfade(true)
+        .crossfade(!com.bdlnaredi.goatstack.ui.Tuning.still)
+        .allowHardware(!com.bdlnaredi.goatstack.ui.Tuning.still)
         .memoryCache { MemoryCache.Builder(this).maxSizePercent(0.2).build() }
         .diskCache { DiskCache.Builder().directory(cacheDir.resolve("posters")).maxSizeBytes(150L * 1024 * 1024).build() }
         .respectCacheHeaders(false)
