@@ -54,6 +54,27 @@ The engines listen only inside the container. The only ways in are GoatMediaStac
 - **Weekly rebuild**: every Monday, GitHub rebuilds the image with the newest release of every engine and runs every check. Only if all of them pass is it published as `latest` (also `weekly` and `weekly-YYYYMMDD`). Unraid then offers it as an update. Version tags such as `0.2.0` don't change.
 - **Intel/AMD and ARM**: the same image name works on x86 servers and on 64-bit ARM (Raspberry Pi 4/5 with a 64-bit OS, ARM NAS boxes, Apple-silicon hosts). FlareSolverr is the only part that's x86-only.
 
+## Android app
+
+A real Android app (not a web page in a frame), with its own design and eight themes to choose from under **Settings → Appearance**: G.O.A.T. Gold, Midnight (true black for OLED), Ember, Aurora, Forest, Paper, Glacier and Material You (colours from your wallpaper, Android 12+).
+
+<p>
+<img src="docs/android/03-home.png" width="19%" alt="Home">
+<img src="docs/android/04-discover.png" width="19%" alt="Discover">
+<img src="docs/android/06-show.png" width="19%" alt="A show">
+<img src="docs/android/07-downloads.png" width="19%" alt="Downloads">
+<img src="docs/android/12-settings.png" width="19%" alt="Themes">
+</p>
+
+- **Home**: download and upload speed, what is playing, what is downloading, what is coming up, the latest requests, and whether every app and the VPN are fine.
+- **Discover** (TMDB, Trakt, TheTVDB lists) and **Search**: request through Seerr (whole show or chosen seasons), or add straight to Sonarr or Radarr with a quality profile and folder.
+- **Library**: your shows and movies, with what is missing; each one has a page with its seasons and episodes, monitoring, Search now and (for admins) Remove.
+- **Downloads**: qBittorrent and SABnzbd, with pause, resume, force start, check and remove.
+- **Requests** (admins approve or decline), **Upcoming**, and for admins the **Stack** page: VPN, restart any app, connect the apps again.
+- **Sign in** with your GoatMediaStackarr name and password (two-step codes work), or with **Sign in with Plex**, which opens Plex's own page and comes back signed in. Plex sign-in has to be turned on on the web page first (Settings, then Plex sign-in), and Plex users see only what their profile allows, as on the web.
+
+**Install:** download `goatmediastackarr.apk` from the [latest release](https://github.com/bdlnaredi/goatmediastackarr/releases/latest) on your phone and open it (Android asks once to allow installing from your browser). Newer versions install over older ones. Open the app and enter the same address you use in the browser, for example `192.168.1.10:2806` at home. Android 8 or newer.
+
 ## Install on Unraid
 
 Use the template in [`unraid/goatmediastackarr.xml`](unraid/goatmediastackarr.xml), or add a container with:

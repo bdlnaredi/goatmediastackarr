@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Android app: a native app (Kotlin and Jetpack Compose) with its own design and eight themes, Home, Discover, Search, Library with show and movie pages, Downloads, Requests, Upcoming, Stack and Settings; sign in with a password (and two-step code) or with Plex. Each release has `goatmediastackarr.apk` attached.
 - Smaller image: Bazarr and SABnzbd are built in a separate stage, so compilers no longer ship in the image; identical .NET runtime files shared by Sonarr, Radarr, Lidarr and Prowlarr are stored once; Seerr's source maps and docs are dropped.
 - Runs on 64-bit ARM as well as x86: one image name for both, each built on its own native machine. Bazarr uses Jellyfin's ffmpeg and ffprobe, since its own download only has them for x86.
 - Weekly rebuild with the newest engines, published as `latest` only when every check passes.
