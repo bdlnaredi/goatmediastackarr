@@ -153,10 +153,10 @@ fun Confirm(title: String, text: String, yes: String, danger: Boolean = false, e
 }
 
 @Composable
-fun CheckLine(text: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+fun CheckLine(text: String, checked: Boolean, danger: Boolean = false, onChange: (Boolean) -> Unit) {
     val g = LocalGoat.current
     Row(Modifier.fillMaxWidth().clickable { onChange(!checked) }.padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-        Checkbox(checked, onChange, colors = CheckboxDefaults.colors(checkedColor = g.bad))
+        Checkbox(checked, onChange, colors = CheckboxDefaults.colors(checkedColor = if (danger) g.bad else g.primary))
         Spacer(Modifier.width(4.dp))
         Text(text, color = g.text)
     }

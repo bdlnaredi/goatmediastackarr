@@ -269,7 +269,7 @@ fun DetailScreen(sid: String, kind: String, id: Long) {
         }
         if (remove) Confirm(
             "Remove ${x.title}?", "It is taken out of ${if (tv) "Sonarr" else "Radarr"} and will not be downloaded again.", "Remove", danger = true,
-            extra = { CheckLine("Also delete its files from the disk", withFiles) { withFiles = it } },
+            extra = { CheckLine("Also delete its files from the disk", withFiles, danger = true) { withFiles = it } },
             onYes = {
                 remove = false
                 scope.launch {

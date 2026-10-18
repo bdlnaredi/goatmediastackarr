@@ -175,7 +175,7 @@ private fun Torrents(sid: String) {
     }
     deleting?.let { t ->
         Confirm("Remove this download?", t.name, "Remove", danger = true,
-            extra = { CheckLine("Also delete the downloaded files", withFiles) { withFiles = it } },
+            extra = { CheckLine("Also delete the downloaded files", withFiles, danger = true) { withFiles = it } },
             onYes = { deleting = null; act("delete", t, "Removed", files = withFiles) }, onNo = { deleting = null })
     }
 }
