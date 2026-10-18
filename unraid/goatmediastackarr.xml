@@ -15,6 +15,7 @@
   <ExtraParams>--cap-add=NET_ADMIN --device=/dev/net/tun --sysctl net.ipv4.conf.all.src_valid_mark=1 --sysctl net.ipv4.conf.all.rp_filter=2</ExtraParams>
   <Config Name="Web port" Target="2806" Default="2806" Mode="tcp" Description="GoatMediaStackarr web page" Type="Port" Display="always" Required="true" Mask="false">2806</Config>
   <Config Name="Jellyfin port" Target="8096" Default="8096" Mode="tcp" Description="For Jellyfin apps on TVs and phones" Type="Port" Display="always" Required="true" Mask="false">8096</Config>
+  <Config Name="Seerr port" Target="5055" Default="5055" Mode="tcp" Description="Seerr's own request page, for family and friends to ask for shows and movies" Type="Port" Display="always" Required="false" Mask="false">5055</Config>
   <Config Name="Plex port" Target="32400" Default="32400" Mode="tcp" Description="Only used if Plex is turned on (add plex to Apps to run)" Type="Port" Display="advanced" Required="false" Mask="false">32400</Config>
   <Config Name="Plex claim code" Target="PLEX_CLAIM" Default="" Mode="" Description="Only for built-in Plex: a code from https://plex.tv/claim links it to your Plex account. Codes last 4 minutes, so start the container right after. Not needed again once linked." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
   <Config Name="Seerr media server" Target="SEERR_MEDIA_SERVER" Default="jellyfin|plex" Mode="" Description="Which media server Seerr uses when both Jellyfin and Plex run" Type="Variable" Display="advanced" Required="false" Mask="false">jellyfin</Config>

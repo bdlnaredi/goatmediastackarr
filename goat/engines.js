@@ -1,6 +1,6 @@
 'use strict';
 // One place that knows where every engine lives inside the container.
-// Ports are internal: everything except the UI (2806), Jellyfin (8096) and Plex (32400) listens on 127.0.0.1 only.
+// Ports are internal: everything except the UI (2806), Jellyfin (8096), Seerr (5055) and Plex (32400) listens on 127.0.0.1 only.
 
 const CONFIG = process.env.GOAT_CONFIG_DIR || '/config';
 // Media library and downloads are separate container folders by default (/media and /downloads).
