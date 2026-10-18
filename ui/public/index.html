@@ -511,15 +511,18 @@ async function api(url,method='GET',body){
 }
 let DEMO=false;
 let REC=false,PLEXLOGIN=false;
-let VER='';const APPMODE=/MediaHubApp\//.test(navigator.userAgent);
+let VER='',GOAT=false;const APPMODE=/MediaHubApp\//.test(navigator.userAgent);
 async function start(){
   await loadLang();
   const s=await api('/api/me');
-  VER=s.version||'';DEMO=!!s.demo;REC=!!s.recovery;PLEXLOGIN=!!s.plexLogin;ICONB=s.iconBase?s.iconBase.replace(/\/*$/,'/'):'';
+  VER=s.version||'';GOAT=!!s.goat;DEMO=!!s.demo;REC=!!s.recovery;PLEXLOGIN=!!s.plexLogin;ICONB=s.iconBase?s.iconBase.replace(/\/*$/,'/'):'';
   const rt=(location.hash.match(/^#reset=([\w-]{20,80})$/)||[])[1];
   if(rt)return resetView(rt);
   if(!s.user)return authView(s.setup,s.setupCode);
-  DEMO=!!s.demo;me=s.user;await load();render();
+  DEMO=!!s.demo;me=s.user;await load();
+  // First visit to a new GoatMediaStackarr: open the Stack page, where the setup checklist is, until it is marked done.
+  if(GOAT&&me.role==='admin')try{const g=await api('/api/goat/status');if(!(g.settings&&g.settings.setup&&g.settings.setup.done))tab='goat'}catch{}
+  render();
 }
 async function load(){
   services=await api('/api/services');
@@ -630,7 +633,7 @@ function codeView(ticket){
     try{await api('/api/login/2fa','POST',{ticket,code:e.target.code.value.trim()});start()}
     catch(x){$('#e').textContent=x.message;if(/start again|expired|too many/i.test(x.message))setTimeout(()=>authView(false,false),1500)}};
 }
-const ICONS={ext:'<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+const ICONS={goat:'<path d="M12 3 3 7.5l9 4.5 9-4.5L12 3zM3 12l9 4.5 9-4.5M3 16.5 12 21l9-4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>',ext:'<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
  mb:'<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
  sub:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 11h3M13 11h4M7 15h5M15 15h2"/>',
  nzb:'<path d="M7 18a4 4 0 0 1-.6-7.96A6 6 0 0 1 18 9a4.5 4.5 0 0 1-.5 9H7z"/><path d="M12 11v6m0 0-2.5-2.5M12 17l2.5-2.5"/>',
@@ -665,11 +668,11 @@ const ic=k=>`<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${ICONS[k]}<
 const LOGO='<img src="/icon-192.png" alt="" width="38" height="38">';
 const PAGES={dash:['',''],find:['Search','Find a show or movie and add it to Sonarr or Radarr.'],disc:['Discover','What is trending, popular and anticipated on Trakt, TMDB and TheTVDB.'],rq:['Requests','Ask for something new, or approve what others asked for.'],lib:['Library','Everything in Sonarr and Radarr, and what is still missing.'],
  wt:['Wanted','Episodes and movies you are still missing, or that could be a better quality.'],dl:['Downloads','What qBittorrent is fetching right now.'],rss:['RSS','Feeds and auto-download rules from qBittorrent.'],up:['Upcoming','Releases coming soon, and what is downloading.'],
- idx:['Indexers','Search, check, add and remove the indexers in Jackett and Prowlarr.'],mb:['Music and books','Artists and authors from Lidarr and Readarr.'],sub:['Subtitles','Episodes and movies that are missing subtitles in Bazarr.'],nzb:['Usenet','What SABnzbd is fetching, what finished, and adding NZB files.'],hl:['Health','Problems, disk space and stuck downloads across your apps.'],ur:['Unraid','Server health, disks and containers.'],stats:['Watch stats','Who watches what on Plex.'],set:['Settings','Apps, profiles, alerts, backups and how GoatMediaStackarr looks.']};
-const TABS=[['dash','Dashboard'],['find','Search'],['disc','Discover'],['rq','Requests'],['lib','Library'],['wt','Wanted'],['dl','Downloads'],['rss','RSS'],['up','Upcoming'],['idx','Indexers'],['mb','Music & books'],['sub','Subtitles'],['nzb','Usenet'],['hl','Health'],['ur','Unraid'],['stats','Stats'],['set','Settings']];
+ idx:['Indexers','Search, check, add and remove the indexers in Jackett and Prowlarr.'],mb:['Music and books','Artists and authors from Lidarr and Readarr.'],sub:['Subtitles','Episodes and movies that are missing subtitles in Bazarr.'],nzb:['Usenet','What SABnzbd is fetching, what finished, and adding NZB files.'],hl:['Health','Problems, disk space and stuck downloads across your apps.'],ur:['Unraid','Server health, disks and containers.'],stats:['Watch stats','Who watches what on Plex.'],goat:['Stack','The apps inside GoatMediaStackarr: VPN, connections, logins and restarts.'],set:['Settings','Apps, profiles, alerts, backups and how GoatMediaStackarr looks.']};
+const TABS=[['dash','Dashboard'],['find','Search'],['disc','Discover'],['rq','Requests'],['lib','Library'],['wt','Wanted'],['dl','Downloads'],['rss','RSS'],['up','Upcoming'],['idx','Indexers'],['mb','Music & books'],['sub','Subtitles'],['nzb','Usenet'],['hl','Health'],['ur','Unraid'],['stats','Stats'],['goat','Stack'],['set','Settings']];
 const TYPE_TABS={find:['sonarr','radarr'],rq:['seerr'],lib:['sonarr','radarr'],wt:['sonarr','radarr'],dl:['qbittorrent'],rss:['qbittorrent'],up:['sonarr','radarr'],idx:['jackett','prowlarr'],mb:['lidarr','readarr'],sub:['bazarr'],nzb:['sabnzbd'],ur:['unraid'],stats:['tautulli']};
 const PICK={sub:'bazarr',nzb:'sabnzbd',dl:'qbittorrent',rss:'qbittorrent',idx:'jackett',ur:'unraid',rq:'seerr',stats:'tautulli'};
-const visibleTabs=()=>TABS.filter(([k])=>!TYPE_TABS[k]||TYPE_TABS[k].some(t=>ofType(t).length)).filter(([k])=>k!=='disc'||Object.values(me.lists||{}).some(Boolean)).filter(([k])=>k!=='hl'||(me.role==='admin'&&services.some(s=>['sonarr','radarr','lidarr','readarr','prowlarr'].includes(s.type))));
+const visibleTabs=()=>TABS.filter(([k])=>!TYPE_TABS[k]||TYPE_TABS[k].some(t=>ofType(t).length)).filter(([k])=>k!=='disc'||Object.values(me.lists||{}).some(Boolean)).filter(([k])=>k!=='hl'||(me.role==='admin'&&services.some(s=>['sonarr','radarr','lidarr','readarr','prowlarr'].includes(s.type)))).filter(([k])=>k!=='goat'||(GOAT&&me.role==='admin'));
 let stSub='acct';
 function goto(k){if(String(k).includes(':')){const [t,s]=k.split(':');tab=t==='st'?'set':t;stSub=s}else tab=k;render()}
 function render(){
@@ -693,7 +696,7 @@ $('#rl').onclick=()=>{UI.rail=!UI.rail;saveUI()};$('#qs').onclick=quick;
     $('#pk2').onchange=e=>{UI['pick_'+pt]=e.target.value;saveUI();render()}}
   [].concat(timer||[]).forEach(clearInterval);liveFns=[];LIVE.subs.clear();if(tab!=='dash'&&tab!=='ur')liveStop();
   const on=document.querySelector('.nv.on');if(on&&on.scrollIntoView)on.scrollIntoView({inline:'center',block:'nearest'});
-  ({dash:dashView,find:findView,disc:discView,rq:rqView,lib:libView,wt:wtView,dl:dlView,rss:rssView,up:upView,idx:idxView,mb:mbView,sub:subView,nzb:nzbView,hl:hlView,ur:urView,stats:statsView,set:setView})[tab]();
+  ({dash:dashView,find:findView,disc:discView,rq:rqView,lib:libView,wt:wtView,dl:dlView,rss:rssView,up:upView,idx:idxView,mb:mbView,sub:subView,nzb:nzbView,hl:hlView,ur:urView,stats:statsView,goat:goatView,set:setView})[tab]();
   if(arrOnce())Cinema.load(api);
   const mm=$('#m');if(mm){mm.classList.remove('pgin');void mm.offsetWidth;mm.classList.add('pgin')}
 }
@@ -1909,6 +1912,10 @@ function urView(){
 function ringMk(id){return `<svg class="rg" viewBox="0 0 100 100" role="img" aria-label="${id}" id="rg-${id}"><circle cx="50" cy="50" r="42" fill="none" style="stroke:var(--line)" stroke-width="9"/><circle class="rv2" cx="50" cy="50" r="42" fill="none" stroke-width="9" stroke-linecap="round" stroke-dasharray="0 264" transform="rotate(-90 50 50)"/><text x="50" y="58" text-anchor="middle" class="rt">–</text></svg>`}
 function ringSet(id,pct){const e=$('#rg-'+id);if(!e)return;const v=Math.max(0,Math.min(100,+pct||0)),c=2*Math.PI*42,a=e.querySelector('.rv2');a.setAttribute('stroke-dasharray',`${(c*v/100).toFixed(1)} ${c.toFixed(1)}`);a.style.stroke=col(v);e.querySelector('.rt').textContent=v.toFixed(0)+'%';e.setAttribute('aria-label',`${id} ${v.toFixed(0)} percent`)}
 async function vpnPill(s,sel){
+  // Inside GoatMediaStackarr the VPN belongs to the container itself.
+  if(GOAT&&me.role==='admin')try{const g=(await api('/api/goat/status')).vpn,el=$(sel);if(!el)return;
+    el.className='pill '+(g.state==='up'?'ok':g.enabled?'bad':'');
+    el.textContent=g.state==='up'?`VPN on${g.country?' · '+g.country:''}`:g.enabled?'VPN down: downloads paused':'VPN off';el.dataset.go='goat';return}catch{}
   try{const d=await api('/api/vpn/'+s.id),el=$(sel);if(!el)return;
     el.className='pill '+(d.vpn===true?'ok':d.vpn===false?'bad':'');
     el.textContent=d.vpn===true?'VPN active '+d.ip:d.vpn===false?'Not using the VPN':'VPN status unknown'}catch{}
@@ -2279,6 +2286,82 @@ async function subView(){
         for(let i=0;i<rows.length;i++){if(tab!=='sub')return;a.textContent=`Searching ${i+1} of ${rows.length}…`;const r=await one(rows[i]);if(!r.error)ok++}
         toast(`Subtitles found for ${ok} of ${rows.length}`,ok?'ok':'bad');load()}}};
   load();
+}
+
+// ---------- Stack: the apps inside the GoatMediaStackarr container
+const GOAT_PAGES={sonarr:1,radarr:1,lidarr:1,prowlarr:1,bazarr:1,qbittorrent:1,sabnzbd:1,tautulli:1};
+const GOAT_VPNAPPS=[['qbittorrent','qBittorrent'],['sabnzbd','SABnzbd'],['prowlarr','Prowlarr']];
+const goatOpen=k=>GOAT_PAGES[k]?`/engines/${k}/`:k==='jellyfin'?`${location.protocol}//${location.hostname}:8096/`:k==='plex'?`${location.protocol}//${location.hostname}:32400/web/`:'';
+async function goatView(){
+  $('#m').innerHTML=skel(4);
+  let st;try{st=await api('/api/goat/status')}catch(e){$('#m').innerHTML=`<div class="panel">${esc(e.message)}</div>`;return}
+  if(tab!=='goat')return;
+  const S=st.settings||{},V=S.vpn||{},vpn=st.vpn||{},steps=(st.wired&&st.wired.steps)||{};
+  const vOn=V.enabled!==undefined?V.enabled:!!vpn.enabled,vType=V.type||vpn.type||'wireguard',vApps=V.apps||vpn.apps||GOAT_VPNAPPS.map(a=>a[0]);
+  const pill=vpn.state==='up'?`<span class="pill ok">Connected${vpn.country?' · '+esc(vpn.country):''}${vpn.ip?' · '+esc(vpn.ip):''}</span>`
+    :vpn.enabled?`<span class="pill bad">${vpn.state==='waiting'?'Waiting for a VPN file':vpn.state==='connecting'?'Connecting…':'Not connected'}</span>`:'<span class="pill">Off</span>';
+  const hasPlex=st.engines.some(e=>e.key==='plex'),plexOk=steps.plex&&steps.plex.ok;
+  const done=S.setup&&S.setup.done;
+  const check=(ok,label,hint)=>`<div class="row" style="gap:10px;margin:6px 0"><span class="pill ${ok?'ok':''}" style="min-width:26px;justify-content:center">${ok?ic('check'):'·'}</span><span><b>${label}</b>${hint?`<div class="mute">${hint}</div>`:''}</span></div>`;
+  const wiredAll=Object.keys(steps).length&&Object.values(steps).every(x=>x.ok);
+  $('#m').innerHTML=`
+  ${done?'':`<div class="panel" id="gw"><h2 style="margin-top:0">Finish setting up</h2>
+    ${check(wiredAll,'Apps connected to each other','Done automatically on first start.'+(wiredAll?'':' See Connections below.'))}
+    ${check(vpn.state==='up'||vOn===false,'VPN for the download apps','Upload your VPN provider\'s file below, or leave the VPN off.')}
+    ${check(services.some(x=>x.type==='prowlarr'),'Indexers','Add the sites to search in <a href="#" data-go="idx">Indexers</a>. Prowlarr shares them with Sonarr, Radarr and Lidarr.')}
+    ${check(false,'Usenet (optional)','If you use usenet, add your provider\'s server in <a href="#" data-go="nzb">Usenet</a>.')}
+    ${hasPlex?check(plexOk,'Link Plex to your account','Use a claim code below.'):''}
+    <div class="row"><button class="primary" id="gdone">${ic('check')}I'm done, hide this</button></div></div>`}
+  <h2 class="sec">VPN</h2>
+  <div class="panel" id="gvp">
+    <div class="row" style="gap:12px">${pill}${vpn.port?`<span class="pill">Port ${esc(vpn.port)}</span>`:''}<span class="grow"></span><button id="glt"${vpn.state==='up'?'':' disabled'}>${ic('eye')}Leak test</button></div>
+    <div class="mute" id="gltr" style="margin:8px 0">${esc(vpn.message||'')}</div>
+    <label class="row" style="gap:8px;margin:10px 0"><input type="checkbox" id="gvon"${vOn?' checked':''}> <b>Send the download apps through the VPN</b></label>
+    <div id="gvset"${vOn?'':' hidden'}>
+      <div class="mute">Apps that use the VPN. The others, like Jellyfin streaming, keep your normal connection.</div>
+      <div class="row" style="gap:16px;margin:6px 0 12px">${GOAT_VPNAPPS.map(([k,n])=>`<label class="row" style="gap:6px"><input type="checkbox" data-va="${k}"${vApps.includes(k)?' checked':''}> ${n}</label>`).join('')}</div>
+      <label class="mute">VPN provider file (WireGuard .conf or OpenVPN .ovpn)<input type="file" id="gvf" accept=".conf,.ovpn"></label>
+      <div class="mute" style="margin:4px 0 10px">${st.vpnFiles.length?'Using '+esc(st.vpnFiles.join(', ')):'No file yet.'}</div>
+      <div id="govpn"${vType==='openvpn'?'':' hidden'}><input id="gvu" placeholder="OpenVPN username (if your provider uses one)" value="${esc(V.user||'')}" aria-label="OpenVPN username"><input id="gvpw" type="password" placeholder="${V.pass?'Password saved (type to change)':'OpenVPN password'}" aria-label="OpenVPN password"></div>
+      <label class="mute">Port forwarding <select id="gvpf"><option value="off">Off</option><option value="natpmp"${V.portForward==='natpmp'?' selected':''}>NAT-PMP (ProtonVPN and others)</option></select></label>
+    </div>
+    <div class="row" style="margin-top:12px"><button class="primary" id="gva">${ic('check')}Save and apply</button><span class="mute">Restarts the VPN and the download apps.</span></div>
+    <div class="err" id="gve"></div>
+  </div>
+  <h2 class="sec">Apps</h2>
+  <div class="panel">${st.engines.map(e=>`<div class="row" style="gap:10px;padding:6px 0;border-bottom:1px solid var(--line)">
+      <span class="pill ${e.ok===true?'ok':e.ok===false?'bad':''}" style="min-width:12px"></span><b>${esc(e.name)}</b><span class="grow"></span>
+      ${goatOpen(e.key)?`<a class="btn" href="${goatOpen(e.key)}" target="_blank" rel="noopener">${ic('ext')}Open</a>`:''}
+      <button data-gr="${esc(e.key)}">${ic('refresh')}Restart</button></div>`).join('')}
+    <div class="mute" style="margin-top:8px">Each app's own page opens signed in through GoatMediaStackarr. Seerr is used through <a href="#" data-go="rq">Requests</a>.</div></div>
+  <h2 class="sec">Logins made for you</h2>
+  <div class="panel">${[['Jellyfin admin','jellyfin'],['qBittorrent','qbittorrent']].filter(([,k])=>st.logins[k]).map(([n,k])=>`<div class="row" style="gap:10px;margin:6px 0"><b style="min-width:130px">${n}</b><code>${esc(st.logins[k].user)}</code><code class="gpw" data-pw="${esc(st.logins[k].pass)}">••••••••</code><button data-show>${ic('eye')}Show</button></div>`).join('')||'<div class="mute">None yet.</div>'}
+    <div class="mute">Use the Jellyfin login in the Jellyfin apps on your TV and phone. You can change it in Jellyfin.</div></div>
+  ${hasPlex?`<h2 class="sec">Plex</h2><div class="panel">${plexOk?'<span class="pill ok">Linked to your Plex account</span>':`<div>Get a code from <a href="https://plex.tv/claim" target="_blank" rel="noopener">plex.tv/claim</a> while signed in to Plex, paste it here and press Link within 4 minutes.</div>
+    <div class="row" style="margin-top:8px"><input id="gpc" placeholder="claim-xxxxxxxxxxxx" aria-label="Plex claim code"><button class="primary" id="gpl">Link</button></div><div class="err" id="gpe"></div>`}</div>`:''}
+  <h2 class="sec">Connections</h2>
+  <div class="panel">${Object.keys(steps).length?Object.entries(steps).map(([k,v])=>`<div class="row" style="gap:10px;margin:4px 0"><span class="pill ${v.ok?'ok':'bad'}">${v.ok?'Connected':'Problem'}</span><b>${esc(k)}</b>${v.ok?'':`<span class="mute">${esc(v.error||'')}</span>`}</div>`).join(''):'<div class="mute">The apps are still being connected. This page shows the result when it finishes.</div>'}
+    <div class="row" style="margin-top:10px"><button id="grw">${ic('refresh')}Connect the apps again</button><span class="mute">Safe to run any time; nothing is added twice.</span></div></div>`;
+  const busy=(b,t)=>{b.disabled=true;b.dataset.t=b.innerHTML;b.textContent=t};
+  const idle=b=>{b.disabled=false;b.innerHTML=b.dataset.t};
+  $('#gvon').onchange=e=>{$('#gvset').hidden=!e.target.checked};
+  $('#gvf').onchange=async e=>{const f=e.target.files[0];if(!f)return;
+    try{const r=await api('/api/goat/vpn-file','POST',{name:f.name,content:await f.text()});toast('VPN file saved. Press Save and apply.','ok');$('#govpn').hidden=!(r.settings&&r.settings.vpn&&r.settings.vpn.type==='openvpn')}catch(x){$('#gve').textContent=x.message}};
+  $('#gva').onclick=async e=>{const b=e.currentTarget;$('#gve').textContent='';busy(b,'Applying… (up to a minute)');
+    try{const vpnS={enabled:$('#gvon').checked,apps:[...document.querySelectorAll('[data-va]')].filter(x=>x.checked).map(x=>x.dataset.va),portForward:$('#gvpf').value};
+      if($('#gvu'))vpnS.user=$('#gvu').value.trim();if($('#gvpw')&&$('#gvpw').value)vpnS.pass=$('#gvpw').value;
+      await api('/api/goat/settings','POST',{vpn:vpnS});await api('/api/goat/apply-vpn','POST',{});toast('VPN settings applied','ok');setTimeout(()=>tab==='goat'&&goatView(),4000)}
+    catch(x){$('#gve').textContent=x.message;idle(b)}};
+  const lt=$('#glt');if(lt)lt.onclick=async()=>{busy(lt,'Testing…');try{const r=await api('/api/goat/leaktest','POST',{});
+    $('#gltr').innerHTML=`<span class="pill ${r.safe?'ok':'bad'}">${r.safe?'Safe':'Not hidden'}</span> ${esc(r.verdict)} <span class="mute">VPN apps: ${esc(r.vpn.ip||'none')}${r.vpn.country?' ('+esc(r.vpn.country)+')':''}. This server: ${esc(r.home.ip)}${r.home.country?' ('+esc(r.home.country)+')':''}.</span>`}catch(x){$('#gltr').textContent=x.message}idle(lt)};
+  const gd=$('#gdone');if(gd)gd.onclick=async()=>{try{await api('/api/goat/settings','POST',{setup:{done:true}});goatView()}catch(x){toast(x.message,'bad')}};
+  const pl=$('#gpl');if(pl)pl.onclick=async()=>{const c=$('#gpc').value.trim();$('#gpe').textContent='';if(!/^claim-[\w-]{4,64}$/.test(c)){$('#gpe').textContent='A claim code looks like claim-xxxxxxxxxxxx';return}
+    busy(pl,'Linking…');try{await api('/api/goat/settings','POST',{plex:{claim:c}});await api('/api/goat/rewire','POST',{});toast('Linking Plex. This page updates in a minute.','ok');setTimeout(()=>tab==='goat'&&goatView(),60000)}catch(x){$('#gpe').textContent=x.message;idle(pl)}};
+  $('#grw').onclick=async e=>{const b=e.currentTarget;busy(b,'Starting…');try{await api('/api/goat/rewire','POST',{});toast('Connecting the apps again. Check back in a few minutes.','ok')}catch(x){toast(x.message,'bad')}idle(b)};
+  $('#m').onclick=async e=>{
+    const sh=e.target.closest('[data-show]');if(sh){const c=sh.previousElementSibling;const on=c.textContent!=='••••••••';c.textContent=on?'••••••••':c.dataset.pw;sh.lastChild.textContent=on?'Show':'Hide';return}
+    const r=e.target.closest('[data-gr]');if(r){busy(r,'Restarting…');try{await api('/api/goat/restart','POST',{engine:r.dataset.gr});toast('Restarted '+r.dataset.gr,'ok')}catch(x){toast(x.message,'bad')}idle(r);return}
+    const g=e.target.closest('[data-go]');if(g){e.preventDefault();goto(g.dataset.go)}};
 }
 
 // ---------- Usenet (SABnzbd)

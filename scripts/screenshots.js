@@ -11,14 +11,27 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 const PAGES = [
   ['dash', 'dashboard'], ['disc', 'discover'], ['lib', 'library'], ['dl', 'downloads'], ['rq', 'requests'],
-  ['up', 'upcoming'], ['idx', 'indexers'], ['hl', 'health'], ['stats', 'stats'],
+  ['up', 'upcoming'], ['idx', 'indexers'], ['hl', 'health'], ['stats', 'stats'], ['goat', 'stack'],
 ];
+
+// Pretend container status for the Stack page: VPN connected, everything wired, logins made.
+function goatDemo() {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'goat-shots-c-')), cfg = path.join(d, 'config'), run = path.join(d, 'run');
+  fs.mkdirSync(path.join(cfg, 'goat'), { recursive: true }); fs.mkdirSync(path.join(cfg, 'vpn'), { recursive: true }); fs.mkdirSync(run);
+  fs.writeFileSync(path.join(cfg, 'goat', 'secrets.json'), JSON.stringify({ jellyfinUser: 'goat-admin', jellyfinPass: 'demo-password', qbitUser: 'goat', qbitPass: 'demo-password' }));
+  fs.writeFileSync(path.join(cfg, 'vpn', 'proton-NL-42.conf'), '[Interface]\n');
+  fs.writeFileSync(path.join(run, 'vpn.json'), JSON.stringify({ enabled: true, state: 'up', ip: '185.107.56.12', country: 'NL', port: '51234', type: 'wireguard', apps: ['qbittorrent', 'sabnzbd', 'prowlarr'], message: 'Connected' }));
+  const ok = r => ({ ok: true, result: r });
+  fs.writeFileSync(path.join(cfg, 'goat', 'wired.json'), JSON.stringify({ at: Date.now(), steps: { sonarr: ok({}), radarr: ok({}), lidarr: ok({}), prowlarr: ok({}), jellyfin: ok({}), seerr: ok({}) } }));
+  const mf = path.join(cfg, 'goat', 'managed.json'); fs.writeFileSync(mf, JSON.stringify({ services: [] }));
+  return { GOAT_MANAGED: mf, GOAT_RUN: run, GOAT_CONFIG_DIR: cfg, GOAT_WIRED: path.join(cfg, 'goat', 'wired.json'), GOAT_BIN: path.join(__dirname, '..', 'goat') };
+}
 
 (async () => {
   fs.mkdirSync(OUT, { recursive: true });
   const ui = spawn(process.execPath, ['server.js'], {
     cwd: path.join(__dirname, '..', 'ui'),
-    env: { ...process.env, DEMO: '1', PORT: String(PORT), DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'goat-shots-')) },
+    env: { ...process.env, ...goatDemo(), DEMO: '1', PORT: String(PORT), DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'goat-shots-')) },
     stdio: 'inherit',
   });
   try {
@@ -39,6 +52,8 @@ const PAGES = [
     const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, colorScheme: 'dark' });
     await signIn(ctx);
     const page = await ctx.newPage(); await page.goto(BASE); await sleep(1500);
+    // A new install opens on the Stack page with its setup checklist.
+    await shot(page, 'stack-setup');
     for (const [tab, name] of PAGES) {
       const btn = page.locator(`[data-t="${tab}"]:visible`).first();
       if (!(await btn.count())) { console.log('no tab', tab); continue; }

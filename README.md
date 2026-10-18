@@ -26,6 +26,8 @@ Install one container and you get Sonarr, Radarr, Lidarr, Prowlarr, Bazarr, qBit
 | **Indexers**: add and test Prowlarr sites | **Health**: problems that need attention |
 | ![Stats](docs/screenshots/stats.png) | ![Sign in](docs/screenshots/login.png) |
 | **Stats**: what's been watched and downloaded | **Sign in** |
+| ![Stack](docs/screenshots/stack.png) | ![First start](docs/screenshots/stack-setup.png) |
+| **Stack**: VPN, every app's health and its own page, logins, connections | **First start**: the setup checklist |
 
 <p align="center"><img src="docs/screenshots/phone-dashboard.png" alt="On a phone" width="300"></p>
 

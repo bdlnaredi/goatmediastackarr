@@ -116,6 +116,8 @@ const pubSvc = s => ({ id: s.id, type: s.type, name: s.name, url: s.url, managed
 const GOAT_MANAGED = process.env.GOAT_MANAGED || '', GOAT_RUN = process.env.GOAT_RUN || '/run/goat', GOAT_WIRED = process.env.GOAT_WIRED || '';
 let goatMtime = 0;
 const goatSync = () => {
+  // Demo mode with GOAT_MANAGED set (used for screenshots): treat the pretend apps as built-in ones.
+  if (DEMO && GOAT_MANAGED) { for (const x of db.services) if (!x.managed && !['unraid', 'jackett', 'readarr', 'plex'].includes(x.type)) x.managed = x.type; return; }
   if (!GOAT_MANAGED || DEMO) return;
   let st; try { st = fs.statSync(GOAT_MANAGED); } catch { return; }
   if (st.mtimeMs === goatMtime) return;
@@ -893,7 +895,7 @@ const goatServer = http.createServer(async (req, res) => {
     const setup = !db.users.length;
     if (p === '/api/health') return send(res, 200, { ok: true, version: VERSION });
     if (p === '/api/wallpapers' && m === 'GET') { if (!DEMO && wpMode() === 'library' && !wpList().some(f => LIBWP.test(f)) && !wpBusy) wpKick(); return send(res, 200, wpMode() === 'scenes' ? [] : DEMO ? demo.fanarts() : wpList()); }
-    if (p === '/api/me') return send(res, 200, { setup, setupCode: setup && !!SETUP_TOKEN, version: VERSION, demo: DEMO, plexLogin: plexCfg().on, iconBase: String(process.env.ICON_BASE == null ? 'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/' : process.env.ICON_BASE).replace(/[^\w:/.@-]/g, ''), recovery: !DEMO && !!(mailer() && baseUrl()), user: me ? pubUser(me) : null });
+    if (p === '/api/me') return send(res, 200, { setup, setupCode: setup && !!SETUP_TOKEN, version: VERSION, demo: DEMO, goat: !!GOAT_MANAGED, plexLogin: plexCfg().on, iconBase: String(process.env.ICON_BASE == null ? 'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/' : process.env.ICON_BASE).replace(/[^\w:/.@-]/g, ''), recovery: !DEMO && !!(mailer() && baseUrl()), user: me ? pubUser(me) : null });
 
     if (p === '/api/setup' && m === 'POST') {
       if (!setup) return send(res, 403, { error: 'Already set up' });
