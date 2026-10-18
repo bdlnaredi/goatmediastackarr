@@ -72,7 +72,7 @@ class ScreensTest {
             // Say what was on screen instead, so a failure explains itself.
             val seen = compose.onAllNodes(androidx.compose.ui.test.isRoot()).fetchSemanticsNodes().flatMap { root ->
                 fun texts(n: androidx.compose.ui.semantics.SemanticsNode): List<String> =
-                    (n.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text)?.map { it.text } ?: emptyList()) + n.children.flatMap { texts(it) }
+                    n.config.getOrElse(androidx.compose.ui.semantics.SemanticsProperties.Text) { emptyList() }.map { t -> t.text } + n.children.flatMap { texts(it) }
                 texts(root)
             }
             runCatching { shot("zz-failed-waiting-for-${text.replace(Regex("[^A-Za-z0-9]+"), "-")}") }
