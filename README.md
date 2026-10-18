@@ -71,7 +71,7 @@ A real Android app (not a web page in a frame), with its own design and eight th
 - **Library**: your shows and movies, with what is missing; each one has a page with its seasons and episodes, monitoring, Search now and (for admins) Remove.
 - **Downloads**: qBittorrent and SABnzbd, with pause, resume, force start, check and remove.
 - **Requests** (admins approve or decline), **Upcoming**, and for admins the **Stack** page: VPN, restart any app, connect the apps again.
-- **Sign in** with your GoatMediaStackarr name and password (two-step codes work), or with **Sign in with Plex**, which opens Plex's own page and comes back signed in. Plex sign-in has to be turned on on the web page first (Settings, then Plex sign-in), and Plex users see only what their profile allows, as on the web.
+- **Sign in** with your GoatMediaStackarr name and password (two-step codes work), or with **Sign in with Plex**, which opens Plex's own page and comes back signed in. Plex sign-in has to be turned on on the web page first (Settings → Users → Sign in with Plex), and Plex users see only what their profile allows, as on the web.
 
 **Install:** download `goatmediastackarr.apk` from the [latest release](https://github.com/bdlnaredi/goatmediastackarr/releases/latest) on your phone and open it (Android asks once to allow installing from your browser). Newer versions install over older ones. Open the app and enter the same address you use in the browser, for example `192.168.1.10:2806` at home. Android 8 or newer.
 

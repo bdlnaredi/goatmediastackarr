@@ -92,7 +92,7 @@ fun DiscoverScreen() {
             IconButton(onClick = { ctx.go("search") }) { Icon(Icons.Rounded.Search, "Search", tint = g.text) }
         })
         if (sources.isEmpty()) {
-            EmptyState(Icons.Rounded.Explore, "Discover is not set up", "An admin can add a free TMDB or Trakt key on the web page under Settings, then Lists. Until then, use Search to find things.")
+            EmptyState(Icons.Rounded.Explore, "Discover is not set up", "An admin can add a free TMDB or Trakt key on the web page under Settings → Discover lists. Until then, use Search to find things.")
             return@Column
         }
         if (sources.size > 1) { ChoiceRow(sources.map { it to (SOURCE_NAMES[it] ?: it) }, src, { src = it }); Spacer(Modifier.height(8.dp)) }
