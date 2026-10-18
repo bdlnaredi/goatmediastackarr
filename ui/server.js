@@ -148,6 +148,16 @@ const goatStatus = () => {
     settings: goatSettings ? goatSettings.view() : null, vpnFiles: goatVpnFiles(), container: !!GOAT_MANAGED,
     logins: { jellyfin: sec.jellyfinUser ? { user: sec.jellyfinUser, pass: sec.jellyfinPass } : null, qbittorrent: sec.qbitUser ? { user: sec.qbitUser, pass: sec.qbitPass } : null } };
 };
+// For the setup checklist: how many indexers the built-in Prowlarr has and how many news servers SABnzbd has.
+// null when that app is off or not answering.
+const goatCounts = async () => {
+  const pr = db.services.find(x => x.managed === 'prowlarr'), sb = db.services.find(x => x.managed === 'sabnzbd');
+  const [indexers, newsServers] = await Promise.all([
+    pr ? fetch(`${pr.url.replace(/\/+$/, '')}/api/v1/indexer`, { headers: { 'X-Api-Key': pr.apiKey || '' }, signal: AbortSignal.timeout(5000) })
+      .then(r => r.ok ? r.json() : null).then(l => Array.isArray(l) ? l.length : null).catch(() => null) : null,
+    sb ? sabGet(sb, 'mode=get_config&section=servers').then(j => (((j || {}).config || {}).servers || []).length).catch(() => null) : null]);
+  return { indexers, newsServers };
+};
 // Talks to the container's control service (goat/control.js) over its private socket.
 const goatControl = msg => new Promise(resolve => {
   const sock = require('net').connect(GOAT_SOCK); let buf = '';
@@ -178,8 +188,8 @@ const goatOwnPlex = () => {
   const url = p.url.replace(/\/+$/, ''), cur = goatSettings.read().plex || {};
   if (cur.url === url && cur.token === p.apiKey) return;
   try { goatSettings.update({ plex: { url, token: p.apiKey } }); } catch (e) { console.log('[goat] could not pass your Plex server on to Seerr:', e.message); return; }
-  console.log(`[goat] Seerr will use your Plex server at ${url}; connecting the apps again.`);
-  goatControl({ cmd: 'rewire' });
+  console.log(`[goat] Seerr and Tautulli will use your Plex server at ${url}; connecting the apps again.`);
+  goatControl({ cmd: 'rewire' }).then(() => db.services.some(x => x.managed === 'tautulli') && goatControl({ cmd: 'restart', engine: 'tautulli' }));
 };
 goatSync(); goatOwnPlex();
 if (GOAT_MANAGED) setInterval(() => { goatSync(); goatOwnPlex(); }, Number(process.env.GOAT_SYNC_MS) || 15000).unref();
@@ -1114,7 +1124,7 @@ const goatServer = http.createServer(async (req, res) => {
       ...(b.savepath && me.role === 'admin' && !/[\r\n]/.test(b.savepath) ? { savepath: cut(b.savepath, 500) } : {}), ...(b.paused ? { paused: 'true', stopped: 'true' } : {}) });
     const hs = v => { const a = Array.isArray(v) ? v : [v]; return a.length && a.length <= 500 && a.every(x => /^[0-9a-f]{40}([0-9a-f]{24})?$/i.test(x)) ? a.join('|') : null; };
     const adminOnly = () => me.role === 'admin' ? false : (send(res, 403, { error: 'Admins only' }), true);
-    if (p === '/api/goat/status' && m === 'GET') { if (adminOnly()) return; return send(res, 200, goatStatus()); }
+    if (p === '/api/goat/status' && m === 'GET') { if (adminOnly()) return; return send(res, 200, { ...goatStatus(), counts: await goatCounts() }); }
     if (p === '/api/goat/import' && m === 'GET') { if (adminOnly()) return; return send(res, 200, goatImport || { state: 'idle' }); }
     if (p.startsWith('/api/goat/') && m === 'POST') {
       if (adminOnly()) return;

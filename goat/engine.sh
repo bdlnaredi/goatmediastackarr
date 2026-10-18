@@ -58,8 +58,9 @@ case "$name" in
       # so Tautulli starts already connected to it.
       prefs="/config/plex/Library/Application Support/Plex Media Server/Preferences.xml"
       [[ -n "${PLEX_CLAIM:-}" ]] && for _ in $(seq 1 120); do grep -q 'PlexOnlineToken="[^"]' "$prefs" 2>/dev/null && break; sleep 5; done
-      /usr/local/bin/node /opt/goat/bin/init.js tautulli
     fi
+    # Points Tautulli at the built-in Plex, or at your own Plex server when that is set.
+    /usr/local/bin/node /opt/goat/bin/init.js tautulli
     cmd=(/usr/bin/python3 /opt/tautulli/Tautulli.py --datadir /config/tautulli --config /config/tautulli/config.ini --nolaunch) ;;
   plex)
     mkdir -p /config/plex && chown "$PUID:$PGID" /config/plex

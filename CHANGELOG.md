@@ -6,7 +6,10 @@
 - Bazarr no longer gets stuck on "port already in use" (code -105) after a restart: its worker is run directly, so stopping it really stops it.
 - Stack page: "Apps connected to each other" gets its tick once the connections succeed, even while Plex is still waiting to be linked (that has its own item), and the page updates itself while the apps are being connected.
 - Seerr works with a Plex server outside the container: when no Jellyfin or Plex runs inside, it signs in through the Plex server added under Settings, then Apps.
-- Importing from Sonarr, Radarr or Lidarr can bring in your quality profiles and custom formats first (ticked by default), so every show, movie and artist keeps its own profile.
+- Importing from Sonarr, Radarr or Lidarr can bring in your settings first (ticked by default): quality profiles, custom formats, delay and release profiles, and file naming, so every show, movie and artist keeps its own profile and new downloads are named like your files.
+- Importing keeps tags, on shows, movies, artists and Prowlarr indexers (a FlareSolverr tag, say), matched by name.
+- Tautulli works with a Plex server outside the container too, unless you already pointed it at another server yourself.
+- The setup checklist ticks Indexers once Prowlarr has at least one, and Usenet once SABnzbd has a news server.
 - The version shown in the interface is the installed release, not 0.1.0.
 - Seerr's own request page is on port 5055 (add the port to the container), and the Stack page has an Open button for it.
 

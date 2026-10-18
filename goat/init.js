@@ -161,11 +161,11 @@ function tautulliConfig(existing, s, plex) {
   set('api_key', s.tautulli);
   set('launch_browser', '0');
   set('check_github', '0');
-  // Connect Tautulli to the built-in Plex once Plex has been claimed.
+  // Connect Tautulli to Plex: the built-in one once it has been claimed, or your own (plex.ip and friends set).
   if (plex && plex.token && plex.id) {
     const pms = (k, v) => { x = iniSet(x, 'PMS', k, v, ' = '); };
-    pms('pms_ip', '127.0.0.1'); pms('pms_port', E.ENGINES.plex.port); pms('pms_ssl', '0'); pms('pms_is_remote', '0');
-    pms('pms_url', E.url('plex')); pms('pms_token', plex.token); pms('pms_identifier', plex.id);
+    pms('pms_ip', plex.ip || '127.0.0.1'); pms('pms_port', plex.port || E.ENGINES.plex.port); pms('pms_ssl', plex.ssl ? '1' : '0'); pms('pms_is_remote', '0');
+    pms('pms_url', plex.url || E.url('plex')); pms('pms_token', plex.token); pms('pms_identifier', plex.id);
     set('first_run_complete', '1');
   }
   return x;
@@ -253,12 +253,39 @@ function run(env = process.env) {
   return { secrets: s, keys, managed, made };
 }
 
+// The value of one setting in an ini file, or ''.
+const iniGet = (text, section, k) => {
+  const m = String(text || '').match(new RegExp(`\\[${section}\\][^\\[]*?^${k}\\s*=\\s*(.*)$`, 'm'));
+  return m ? m[1].trim() : '';
+};
+
+// Called just before Tautulli starts: point it at the built-in Plex if that is linked by now, or else at your
+// own Plex (Settings, then Apps in the interface). Your own Plex is only filled in while Tautulli has no Plex
+// yet or already uses that same one, so a Tautulli you set up by hand is left alone.
+async function tautulliStart(env = process.env) {
+  const tf = `${E.CONFIG}/tautulli/config.ini`, cur = readText(tf), s = loadSecrets(`${E.CONFIG}/goat/secrets.json`).secrets;
+  let plex = null, where = '';
+  const p = plexPrefs();
+  if (E.enabled(env).includes('plex')) { if (p.token) { plex = p; where = 'the built-in Plex'; } }
+  else {
+    const ext = E.externalPlex(env), had = iniGet(cur, 'PMS', 'pms_token'), hadUrl = iniGet(cur, 'PMS', 'pms_url').replace(/\/+$/, '');
+    if (ext && (!had || hadUrl === ext.url)) {
+      try {
+        const r = await fetch(`${ext.url}/identity`, { headers: { 'X-Plex-Token': ext.token, Accept: 'application/json' }, signal: AbortSignal.timeout(10000) });
+        const id = r.ok ? ((await r.json()).MediaContainer || {}).machineIdentifier : '';
+        if (id) { plex = { token: ext.token, id, ip: ext.ip, port: ext.port, ssl: ext.useSsl, url: ext.url }; where = `your Plex at ${ext.url}`; }
+        else console.log(`[goat-init] Your Plex at ${ext.url} did not answer (${r.status}); Tautulli starts without it.`);
+      } catch (e) { console.log(`[goat-init] Could not reach your Plex at ${ext.url} (${e.message}); Tautulli starts without it.`); }
+    }
+  }
+  writeText(tf, tautulliConfig(cur, s, plex));
+  try { fs.chownSync(tf, Number(env.PUID || 99), Number(env.PGID || 100)); } catch {}
+  console.log(plex ? `[goat-init] Tautulli connected to ${where}.` : '[goat-init] Tautulli starts without a Plex server; add one in Tautulli or under Settings, then Apps.');
+  return plex;
+}
+
 if (require.main === module && process.argv[2] === 'tautulli') {
-  // Called just before Tautulli starts: point it at the built-in Plex if Plex is linked by now.
-  const tf = `${E.CONFIG}/tautulli/config.ini`, p = plexPrefs();
-  writeText(tf, tautulliConfig(readText(tf), loadSecrets(`${E.CONFIG}/goat/secrets.json`).secrets, p));
-  try { fs.chownSync(tf, Number(process.env.PUID || 99), Number(process.env.PGID || 100)); } catch {}
-  console.log(p.token ? '[goat-init] Tautulli connected to the built-in Plex.' : '[goat-init] Plex is not linked yet, Tautulli starts without it.');
+  tautulliStart(require('./settings').effectiveEnv()).catch(e => console.error('[goat-init] Tautulli setup failed:', e.message));
 } else if (require.main === module) {
   try {
     const r = run(require('./settings').effectiveEnv());
@@ -269,4 +296,4 @@ if (require.main === module && process.argv[2] === 'tautulli') {
   }
 }
 
-module.exports = { run, plexPrefs, iniSet, xmlSet, xmlGet, qbitHash, arrConfig, qbitConfig, sabConfig, bazarrConfig, tautulliConfig, loadSecrets };
+module.exports = { run, plexPrefs, iniSet, xmlSet, xmlGet, qbitHash, arrConfig, qbitConfig, sabConfig, bazarrConfig, tautulliConfig, tautulliStart, iniGet, loadSecrets };
