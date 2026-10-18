@@ -98,6 +98,7 @@ jobs:
             [ -z "$missing" ] && { echo "All engines answer."; exit 0; }
             echo "waiting for:$missing"; sleep 10
           done
+          echo "::error title=Not answering after 15 minutes::$missing"
           docker logs goat 2>&1 | tail -60 | sed 's/^/::error::/'; exit 1
       - name: Engines are connected to each other
         run: |
