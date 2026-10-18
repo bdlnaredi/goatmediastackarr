@@ -140,10 +140,10 @@ class Api(private val onSession: (String?) -> Unit) {
 
         /** Turns what someone typed ("192.168.1.10:2806", "goat.example.com") into a full address. */
         fun normalizeServer(input: String): String? {
-            var s = input.trim().trimEnd('/')
+            var s = input.trim()
             if (s.isEmpty()) return null
-            if (!s.startsWith("http://") && !s.startsWith("https://")) s = "http://$s"
-            val u = s.toHttpUrlOrNull() ?: return null
+            if (!Regex("^https?://", RegexOption.IGNORE_CASE).containsMatchIn(s)) s = "http://$s"
+            val u = s.trimEnd('/').toHttpUrlOrNull() ?: return null
             if (u.host.isBlank()) return null
             val path = u.encodedPath.trimEnd('/')
             val port = if ((u.scheme == "http" && u.port == 80) || (u.scheme == "https" && u.port == 443)) "" else ":${u.port}"

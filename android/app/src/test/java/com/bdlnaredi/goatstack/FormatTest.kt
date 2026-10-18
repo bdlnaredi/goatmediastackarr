@@ -49,6 +49,7 @@ class FormatTest {
         assertEquals("http://tower.local:2806/goat", Api.normalizeServer("tower.local:2806/goat"))
         assertNull(Api.normalizeServer(""))
         assertNull(Api.normalizeServer("http://"))
+        assertEquals("https://goat.example.com:8443", Api.normalizeServer("HTTPS://goat.example.com:8443"))
     }
 
     // The app must read what the server sends, including fields it does not know and values left out.
