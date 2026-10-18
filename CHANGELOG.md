@@ -7,6 +7,7 @@
 - Weekly rebuild with the newest engines, published as `latest` only when every check passes.
 - Optional FlareSolverr, downloaded on first start, added to Prowlarr as a tagged proxy and kept on the VPN with Prowlarr.
 - Shows and movies have their own address (`/library/tv/<app>/<id>`); opening one updates the address and Back closes it.
+
 ## Fixes
 
 - OpenVPN: files a .ovpn names without a folder (`credentials.conf`, `ca.crt`, keys) are found next to it in the vpn folder; a file that needs a username and password with none given now says so on the Stack page instead of failing.
