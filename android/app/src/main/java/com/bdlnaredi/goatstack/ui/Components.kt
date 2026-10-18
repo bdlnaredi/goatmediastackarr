@@ -236,7 +236,7 @@ fun StatTile(label: String, value: String, modifier: Modifier = Modifier, icon: 
             Text(label, style = MaterialTheme.typography.labelMedium, color = g.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Spacer(Modifier.height(6.dp))
-        Text(value, style = MaterialTheme.typography.titleLarge, color = g.text, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Bold)
+        Text(value, style = MaterialTheme.typography.titleMedium, color = g.text, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Bold)
     }
 }
 

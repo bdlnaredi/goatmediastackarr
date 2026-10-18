@@ -227,13 +227,13 @@ fun HomeScreen() {
 @Composable
 private fun QuickAction(label: String, icon: ImageVector, modifier: Modifier, onClick: () -> Unit) {
     val g = LocalGoat.current
-    Row(
-        modifier.clip(RoundedCornerShape(18.dp)).background(g.card).clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    Column(
+        modifier.clip(RoundedCornerShape(18.dp)).background(g.card).clickable(onClick = onClick).padding(horizontal = 8.dp, vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Icon(icon, null, tint = g.primary, modifier = Modifier.size(20.dp))
-        Spacer(Modifier.width(8.dp))
-        Text(label, style = MaterialTheme.typography.labelLarge, color = g.text, maxLines = 1)
+        Icon(icon, null, tint = g.primary, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.height(6.dp))
+        Text(label, style = MaterialTheme.typography.labelLarge, color = g.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 

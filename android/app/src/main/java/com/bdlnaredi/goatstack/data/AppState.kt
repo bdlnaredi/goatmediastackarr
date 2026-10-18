@@ -56,7 +56,7 @@ class AppState(private val store: Store) {
                 val me = api.get<Me>("/api/me")
                 val u = me.user
                 if (u == null) _phase.value = Phase.NeedLogin(me)
-                else { _phase.value = Phase.Ready(me, u); loadServices() }
+                else { loadServices(); _phase.value = Phase.Ready(me, u) }
             } catch (e: Exception) {
                 _phase.value = Phase.Offline(e.message ?: "Could not reach the server")
             }
@@ -75,7 +75,7 @@ class AppState(private val store: Store) {
             val me = api.get<Me>("/api/me")
             if (me.version.isEmpty()) return "Something answered at that address, but it is not GoatMediaStackarr."
             store.setServer(url); server = url
-            _phase.value = if (me.user != null) Phase.Ready(me, me.user) else Phase.NeedLogin(me)
+            if (me.user != null) { loadServices(); _phase.value = Phase.Ready(me, me.user) } else _phase.value = Phase.NeedLogin(me)
             null
         } catch (e: Exception) { e.message ?: "Could not reach it" }
     }
