@@ -58,7 +58,7 @@ jobs:
           path: goatmediastackarr.apk
       # Photos of every screen, taken against a pretend server, kept on the android-shots branch for review.
       - name: Keep the screen photos
-        if: github.ref == 'refs/heads/main'
+        if: always() && github.ref == 'refs/heads/main'
         run: |
           n=$(ls android/app/build/outputs/roborazzi/*.png 2>/dev/null | wc -l); echo "::notice::$n screen photos"
           [ "$n" -gt 0 ] || exit 0

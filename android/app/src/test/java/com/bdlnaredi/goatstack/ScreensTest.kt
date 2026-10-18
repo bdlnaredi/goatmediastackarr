@@ -66,7 +66,18 @@ class ScreensTest {
     }
 
     private fun waitFor(text: String, timeout: Long = 20_000) {
-        compose.waitUntil(timeout) { compose.onAllNodesWithText(text, substring = true, ignoreCase = true).fetchSemanticsNodes().isNotEmpty() }
+        try {
+            compose.waitUntil(timeout) { compose.onAllNodesWithText(text, substring = true, ignoreCase = true).fetchSemanticsNodes().isNotEmpty() }
+        } catch (e: Throwable) {
+            // Say what was on screen instead, so a failure explains itself.
+            val seen = compose.onAllNodes(androidx.compose.ui.test.isRoot()).fetchSemanticsNodes().flatMap { root ->
+                fun texts(n: androidx.compose.ui.semantics.SemanticsNode): List<String> =
+                    (n.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text)?.map { it.text } ?: emptyList()) + n.children.flatMap { texts(it) }
+                texts(root)
+            }
+            runCatching { shot("zz-failed-waiting-for-${text.replace(Regex("[^A-Za-z0-9]+"), "-")}") }
+            throw AssertionError("Waited for \"$text\". On screen: ${seen.take(40)}. Server calls: ${fake.calls.takeLast(12)}", e)
+        }
     }
 
     /** Lets pictures arrive from the pretend server before the photo is taken. */
@@ -104,21 +115,21 @@ class ScreensTest {
         connect()
         assertTrue(state.phase.value is Phase.Ready)
         show()
-        waitFor("Coming up")
+        waitFor("Playing now")
         shot("03-home")
 
-        tap("Discover"); waitFor("Trending"); waitFor("Velvet Road"); shot("04-discover")
-        tap("Library"); waitFor("Your shows"); waitFor("Northwind"); shot("05-library")
-        compose.onAllNodesWithText("Northwind").onFirst().performClick(); waitFor("Monitored"); waitFor("Search now"); shot("06-show")
+        tap("Discover"); waitFor("Trending"); waitFor("Quiet Orbit"); shot("04-discover")
+        tap("Library"); waitFor("Your shows"); waitFor("Paper Moon"); shot("05-library")
+        compose.onAllNodesWithText("Paper Moon").onFirst().performClick(); waitFor("Monitored"); waitFor("Search now"); shot("06-show")
         back()
-        tap("Downloads"); waitFor("Seeding"); shot("07-downloads")
+        tap("Downloads"); waitFor("Downloading"); shot("07-downloads")
         tap("More"); waitFor("Go to"); shot("08-more")
         tap("Requests"); waitFor("Waiting for approval"); shot("09-requests"); back()
         tap("Upcoming"); waitFor("Being downloaded"); shot("10-upcoming"); back()
         tap("Stack"); waitFor("VPN connected"); shot("11-stack"); back()
         tap("Settings"); waitFor("Appearance"); shot("12-settings")
         tap("Paper"); settle(500); shot("13-settings-paper")
-        back(); tap("Home"); waitFor("Coming up"); shot("14-home-paper")
+        back(); tap("Home"); waitFor("Playing now"); shot("14-home-paper")
         for (t in listOf("midnight", "aurora", "ember")) {
             compose.runOnUiThread { state.setTheme(t) }; compose.waitForIdle(); shot("15-home-$t")
         }
