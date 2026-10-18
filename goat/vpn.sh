@@ -88,7 +88,7 @@ ovpn_up() {
     local want
     want=$(grep -iE '^[[:space:]]*auth-user-pass([[:space:]]|$)' "$src" | head -n1 | tr -d '\r' | awk '{print $2}')
     if grep -qiE '^[[:space:]]*auth-user-pass([[:space:]]|$)' "$src" && { [ -z "$want" ] || [ ! -f "/config/vpn/$want" -a ! -f "$want" ]; }; then
-      status error "Your .ovpn file needs your VPN username and password. Enter them on the Stack page under VPN (or set VPN_USER and VPN_PASS), then press Apply."
+      status error "Your .ovpn file needs your VPN username and password. Enter them on the Stack page under VPN (or set VPN_USER and VPN_PASS), then press Save and apply."
       return 1
     fi
   fi

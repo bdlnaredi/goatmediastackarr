@@ -2332,21 +2332,27 @@ async function subView(){
 const GOAT_PAGES={sonarr:1,radarr:1,lidarr:1,prowlarr:1,bazarr:1,qbittorrent:1,sabnzbd:1,tautulli:1};
 const GOAT_VPNAPPS=[['qbittorrent','qBittorrent'],['sabnzbd','SABnzbd'],['prowlarr','Prowlarr (and FlareSolverr)']];
 const goatOpen=k=>GOAT_PAGES[k]?`/engines/${k}/`:k==='jellyfin'?`${location.protocol}//${location.hostname}:8096/`:k==='plex'?`${location.protocol}//${location.hostname}:32400/web/`:'';
+let goatPoll=0,goatQuiet=false;
 async function goatView(){
-  $('#m').innerHTML=skel(4);
+  clearTimeout(goatPoll);
+  if(!goatQuiet)$('#m').innerHTML=skel(4);goatQuiet=false;
   let st;try{st=await api('/api/goat/status')}catch(e){$('#m').innerHTML=`<div class="panel">${esc(e.message)}</div>`;return}
   if(tab!=='goat')return;
   const S=st.settings||{},V=S.vpn||{},vpn=st.vpn||{},steps=(st.wired&&st.wired.steps)||{};
+  // Still connecting: no results yet, or a run in progress (a run older than 30 minutes has stopped without saying so).
+  const wiring=!st.wired||(st.wired.running&&Date.now()-st.wired.at<30*60e3);
   const vOn=V.enabled!==undefined?V.enabled:!!vpn.enabled,vType=V.type||vpn.type||'wireguard',vApps=V.apps||vpn.apps||GOAT_VPNAPPS.map(a=>a[0]);
   const pill=vpn.state==='up'?`<span class="pill ok">Connected${vpn.country?' · '+esc(vpn.country):''}${vpn.ip?' · '+esc(vpn.ip):''}</span>`
     :vpn.enabled?`<span class="pill bad">${vpn.state==='waiting'?'Waiting for a VPN file':vpn.state==='connecting'?'Connecting…':'Not connected'}</span>`:'<span class="pill">Off</span>';
   const hasPlex=st.engines.some(e=>e.key==='plex'),plexOk=steps.plex&&steps.plex.ok;
   const done=S.setup&&S.setup.done;
   const check=(ok,label,hint)=>`<div class="row" style="gap:10px;margin:6px 0"><span class="pill ${ok?'ok':''}" style="min-width:26px;justify-content:center">${ok?ic('check'):'·'}</span><span><b>${label}</b>${hint?`<div class="mute">${hint}</div>`:''}</span></div>`;
-  const wiredAll=Object.keys(steps).length&&Object.values(steps).every(x=>x.ok);
+  // Linking Plex to an account has its own item below, so it does not hold back this one.
+  const wSteps=Object.entries(steps).filter(([k])=>k!=='plex');
+  const wiredAll=!wiring&&wSteps.length>0&&wSteps.every(([,x])=>x.ok);
   $('#m').innerHTML=`
   ${done?'':`<div class="panel" id="gw"><h2 style="margin-top:0">Finish setting up</h2>
-    ${check(wiredAll,'Apps connected to each other','Done automatically on first start.'+(wiredAll?'':' See Connections below.'))}
+    ${check(wiredAll,'Apps connected to each other',wiring?'Connecting them now. This page updates on its own.':'Done automatically on first start.'+(wiredAll?'':' See Connections below.'))}
     ${check(vpn.state==='up'||vOn===false,'VPN for the download apps','Upload your VPN provider\'s file below, or leave the VPN off.')}
     ${check(services.some(x=>x.type==='prowlarr'),'Indexers','Add the sites to search in <a href="#" data-go="idx">Indexers</a>. Prowlarr shares them with Sonarr, Radarr and Lidarr.')}
     ${check(false,'Usenet (optional)','If you use usenet, add your provider\'s server in <a href="#" data-go="nzb">Usenet</a>.')}
@@ -2380,7 +2386,7 @@ async function goatView(){
   ${hasPlex?`<h2 class="sec">Plex</h2><div class="panel">${plexOk?'<span class="pill ok">Linked to your Plex account</span>':`<div>Get a code from <a href="https://plex.tv/claim" target="_blank" rel="noopener">plex.tv/claim</a> while signed in to Plex, paste it here and press Link within 4 minutes.</div>
     <div class="row" style="margin-top:8px"><input id="gpc" placeholder="claim-xxxxxxxxxxxx" aria-label="Plex claim code"><button class="primary" id="gpl">Link</button></div><div class="err" id="gpe"></div>`}</div>`:''}
   <h2 class="sec">Connections</h2>
-  <div class="panel">${Object.keys(steps).length?Object.entries(steps).map(([k,v])=>`<div class="row" style="gap:10px;margin:4px 0"><span class="pill ${v.ok?'ok':'bad'}">${v.ok?'Connected':'Problem'}</span><b>${esc(k)}</b>${v.ok?'':`<span class="mute">${esc(v.error||'')}</span>`}</div>`).join(''):'<div class="mute">The apps are still being connected. This page shows the result when it finishes.</div>'}
+  <div class="panel">${Object.keys(steps).length?Object.entries(steps).map(([k,v])=>`<div class="row" style="gap:10px;margin:4px 0"><span class="pill ${v.ok?'ok':'bad'}">${v.ok?ic('check')+'Connected':'Problem'}</span><b>${esc(k)}</b>${v.ok?'':`<span class="mute">${esc(v.error||'')}</span>`}</div>`).join(''):''}${wiring?'<div class="mute">The apps are still being connected. This page updates on its own when it finishes.</div>':''}
     <div class="row" style="margin-top:10px"><button id="grw">${ic('refresh')}Connect the apps again</button><span class="mute">Safe to run any time; nothing is added twice.</span></div></div>
   <h2 class="sec">Bring in your current setup</h2>
   <div class="panel" id="gim">
@@ -2390,6 +2396,8 @@ async function goatView(){
       <button id="gic">Check</button></div>
     <div class="mute">The API key is in the old app under Settings → General.</div>
     <div id="gip"></div><div class="err" id="gie"></div></div>`;
+  // While connecting, look again every 8 seconds, but never while something on the page is being typed in.
+  if(wiring){const again=()=>{if(tab!=='goat')return;const a=document.activeElement;if(a&&a.closest&&a.closest('#m')&&/^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)){goatPoll=setTimeout(again,8000);return}goatQuiet=true;goatView()};goatPoll=setTimeout(again,8000)}
   const busy=(b,t)=>{b.disabled=true;b.dataset.t=b.innerHTML;b.textContent=t};
   const idle=b=>{b.disabled=false;b.innerHTML=b.dataset.t};
   $('#gvon').onchange=e=>{$('#gvset').hidden=!e.target.checked};
@@ -2431,7 +2439,7 @@ async function goatView(){
         const map=[...document.querySelectorAll('[data-gm]')].map(x=>[x.dataset.from,x.value.trim()]).filter(x=>x[1]);
         try{await api('/api/goat/import/start','POST',{...plan.req,map});impProg()}catch(x){$('#gie').textContent=x.message;idle(go)}};
     }catch(x){$('#gie').textContent=x.message}idle(b)};
-  $('#grw').onclick=async e=>{const b=e.currentTarget;busy(b,'Starting…');try{await api('/api/goat/rewire','POST',{});toast('Connecting the apps again. Check back in a few minutes.','ok')}catch(x){toast(x.message,'bad')}idle(b)};
+  $('#grw').onclick=async e=>{const b=e.currentTarget;busy(b,'Starting…');try{await api('/api/goat/rewire','POST',{});toast('Connecting the apps again. This page updates when it finishes.','ok');goatPoll=setTimeout(()=>{if(tab==='goat'){goatQuiet=true;goatView()}},3000)}catch(x){toast(x.message,'bad')}idle(b)};
   $('#m').onclick=async e=>{
     const sh=e.target.closest('[data-show]');if(sh){const c=sh.previousElementSibling;const on=c.textContent!=='••••••••';c.textContent=on?'••••••••':c.dataset.pw;sh.lastChild.textContent=on?'Show':'Hide';return}
     const r=e.target.closest('[data-gr]');if(r){busy(r,'Restarting…');try{await api('/api/goat/restart','POST',{engine:r.dataset.gr});toast('Restarted '+r.dataset.gr,'ok')}catch(x){toast(x.message,'bad')}idle(r);return}
