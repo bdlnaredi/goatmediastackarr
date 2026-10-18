@@ -118,6 +118,38 @@ Only the apps that need it use the VPN. By default those are qBittorrent, SABnzb
 
 Unraid 7 includes WireGuard. If your server's kernel does not, use an OpenVPN file instead.
 
+## The Stack page
+
+Admins get a **Stack** page (`/stack`) for everything about the container itself:
+
+- **Setup checklist** on first start: connections, VPN, indexers, usenet, Plex.
+- **VPN**: on or off, upload your provider's file, pick which apps use it, OpenVPN login, port forwarding, **Save and apply**, and a **Leak test** that compares the VPN apps' address with your server's own.
+- **Apps**: each engine's health, its own page, and a **Restart** button.
+- **Logins made for you**: the Jellyfin admin and qBittorrent passwords.
+- **Plex**: link the built-in Plex with a claim code.
+- **Connections**: what was wired up on start, and a button to run it again.
+- **Bring in your current setup** (see below).
+
+Settings changed here are saved in `appdata/goatmediastackarr/goat/settings.json` and take priority over the Unraid template.
+
+## Moving from your current setup
+
+On the Stack page, under **Bring in your current setup**, pick Sonarr, Radarr, Lidarr or Prowlarr, then enter your current app's address and API key (found in that app under Settings → General). **Check** shows how many shows, movies, artists or indexers there are, and how many are already here.
+
+Then say where each old folder is inside GoatMediaStackarr. For example, if your old Sonarr saw your shows at `/tv` and GoatMediaStackarr sees the same share at `/media/tv`, map `/tv` → `/media/tv`. **Bring in** copies everything that's missing. It keeps each item's monitored state, seasons and quality profile (matched by name), and doesn't search or download anything. The built-in app then rescans the folders and finds your files where they already are.
+
+- Your old apps are only read from, never changed. Running the import again adds only what's new.
+- Download history and episode-by-episode settings aren't copied.
+- Indexers that need a password or cookie may need it entered again. Test them on the Indexers page afterwards.
+
+## Usenet
+
+On the Usenet page, admins can add their provider's news server (address, port, SSL, connections, login), test it, change it or remove it.
+
+## Addresses
+
+Every page has its own address, such as `/downloads`, `/library`, `/stack` or `/settings/apps`. Bookmarks, links and the Back button work. A dialog opened over a page counts as a step back, so Back (or a phone's back gesture) closes it.
+
 ## Advanced: each app's own page
 
 Admins can open any engine's original page through GoatMediaStackarr, signed in with their GoatMediaStackarr account:

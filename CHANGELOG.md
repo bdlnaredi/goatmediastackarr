@@ -18,4 +18,5 @@ First stage: the container foundation.
 - Every tab and Settings section has its own address (/downloads, /settings/apps); dialogs open as layers that the back button closes.
 - Stack page: setup checklist, VPN controls with file upload and leak test, app health and restarts, generated logins, Plex linking, connection results.
 - Usenet page: add, change, test and remove your provider's news servers in SABnzbd.
+- Bring in your current setup: copy shows, movies, artists and Prowlarr indexers from existing apps, with folder translation and nothing added twice.
 - Unraid template and docker-compose example.

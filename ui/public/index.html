@@ -2372,7 +2372,15 @@ async function goatView(){
     <div class="row" style="margin-top:8px"><input id="gpc" placeholder="claim-xxxxxxxxxxxx" aria-label="Plex claim code"><button class="primary" id="gpl">Link</button></div><div class="err" id="gpe"></div>`}</div>`:''}
   <h2 class="sec">Connections</h2>
   <div class="panel">${Object.keys(steps).length?Object.entries(steps).map(([k,v])=>`<div class="row" style="gap:10px;margin:4px 0"><span class="pill ${v.ok?'ok':'bad'}">${v.ok?'Connected':'Problem'}</span><b>${esc(k)}</b>${v.ok?'':`<span class="mute">${esc(v.error||'')}</span>`}</div>`).join(''):'<div class="mute">The apps are still being connected. This page shows the result when it finishes.</div>'}
-    <div class="row" style="margin-top:10px"><button id="grw">${ic('refresh')}Connect the apps again</button><span class="mute">Safe to run any time; nothing is added twice.</span></div></div>`;
+    <div class="row" style="margin-top:10px"><button id="grw">${ic('refresh')}Connect the apps again</button><span class="mute">Safe to run any time; nothing is added twice.</span></div></div>
+  <h2 class="sec">Bring in your current setup</h2>
+  <div class="panel" id="gim">
+    <div class="mute">Copies the shows, movies, artists or indexers from the Sonarr, Radarr, Lidarr or Prowlarr you use now. The old app is only read from, and your media files stay where they are: the built-in app is pointed at them and finds them again.</div>
+    <div class="row" style="gap:10px;margin-top:10px"><select id="gik" aria-label="Old app">${[['sonarr','Sonarr (shows)'],['radarr','Radarr (movies)'],['lidarr','Lidarr (music)'],['prowlarr','Prowlarr (indexers)']].filter(([k])=>st.engines.some(e=>e.key===k)).map(([k,n])=>`<option value="${k}">${n}</option>`).join('')}</select>
+      <input id="giu" placeholder="Old app's address, like http://192.168.1.10:8989" style="flex:1;min-width:220px" aria-label="Old app address"><input id="gia" placeholder="Its API key" style="min-width:200px" aria-label="Old app API key" autocomplete="off">
+      <button id="gic">Check</button></div>
+    <div class="mute">The API key is in the old app under Settings → General.</div>
+    <div id="gip"></div><div class="err" id="gie"></div></div>`;
   const busy=(b,t)=>{b.disabled=true;b.dataset.t=b.innerHTML;b.textContent=t};
   const idle=b=>{b.disabled=false;b.innerHTML=b.dataset.t};
   $('#gvon').onchange=e=>{$('#gvset').hidden=!e.target.checked};
@@ -2388,6 +2396,32 @@ async function goatView(){
   const gd=$('#gdone');if(gd)gd.onclick=async()=>{try{await api('/api/goat/settings','POST',{setup:{done:true}});goatView()}catch(x){toast(x.message,'bad')}};
   const pl=$('#gpl');if(pl)pl.onclick=async()=>{const c=$('#gpc').value.trim();$('#gpe').textContent='';if(!/^claim-[\w-]{4,64}$/.test(c)){$('#gpe').textContent='A claim code looks like claim-xxxxxxxxxxxx';return}
     busy(pl,'Linking…');try{await api('/api/goat/settings','POST',{plex:{claim:c}});await api('/api/goat/rewire','POST',{});toast('Linking Plex. This page updates in a minute.','ok');setTimeout(()=>tab==='goat'&&goatView(),60000)}catch(x){$('#gpe').textContent=x.message;idle(pl)}};
+  // ---- Import from the current setup
+  let plan=null;
+  const impProg=async()=>{const el=$('#gip');if(!el||tab!=='goat')return;let j;try{j=await api('/api/goat/import')}catch{return}
+    if(j.state==='idle')return;
+    el.innerHTML=`<div class="box" style="margin-top:10px"><b>${j.state==='running'?'Bringing in '+esc(j.kind)+'…':j.state==='done'?'Finished '+esc(j.kind):'Stopped'}</b>
+      <progress value="${j.done||0}" max="${j.total||1}" style="width:100%;margin:8px 0"></progress>
+      <div class="mute">${j.added||0} added, ${j.skipped||0} already there${(j.failed||[]).length?', '+j.failed.length+' could not be added':''}${j.error?' · '+esc(j.error):''}</div>
+      ${(j.failed||[]).length?`<details style="margin-top:6px"><summary>What could not be added</summary>${j.failed.slice(0,100).map(f=>`<div class="mute">${esc(f.name)}: ${esc(f.error)}</div>`).join('')}</details>`:''}
+      ${j.state==='done'&&j.kind!=='prowlarr'?'<div class="mute" style="margin-top:6px">The built-in app now scans those folders and finds the files already there. That can take a while for a big library.</div>':''}
+      ${j.state==='done'&&j.kind==='prowlarr'?'<div class="mute" style="margin-top:6px">Open Indexers and test them: sites that needed a password or cookie may need it entered again.</div>':''}</div>`;
+    if(j.state==='running')setTimeout(impProg,2000)};
+  impProg();
+  $('#gic').onclick=async e=>{const b=e.currentTarget;$('#gie').textContent='';busy(b,'Checking…');
+    const req={kind:$('#gik').value,url:$('#giu').value.trim(),apiKey:$('#gia').value.trim()};
+    try{plan=await api('/api/goat/import/check','POST',req);plan.req=req;
+      const lbl={sonarr:'shows',radarr:'movies',lidarr:'artists',prowlarr:'indexers'}[plan.kind];
+      $('#gip').innerHTML=`<div class="box" style="margin-top:10px"><b>${plan.total} ${lbl}</b> <span class="mute">${plan.already} already here, ${plan.todo} to bring in.</span>
+        ${plan.kind==='prowlarr'?'':`<div style="margin-top:10px"><b>Where are these folders in GoatMediaStackarr?</b><div class="mute">The old app saw your media at the paths on the left. Enter where the same files are inside this container (your Media folder is ${esc(plan.newRoots[0]||'/media')}).</div>
+          ${plan.suggest.map(([a,c],i)=>`<div class="row" style="gap:8px;margin:6px 0"><code style="min-width:160px">${esc(a)}</code><span>→</span><input data-gm="${i}" data-from="${esc(a)}" value="${esc(c)}" list="ginr" style="flex:1" aria-label="New folder for ${esc(a)}"></div>`).join('')}
+          <datalist id="ginr">${plan.newRoots.map(r=>`<option value="${esc(r)}">`).join('')}</datalist>
+          ${Object.entries(plan.profiles).some(([a,c])=>a!==c)?`<div class="mute">Quality profiles without a match here use ${esc(Object.values(plan.profiles)[0]||'the default')}.</div>`:''}</div>`}
+        <div class="row" style="margin-top:10px"><button class="primary" id="gis"${plan.todo?'':' disabled'}>${ic('dl')}Bring in ${plan.todo} ${lbl}</button><span class="mute">Nothing is downloaded or searched for.</span></div></div>`;
+      const go=$('#gis');if(go)go.onclick=async()=>{busy(go,'Starting…');
+        const map=[...document.querySelectorAll('[data-gm]')].map(x=>[x.dataset.from,x.value.trim()]).filter(x=>x[1]);
+        try{await api('/api/goat/import/start','POST',{...plan.req,map});impProg()}catch(x){$('#gie').textContent=x.message;idle(go)}};
+    }catch(x){$('#gie').textContent=x.message}idle(b)};
   $('#grw').onclick=async e=>{const b=e.currentTarget;busy(b,'Starting…');try{await api('/api/goat/rewire','POST',{});toast('Connecting the apps again. Check back in a few minutes.','ok')}catch(x){toast(x.message,'bad')}idle(b)};
   $('#m').onclick=async e=>{
     const sh=e.target.closest('[data-show]');if(sh){const c=sh.previousElementSibling;const on=c.textContent!=='••••••••';c.textContent=on?'••••••••':c.dataset.pw;sh.lastChild.textContent=on?'Show':'Hide';return}

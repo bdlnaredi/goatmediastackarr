@@ -156,6 +156,10 @@ const goatControl = msg => new Promise(resolve => {
   sock.on('data', d => { buf += d; const nl = buf.indexOf('\n'); if (nl !== -1) { try { done(JSON.parse(buf.slice(0, nl))); } catch { done({ ok: false, error: 'Bad reply' }); } } });
   sock.on('error', e => done({ ok: false, error: 'The control service is not running (' + e.code + ')' }));
 });
+// Importing from an existing stack: one job at a time, run in the background, polled by the Stack page.
+const importer = require('./lib/importer');
+let goatImport = null;
+const goatTarget2 = kind => { const t = db.services.find(x => x.managed === kind); return t ? { url: t.url, apiKey: t.apiKey } : null; };
 // This server's own public address, to compare with the VPN's for the leak test.
 const goatPublicIp = async () => {
   const t = await (await fetch(process.env.GOAT_IPCHECK_URL || 'https://1.1.1.1/cdn-cgi/trace', { signal: AbortSignal.timeout(8000) })).text();
@@ -1095,6 +1099,7 @@ const goatServer = http.createServer(async (req, res) => {
     const hs = v => { const a = Array.isArray(v) ? v : [v]; return a.length && a.length <= 500 && a.every(x => /^[0-9a-f]{40}([0-9a-f]{24})?$/i.test(x)) ? a.join('|') : null; };
     const adminOnly = () => me.role === 'admin' ? false : (send(res, 403, { error: 'Admins only' }), true);
     if (p === '/api/goat/status' && m === 'GET') { if (adminOnly()) return; return send(res, 200, goatStatus()); }
+    if (p === '/api/goat/import' && m === 'GET') { if (adminOnly()) return; return send(res, 200, goatImport || { state: 'idle' }); }
     if (p.startsWith('/api/goat/') && m === 'POST') {
       if (adminOnly()) return;
       if (DEMO) return send(res, 403, { error: 'This is turned off in the demo' });
@@ -1125,6 +1130,28 @@ const goatServer = http.createServer(async (req, res) => {
       if (p === '/api/goat/restart') {
         const b = await readBody(req), r = await goatControl({ cmd: 'restart', engine: String(b.engine || '') });
         audit(me.name, 'Restarted an app', String(b.engine || '')); return send(res, r.ok ? 200 : 500, r.ok ? {} : { error: r.error });
+      }
+      if (p === '/api/goat/import/check' || p === '/api/goat/import/start') {
+        const b = await readBody(req), kind = String(b.kind || '');
+        if (!importer.KINDS[kind]) return send(res, 400, { error: 'Pick Sonarr, Radarr, Lidarr or Prowlarr' });
+        if (!/^https?:\/\/[^\s]+$/.test(String(b.url || ''))) return send(res, 400, { error: 'Enter the old app\'s address, like http://192.168.1.10:8989' });
+        if (!/^[\w-]{8,100}$/.test(String(b.apiKey || ''))) return send(res, 400, { error: 'Enter the old app\'s API key (Settings → General in that app)' });
+        const to = goatTarget2(kind); if (!to) return send(res, 400, { error: `The built-in ${kind} is not running` });
+        const from = { url: String(b.url), apiKey: String(b.apiKey) };
+        if (p.endsWith('/check')) {
+          let pl; try { pl = await importer.plan(kind, from, to); } catch (e) { return send(res, 502, { error: e.message }); }
+          const suggest = kind === 'prowlarr' ? [] : pl.roots.map(r => [r, pl.newRoots[0] || '']);
+          return send(res, 200, { kind, total: pl.total, already: pl.already, todo: pl.todo, roots: pl.roots, newRoots: pl.newRoots, profiles: pl.profiles, suggest });
+        }
+        if (goatImport && goatImport.state === 'running') return send(res, 409, { error: 'An import is already running' });
+        const map = Array.isArray(b.map) ? b.map.filter(x => Array.isArray(x) && x.length === 2).map(([a, c]) => [String(a), String(c)]).slice(0, 50) : [];
+        if (kind !== 'prowlarr' && !map.length) return send(res, 400, { error: 'Say where each old folder is inside GoatMediaStackarr' });
+        goatImport = { state: 'running', kind, done: 0, total: 0, added: 0, skipped: 0, failed: [], at: Date.now() };
+        audit(me.name, 'Started an import', kind + ' from ' + from.url);
+        importer.run(kind, from, to, map, pr => { Object.assign(goatImport, pr); })
+          .then(r => { Object.assign(goatImport, r, { state: 'done', finished: Date.now() }); audit('GoatMediaStackarr', 'Import finished', `${kind}: ${r.added} added, ${r.skipped} already there, ${r.failed.length} failed`); })
+          .catch(e => { Object.assign(goatImport, { state: 'error', error: e.message }); });
+        return send(res, 200, goatImport);
       }
       if (p === '/api/goat/leaktest') {
         const vpn = goatRead(path.join(GOAT_RUN, 'vpn.json')) || {};
