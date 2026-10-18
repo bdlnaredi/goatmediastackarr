@@ -13,7 +13,18 @@ jobs:
         with: { node-version: 22 }
       - run: sudo apt-get update && sudo apt-get install -y wireguard-tools shellcheck
       - run: npm run check
-      - run: npm test
+      - name: Tests
+        # Each test file gets a time limit; a failure or a hang is reported with the file name and its output.
+        run: |
+          fail=0
+          for f in test/*.test.js ui/test/*.test.js; do
+            if ! timeout 180 node --test --test-timeout=120000 "$f" > /tmp/t.out 2>&1; then
+              fail=1
+              msg=$(grep -vE '^\s*(at |#)' /tmp/t.out | tail -c 3500 | sed 's/%/%25/g' | awk 'BEGIN{ORS="%0A"}{print}')
+              echo "::error title=$f failed or hung::$msg"
+            fi
+          done
+          exit $fail
       - name: Shell scripts
         run: shellcheck -S error -s bash goat/*.sh test/*.sh
       - name: VPN kill switch (real network namespaces)
