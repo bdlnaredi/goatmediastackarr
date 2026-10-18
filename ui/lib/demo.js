@@ -35,7 +35,7 @@ function create(opts = {}) {
         // The newest season of a running show is still airing: a few episodes are in the future.
         const live = status === 'continuing' && s === seasons, weeksAgo = live ? per - e - 3 : (seasons - s) * 40 + per - e + 12;
         const t = now - weeksAgo * 7 * DAY, has = t < now && !(live && e > per - 4) && !(id === 1 && s === 2 && e > 5);
-        eps.push({ id: id * 1000 + s * 100 + e, seriesId: id, seasonNumber: s, episodeNumber: e, title: `Episode ${e}`, airDateUtc: iso(t), monitored: true,
+        eps.push({ id: id * 1000 + s * 100 + e, seriesId: id, seasonNumber: s, episodeNumber: e, title: `Episode ${e}`, overview: `In episode ${e} of season ${s}, something invented happens.`, runtime: 44, airDateUtc: iso(t), monitored: true,
           hasFile: has, episodeFileId: has ? id * 1000 + s * 100 + e : 0, size: has ? 900e6 + e * 11e6 : 0 });
       }
       return { id, title, year, status, network, genres, ratings: { value: rating }, overview: `${title} is a demo show. Nothing here is real.`, monitored: true, qualityProfileId: 2,
@@ -222,18 +222,22 @@ function create(opts = {}) {
     if (type === 'sonarr' || type === 'radarr') return arrApp(type, req, res, sub, q);
     if (type === 'lidarr' || type === 'readarr') return musicBooks(type, req, res, sub, q);
     if (type === 'qbittorrent') {
-      const data = m === 'POST' ? await body(req) : {};
+      const raw = m === 'POST' ? await body(req) : {}, data = raw._raw != null ? Object.fromEntries(new URLSearchParams(raw._raw)) : raw;
       if (sub === '/api/v2/auth/login') { res.writeHead(200, { 'Set-Cookie': 'SID=demo; path=/', 'Content-Type': 'text/plain' }); return res.end('Ok.'); }
       if (sub === '/api/v2/app/version') { res.writeHead(200, { 'Content-Type': 'text/plain' }); return res.end('v5.0.0-demo'); }
       if (sub === '/api/v2/transfer/speedLimitsMode') { res.writeHead(200, { 'Content-Type': 'text/plain' }); return res.end(st.altSpeed ? '1' : '0'); }
       if (sub === '/api/v2/transfer/toggleSpeedLimitsMode') { st.altSpeed = !st.altSpeed; st.calls.push('qb toggleSpeedLimitsMode -> ' + st.altSpeed); res.writeHead(200); return res.end(''); }
+      const cats = () => st.qbCats || { tv: { name: 'tv', savePath: '/downloads/tv' }, movies: { name: 'movies', savePath: '/downloads/movies' }, software: { name: 'software', savePath: '/downloads/sw' } };
       const wob = 0.85 + 0.3 * Math.sin(Date.now() / 4000);
       const live = () => st.torrents.map(x => x.progress < 1 ? { ...x, dlspeed: Math.round(x.dlspeed * wob * (st.altSpeed ? 0.2 : 1)), progress: Math.min(0.99, x.progress + ((Date.now() / 60000) % 0.2)) } : x);
       if (sub === '/api/v2/torrents/info') return json(res, live());
       if (sub.startsWith('/api/v2/sync/maindata')) return json(res, { server_state: { dl_info_speed: Math.round(2.4e6 * wob * (st.altSpeed ? 0.2 : 1)), up_info_speed: 3.5e5, dl_info_data: 4e10, up_info_data: 6e10, connection_status: 'connected', last_external_address_v4: '203.0.113.7',
-        free_space_on_disk: 600e9, use_alt_speed_limits: st.altSpeed, dl_rate_limit: 0, up_rate_limit: 0 }, torrents: {}, categories: {}, tags: [] });
+        free_space_on_disk: 600e9, use_alt_speed_limits: st.altSpeed, dl_rate_limit: 0, up_rate_limit: 0 }, torrents: {}, categories: cats(), tags: st.qbTags || [] });
       if (sub === '/api/v2/transfer/info') return json(res, { dl_info_speed: Math.round(2.4e6 * wob * (st.altSpeed ? 0.2 : 1)), up_info_speed: Math.round(3.5e5 * (2 - wob)), dl_info_data: 4e10, up_info_data: 6e10, connection_status: 'connected' });
-      if (sub === '/api/v2/torrents/categories') return json(res, { tv: { name: 'tv', savePath: '/downloads/tv' }, movies: { name: 'movies', savePath: '/downloads/movies' }, software: { name: 'software', savePath: '/downloads/sw' } });
+      if (sub === '/api/v2/torrents/categories') return json(res, cats());
+      if (sub === '/api/v2/torrents/createCategory') { const n = String(data.category || ''); if (!n || /^\//.test(n)) { res.writeHead(409); return res.end('Category name is invalid'); } st.qbCats = { ...cats(), [n]: { name: n, savePath: String(data.savePath || '') } }; res.writeHead(200); return res.end(''); }
+      if (sub === '/api/v2/torrents/removeCategories') { const c = cats(); for (const n of String(data.categories || '').split('\n')) delete c[n]; st.qbCats = c; res.writeHead(200); return res.end(''); }
+      if (sub === '/api/v2/torrents/createTags') { st.qbTags = [...new Set([...(st.qbTags || []), ...String(data.tags || '').split(',').map(x => x.trim()).filter(Boolean)])]; res.writeHead(200); return res.end(''); }
       if (sub === '/api/v2/torrents/tags') return json(res, []);
       if (sub === '/api/v2/app/preferences') return json(res, { scheduler_enabled: false, alt_dl_limit: 1024000, alt_up_limit: 512000, dl_limit: 0, up_limit: 0 });
       if (sub.startsWith('/api/v2/rss/')) return json(res, {});
@@ -282,7 +286,11 @@ function create(opts = {}) {
       if (sub === '/api/v1/status') return json(res, { version: '2.0.0.demo' });
       if (sub === '/api/v1/search') return json(res, { results: ['Hidden Valley', 'Hidden Harbor', 'Paper Kingdoms'].filter(t => t.toLowerCase().includes(String(q.get('query') || '').toLowerCase())).map((t, i) => (i === 1 ? { mediaType: 'movie', id: 800 + i, title: t, releaseDate: '2024-03-01', overview: 'Demo result.', posterPath: '' } : { mediaType: 'tv', id: 800 + i, name: t, firstAirDate: '2022-05-01', overview: 'Demo result.', posterPath: '' })) });
       let r = sub.match(/^\/api\/v1\/tv\/(\d+)$/);
-      if (r) return json(res, { id: +r[1], name: 'Demo show', numberOfSeasons: 3, seasons: [{ seasonNumber: 0, episodeCount: 2 }, { seasonNumber: 1, episodeCount: 8 }, { seasonNumber: 2, episodeCount: 10 }, { seasonNumber: 3, episodeCount: 6 }] });
+      const cast = [['Ana Reyes', 'Captain'], ['Tom Okafor', 'Doctor'], ['Lin Park', 'Pilot']].map(([name, character]) => ({ name, character, profilePath: '' }));
+      const mv = sub.match(/^\/api\/v1\/movie\/(\d+)$/);
+      if (mv) return json(res, { id: +mv[1], title: 'Demo movie ' + mv[1], releaseDate: '2025-04-11', overview: 'An invented movie for the demo.', tagline: 'Nothing here is real.', posterPath: '', backdropPath: '', voteAverage: 7.6, runtime: 118,
+        genres: [{ name: 'Drama' }, { name: 'Sci-Fi' }], status: 'Released', productionCompanies: [{ name: 'Demo Pictures' }], credits: { cast }, relatedVideos: [{ type: 'Trailer', site: 'YouTube', key: 'dQw4w9WgXcQ' }], mediaInfo: { status: 0 } });
+      if (r) return json(res, { id: +r[1], name: 'Demo show', overview: 'An invented show for the demo.', firstAirDate: '2022-05-01', voteAverage: 8.1, episodeRunTime: [44], genres: [{ name: 'Drama' }], networks: [{ name: 'Demo TV' }], credits: { cast }, numberOfSeasons: 3, seasons: [{ seasonNumber: 0, episodeCount: 2 }, { seasonNumber: 1, episodeCount: 8 }, { seasonNumber: 2, episodeCount: 10 }, { seasonNumber: 3, episodeCount: 6 }] });
       if (sub === '/api/v1/request' && m === 'POST') { const id = st.nextReq++; st.seerrReq[id] = data; st.calls.push('seerr request ' + JSON.stringify(data)); return json(res, { id }); }
       r = sub.match(/^\/api\/v1\/request\/(\d+)$/);
       if (r) return json(res, { id: +r[1], status: 2, media: { status: 3 } });
@@ -340,6 +348,7 @@ function create(opts = {}) {
         const mv = st.movies.slice(0, 10).map((x, i) => ({ title: x.title, year: x.year, total_plays: 14 - i, thumb: '/library/metadata/' + x.id + '/thumb/1' })), tv = st.shows.map((x, i) => ({ title: x.title, total_plays: 31 - i * 4, grandparent_thumb: '/library/metadata/' + (200 + i) + '/thumb/1', thumb: '/library/metadata/' + (300 + i) + '/thumb/1' }));
         return ok([{ stat_id: 'top_movies', rows: mv }, { stat_id: 'top_tv', rows: tv }, { stat_id: 'top_users', rows: [{ user: 'alex', friendly_name: 'Alex', total_plays: 42, total_duration: 150000 }, { user: 'sam', friendly_name: 'Sam', total_plays: 27, total_duration: 91000 }, { user: 'jo', friendly_name: 'Jo', total_plays: 11, total_duration: 36000 }] }]);
       }
+      if (cmd === 'get_user_watch_time_stats') return ok(String(q.get('query_days') || '1,7,30,0').split(',').map(d => ({ query_days: +d, total_plays: (+d || 90) * 2, total_time: (+d || 90) * 5400 })));
       if (cmd === 'get_users') return ok([{ user_id: 1, username: 'alex', friendly_name: 'Alex' }, { user_id: 2, username: 'sam', friendly_name: 'Sam' }, { user_id: 3, username: 'jo', friendly_name: 'Jo' }]);
       if (cmd === 'get_history') return ok({ data: st.shows.slice(0, 6).map((x, i) => ({ friendly_name: ['Alex', 'Sam', 'Jo'][i % 3], full_title: x.title + ' - S01E0' + (i + 1), media_type: 'episode', date: Math.round((now - i * 5400e3) / 1000), player: ['Living Room TV', 'Phone', 'Laptop'][i % 3], percent_complete: [100, 62, 100, 18, 95, 100][i], grandparent_title: x.title, duration: 2700, user_id: (i % 3) + 1, grandparent_thumb: '/library/metadata/' + (200 + i) + '/thumb/1' })).filter(x => !q.get('user_id') || String(x.user_id) === q.get('user_id')) });
       if (cmd === 'get_plays_by_date') { const dur = q.get('y_axis') === 'duration', k = dur ? 2700 : 1; return ok({ categories: dates, series: [{ name: 'TV', data: dates.map((_, i) => wave(i, 3, 2) * k) }, { name: 'Movies', data: dates.map((_, i) => wave(i + 3, 1, 1) * k) }] }); }

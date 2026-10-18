@@ -61,6 +61,10 @@ class Ctx(val app: AppState, val me: Me, val user: User, val nav: NavHostControl
     fun go(route: String) = nav.navigate(route) { launchSingleTop = true }
     fun back() { nav.popBackStack() }
     fun item(sid: String, kind: String, id: Long) = go("item/$sid/$kind/$id")
+    /** The full page for a movie or show, by its TMDB number. */
+    fun title(type: String, id: Long) = go("title/${if (type == "tv") "tv" else "movie"}/$id")
+    fun profile(uid: String? = null) = go(if (uid == null || uid == user.id) "profile" else "profile/$uid")
+    val prefs get() = app.prefs.value
 }
 
 val LocalCtx = staticCompositionLocalOf<Ctx> { error("No context") }
@@ -126,7 +130,8 @@ private fun MainShell(state: AppState, me: Me, user: User) {
                 }
             },
         ) { pad ->
-            NavHost(nav, startDestination = "home", modifier = Modifier.padding(pad)) {
+            val start = androidx.compose.runtime.remember { state.prefs.value.start.takeIf { s -> TABS.any { it.route == s } } ?: "home" }
+            NavHost(nav, startDestination = start, modifier = Modifier.padding(pad)) {
                 composable("home") { HomeScreen() }
                 composable("discover") { DiscoverScreen() }
                 composable("library") { LibraryScreen() }
@@ -147,6 +152,16 @@ private fun MainShell(state: AppState, me: Me, user: User) {
                 composable("unraid") { com.bdlnaredi.goatstack.ui.screens.UnraidScreen() }
                 composable("users") { com.bdlnaredi.goatstack.ui.screens.UsersScreen() }
                 composable("import") { com.bdlnaredi.goatstack.ui.screens.ImportScreen() }
+                composable("rss") { com.bdlnaredi.goatstack.ui.screens.RssScreen() }
+                composable("profile") { com.bdlnaredi.goatstack.ui.screens.ProfileScreen(null) }
+                composable("profile/{uid}", arguments = listOf(navArgument("uid") { type = NavType.StringType })) { e ->
+                    com.bdlnaredi.goatstack.ui.screens.ProfileScreen(e.arguments?.getString("uid"))
+                }
+                composable("devices") { com.bdlnaredi.goatstack.ui.screens.DevicesScreen() }
+                composable(
+                    "title/{type}/{id}",
+                    arguments = listOf(navArgument("type") { type = NavType.StringType }, navArgument("id") { type = NavType.LongType }),
+                ) { e -> com.bdlnaredi.goatstack.ui.screens.TitleScreen(e.arguments?.getString("type").orEmpty(), e.arguments?.getLong("id") ?: 0) }
                 composable(
                     "item/{sid}/{kind}/{id}",
                     arguments = listOf(navArgument("sid") { type = NavType.StringType }, navArgument("kind") { type = NavType.StringType }, navArgument("id") { type = NavType.LongType }),

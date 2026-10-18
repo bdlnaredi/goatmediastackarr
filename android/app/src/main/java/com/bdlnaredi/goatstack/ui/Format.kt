@@ -40,7 +40,26 @@ object Format {
             s.length == 10 -> LocalDate.parse(s).atStartOfDay(ZoneId.systemDefault()).toInstant()
             else -> OffsetDateTime.parse(s).toInstant()
         }
-    } catch (_: Exception) { try { Instant.parse(s) } catch (_: Exception) { null } }
+    } catch (_: Exception) {
+        try { Instant.parse(s) } catch (_: Exception) {
+            // RSS feeds write dates like "Sat, 17 Oct 2026 10:00:00 +0000".
+            try { java.time.ZonedDateTime.parse(s.trim(), DateTimeFormatter.RFC_1123_DATE_TIME).toInstant() } catch (_: Exception) { null }
+        }
+    }
+
+    /** Milliseconds for a date the server sent, or 0 when it cannot be read. */
+    fun parseMillis(s: String): Long = parseDate(s)?.toEpochMilli() ?: 0L
+
+    /** Gigabytes the way disks and the server's limits count them (1 GB = 1,000,000,000 bytes). */
+    fun gb(n: Long): String = if (n <= 0) "0 GB" else if (n >= 100_000_000_000) "${n / 1_000_000_000} GB" else String.format(Locale.US, "%.1f GB", n / 1e9)
+
+    /** "3 h 20 min" for a length of time in seconds. */
+    fun hours(seconds: Long): String = when {
+        seconds < 60 -> "0 min"
+        seconds < 3600 -> "${seconds / 60} min"
+        seconds < 360000 -> "${seconds / 3600} h ${seconds % 3600 / 60} min"
+        else -> "${seconds / 3600} h"
+    }
 
     /** "Today", "Tomorrow", "Wed 22 Oct" — for the calendar. */
     fun day(s: String, today: LocalDate = LocalDate.now()): String {
@@ -61,6 +80,7 @@ object Format {
 
     /** "3 min ago", "2 days ago" from milliseconds. */
     fun ago(ms: Long, now: Long = System.currentTimeMillis()): String {
+        if (ms <= 0) return ""
         val s = abs(now - ms) / 1000
         return when {
             s < 60 -> "just now"

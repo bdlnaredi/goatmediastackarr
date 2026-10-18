@@ -172,4 +172,38 @@ class ScreensTest {
         tap("Check"); waitFor("already here"); shot("30-import")
         assertTrue("calls the pretend server does not know: ${fake.misses}", fake.misses.isEmpty())
     }
+
+    /** Scrolls the page's list until [text] is on screen. */
+    private fun scrollTo(text: String) {
+        compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText(text, substring = true))
+        compose.waitForIdle()
+    }
+
+    @Test fun version3Pages() {
+        connect()
+        show()
+        waitFor("Playing now")
+        // A movie opens its own page, not a pop-up.
+        tap("Discover"); waitFor("Quiet Orbit")
+        compose.onAllNodesWithText("Quiet Orbit").onFirst().performClick(); waitFor("Some signals"); shot("31-title")
+        scrollTo("Cast"); shot("32-title-cast"); back()
+        // A show's episodes have their story, and a missing one can be searched for.
+        tap("Library"); waitFor("Paper Moon")
+        compose.onAllNodesWithText("Paper Moon").onFirst().performClick(); waitFor("Search now")
+        scrollTo("Season 3"); tap("Season 3"); waitFor("The storm cuts")
+        scrollTo("5. Chapter 21"); tap("5. Chapter 21"); waitFor("Search for this episode"); shot("33-episodes")
+        back()
+        tap("Downloads"); waitFor("Downloading"); tap("Categories"); waitFor("Categories and tags"); shot("34-categories"); tap("Done")
+        tap("More"); waitFor("Go to")
+        openFromMore("RSS"); waitFor("Ubuntu 26.04"); shot("35-rss")
+        tap("Rules"); waitFor("Ubuntu releases"); shot("36-rss-rules"); back()
+        openFromMore("Profile"); waitFor("Space on the server"); shot("37-profile")
+        scrollTo("Taking the most space"); shot("38-profile-more"); back()
+        openFromMore("Users"); waitFor("Ravi"); tap("Ravi"); waitFor("Space limit"); shot("39-profile-admin"); back(); back()
+        openFromMore("Settings"); waitFor("Appearance")
+        scrollTo("Poster size"); shot("40-settings-phone")
+        scrollTo("Signed-in devices"); shot("41-settings-account")
+        tap("Signed-in devices"); waitFor("Chrome on Windows"); shot("42-devices")
+        assertTrue("calls the pretend server does not know: ${fake.misses}", fake.misses.isEmpty())
+    }
 }

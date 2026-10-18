@@ -1169,17 +1169,22 @@ async function usrView(){
       <div>${PERMS.map(([k,n])=>`<label class="chk" style="margin:6px 14px 0 0"><input type="checkbox" data-pm="${k}" ${!u.perms||u.perms[k]!==false?'checked':''}>${n}</label>`).join('')}</div>
       <div class="row" style="margin-top:14px"><span class="mute">Requests</span><label class="mute">Limit <input type="number" min="0" max="1000" data-rl value="${u.reqLimit?u.reqLimit.n:''}" placeholder="None" style="width:80px"></label>
       <label class="mute">every <select data-rd aria-label="Limit period">${[1,7,30].map(d=>`<option value="${d}" ${(u.reqLimit?u.reqLimit.days:7)===d?'selected':''}>${d===1?'day':d+' days'}</option>`).join('')}</select></label>
-      <label class="chk"><input type="checkbox" data-aa ${u.autoApprove?'checked':''}>Approve their requests automatically</label></div>`:'<p class="mute" style="margin:12px 0 0">Admins can open every app and do everything.</p>'}</div>`).join('')}`;
+      <label class="chk"><input type="checkbox" data-aa ${u.autoApprove?'checked':''}>Approve their requests automatically</label></div>
+      <div class="row" style="margin-top:10px"><span class="mute">Space</span><label class="mute">Limit <input type="number" min="0" max="1000000" data-dl value="${u.dataLimit||''}" placeholder="None" style="width:90px"> GB</label><span class="mute" data-du>…</span></div>
+      <p class="mute" style="margin:4px 0 0;font-size:13px">The disk space the shows and movies they asked for may take. When it is used up, new requests are refused until you raise it or remove something.</p>`:'<p class="mute" style="margin:12px 0 0">Admins can open every app and do everything.</p>'}</div>`).join('')}`;
   if($('#pxf')&&px.servers.length)$('#pxf').onsubmit=async e=>{e.preventDefault();const f=e.target,v=new FormData(f);$('#pxe').textContent='';
     try{await api('/api/plexsettings','PUT',{on:f.on.checked,sid:v.get('sid'),auto:v.get('auto')==='1',access:[...f.querySelectorAll('[data-pa]:checked')].map(c=>c.dataset.pa),perms:Object.fromEntries([...f.querySelectorAll('[data-pp]')].map(c=>[c.dataset.pp,c.checked])),hide:{genre:f.querySelector('[data-hx-g]').value,label:f.querySelector('[data-hx-l]').value,rating:f.querySelector('[data-hx-r]').value}});toast('Saved','ok');if(f.on.checked&&!PLEXLOGIN)PLEXLOGIN=true;usrView()}catch(x){$('#pxe').textContent=x.message}};
   $('#uf').onsubmit=async e=>{e.preventDefault();$('#ue').textContent='';try{await api('/api/users','POST',Object.fromEntries(new FormData(e.target)));toast('Profile added','ok');usrView()}catch(x){$('#ue').textContent=x.message}};
   const put=async(id,b)=>{try{await api('/api/users/'+id,'PUT',b);toast('Saved','ok');return true}catch(x){toast(x.message,'bad');return false}};
+  document.querySelectorAll('[data-du]').forEach(async el=>{const id=el.closest('[data-u]').dataset.u;try{const u=await api(`/api/users/${id}/usage`),gb=b=>(b/1e9).toFixed(b>=1e11?0:1)+' GB';
+    el.textContent=u.space?`${gb(u.space.bytes)} used by ${u.requests.approved} request${u.requests.approved===1?'':'s'}`+(u.limitGb?` (${Math.min(100,Math.round(u.space.bytes/(u.limitGb*1e9)*100))}% of the limit)`:''):'';}catch{el.textContent=''}});
   $('#m').onchange=async e=>{const card=e.target.closest('[data-u]');if(!card)return;const id=card.dataset.u,t=e.target;
     if(t.matches('[data-ac]')){const access=[...card.querySelectorAll('[data-ac]:checked')].map(c=>c.dataset.ac);try{await api(`/api/users/${id}/access`,'PUT',{access});toast('Saved','ok')}catch(x){toast(x.message,'bad')}}
     else if(t.matches('[data-role]')){if(await put(id,{role:t.value}))usrView();else usrView()}
     else if(t.matches('[data-pre]')){if(t.value!=='custom'){card.querySelectorAll('[data-pm]').forEach(c=>c.checked=!!PRESET[t.value][c.dataset.pm]);await put(id,{perms:PRESET[t.value]})}}
     else if(t.matches('[data-rl],[data-rd]')){const n=+card.querySelector('[data-rl]').value||0;await put(id,{reqLimit:{n,days:+card.querySelector('[data-rd]').value}})}
     else if(t.matches('[data-aa]')){await put(id,{autoApprove:t.checked})}
+    else if(t.matches('[data-dl]')){await put(id,{dataLimit:+t.value||0})}
     else if(t.matches('[data-pm]')){const pm=Object.fromEntries([...card.querySelectorAll('[data-pm]')].map(c=>[c.dataset.pm,c.checked]));await put(id,{perms:pm});
       const v=Object.values(pm);card.querySelector('[data-pre]').value=v.every(Boolean)?'std':v.every(x=>!x)?'view':'custom'}};
   $('#m').onclick=async e=>{const card=e.target.closest('[data-u]');if(!card)return;const id=card.dataset.u;

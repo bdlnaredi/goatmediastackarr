@@ -64,4 +64,16 @@ class FormatTest {
         val live = api.json.decodeFromString<Live>("""{"t":1,"qb":{"q1":{"dl":100,"ul":5,"active":2,"top":[]}},"sab":{},"plex":{"p1":[{"title":"Film","progress":0.5}]},"health":{"q1":true}}""")
         assertEquals(100L, live.qb["q1"]!!.dl); assertEquals("Film", live.plex["p1"]!![0].title)
     }
+
+    @Test fun newerHelpers() {
+        assertEquals("4.2 GB", Format.gb(4_200_000_000)); assertEquals("0 GB", Format.gb(0)); assertEquals("250 GB", Format.gb(250_000_000_000))
+        assertEquals("3 h 20 min", Format.hours(12_000)); assertEquals("5 min", Format.hours(300))
+        assertTrue(Format.parseMillis("Sat, 17 Oct 2026 10:00:00 +0000") > 0)
+        assertEquals(0L, Format.parseMillis("not a date")); assertEquals("", Format.ago(0))
+        val p = com.bdlnaredi.goatstack.data.Prefs.parse("start=library\nposters=large\nrefresh=nonsense\nspoilers=true")
+        assertEquals("library", p.start); assertEquals(140, p.posterDp); assertEquals(2500L, p.refreshMs); assertTrue(p.spoilers)
+        assertEquals(p, com.bdlnaredi.goatstack.data.Prefs.parse(p.text()))
+        val t = Api {}.json.decodeFromString<com.bdlnaredi.goatstack.data.TitleInfo>("""{"type":"tv","id":5,"title":"X","cast":[{"name":"A"}],"library":{"sid":"s1","id":2,"kind":"tv"},"new":1}""")
+        assertEquals("s1", t.library!!.sid); assertEquals("A", t.cast[0].name)
+    }
 }

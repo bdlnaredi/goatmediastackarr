@@ -108,7 +108,7 @@ fun RequestsScreen() {
             else LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 items(list, key = { it.id }) { r ->
                     val stage = r.stage.ifEmpty { r.status }
-                    GoatCard(Modifier.fillMaxWidth(), padding = 12.dp) {
+                    GoatCard(Modifier.fillMaxWidth(), padding = 12.dp, onClick = if (r.mediaId > 0) ({ ctx.title(r.mediaType, r.mediaId) }) else null) {
                         Row {
                             Poster(r.poster, r.title, Modifier.width(64.dp), corner = 10.dp)
                             Spacer(Modifier.width(12.dp))

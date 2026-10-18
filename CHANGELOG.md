@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Android app, version 3: movies and shows open their own page (story, cast, seasons, trailer, in the library or not) instead of a pop-up; each episode shows its story and can be searched for; an RSS page (articles, feeds, auto-download rules); Downloads adds magnet links, filters and moves by category, and admins manage categories and tags; a Profile page with your picture, the space your requests take and your watch time; a fuller Settings page (start page, poster size, update speed, hide episode stories, password, recovery email, phone messages, signed-in devices).
+- Profile pictures: upload one from the app (it is made small on the phone first); it shows next to your name.
+- Space limits: an admin can give each person a limit in GB (in the app on their profile, or on the web page under Settings → Users). It counts the disk space of what they requested; at the limit, new requests are refused with a message saying so.
 - Android app, version 2: Wanted, Music (Lidarr, with adding artists), Subtitles (find missing ones through Bazarr), Stats (Tautulli), Health, Indexers (test and remove), Usenet servers (add, test, change, remove), Unraid (array, disks, start and stop containers), Users (add and delete profiles) and Bring in your setup, all from More.
 - Android app: a native app (Kotlin and Jetpack Compose) with its own design and eight themes, Home, Discover, Search, Library with show and movie pages, Downloads, Requests, Upcoming, Stack and Settings; sign in with a password (and two-step code) or with Plex. Each release has `goatmediastackarr.apk` attached.
 - Smaller image: Bazarr and SABnzbd are built in a separate stage, so compilers no longer ship in the image; identical .NET runtime files shared by Sonarr, Radarr, Lidarr and Prowlarr are stored once; Seerr's source maps and docs are dropped.
@@ -12,6 +15,7 @@
 
 ## Fixes
 
+- Adding a download category says what went wrong (a name already taken, or one starting or ending with a slash) instead of failing silently.
 - qBittorrent's torrent port is 50413 instead of 6881, which many trackers block (qBittorrent showed "port is blacklisted"). Installs still on 6881 are moved; a port picked by hand is kept; `TORRENT_PORT` sets another.
 - OpenVPN: files a .ovpn names without a folder (`credentials.conf`, `ca.crt`, keys) are found next to it in the vpn folder; a file that needs a username and password with none given now says so on the Stack page instead of failing.
 - Bazarr no longer gets stuck on "port already in use" (code -105) after a restart: its worker is run directly, so stopping it really stops it.

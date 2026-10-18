@@ -91,11 +91,9 @@ fun UsersScreen() {
         LoadView(data) { list ->
             LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 items(list, key = { it.id }) { u ->
-                    GoatCard(Modifier.fillMaxWidth(), padding = 14.dp) {
+                    GoatCard(Modifier.fillMaxWidth(), padding = 14.dp, onClick = { ctx.profile(u.id) }) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.size(42.dp).clip(CircleShape).background(Brush.linearGradient(listOf(g.primary, g.accent))), contentAlignment = Alignment.Center) {
-                                Text(u.name.take(1).uppercase(), style = MaterialTheme.typography.titleMedium, color = g.onPrimary)
-                            }
+                            com.bdlnaredi.goatstack.ui.Avatar(u.avatar, u.name, 42.dp)
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)) {
                                 Text(u.name + if (u.id == ctx.user.id) " (you)" else "", style = MaterialTheme.typography.titleSmall, color = g.text)
@@ -103,13 +101,14 @@ fun UsersScreen() {
                                     Badge(if (u.role == "admin") "Admin" else "Member", if (u.role == "admin") g.primary else g.muted)
                                     if (u.plex != null) Badge("Plex", g.warn)
                                     if (u.twofa) Badge("Two-step", g.good)
+                                    if (u.dataLimit > 0) Badge("${u.dataLimit} GB", g.accent)
                                 }
                             }
                             if (u.id != ctx.user.id) IconButton(onClick = { removing = u }) { Icon(Icons.Rounded.Delete, "Delete", tint = g.muted) }
                         }
                     }
                 }
-                item { Text("What each profile may do, and which apps it sees, is set on the web page under Settings → Users.", style = MaterialTheme.typography.bodySmall, color = g.muted, modifier = Modifier.padding(top = 6.dp)) }
+                item { Text("Tap a profile to see what it uses and to set its space limit. Which apps it sees is set on the web page under Settings → Users.", style = MaterialTheme.typography.bodySmall, color = g.muted, modifier = Modifier.padding(top = 6.dp)) }
             }
         }
         if (adding) AddUser { ok -> adding = false; if (ok) data.reload() }

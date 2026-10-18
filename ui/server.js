@@ -108,8 +108,60 @@ const listKeys = () => { const l = (db.settings || {}).lists || {}; return { tra
 const lists = listsLib.create({ keys: listKeys,
   urls: new Proxy({}, { get: (_, k) => String(process.env[k.toUpperCase() + '_URL'] || (DEMO ? `http://127.0.0.1:${PORT}/__demo/${k}` : { trakt: 'https://api.trakt.tv', tmdb: 'https://api.themoviedb.org/3', tvdb: 'https://api4.thetvdb.com/v4' }[k])).replace(/\/+$/, '') }),
   seerrPoster: async (kind, id) => { const s = db.services.find(x => x.type === 'seerr'); if (!s) return ''; const r = await fetch(`${s.url.replace(/\/+$/, '')}/api/v1/${kind === 'tv' ? 'tv' : 'movie'}/${id}`, { signal: AbortSignal.timeout(8000), headers: { 'X-Api-Key': s.apiKey } }); return r.ok ? ((await r.json()).posterPath || '') : ''; } });
-const pubUser = u => ({ email: u.email || '', twofa: !!(u.totp && u.totp.on), id: u.id, name: u.name, role: u.role, access: u.access, perms: u.perms || null, notify: u.notify || '', dash: u.dash || null, reqLimit: u.reqLimit || null, autoApprove: !!u.autoApprove, plex: u.plex ? { name: u.plex.name } : null, hide: cleanHide(u.hide), restr: u.plexRules ? Object.fromEntries(['contentRating', 'contentRating!', 'label', 'label!'].filter(k => (u.plexRules[k] || []).length).map(k => [k, u.plexRules[k]])) : null, libs: u.plex ? { n: ((u.plexLibs || {}).mine || []).length, of: ((u.plexLibs || {}).all || []).length, limited: libLimited(u) } : null, plexName: u.plexName || '', lists: lists.enabled() });
+const pubUser = u => ({ email: u.email || '', twofa: !!(u.totp && u.totp.on), id: u.id, name: u.name, role: u.role, access: u.access, perms: u.perms || null, notify: u.notify || '', dash: u.dash || null, reqLimit: u.reqLimit || null, autoApprove: !!u.autoApprove, plex: u.plex ? { name: u.plex.name } : null, hide: cleanHide(u.hide), restr: u.plexRules ? Object.fromEntries(['contentRating', 'contentRating!', 'label', 'label!'].filter(k => (u.plexRules[k] || []).length).map(k => [k, u.plexRules[k]])) : null, libs: u.plex ? { n: ((u.plexLibs || {}).mine || []).length, of: ((u.plexLibs || {}).all || []).length, limited: libLimited(u) } : null, plexName: u.plexName || '', lists: lists.enabled(), avatar: u.avatar ? `/api/avatar/${u.id}?v=${u.avatar.v}` : '', dataLimit: u.dataLimit || 0 });
 const pubSvc = s => ({ id: s.id, type: s.type, name: s.name, url: s.url, managed: !!s.managed });
+
+// ---------- What each person uses: the space their requests take on the disks, and what they watched ----------
+// A profile picture is kept as one small file per person; the record only says its type and when it changed.
+const AVD = path.join(DATA, 'avatars'), AVTYPES = { 'image/jpeg': [0xff, 0xd8, 0xff], 'image/png': [0x89, 0x50, 0x4e, 0x47], 'image/webp': [0x52, 0x49, 0x46, 0x46] };
+const avFile = u => path.join(AVD, String(u.id).replace(/\W/g, '') + '.img');
+const arrGet = async (s, p) => { const r = await fetch(s.url.replace(/\/+$/, '') + p, { signal: AbortSignal.timeout(20000), headers: { 'X-Api-Key': s.apiKey || '' } }); if (!r.ok) throw new Error(s.name + ' returned ' + r.status); return r.json(); };
+// Every movie and show in Sonarr and Radarr by its TMDB number, with its size on disk. Kept for five minutes.
+let libIdx = { t: 0, v: null, p: null };
+const libIndex = () => {
+  if (libIdx.v && Date.now() - libIdx.t < 300000) return Promise.resolve(libIdx.v);
+  if (!libIdx.p) libIdx.p = (async () => {
+    const out = { movie: new Map(), tv: new Map() };
+    await Promise.all(db.services.filter(s => s.type === 'radarr' || s.type === 'sonarr').map(async s => { try {
+      const l = await arrGet(s, s.type === 'radarr' ? '/api/v3/movie' : '/api/v3/series'), k = s.type === 'radarr' ? 'movie' : 'tv';
+      for (const x of Array.isArray(l) ? l : []) if (+x.tmdbId > 0) {
+        const size = k === 'movie' ? +x.sizeOnDisk || 0 : +(x.statistics || {}).sizeOnDisk || 0, e = out[k].get(+x.tmdbId);
+        if (e) e.size += size; else out[k].set(+x.tmdbId, { size, sid: s.id, id: x.id });
+      }
+    } catch {} }));
+    libIdx = { t: Date.now(), v: out, p: null }; return out;
+  })().finally(() => { libIdx.p = null; });
+  return libIdx.p;
+};
+// The space taken by what this person asked for (each title counted once, even if asked for twice).
+const usedSpace = async u => {
+  const idx = await libIndex(), seen = new Set(), items = []; let bytes = 0;
+  for (const r of db.requests.filter(x => x.uid === u.id && x.status === 'approved')) {
+    const k = r.mediaType + ':' + r.mediaId; if (seen.has(k)) continue; seen.add(k);
+    const e = idx[r.mediaType === 'tv' ? 'tv' : 'movie'].get(+r.mediaId), size = e ? e.size : 0; bytes += size;
+    items.push({ title: r.title, year: r.year, mediaType: r.mediaType, mediaId: r.mediaId, poster: r.poster, size });
+  }
+  return { bytes, items: items.sort((a, b) => b.size - a.size) };
+};
+const gbText = b => (b / 1e9 >= 100 ? Math.round(b / 1e9) : Math.round(b / 1e8) / 10) + ' GB';
+// Watch time from Tautulli, for a person who signs in with Plex (or whose Plex name an admin entered).
+const watchOf = async u => {
+  const s = db.services.find(x => x.type === 'tautulli'), names = [u.plex && u.plex.name, u.plexName].filter(Boolean).map(x => String(x).trim().toLowerCase());
+  if (!s || !names.length) return null;
+  const t = async (cmd, extra = '') => { const r = await fetch(`${s.url.replace(/\/+$/, '')}/api/v2?apikey=${encodeURIComponent(s.apiKey || '')}&cmd=${cmd}${extra}`, { signal: AbortSignal.timeout(10000) });
+    const d = await r.json().catch(() => null); if (!r.ok || !d || !d.response || d.response.result !== 'success') throw new Error('Tautulli'); return d.response.data; };
+  const who = ((await t('get_users')) || []).find(x => names.includes(String(x.username || '').trim().toLowerCase()) || names.includes(String(x.friendly_name || '').trim().toLowerCase()));
+  if (!who || !who.user_id) return [];
+  const l = await t('get_user_watch_time_stats', '&query_days=1,7,30,0&user_id=' + encodeURIComponent(who.user_id));
+  return (Array.isArray(l) ? l : []).map(x => ({ days: +x.query_days || 0, plays: +x.total_plays || 0, seconds: +x.total_time || 0 }));
+};
+const usageOf = async u => {
+  const now = Date.now(), mine = db.requests.filter(r => r.uid === u.id), n = st => mine.filter(r => r.status === st).length;
+  const [space, watch] = await Promise.all([usedSpace(u).catch(() => null), watchOf(u).catch(() => null)]);
+  return { id: u.id, name: u.name, requests: { total: mine.length, month: mine.filter(r => r.at > now - 30 * DAY).length, approved: n('approved'), pending: n('pending'), declined: n('declined') },
+    reqLimit: u.reqLimit || null, space: space ? { bytes: space.bytes, items: space.items.slice(0, 12) } : null, limitGb: u.dataLimit || 0, watch,
+    devices: [...sessions.values()].filter(v => v.uid === u.id).length };
+};
 
 // ---------- GoatMediaStackarr: apps that live inside this container ----------
 // The container writes managed.json with each built-in engine's address and keys. Those engines are kept in
@@ -1029,7 +1081,7 @@ const goatServer = http.createServer(async (req, res) => {
     }
     if (p === '/api/logout') { sessions.delete(th(token)); saveSess(); return send(res, 200, {}, { 'Set-Cookie': 'sid=; Path=/; Max-Age=0' }); }
     if (!me) return send(res, 401, { error: 'Sign in first' });
-    if (DEMO && m !== 'GET' && /^\/api\/(users|password|2fa|backups?|restore|alerts|statuslinks|signin|services|weekly|throttle|me\/notify|me\/email|plexsettings|listsettings)/.test(p)) return send(res, 403, { error: 'This is turned off in the demo' });
+    if (DEMO && m !== 'GET' && /^\/api\/(users|password|2fa|backups?|restore|alerts|statuslinks|signin|services|weekly|throttle|me\/notify|me\/email|me\/avatar|plexsettings|listsettings)/.test(p)) return send(res, 403, { error: 'This is turned off in the demo' });
 
     if (p === '/api/2fa/start' && m === 'POST') {
       if (me.totp && me.totp.on) return send(res, 400, { error: 'Two-step sign-in is already on' });
@@ -1256,7 +1308,14 @@ const goatServer = http.createServer(async (req, res) => {
       if (adminOnly()) return;
       const b = await readBody(req), s = svcOf(r[1], 'qbittorrent'), n = cut(b.name, 100).trim(); if (!s || !n) return send(res, 400, { error: 'Enter a name' });
       if (r[2] === 'cat') {
-        if (b.op === 'create') await qb(s, '/api/v2/torrents/createCategory', { category: n, savePath: cut(b.path, 500) });
+        if (b.op === 'create') {
+          if (/^[\/\\]|[\/\\]$|\/\/|\\/.test(n)) return send(res, 400, { error: 'A category name cannot start or end with a slash. Use "tv/kids" for a category inside another.' });
+          const have = Object.keys((await qb(s, '/api/v2/torrents/categories').catch(() => ({}))) || {});
+          if (have.some(x => x.toLowerCase() === n.toLowerCase())) return send(res, 400, { error: `There is already a category called ${n}.` });
+          try { await qb(s, '/api/v2/torrents/createCategory', { category: n, savePath: cut(b.path, 500).trim() }); }
+          catch (e) { return send(res, 400, { error: 'qBittorrent did not accept that category' + (e.message && !/returned \d+/.test(e.message) ? ': ' + cut(e.message, 200) : '') + '. Use letters, numbers, spaces and dashes.' }); }
+          audit(me.name, 'Added a download category', n);
+        }
         else if (b.op === 'remove') await qb(s, '/api/v2/torrents/removeCategories', { categories: n });
         else return send(res, 400, { error: 'Bad request' });
       } else if (b.op === 'create') await qb(s, '/api/v2/torrents/createTags', { tags: n });
@@ -1449,6 +1508,10 @@ const goatServer = http.createServer(async (req, res) => {
         const used = db.requests.filter(r => r.uid === me.id && r.status !== 'declined' && r.at > Date.now() - lim.days * DAY).length;
         if (used >= lim.n) return send(res, 429, { error: `You have used your ${lim.n} request${lim.n === 1 ? '' : 's'} for the last ${lim.days} day${lim.days === 1 ? '' : 's'}. Ask an admin if you need more.` });
       }
+      if (me.role !== 'admin' && me.dataLimit > 0) {
+        const sp = await usedSpace(me).catch(() => null);
+        if (sp && sp.bytes >= me.dataLimit * 1e9) return send(res, 429, { error: `What you asked for already takes ${gbText(sp.bytes)} of the ${me.dataLimit} GB an admin gave you. Ask an admin for more space.` });
+      }
       const seasons = b.mediaType === 'tv' && Array.isArray(b.seasons) ? [...new Set(b.seasons.map(Number).filter(n => Number.isInteger(n) && n >= 0 && n <= 200))].slice(0, 100) : [];
       const x = { id: uid(), sid: s.id, uid: me.id, user: me.name, mediaType: b.mediaType, mediaId: +b.mediaId, title: String(b.title || '').slice(0, 200),
         year: String(b.year || '').slice(0, 4), poster: String(b.poster || '').slice(0, 300), status: 'pending', at: Date.now(), ...(seasons.length ? { seasons } : {}) };
@@ -1460,6 +1523,31 @@ const goatServer = http.createServer(async (req, res) => {
       const q = new URL(req.url, 'http://x').searchParams, sv = svcOf(q.get('sid'), 'seerr'); if (!sv || !+q.get('id')) return send(res, 404, { error: 'Not found' });
       const d = await call(sv, '/api/v1/tv/' + +q.get('id'));
       return send(res, 200, { seasons: ((d && d.seasons) || []).filter(x => x.seasonNumber > 0).map(x => ({ n: x.seasonNumber, episodes: x.episodeCount || 0 })) });
+    }
+    // One movie or show, in full: for the title page in the phone app. From Seerr, or from TMDB when there is no Seerr.
+    if (p === '/api/title' && m === 'GET') {
+      const q = new URL(req.url, 'http://x').searchParams, type = q.get('type') === 'tv' ? 'tv' : 'movie', id = Math.round(+q.get('id'));
+      if (!(id > 0)) return send(res, 400, { error: 'Bad request' });
+      const sv = db.services.filter(allowed).find(x => x.type === 'seerr');
+      let d = null;
+      if (sv) d = await call(sv, `/api/v1/${type}/${id}`).catch(() => null);
+      if (!d && listKeys().tmdb) d = await lists.details(type, id).catch(() => null);
+      if (!d || !(d.title || d.name)) return send(res, 404, { error: sv ? 'Seerr does not know this title.' : 'This page needs Seerr, or a TMDB key under Settings → Discover lists.' });
+      const pk = (o, a, b) => o[a] != null ? o[a] : o[b], v = (a, b) => pk(d, a, b), img = (x, w) => !x ? '' : /^https?:\/\//.test(x) ? String(x).slice(0, 600) : /^\/[\w./-]+$/.test(x) ? 'https://image.tmdb.org/t/p/' + w + x : '';
+      const credits = d.credits || {}, vids = (d.relatedVideos || ((d.videos || {}).results || []).map(x => ({ type: x.type, site: x.site, key: x.key, name: x.name })));
+      const trailer = (Array.isArray(vids) ? vids : []).find(x => /^trailer$/i.test(x.type || '') && /youtube/i.test(x.site || '') && /^[\w-]{6,20}$/.test(x.key || ''));
+      const idx = await libIndex().catch(() => null), inLib = idx && idx[type].get(id), libSvc = inLib && db.services.find(x => x.id === inLib.sid && allowed(x));
+      const reqs = db.requests.filter(x => x.mediaType === type && +x.mediaId === id && (me.role === 'admin' || x.uid === me.id));
+      const date = String(v('releaseDate', 'release_date') || v('firstAirDate', 'first_air_date') || '');
+      const rt = +v('runtime', 'runtime') || +((v('episodeRunTime', 'episode_run_time') || [])[0]) || 0;
+      return send(res, 200, { type, id, title: cut(d.title || d.name, 200), year: date.slice(0, 4), date: date.slice(0, 10), tagline: cut(d.tagline, 300), overview: cut(d.overview, 4000),
+        poster: img(v('posterPath', 'poster_path'), 'w342'), backdrop: img(v('backdropPath', 'backdrop_path'), 'w780'), rating: Math.round((+v('voteAverage', 'vote_average') || 0) * 10) / 10, runtime: rt,
+        genres: (d.genres || []).map(g => cut(g.name, 40)).filter(Boolean).slice(0, 6), status: cut(d.status, 40),
+        studio: cut(((type === 'tv' ? d.networks : d.productionCompanies || d.production_companies) || [])[0] && ((type === 'tv' ? d.networks : d.productionCompanies || d.production_companies)[0].name), 80),
+        cast: (credits.cast || []).slice(0, 15).map(c => ({ name: cut(c.name, 80), role: cut(c.character, 80), photo: img(pk(c, 'profilePath', 'profile_path'), 'w185') })),
+        seasons: type === 'tv' ? (d.seasons || []).filter(x => +pk(x, 'seasonNumber', 'season_number') > 0).map(x => ({ n: +pk(x, 'seasonNumber', 'season_number'), episodes: +pk(x, 'episodeCount', 'episode_count') || 0, name: cut(x.name, 80), date: String(pk(x, 'airDate', 'air_date') || '').slice(0, 10) })) : [],
+        trailer: trailer ? trailer.key : '', seerr: sv ? sv.id : '', available: +((d.mediaInfo || {}).status) || 0,
+        library: libSvc ? { sid: libSvc.id, id: inLib.id, kind: type } : null, request: reqs.length ? { status: reqs[reqs.length - 1].status, stage: reqs[reqs.length - 1].stage || reqs[reqs.length - 1].status } : null });
     }
     if ((r = p.match(/^\/api\/requests\/(\w+)\/report$/)) && m === 'POST') {
       const x = db.requests.find(y => y.id === r[1]); if (!x || (me.role !== 'admin' && x.uid !== me.id)) return send(res, 404, { error: 'Not found' });
@@ -1531,7 +1619,7 @@ const goatServer = http.createServer(async (req, res) => {
       const now = Date.now();
       return send(res, 200, { ids: idsOf(sr, 'tv'), id: sr.id, title: sr.title, monitored: !!sr.monitored, seasons: (sr.seasons || []).map(x => ({ n: x.seasonNumber, monitored: !!x.monitored })),
         episodes: (Array.isArray(eps) ? eps : []).map(e => { const dt = e.airDateUtc || e.airDate || '', f = fmap[e.episodeFileId] || {};
-          return { id: e.id, season: e.seasonNumber, num: e.episodeNumber, title: e.title || '', date: dt, monitored: !!e.monitored, has: !!e.hasFile, quality: f.q || '', size: f.size || 0, aired: !!dt && Date.parse(dt) <= now }; })
+          return { id: e.id, season: e.seasonNumber, num: e.episodeNumber, title: e.title || '', overview: cut(e.overview, 2000), runtime: +e.runtime || 0, date: dt, monitored: !!e.monitored, has: !!e.hasFile, quality: f.q || '', size: f.size || 0, aired: !!dt && Date.parse(dt) <= now }; })
           .sort((a, b) => a.season - b.season || a.num - b.num) });
     }
     if (p === '/api/monitor' && m === 'POST') {
@@ -1775,6 +1863,26 @@ const goatServer = http.createServer(async (req, res) => {
       catch (e) { return send(res, 400, { error: e.message }); }
       return send(res, 200, {});
     }
+    // Profile pictures: any signed-in person may see them (they show next to names); each person sets their own.
+    if ((r = p.match(/^\/api\/avatar\/(\w+)$/)) && m === 'GET') {
+      const u = userOf(r[1]); if (!u || !u.avatar) return send(res, 404, { error: 'Not found' });
+      let buf; try { buf = fs.readFileSync(avFile(u)); } catch { return send(res, 404, { error: 'Not found' }); }
+      res.writeHead(200, { 'Content-Type': u.avatar.t, 'Content-Length': buf.length, 'Cache-Control': 'private, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'" });
+      return res.end(buf);
+    }
+    if (p === '/api/me/avatar' && m === 'PUT') {
+      const b = await readBody(req), t = String(b.type || ''), magic = AVTYPES[t];
+      let buf; try { buf = Buffer.from(String(b.data || '').replace(/^data:[\w/+.-]+;base64,/, ''), 'base64'); } catch { buf = Buffer.alloc(0); }
+      if (!magic || buf.length < 64 || !magic.every((v, i) => buf[i] === v) || (t === 'image/webp' && buf.toString('latin1', 8, 12) !== 'WEBP')) return send(res, 400, { error: 'Pick a JPEG, PNG or WebP picture' });
+      if (buf.length > 2e6) return send(res, 400, { error: 'That picture is too big. Pick one under 2 MB.' });
+      fs.mkdirSync(AVD, { recursive: true }); fs.writeFileSync(avFile(me), buf, { mode: 0o600 });
+      me.avatar = { t, v: Date.now() }; save(); audit(me.name, 'Changed their picture', ''); return send(res, 200, pubUser(me));
+    }
+    if (p === '/api/me/avatar' && m === 'DELETE') {
+      try { fs.unlinkSync(avFile(me)); } catch {}
+      delete me.avatar; save(); return send(res, 200, pubUser(me));
+    }
+    if (p === '/api/usage' && m === 'GET') return send(res, 200, await usageOf(me));
     if (p === '/api/me/dash' && m === 'PUT') {
       const b = await readBody(req), ok = a => (Array.isArray(a) ? a : []).filter(x => typeof x === 'string' && /^\w{1,20}$/.test(x)).slice(0, 20);
       me.dash = { order: ok(b.order), hidden: ok(b.hidden) }; save(); return send(res, 200, {});
@@ -2253,6 +2361,7 @@ const goatServer = http.createServer(async (req, res) => {
       if ('perms' in b) u.perms = b.perms ? Object.fromEntries(['add', 'control', 'remove', 'request'].map(k => [k, b.perms[k] !== false])) : undefined;
       if ('reqLimit' in b) { const n = Math.round(+(b.reqLimit || {}).n), d = Math.round(+(b.reqLimit || {}).days); u.reqLimit = n > 0 ? { n: Math.min(n, 1000), days: Math.min(Math.max(d || 7, 1), 365) } : undefined; }
       if ('autoApprove' in b) u.autoApprove = !!b.autoApprove;
+      if ('dataLimit' in b) { const gb = Math.round(+b.dataLimit || 0); u.dataLimit = gb > 0 ? Math.min(gb, 1e6) : undefined; }
       if ('plexName' in b) { const v = cut(b.plexName, 60).trim(); if (v && u.role === 'admin') return send(res, 400, { error: 'Admins sign in with their GoatMediaStackarr password.' }); u.plexName = v || undefined; if (!v) delete u.plex; }
       if ('notify' in b) { const v = String(b.notify || '').trim(); if (v && !/^https?:\/\//i.test(v)) return send(res, 400, { error: 'Enter a web address starting with https://' }); u.notify = v.slice(0, 500); }
       save(); audit(me.name, 'Changed a profile', u.name); return send(res, 200, pubUser(u));
@@ -2300,6 +2409,7 @@ const goatServer = http.createServer(async (req, res) => {
       audit(me.name, 'Ended a Plex stream', s.name); return send(res, 200, {});
     }
     if (p === '/api/users' && m === 'GET') return send(res, 200, db.users.map(pubUser));
+    if ((r = p.match(/^\/api\/users\/(\w+)\/usage$/)) && m === 'GET') { const u = userOf(r[1]); if (!u) return send(res, 404, { error: 'Not found' }); return send(res, 200, await usageOf(u)); }
     if (p === '/api/users' && m === 'POST') {
       const b = await readBody(req);
       if (!b.name || (b.password || '').length < 8) return send(res, 400, { error: 'Enter a name and a password of 8+ characters' });
@@ -2313,6 +2423,7 @@ const goatServer = http.createServer(async (req, res) => {
     if ((r = p.match(/^\/api\/users\/(\w+)$/)) && m === 'DELETE') {
       if (r[1] === me.id) return send(res, 400, { error: "You can't delete yourself" });
       const gone = userOf(r[1]); db.users = db.users.filter(u => u.id !== r[1]); for (const [k, v] of [...sessions]) if (v.uid === r[1]) sessions.delete(k);
+      if (gone) try { fs.unlinkSync(avFile(gone)); } catch {}
       saveSess(); save(); if (gone) audit(me.name, 'Deleted a profile', gone.name); return send(res, 200, {});
     }
     send(res, 404, { error: 'Not found' });

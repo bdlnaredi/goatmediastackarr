@@ -125,7 +125,7 @@ fun LibraryScreen() {
                 }
             }
             if (shown.isEmpty()) EmptyState(Icons.Rounded.Search, "Nothing found", if (all.isEmpty()) "This library is empty so far." else "No title matches \"$filter\".")
-            else LazyVerticalGrid(GridCells.Adaptive(108.dp), contentPadding = PaddingValues(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            else LazyVerticalGrid(GridCells.Adaptive(ctx.prefs.posterDp.dp), contentPadding = PaddingValues(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 items(shown, key = { it.id }) { x ->
                     Column(Modifier.clickable { ctx.item(cur.id, if (cur.type == "sonarr") "tv" else "movie", x.id) }) {
                         Box {
@@ -160,6 +160,7 @@ fun DetailScreen(sid: String, kind: String, id: Long) {
     var withFiles by remember { mutableStateOf(false) }
     val open = remember { mutableStateMapOf<Int, Boolean>() }
     val seasonMon = remember { mutableStateMapOf<Int, Boolean>() }
+    val openEp = remember { mutableStateMapOf<Long, Boolean>() }
 
     fun act(ok: String, block: suspend () -> Unit) { scope.launch { try { block(); toast(ok) } catch (e: Exception) { toast(e.message ?: "That did not work") } } }
 
@@ -250,14 +251,26 @@ fun DetailScreen(sid: String, kind: String, id: Long) {
                             if (isOpen) {
                                 Spacer(Modifier.height(8.dp))
                                 eps.sortedBy { it.num }.forEach { e ->
-                                    Row(Modifier.fillMaxWidth().padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(if (e.has) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, null,
-                                            tint = if (e.has) g.good else if (e.aired && e.monitored) g.bad else g.muted, modifier = Modifier.size(18.dp))
-                                        Spacer(Modifier.width(10.dp))
-                                        Column(Modifier.weight(1f)) {
-                                            Text("${e.num}. ${e.title.ifEmpty { "Episode ${e.num}" }}", style = MaterialTheme.typography.bodyMedium, color = g.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                            Text(listOf(if (e.date.isNotEmpty()) Format.day(e.date) else "", e.quality, if (e.size > 0) Format.bytes(e.size) else "").filter { it.isNotEmpty() }.joinToString(" · "),
-                                                style = MaterialTheme.typography.labelSmall, color = g.muted)
+                                    val epOpen = openEp[e.id] == true
+                                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { openEp[e.id] = !epOpen }.padding(vertical = 7.dp)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(if (e.has) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, null,
+                                                tint = if (e.has) g.good else if (e.aired && e.monitored) g.bad else g.muted, modifier = Modifier.size(18.dp))
+                                            Spacer(Modifier.width(10.dp))
+                                            Column(Modifier.weight(1f)) {
+                                                Text("${e.num}. ${e.title.ifEmpty { "Episode ${e.num}" }}", style = MaterialTheme.typography.bodyMedium, color = g.text, maxLines = if (epOpen) 3 else 1, overflow = TextOverflow.Ellipsis)
+                                                Text(listOf(if (e.date.isNotEmpty()) Format.day(e.date) else "", if (e.runtime > 0) "${e.runtime} min" else "", e.quality, if (e.size > 0) Format.bytes(e.size) else "").filter { it.isNotEmpty() }.joinToString(" · "),
+                                                    style = MaterialTheme.typography.labelSmall, color = g.muted)
+                                            }
+                                        }
+                                        // The episode's story: a short preview, all of it once tapped. "Hide spoilers" keeps it closed until tapped.
+                                        if (e.overview.isNotBlank() && (epOpen || !ctx.prefs.spoilers)) Text(e.overview, style = MaterialTheme.typography.bodySmall, color = g.text.copy(alpha = 0.75f),
+                                            maxLines = if (epOpen) Int.MAX_VALUE else 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 28.dp, top = 4.dp))
+                                        else if (e.overview.isBlank() && epOpen) Text("No description for this episode yet.", style = MaterialTheme.typography.bodySmall, color = g.muted, modifier = Modifier.padding(start = 28.dp, top = 4.dp))
+                                        if (epOpen && ctx.user.can("add") && !e.has && e.aired) Row(Modifier.padding(start = 20.dp, top = 2.dp)) {
+                                            androidx.compose.material3.TextButton(onClick = {
+                                                act("Searching for episode ${e.num}") { ctx.api.send("POST", "/api/auto", buildJsonObject { put("sid", sid); put("id", e.id); put("scope", "episode") }) }
+                                            }) { Icon(Icons.Rounded.Search, null, tint = g.primary, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Search for this episode", color = g.primary) }
                                         }
                                     }
                                 }

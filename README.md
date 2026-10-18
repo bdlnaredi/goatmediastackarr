@@ -65,11 +65,21 @@ A real Android app (not a web page in a frame), with its own design and eight th
 <img src="docs/android/07-downloads.png" width="19%" alt="Downloads">
 <img src="docs/android/12-settings.png" width="19%" alt="Themes">
 </p>
+<p>
+<img src="docs/android/31-title.png" width="19%" alt="A movie's page">
+<img src="docs/android/33-episodes.png" width="19%" alt="Episodes with their stories">
+<img src="docs/android/35-rss.png" width="19%" alt="RSS">
+<img src="docs/android/37-profile.png" width="19%" alt="Profile">
+<img src="docs/android/40-settings-phone.png" width="19%" alt="Settings">
+</p>
 
 - **Home**: download and upload speed, what is playing, what is downloading, what is coming up, the latest requests, and whether every app and the VPN are fine.
-- **Discover** (TMDB, Trakt, TheTVDB lists) and **Search**: request through Seerr (whole show or chosen seasons), or add straight to Sonarr or Radarr with a quality profile and folder.
-- **Library**: your shows and movies, with what is missing; each one has a page with its seasons and episodes, monitoring, Search now and (for admins) Remove.
-- **Downloads**: qBittorrent and SABnzbd, with pause, resume, force start, check and remove.
+- **Discover** (TMDB, Trakt, TheTVDB lists) and **Search**: every movie and show opens its own page (story, cast, seasons, trailer, whether it is already in the library), with Request through Seerr (whole show or chosen seasons); or add straight to Sonarr or Radarr with a quality profile and folder.
+- **Library**: your shows and movies, with what is missing; each one has a page with its seasons and episodes (with each episode's story; tap one to read all of it or search for it), monitoring, Search now and (for admins) Remove.
+- **Downloads**: qBittorrent and SABnzbd, with pause, resume, force start, check and remove; add magnet links, filter by category, move a download to another category, and (admins) add or remove categories and tags.
+- **RSS**: qBittorrent's feeds, newest articles first (download one into a category), feeds and auto-download rules (admins add, switch on or off, and remove them).
+- **Profile**: your picture (pick one from the phone), the disk space your requests take, your requests and your watch time (from Tautulli). Admins open anyone's profile from Users and set a **space limit**: once someone's requests take that much, new requests are refused until the limit is raised or something is removed. The same limit is on the web page under Settings → Users.
+- **Settings**: themes; the page the app opens on, poster size, how often downloads update, hiding episode stories until tapped, asking before removing; password, recovery email, phone messages, signed-in devices (sign out the ones you do not use); the server and a link to the newest app.
 - **Requests** (admins approve or decline), **Upcoming**, and for admins the **Stack** page: VPN, restart any app, connect the apps again.
 - Under **More**: Wanted, Music (Lidarr), Subtitles (Bazarr) and Stats (Tautulli); and for admins Health, Indexers, Usenet servers, Unraid, Users and Bring in your setup.
 - **Sign in** with your GoatMediaStackarr name and password (two-step codes work), or with **Sign in with Plex**, which opens Plex's own page and comes back signed in. Plex sign-in has to be turned on on the web page first (Settings → Users → Sign in with Plex), and Plex users see only what their profile allows, as on the web.

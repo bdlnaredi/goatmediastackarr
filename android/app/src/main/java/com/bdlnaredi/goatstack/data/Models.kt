@@ -28,6 +28,9 @@ data class User(
     val plex: PlexName? = null,
     val lists: Lists = Lists(),
     val autoApprove: Boolean = false,
+    val avatar: String = "",
+    val dataLimit: Int = 0,
+    val notify: String = "",
 ) {
     val admin get() = role == "admin"
     // Same rule as the server: an admin can do everything; otherwise only what is not switched off.
@@ -98,6 +101,7 @@ data class SeriesDetail(
 data class Episode(
     val id: Long = 0, val season: Int = 0, val num: Int = 0, val title: String = "", val date: String = "",
     val monitored: Boolean = false, val has: Boolean = false, val quality: String = "", val size: Long = 0, val aired: Boolean = false,
+    val overview: String = "", val runtime: Int = 0,
 )
 
 @Serializable

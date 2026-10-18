@@ -84,8 +84,6 @@ fun DiscoverScreen() {
     val lists = (if (src == "tvdb") listOf("popular", "anticipated") else listOf("trending", "popular", "anticipated"))
         .filterNot { src == "tvdb" && kind == "movie" && it == "anticipated" }
     val cur = if (list in lists) list else lists.first()
-    var ask by remember { mutableStateOf<Ask?>(null) }
-    val toast = toaster()
 
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
         PageTitle("Discover", "What everyone is watching", actions = {
@@ -102,10 +100,10 @@ fun DiscoverScreen() {
         Spacer(Modifier.height(8.dp))
         val items = rememberLoad(src, kind, cur) { ctx.api.get<List<DiscoverItem>>("/api/discover?src=$src&list=$cur&kind=$kind") }
         LoadView(items) { all ->
-            LazyVerticalGrid(GridCells.Adaptive(112.dp), contentPadding = PaddingValues(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            LazyVerticalGrid(GridCells.Adaptive((ctx.prefs.posterDp + 4).dp), contentPadding = PaddingValues(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 items(all) { d ->
                     Column(Modifier.clickable {
-                        if (d.tmdb > 0) ask = Ask(d.mediaType, d.tmdb, d.title, d.year, d.poster)
+                        if (d.tmdb > 0) ctx.title(d.mediaType, d.tmdb)
                         else ctx.go("search")
                     }) {
                         Poster(d.poster, d.title, Modifier.fillMaxWidth())
@@ -123,7 +121,6 @@ fun DiscoverScreen() {
             }
         }
     }
-    ask?.let { a -> RequestDialog(a) { msg -> ask = null; if (msg != null) toast(msg) } }
 }
 
 // ---------- Search: request through Seerr, or add straight to Sonarr / Radarr ----------
@@ -162,7 +159,7 @@ fun SearchScreen() {
                 LoadView(res) { hits ->
                     if (hits.isEmpty()) EmptyState(Icons.Rounded.Search, "No results", "Try another spelling or the original title.")
                     else LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        items(hits) { h -> SeerrRow(h) { ask = Ask(h.mediaType, h.id, h.title, h.year, h.poster) } }
+                        items(hits) { h -> SeerrRow(h, onOpen = { ctx.title(h.mediaType, h.id) }) { ask = Ask(h.mediaType, h.id, h.title, h.year, h.poster) } }
                     }
                 }
             }
@@ -172,8 +169,11 @@ fun SearchScreen() {
                     if (r.results.isEmpty()) EmptyState(Icons.Rounded.Search, "No results", "Try another spelling or the original title.")
                     else LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         items(r.results) { h ->
+                            val tmdb = (h.raw["tmdbId"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toLongOrNull() ?: 0L
+                            val kind = if (arrs.firstOrNull { it.id == arr }?.type == "sonarr") "tv" else "movie"
                             ResultRow(h.poster, h.title, if (h.year > 0) h.year.toString() else "", h.overview.orEmpty(),
-                                badge = if (h.added) "In your library" else null, action = if (h.added) null else "Add") { adding = h to r }
+                                badge = if (h.added) "In your library" else null, action = if (h.added) null else "Add",
+                                onOpen = if (tmdb > 0) ({ ctx.title(kind, tmdb) }) else null) { adding = h to r }
                         }
                     }
                 }
@@ -187,7 +187,7 @@ fun SearchScreen() {
 }
 
 @Composable
-private fun SeerrRow(h: SeerrHit, onAsk: () -> Unit) {
+private fun SeerrRow(h: SeerrHit, onOpen: () -> Unit, onAsk: () -> Unit) {
     // Seerr's media status: 5 = available, 4 = partly available, 2/3 = requested or processing.
     val (badge, can) = when (h.status) {
         5 -> "Available" to false
@@ -196,13 +196,13 @@ private fun SeerrRow(h: SeerrHit, onAsk: () -> Unit) {
         else -> null to true
     }
     ResultRow(h.poster, h.title, listOf(if (h.mediaType == "tv") "Show" else "Movie", h.year).filter { it.isNotEmpty() }.joinToString(" · "),
-        h.overview.orEmpty(), badge = badge, action = if (can) "Request" else null, onAction = onAsk)
+        h.overview.orEmpty(), badge = badge, action = if (can) "Request" else null, onOpen = onOpen, onAction = onAsk)
 }
 
 @Composable
-fun ResultRow(poster: String?, title: String, meta: String, overview: String, badge: String? = null, action: String? = null, onAction: () -> Unit = {}) {
+fun ResultRow(poster: String?, title: String, meta: String, overview: String, badge: String? = null, action: String? = null, onOpen: (() -> Unit)? = null, onAction: () -> Unit = {}) {
     val g = LocalGoat.current
-    GoatCard(Modifier.fillMaxWidth(), padding = 12.dp, onClick = if (action != null) onAction else null) {
+    GoatCard(Modifier.fillMaxWidth(), padding = 12.dp, onClick = onOpen ?: if (action != null) onAction else null) {
         Row {
             Poster(poster, title, Modifier.width(78.dp), corner = 12.dp)
             Spacer(Modifier.width(14.dp))

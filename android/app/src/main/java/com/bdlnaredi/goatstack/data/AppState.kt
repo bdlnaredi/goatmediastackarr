@@ -28,6 +28,8 @@ class AppState(private val store: Store) {
     val theme: StateFlow<String> = _theme
     private val _services = MutableStateFlow<List<Service>>(emptyList())
     val services: StateFlow<List<Service>> = _services
+    private val _prefs = MutableStateFlow(Prefs())
+    val prefs: StateFlow<Prefs> = _prefs
     var server: String = ""
         private set
     var lastLibrary: String = ""
@@ -38,6 +40,7 @@ class AppState(private val store: Store) {
             // Settings that cannot be read are treated like a first start, never as a reason to hang.
             val s = try { store.load() } catch (_: Exception) { Store.Saved("", null, "goat", "") }
             _theme.value = s.theme
+            _prefs.value = s.prefs
             lastLibrary = s.library
             // Only if nothing else (a sign-in, a new server) happened while the settings were being read.
             if (_phase.value is Phase.Starting) {
@@ -109,6 +112,11 @@ class AppState(private val store: Store) {
             store.setSid(null); api.configure(server, null); _services.value = emptyList(); refresh()
         }
     }
+
+    fun setPrefs(p: Prefs) { _prefs.value = p; scope.launch { store.setPrefs(p) } }
+
+    /** Called after something changes the signed-in profile (a new picture, say), so every screen shows it. */
+    fun updateUser(u: User) { val p = _phase.value; if (p is Phase.Ready) _phase.value = p.copy(user = u, me = p.me.copy(user = u)) }
 
     fun setTheme(id: String) { _theme.value = id; scope.launch { store.setTheme(id) } }
     fun rememberLibrary(id: String) { lastLibrary = id; scope.launch { store.setLibrary(id) } }

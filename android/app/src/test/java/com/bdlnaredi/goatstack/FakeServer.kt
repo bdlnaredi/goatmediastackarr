@@ -60,14 +60,22 @@ class FakeServer(private val server: MockWebServer) : Dispatcher() {
             p == "/api/tautulli/t1/stats" -> json(stats())
             p == "/api/tautulli/t1/img" -> png("p${(path.length % 12) + 1}.png")
             p == "/api/unraid/u1" -> json(UNRAID)
-            p == "/api/users" -> json("""[{"id":"u1","name":"Ann","role":"admin","twofa":true},{"id":"u2","name":"Ravi","role":"user","plex":{"name":"ravi"}},{"id":"u3","name":"Mira","role":"user","plex":{"name":"mira"}},{"id":"u4","name":"Leo","role":"user"}]""")
+            p == "/api/users" -> json("""[{"id":"u1","name":"Ann","role":"admin","twofa":true},{"id":"u2","name":"Ravi","role":"user","plex":{"name":"ravi"},"dataLimit":500,"avatar":"/img/p7.png"},{"id":"u3","name":"Mira","role":"user","plex":{"name":"mira"}},{"id":"u4","name":"Leo","role":"user"}]""")
+            p == "/api/title" -> json(title(request.requestUrl?.queryParameter("type") == "tv"))
+            p == "/api/usage" -> json(usage("u1", "Ann", 0))
+            p.matches(Regex("/api/users/\\w+/usage")) -> json(usage(p.split('/')[3], "Ravi", 500))
+            p == "/api/sessions" -> json("""[{"id":"a1","user":"Ann","device":"GoatStack app on Android","ip":"192.168.1.20","at":1,"seen":${System.currentTimeMillis() - 60_000},"current":true},{"id":"b2","user":"Ann","device":"Chrome on Windows","ip":"192.168.1.12","at":1,"seen":${System.currentTimeMillis() - 7_200_000},"current":false},{"id":"c3","user":"Ann","device":"Safari on iPhone","ip":"10.0.0.4","at":1,"seen":${System.currentTimeMillis() - 400_000_000},"current":false}]""")
+            p.matches(Regex("/api/qb/\\w+/meta")) -> json("""{"free":600000000000,"categories":[{"name":"radarr","path":"/downloads/movies"},{"name":"sonarr","path":"/downloads/tv"},{"name":"kids","path":""}],"tags":["4k","keep"]}""")
+            p.matches(Regex("/api/rss/\\w+/feeds")) -> json("""[{"path":"Linux ISOs","name":"Linux ISOs","url":"https://example.org/rss/linux","unread":3,"total":12,"error":false},{"path":"Open films","name":"Open films","url":"https://example.org/rss/films","unread":0,"total":5,"error":false},{"path":"Old tracker","name":"Old tracker","url":"https://old.example.net/rss","unread":0,"total":0,"error":true}]""")
+            p.matches(Regex("/api/rss/\\w+/articles")) -> json("[" + (0..9).joinToString(",") { i -> """{"id":"a$i","title":"${listOf("Ubuntu 26.04 LTS desktop amd64", "Fedora 45 Workstation x86_64", "Big Buck Bunny 2160p", "Debian 14.1 netinst", "Sintel 4K remaster", "Tears of Steel 1080p", "Arch Linux 2026.10.01", "Linux Mint 23", "Elephants Dream HD", "openSUSE Tumbleweed")[i]}","date":"${java.time.ZonedDateTime.now().minusHours(i * 5L).format(java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME)}","feed":"${if (i % 3 == 2) "Open films" else "Linux ISOs"}","read":${i > 2}}""" } + "]")
+            p.matches(Regex("/api/rss/\\w+/rules")) -> json("""{"rules":[{"name":"Ubuntu releases","enabled":true,"mustContain":"Ubuntu","mustNotContain":"beta","assignedCategory":"kids","lastMatch":"2026-10-12"},{"name":"Open movies in 4K","enabled":false,"mustContain":"2160p","mustNotContain":""}],"feeds":[{"path":"Linux ISOs","url":"https://example.org/rss/linux"}]}""")
             p == "/api/goat/import" -> json("""{"state":"idle"}""")
             p == "/api/goat/import/check" -> json("""{"kind":"sonarr","total":184,"already":12,"todo":172,"roots":["/tv"],"newRoots":["/media/tv"],"suggest":[["/tv","/media/tv"],["/anime","/media/tv"]],"settings":{"profiles":["Any","HD-1080p","Ultra-HD"],"formats":14}}""")
             else -> { misses.add("${request.method} $p"); json("""{"error":"Not in the pretend server: $p"}""", 404) }
         }
     }
 
-    private fun me() = """{"setup":false,"version":"0.3.0","goat":true,"plexLogin":true,"user":${if (signedIn) """{"id":"u1","name":"Ann","role":"${if (admin) "admin" else "user"}","lists":{"tmdb":true,"trakt":true},"plex":{"name":"ann.plex"}}""" else "null"}}"""
+    private fun me() = """{"setup":false,"version":"0.3.0","goat":true,"plexLogin":true,"user":${if (signedIn) """{"id":"u1","name":"Ann","role":"${if (admin) "admin" else "user"}","lists":{"tmdb":true,"trakt":true},"plex":{"name":"ann.plex"},"avatar":"/img/p3.png","email":"ann@example.com","notify":"https://ntfy.sh/ann-goat"}""" else "null"}}"""
 
     private fun live(): String {
         val tops = (0..2).joinToString(",") { i -> """{"hash":"h$i","name":"${titles[i + 3]}.2026.2160p.WEB-DL","progress":${listOf(0.72, 0.31, 0.08)[i]},"speed":${listOf(9_400_000, 6_100_000, 2_800_000)[i]},"eta":${listOf(380, 1900, 5400)[i]},"size":${listOf(14_000_000_000, 6_500_000_000, 2_100_000_000)[i]}}""" }
@@ -103,9 +111,24 @@ class FakeServer(private val server: MockWebServer) : Dispatcher() {
     private fun series(): String {
         val eps = (1..3).flatMap { s -> (1..8).map { e -> s to e } }.joinToString(",") { (s, e) ->
             val has = s < 3 || e < 5
-            """{"id":${s * 100 + e},"season":$s,"num":$e,"title":"Chapter ${(s - 1) * 8 + e}","date":"${day((s - 3) * 60L + e * 7L - 20)}","monitored":true,"has":$has,"quality":"${if (has) "WEBDL-1080p" else ""}","size":${if (has) 1_700_000_000 else 0},"aired":${s < 3 || e < 7}}"""
+            """{"id":${s * 100 + e},"season":$s,"num":$e,"title":"Chapter ${(s - 1) * 8 + e}","overview":"The storm cuts the island off. Chapter ${(s - 1) * 8 + e} follows the keeper as she finds the second radio and learns who has been answering it.","runtime":52,"date":"${day((s - 3) * 60L + e * 7L - 20)}","monitored":true,"has":$has,"quality":"${if (has) "WEBDL-1080p" else ""}","size":${if (has) 1_700_000_000 else 0},"aired":${s < 3 || e < 7}}"""
         }
         return """{"id":1,"title":"Northwind","monitored":true,"seasons":[{"n":0,"monitored":false},{"n":1,"monitored":true},{"n":2,"monitored":true},{"n":3,"monitored":true}],"episodes":[$eps]}"""
+    }
+
+    private fun title(tv: Boolean): String {
+        val cast = listOf("Ana Reyes" to "Mara Quinn", "Tom Okafor" to "Elias", "Lin Park" to "Dr. Hale", "Sam Varga" to "The Keeper", "Ivy Moss" to "June").withIndex()
+            .joinToString(",") { (i, c) -> """{"name":"${c.first}","role":"${c.second}","photo":"${img(i + 2)}"}""" }
+        val seasons = if (tv) (1..3).joinToString(",") { """{"n":$it,"episodes":${6 + it * 2},"name":"Season $it","date":"${2021 + it}-03-0$it"}""" } else ""
+        return """{"type":"${if (tv) "tv" else "movie"}","id":304,"title":"Quiet Orbit","year":"2025","date":"2025-04-11","tagline":"Some signals should stay unanswered.","overview":"A lone engineer on a dying space station picks up a voice that should not exist, and has three days to decide whether to answer before the station falls out of orbit.",
+            "poster":"${img(5)}","backdrop":"${server.url("/img/fanart.png")}","rating":7.9,"runtime":${if (tv) 48 else 121},"genres":["Sci-Fi","Thriller","Drama"],"status":"Released","studio":"Northlight Pictures",
+            "cast":[$cast],"seasons":[$seasons],"trailer":"dQw4w9WgXcQ","seerr":"e1","available":0,"library":null,"request":null}""".replace("\n", "")
+    }
+
+    private fun usage(id: String, name: String, limit: Int): String {
+        val items = (0..4).joinToString(",") { i -> """{"title":"${titles[i + 2]}","year":"${2019 + i}","mediaType":"${if (i % 2 == 0) "tv" else "movie"}","mediaId":${300 + i},"poster":"${img(i + 3)}","size":${(60 - i * 11) * 1_000_000_000L}}""" }
+        return """{"id":"$id","name":"$name","requests":{"total":23,"month":4,"approved":19,"pending":2,"declined":2},"reqLimit":${if (limit > 0) """{"n":10,"days":7}""" else "null"},
+            "space":{"bytes":412000000000,"items":[$items]},"limitGb":$limit,"watch":[{"days":1,"plays":3,"seconds":9600},{"days":7,"plays":17,"seconds":61200},{"days":30,"plays":58,"seconds":212400},{"days":0,"plays":640,"seconds":2304000}],"devices":3}""".replace("\n", "")
     }
 
     private fun stats(): String {

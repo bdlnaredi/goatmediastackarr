@@ -274,3 +274,18 @@ fun <T> ChoiceRow(options: List<Pair<T, String>>, selected: T, onSelect: (T) -> 
         }
     }
 }
+
+/** A round profile picture, or the first letter of the name on the theme's colours when there is none. */
+@Composable
+fun Avatar(url: String, name: String, size: Dp, modifier: Modifier = Modifier) {
+    val g = LocalGoat.current
+    val ctx = LocalCtx.current
+    Box(modifier.size(size).clip(CircleShape).background(Brush.linearGradient(listOf(g.primary, g.accent))), contentAlignment = Alignment.Center) {
+        val letter: @Composable () -> Unit = {
+            Text(name.take(1).uppercase(), style = if (size >= 64.dp) MaterialTheme.typography.headlineLarge else MaterialTheme.typography.titleMedium, color = g.onPrimary)
+        }
+        val full = ctx.api.abs(url)
+        if (full == null) letter()
+        else SubcomposeAsyncImage(model = full, contentDescription = name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(), loading = { letter() }, error = { letter() })
+    }
+}

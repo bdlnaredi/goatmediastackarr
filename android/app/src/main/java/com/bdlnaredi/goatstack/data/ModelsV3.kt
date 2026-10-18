@@ -1,0 +1,43 @@
+package com.bdlnaredi.goatstack.data
+
+import kotlinx.serialization.Serializable
+
+// Version 3 pages. Same rule as Models.kt: every field has a default.
+
+// ---------- A movie or show in full (/api/title) ----------
+@Serializable
+data class TitleInfo(
+    val type: String = "movie", val id: Long = 0, val title: String = "", val year: String = "", val date: String = "",
+    val tagline: String = "", val overview: String = "", val poster: String = "", val backdrop: String = "", val rating: Double = 0.0,
+    val runtime: Int = 0, val genres: List<String> = emptyList(), val status: String = "", val studio: String = "",
+    val cast: List<CastMember> = emptyList(), val seasons: List<TitleSeason> = emptyList(), val trailer: String = "",
+    val seerr: String = "", val available: Int = 0, val library: LibLink? = null, val request: ReqState? = null,
+)
+@Serializable data class CastMember(val name: String = "", val role: String = "", val photo: String = "")
+@Serializable data class TitleSeason(val n: Int = 0, val episodes: Int = 0, val name: String = "", val date: String = "")
+@Serializable data class LibLink(val sid: String = "", val id: Long = 0, val kind: String = "movie")
+@Serializable data class ReqState(val status: String = "", val stage: String = "")
+
+// ---------- What someone uses (/api/usage) ----------
+@Serializable
+data class Usage(
+    val id: String = "", val name: String = "", val requests: ReqCounts = ReqCounts(), val reqLimit: ReqLimit? = null,
+    val space: Space? = null, val limitGb: Int = 0, val watch: List<WatchTime>? = null, val devices: Int = 0,
+)
+@Serializable data class ReqCounts(val total: Int = 0, val month: Int = 0, val approved: Int = 0, val pending: Int = 0, val declined: Int = 0)
+@Serializable data class ReqLimit(val n: Int = 0, val days: Int = 7)
+@Serializable data class Space(val bytes: Long = 0, val items: List<SpaceItem> = emptyList())
+@Serializable data class SpaceItem(val title: String = "", val year: String = "", val mediaType: String = "movie", val mediaId: Long = 0, val poster: String = "", val size: Long = 0)
+@Serializable data class WatchTime(val days: Int = 0, val plays: Int = 0, val seconds: Long = 0)
+
+// ---------- Signed-in devices (/api/sessions) ----------
+@Serializable
+data class Device(val id: String = "", val user: String = "", val device: String = "", val ip: String = "", val at: Long = 0, val seen: Long = 0, val current: Boolean = false)
+
+// ---------- RSS (qBittorrent) ----------
+@Serializable data class RssFeed(val path: String = "", val name: String = "", val url: String = "", val unread: Int = 0, val total: Int = 0, val error: Boolean = false)
+@Serializable data class RssArticle(val id: String = "", val title: String = "", val date: String = "", val feed: String = "", val read: Boolean = false)
+
+// ---------- Download categories and tags (/api/qb/{sid}/meta) ----------
+@Serializable data class QbMeta(val free: Long = 0, val categories: List<QbCategory> = emptyList(), val tags: List<String> = emptyList())
+@Serializable data class QbCategory(val name: String = "", val path: String = "")

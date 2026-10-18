@@ -211,7 +211,7 @@ fun HomeScreen() {
             item {
                 LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     items((if (ctx.user.admin && waiting.isNotEmpty()) waiting else reqs).take(10)) { r ->
-                        Column(Modifier.width(104.dp).clickable { ctx.go("requests") }) {
+                        Column(Modifier.width(104.dp).clickable { if (r.mediaId > 0) ctx.title(r.mediaType, r.mediaId) else ctx.go("requests") }) {
                             Poster(r.poster, r.title, Modifier.fillMaxWidth())
                             Spacer(Modifier.height(6.dp))
                             Text(r.title, style = MaterialTheme.typography.bodySmall, color = g.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
