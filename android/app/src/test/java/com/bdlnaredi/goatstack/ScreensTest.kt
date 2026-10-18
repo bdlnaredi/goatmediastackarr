@@ -127,10 +127,10 @@ class ScreensTest {
         back()
         tap("Downloads"); waitFor("Downloading"); shot("07-downloads")
         tap("More"); waitFor("Go to"); shot("08-more")
-        tap("Requests"); waitFor("Waiting for approval"); shot("09-requests"); back()
-        tap("Upcoming"); waitFor("Being downloaded"); shot("10-upcoming"); back()
-        tap("Stack"); waitFor("VPN connected"); shot("11-stack"); back()
-        tap("Settings"); waitFor("Appearance"); shot("12-settings")
+        openFromMore("Requests"); waitFor("Waiting for approval"); shot("09-requests"); back()
+        openFromMore("Upcoming"); waitFor("Being downloaded"); shot("10-upcoming"); back()
+        openFromMore("Stack"); waitFor("VPN connected"); shot("11-stack"); back()
+        openFromMore("Settings"); waitFor("Appearance"); shot("12-settings")
         tap("Paper"); settle(500); shot("13-settings-paper")
         back(); tap("Home"); waitFor("Playing now"); shot("14-home-paper")
         for (t in listOf("midnight", "aurora", "ember")) {
@@ -163,7 +163,7 @@ class ScreensTest {
             Triple("Unraid", "Array started", "28-unraid"),
             Triple("Users", "Ravi", "29-users"),
         )) {
-            openFromMore(entry); waitFor(wait); shot(name); back(); waitFor("Go to")
+            openFromMore(entry); waitFor(wait); shot(name); back(); waitFor(entry)
         }
         openFromMore("Bring in your setup"); waitFor("The old app")
         tap("Sonarr")

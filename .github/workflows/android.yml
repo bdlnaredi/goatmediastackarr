@@ -46,6 +46,8 @@ jobs:
               msg=$(echo "$line" | sed -E 's#^e: (file://)?[^ ]+\.kt:[0-9]+:[0-9]+ ##')
               echo "::error file=$f,line=$l::$msg"
             done
+            # Failed tests, with their messages.
+            for f in app/build/test-results/*/*.xml; do grep -o '<failure message="[^"]*"' "$f" | head -5 | sed 's/<failure message="//; s/"$//' | sed 's/&quot;/"/g; s/&lt;/</g; s/&gt;/>/g; s/&amp;/\&/g' | cut -c1-1500 | sed 's/^/::error title=Test failed::/'; done
             # The end of the log, for anything else (dependencies, resources, tests).
             tail -n 70 /tmp/build.log | grep -v '^\s*at ' | sed 's/%/%25/g' | awk 'BEGIN{ORS="%0A"}{print}' | sed 's/^/::error title=End of the build log::/'; echo
             exit 1
