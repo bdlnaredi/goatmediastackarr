@@ -165,8 +165,9 @@ RUN chmod +x /opt/goat/bin/*.sh /opt/goat/bin/*.js && \
 
 # /media and /downloads are not declared as volumes, so mapping one shared folder instead leaves no stray volumes behind.
 VOLUME ["/config"]
-# 2806 = GoatMediaStackarr, 8096 = Jellyfin, 5055 = Seerr's request page, 32400 = Plex (when turned on), 6881 = torrent port when the VPN is off.
-EXPOSE 2806 8096 5055 32400 6881 6881/udp
+# 2806 = GoatMediaStackarr, 8096 = Jellyfin, 5055 = Seerr's request page, 32400 = Plex (when turned on), 50413 = torrent port when the VPN is off
+# (not 6881: trackers block 6881-6889; set TORRENT_PORT for another one).
+EXPOSE 2806 8096 5055 32400 50413 50413/udp
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
   CMD curl -fsS http://127.0.0.1:2806/api/health >/dev/null || exit 1

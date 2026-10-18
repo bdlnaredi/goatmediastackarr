@@ -73,3 +73,16 @@ test('an existing Sonarr key is kept when migrating a config folder', () => {
   assert.match(r.text, /<Port>8989<\/Port>/);
   assert.equal((r.text.match(/<ApiKey>/g) || []).length, 1);
 });
+
+test('torrent port: 50413 by default, the old blocked 6881 is moved, a port picked by hand is kept', () => {
+  const init = require('../goat/init');
+  const s = { qbitUser: 'goat', qbitPass: 'pw' };
+  const port = x => (x.match(/^Session\\Port=(\d+)$/m) || [])[1];
+  assert.equal(port(init.qbitConfig('', s, '', {})), '50413', 'new install');
+  const old = init.iniSet('[Preferences]\nWebUI\\Port=8080\n', 'BitTorrent', 'Session\\Port', '6881');
+  assert.equal(port(init.qbitConfig(old, s, '', {})), '50413', 'the old default is moved');
+  const mine = init.iniSet('[Preferences]\nWebUI\\Port=8080\n', 'BitTorrent', 'Session\\Port', '7000');
+  assert.equal(port(init.qbitConfig(mine, s, '', {})), '7000', 'a hand-picked port is kept');
+  assert.equal(port(init.qbitConfig(mine, s, '', { TORRENT_PORT: '40000' })), '40000', 'TORRENT_PORT wins');
+  assert.equal(port(init.qbitConfig('', s, '', { TORRENT_PORT: '80' })), '50413', 'a port below 1024 is not used');
+});

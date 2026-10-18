@@ -86,7 +86,11 @@ function arrConfig(existing, eng, apiKey) {
   return { text: x, apiKey: keep || apiKey };
 }
 
-function qbitConfig(existing, s, vpnIface) {
+// qBittorrent's incoming port. 6881-6889 (the old default range) is blocked by many trackers, so a high port is used.
+const OLD_TORRENT_PORT = '6881';
+const torrentPort = (env = process.env) => { const p = parseInt(env.TORRENT_PORT, 10); return p >= 1024 && p <= 65535 ? String(p) : '50413'; };
+
+function qbitConfig(existing, s, vpnIface, env = process.env) {
   let x = existing || '';
   const first = !existing;
   x = iniSet(x, 'LegalNotice', 'Accepted', 'true');
@@ -105,9 +109,12 @@ function qbitConfig(existing, s, vpnIface) {
     x = iniSet(x, 'BitTorrent', 'Session\\DefaultSavePath', `${E.DIRS.torrents}/complete`);
     x = iniSet(x, 'BitTorrent', 'Session\\TempPath', `${E.DIRS.torrents}/incomplete`);
     x = iniSet(x, 'BitTorrent', 'Session\\TempPathEnabled', 'true');
-    x = iniSet(x, 'BitTorrent', 'Session\\Port', '6881');
     x = iniSet(x, 'BitTorrent', 'Session\\QueueingSystemEnabled', 'true');
   }
+  // The port: set on a new install, when TORRENT_PORT asks for one, or when it is still the old blocked 6881.
+  // A port picked by hand in qBittorrent is kept. (With VPN port forwarding the VPN sets it while connected.)
+  const cur = (x.match(/^Session\\Port=(\d+)\s*$/m) || [])[1];
+  if (first || env.TORRENT_PORT || !cur || cur === OLD_TORRENT_PORT) x = iniSet(x, 'BitTorrent', 'Session\\Port', torrentPort(env));
   return x;
 }
 
@@ -200,7 +207,7 @@ function run(env = process.env) {
   }
 
   const qf = `${C}/qbittorrent/qBittorrent/config/qBittorrent.conf`;
-  writeText(qf, qbitConfig(readText(qf), s, vpn.includes('qbittorrent') ? 'goatvpn' : ''));
+  writeText(qf, qbitConfig(readText(qf), s, vpn.includes('qbittorrent') ? 'goatvpn' : '', env));
 
   const sf = `${C}/sabnzbd/sabnzbd.ini`;
   writeText(sf, sabConfig(readText(sf), s));
@@ -298,4 +305,4 @@ if (require.main === module && process.argv[2] === 'tautulli') {
   }
 }
 
-module.exports = { run, plexPrefs, iniSet, xmlSet, xmlGet, qbitHash, arrConfig, qbitConfig, sabConfig, bazarrConfig, tautulliConfig, tautulliStart, iniGet, loadSecrets };
+module.exports = { run, plexPrefs, iniSet, xmlSet, xmlGet, qbitHash, arrConfig, qbitConfig, sabConfig, bazarrConfig, tautulliConfig, tautulliStart, iniGet, torrentPort, loadSecrets };
