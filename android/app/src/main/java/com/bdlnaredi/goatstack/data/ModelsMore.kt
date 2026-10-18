@@ -18,7 +18,7 @@ data class AppHealth(
     val issues: List<Issue> = emptyList(), val disks: List<Disk> = emptyList(), val queue: List<QueueProblem> = emptyList(), val missing: Int? = null,
 )
 @Serializable data class Issue(val level: String = "warn", val text: String = "")
-@Serializable data class Disk(val path: String = "", val free: Long = 0, val total: Long = 0)
+@Serializable data class Disk(val path: String = "", val label: String = "", val free: Long = 0, val total: Long = 0)
 @Serializable data class QueueProblem(val title: String = "", val message: String = "")
 
 // ---------- Stats (Tautulli) ----------

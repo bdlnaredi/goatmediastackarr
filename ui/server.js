@@ -109,6 +109,9 @@ const lists = listsLib.create({ keys: listKeys,
   urls: new Proxy({}, { get: (_, k) => String(process.env[k.toUpperCase() + '_URL'] || (DEMO ? `http://127.0.0.1:${PORT}/__demo/${k}` : { trakt: 'https://api.trakt.tv', tmdb: 'https://api.themoviedb.org/3', tvdb: 'https://api4.thetvdb.com/v4' }[k])).replace(/\/+$/, '') }),
   seerrPoster: async (kind, id) => { const s = db.services.find(x => x.type === 'seerr'); if (!s) return ''; const r = await fetch(`${s.url.replace(/\/+$/, '')}/api/v1/${kind === 'tv' ? 'tv' : 'movie'}/${id}`, { signal: AbortSignal.timeout(8000), headers: { 'X-Api-Key': s.apiKey } }); return r.ok ? ((await r.json()).posterPath || '') : ''; } });
 const pubUser = u => ({ email: u.email || '', twofa: !!(u.totp && u.totp.on), id: u.id, name: u.name, role: u.role, access: u.access, perms: u.perms || null, notify: u.notify || '', dash: u.dash || null, reqLimit: u.reqLimit || null, autoApprove: !!u.autoApprove, plex: u.plex ? { name: u.plex.name } : null, hide: cleanHide(u.hide), restr: u.plexRules ? Object.fromEntries(['contentRating', 'contentRating!', 'label', 'label!'].filter(k => (u.plexRules[k] || []).length).map(k => [k, u.plexRules[k]])) : null, libs: u.plex ? { n: ((u.plexLibs || {}).mine || []).length, of: ((u.plexLibs || {}).all || []).length, limited: libLimited(u) } : null, plexName: u.plexName || '', lists: lists.enabled(), avatar: u.avatar ? `/api/avatar/${u.id}?v=${u.avatar.v}` : '', dataLimit: u.dataLimit || 0, streamLimit: u.streamLimit == null ? null : u.streamLimit });
+// What the folders the apps report mean, in words (these are the container's own folders).
+const DISK_NAMES = { '/media': 'Media library', '/data': 'Media library', '/downloads': 'Downloads', '/config': 'App data (settings and databases)', '/': 'Container (Docker image)' };
+const DISK_ORDER = ['Media library', 'Downloads', '', 'App data (settings and databases)', 'Container (Docker image)'];
 const pubSvc = s => ({ id: s.id, type: s.type, name: s.name, url: s.url, managed: !!s.managed });
 
 // ---------- What each person uses: the space their requests take on the disks, and what they watched ----------
@@ -2136,7 +2139,8 @@ const goatServer = http.createServer(async (req, res) => {
           const [h, d, q, w] = await Promise.all([ext(sv, `/api/${v}/health`), v === 'v3' ? ext(sv, '/api/v3/diskspace').catch(() => []) : [], v === 'v3' ? ext(sv, '/api/v3/queue?page=1&pageSize=50').catch(() => null) : null,
             sv.type === 'prowlarr' ? null : ext(sv, `/api/${v}/wanted/missing?pageSize=1`).catch(() => null)]);
           o.issues = (Array.isArray(h) ? h : []).map(x => ({ level: x.type === 'error' ? 'bad' : 'warn', text: x.message || x.source }));
-          o.disks = (Array.isArray(d) ? d : []).filter(x => x.totalSpace > 0).map(x => ({ path: x.path, free: x.freeSpace, total: x.totalSpace }));
+          o.disks = (Array.isArray(d) ? d : []).filter(x => x.totalSpace > 0).map(x => ({ path: x.path, label: DISK_NAMES[String(x.path).replace(/\/+$/, '') || '/'] || '', free: x.freeSpace, total: x.totalSpace }))
+            .sort((p, q) => DISK_ORDER.indexOf(p.label) - DISK_ORDER.indexOf(q.label));
           o.queue = ((q && q.records) || []).filter(x => ['warning', 'error'].includes(x.trackedDownloadStatus) || x.status === 'warning').slice(0, 10).map(x => ({ title: x.title, message: ((x.statusMessages || [])[0] || {}).messages ? x.statusMessages[0].messages[0] : x.errorMessage || 'Needs attention' }));
           o.missing = w && w.totalRecords != null ? w.totalRecords : null; o.ok = true;
         } catch (e) { o.ok = false; o.error = e.message; }

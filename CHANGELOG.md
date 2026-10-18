@@ -16,6 +16,7 @@
 
 ## Fixes
 
+- Health page: disk space is shown once (not under every app), each folder says what it is (Media library, Downloads, App data, the container's Docker image), big disks are shown in TB with how full they are, and an app's name is no longer repeated next to it.
 - Web page: movies and shows (from the Library, Discover, Search, Wanted and Upcoming) open as their own full page with a Back button, instead of a pop-up; each episode shows its story (tap it to read all of it) and its length.
 - Adding a download category says what went wrong (a name already taken, or one starting or ending with a slash) instead of failing silently.
 - qBittorrent's torrent port is 50413 instead of 6881, which many trackers block (qBittorrent showed "port is blacklisted"). Installs still on 6881 are moved; a port picked by hand is kept; `TORRENT_PORT` sets another.

@@ -107,7 +107,7 @@ fun HealthScreen() {
                         }
                     }
                 }
-                val disks = apps.flatMap { it.disks }.distinctBy { it.path }
+                val disks = apps.flatMap { it.disks }.distinctBy { it.path to it.total }
                 if (disks.isNotEmpty()) {
                     item { SectionTitle("Disk space", Modifier.padding(top = 4.dp)) }
                     item {
@@ -115,8 +115,16 @@ fun HealthScreen() {
                             disks.forEachIndexed { i, d ->
                                 if (i > 0) Spacer(Modifier.height(12.dp))
                                 val used = if (d.total > 0) 1f - d.free.toFloat() / d.total else 0f
-                                Row { Text(d.path, style = MaterialTheme.typography.bodyMedium, color = g.text, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text("${Format.bytes(d.free)} free", style = MaterialTheme.typography.labelMedium, color = g.muted) }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(d.label.ifEmpty { d.path }, style = MaterialTheme.typography.bodyMedium, color = g.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        if (d.label.isNotEmpty()) Text(d.path, style = MaterialTheme.typography.labelSmall, color = g.muted)
+                                    }
+                                    Column(horizontalAlignment = Alignment.End) {
+                                        Text("${Format.disk(d.free)} free", style = MaterialTheme.typography.labelMedium, color = g.text)
+                                        Text("of ${Format.disk(d.total)} · ${(used * 100).toInt()}% used", style = MaterialTheme.typography.labelSmall, color = g.muted)
+                                    }
+                                }
                                 Spacer(Modifier.height(6.dp))
                                 Bar(used, color = if (used > 0.9f) g.bad else if (used > 0.8f) g.warn else g.primary)
                             }

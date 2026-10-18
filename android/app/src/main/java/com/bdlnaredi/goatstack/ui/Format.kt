@@ -65,6 +65,13 @@ object Format {
         java.time.YearMonth.parse(key).format(DateTimeFormatter.ofPattern(if (short) "MMM" else "MMMM yyyy", Locale.getDefault()))
     } catch (_: Exception) { key }
 
+    /** Disk sizes the way disks are sold and the web page shows them: "29.11 TB", "42.3 GB". */
+    fun disk(n: Long): String = when {
+        n >= 1_000_000_000_000 -> String.format(Locale.US, "%.2f TB", n / 1e12)
+        n >= 1_000_000_000 -> String.format(Locale.US, "%.1f GB", n / 1e9)
+        else -> String.format(Locale.US, "%.0f MB", n / 1e6)
+    }
+
     /** "3 h 20 min" for a length of time in seconds. */
     fun hours(seconds: Long): String = when {
         seconds < 60 -> "0 min"

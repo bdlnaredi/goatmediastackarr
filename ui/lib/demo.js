@@ -80,7 +80,7 @@ function create(opts = {}) {
     st.calls.push(`${type} ${m} ${p}${q.toString() ? '?' + q : ''} ${m === 'GET' ? '' : JSON.stringify(data).slice(0, 300)}`);
     if (p === '/api/v3/system/status') return json(res, { version: '4.0.0.demo', appName: type });
     if (p === '/api/v3/health') return json(res, tv ? [{ type: 'warning', source: 'IndexerStatusCheck', message: 'Indexers unavailable due to failures: Broken Tracker' }] : []);
-    if (p === '/api/v3/diskspace') return json(res, [{ path: '/tv', label: 'Media', freeSpace: 420e9, totalSpace: 4e12 }, { path: '/movies', label: 'Movies', freeSpace: 60e9, totalSpace: 2e12 }]);
+    if (p === '/api/v3/diskspace') return json(res, [{ path: '/tv', label: 'Media', freeSpace: 420e9, totalSpace: 4e12 }, { path: '/movies', label: 'Movies', freeSpace: 60e9, totalSpace: 2e12 }, { path: '/', freeSpace: 42e9, totalSpace: 53e9 }, { path: '/downloads', freeSpace: 900e9, totalSpace: 2e12 }]);
     if (p === '/api/v3/qualityprofile') return json(res, st.profiles);
     if (p === '/api/v3/rootfolder') return json(res, [{ path: tv ? '/tv' : '/movies' }]);
     if (p === '/api/v3/command' && m === 'POST') return json(res, { id: 1, name: data.name });

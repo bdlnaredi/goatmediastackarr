@@ -162,6 +162,7 @@ test('subtitles, indexers and Usenet history/NZB upload', async () => {
     assert.equal((await a.post(`/api/sab/${ids.sabnzbd}/add`, {})).status, 400);
 
     const h = (await a.get('/api/libhealth')).data, sn = h.find(x => x.type === 'sonarr');
+    assert.deepEqual(sn.disks.map(d => d.label), ['Downloads', '', '', 'Container (Docker image)'], 'folders are named, the important ones first');
     assert.ok(sn.issues.length && sn.disks.length && sn.queue.length && sn.missing > 0, 'health, disk space, stuck downloads and missing counts');
     assert.equal(sn.queue[0].title, 'Stuck.Release.1080p'); assert.match(sn.queue[0].message, /eligible for import/);
     const rd = (await a.get('/api/libhealth')).data.find(x => x.type === 'prowlarr'); assert.equal(rd.ok, true);

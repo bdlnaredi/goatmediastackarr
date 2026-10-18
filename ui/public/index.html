@@ -1242,7 +1242,7 @@ function showFound(){
     catch(x){b.disabled=false;b.textContent='Add';$('#e').textContent=x.message}});
 }
 let timer;
-const fmt=b=>b>=1e9?(b/1e9).toFixed(1)+' GB':b>=1e6?(b/1e6).toFixed(0)+' MB':((b||0)/1e3|0)+' KB';
+const fmt=b=>b>=1e12?(b/1e12).toFixed(2)+' TB':b>=1e9?(b/1e9).toFixed(1)+' GB':b>=1e6?(b/1e6).toFixed(0)+' MB':((b||0)/1e3|0)+' KB';
 const can=k=>me.role==='admin'||!me.perms||me.perms[k]!==false;
 const ofType=t=>services.filter(s=>s.type===t);
 const msBase=id=>'/api/'+((services.find(x=>x.id===id)||{}).type||'plex')+'/'+id;
@@ -2543,13 +2543,16 @@ async function hlView(){
   let l;try{l=await api('/api/libhealth')}catch(x){$('#m').innerHTML=`<div class="err">${esc(x.message)}</div>`;return}
   if(tab!=='hl')return;
   const total=l.reduce((a,x)=>a+x.issues.length+x.queue.length+(x.ok?0:1),0);
-  $('#m').innerHTML=`<p class="mute">${total?`${total} thing${total===1?'':'s'} to look at.`:'Everything looks healthy.'}</p>`+l.map(x=>{
+  // Every app reports the same disks, so they are shown once, with what each folder is for.
+  const seen=new Set(),disks=l.flatMap(x=>x.disks||[]).filter(d=>{const k=d.path+'|'+d.total;if(seen.has(k))return false;seen.add(k);return true});
+  const diskRow=d=>{const used=(1-d.free/d.total)*100;return `<div style="margin:10px 0"><div class="row" style="gap:4px 12px"><span class="grow"><b style="font-weight:560">${esc(d.label||d.path)}</b>${d.label?` <span class="mute">${esc(d.path)}</span>`:''}</span><span class="mute">${fmt(d.free)} free of ${fmt(d.total)} · ${used.toFixed(0)}% used</span></div><div class="bar" role="img" aria-label="${used.toFixed(0)} percent used"><i class="${used>90?'bad':''}" style="width:${used.toFixed(0)}%"></i></div></div>`};
+  $('#m').innerHTML=`<p class="mute">${total?`${total} thing${total===1?'':'s'} to look at.`:'Everything looks healthy.'}</p>`+(disks.length?`<div class="panel" style="margin-bottom:14px"><b style="font-size:16px">Disk space</b>${disks.map(diskRow).join('')}</div>`:'')+l.map(x=>{
     const n=x.issues.length+x.queue.length+(x.ok?0:1);
-    return `<div class="panel" style="margin-bottom:14px"><div class="row"><b style="font-size:16px">${esc(x.name)}</b><span class="mute">${esc(TYPES[x.type]||x.type)}</span><span class="grow"></span>${x.missing!=null?`<span class="mute">${x.missing} missing</span>`:''}<span class="pill ${!x.ok?'bad':n?'warn':'ok'}">${!x.ok?'Not reachable':n?n+' to check':'Healthy'}</span></div>
+    return `<div class="panel" style="margin-bottom:14px"><div class="row"><b style="font-size:16px">${esc(x.name)}</b>${String(TYPES[x.type]||x.type).toLowerCase()===String(x.name).toLowerCase()?'':`<span class="mute">${esc(TYPES[x.type]||x.type)}</span>`}<span class="grow"></span>${x.missing!=null?`<span class="mute">${x.missing} missing</span>`:''}<span class="pill ${!x.ok?'bad':n?'warn':'ok'}">${!x.ok?'Not reachable':n?n+' to check':'Healthy'}</span></div>
       ${!x.ok?`<div class="err">${esc(x.error||'')}</div>`:''}
       ${x.issues.map(i=>`<div class="box row" style="margin-top:8px"><span class="pill ${i.level==='bad'?'bad':'warn'}">${i.level==='bad'?'Error':'Warning'}</span><span class="grow" style="word-break:break-word">${esc(i.text)}</span></div>`).join('')}
       ${x.queue.length?`<div class="mute" style="margin-top:12px">Downloads that are stuck</div>${x.queue.map(i=>`<div class="box"><b style="word-break:break-word">${esc(i.title)}</b><div class="mute">${esc(i.message)}</div></div>`).join('')}`:''}
-      ${x.disks.length?`<div class="mute" style="margin-top:12px">Disk space</div>${x.disks.map(d=>{const used=(1-d.free/d.total)*100;return `<div style="margin:8px 0"><div class="row"><span class="grow">${esc(d.path)}</span><span class="mute">${fmt(d.free)} free of ${fmt(d.total)}</span></div><div class="bar" role="img" aria-label="${used.toFixed(0)} percent used"><i class="${used>90?'bad':''}" style="width:${used.toFixed(0)}%"></i></div></div>`}).join('')}`:''}</div>`}).join('');
+      </div>`}).join('');
 }
 if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
 start();
