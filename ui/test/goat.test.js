@@ -245,3 +245,23 @@ test('no media server inside: your own Plex is passed on to Seerr and the apps c
     assert.deepEqual(got, ['rewire'], 'only once, not every few seconds');
   } finally { await s.stop(); ctl.close(); }
 });
+
+test('the checklist counts Prowlarr indexers and SABnzbd news servers', async () => {
+  const http = require('node:http');
+  const eng = http.createServer((req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    if (req.url.startsWith('/engines/prowlarr/api/v1/indexer') && req.headers['x-api-key'] === 'pk') return res.end(JSON.stringify([{ id: 1 }, { id: 2 }]));
+    if (req.url.startsWith('/api?') && req.url.includes('apikey=sk') && req.url.includes('section=servers')) return res.end(JSON.stringify({ config: { servers: [{ name: 'news' }] } }));
+    res.statusCode = 404; res.end('{}');
+  });
+  await new Promise(r => eng.listen(0, '127.0.0.1', r));
+  const port = eng.address().port, dir = tmp(), mf = path.join(dir, 'managed.json');
+  fs.writeFileSync(mf, JSON.stringify({ services: [
+    { key: 'prowlarr', type: 'prowlarr', name: 'Prowlarr', url: `http://127.0.0.1:${port}/engines/prowlarr`, apiKey: 'pk' },
+    { key: 'sabnzbd', type: 'sabnzbd', name: 'SABnzbd', url: `http://127.0.0.1:${port}`, apiKey: 'sk' }] }));
+  const s = await boot({ GOAT_MANAGED: mf }, dir);
+  try {
+    const c = client(s.base); await setup(c);
+    assert.deepEqual((await c.get('/api/goat/status')).data.counts, { indexers: 2, newsServers: 1 });
+  } finally { await s.stop(); eng.close(); }
+});

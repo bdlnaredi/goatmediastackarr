@@ -2344,7 +2344,7 @@ async function goatView(){
   const vOn=V.enabled!==undefined?V.enabled:!!vpn.enabled,vType=V.type||vpn.type||'wireguard',vApps=V.apps||vpn.apps||GOAT_VPNAPPS.map(a=>a[0]);
   const pill=vpn.state==='up'?`<span class="pill ok">Connected${vpn.country?' · '+esc(vpn.country):''}${vpn.ip?' · '+esc(vpn.ip):''}</span>`
     :vpn.enabled?`<span class="pill bad">${vpn.state==='waiting'?'Waiting for a VPN file':vpn.state==='connecting'?'Connecting…':'Not connected'}</span>`:'<span class="pill">Off</span>';
-  const hasPlex=st.engines.some(e=>e.key==='plex'),plexOk=steps.plex&&steps.plex.ok;
+  const hasPlex=st.engines.some(e=>e.key==='plex'),plexOk=steps.plex&&steps.plex.ok,N=st.counts||{};
   const done=S.setup&&S.setup.done;
   const check=(ok,label,hint)=>`<div class="row" style="gap:10px;margin:6px 0"><span class="pill ${ok?'ok':''}" style="min-width:26px;justify-content:center">${ok?ic('check'):'·'}</span><span><b>${label}</b>${hint?`<div class="mute">${hint}</div>`:''}</span></div>`;
   // Linking Plex to an account has its own item below, so it does not hold back this one.
@@ -2355,8 +2355,8 @@ async function goatView(){
   ${done?'':`<div class="panel" id="gw"><h2 style="margin-top:0">Finish setting up</h2>
     ${check(wiredAll,'Apps connected to each other',wiring?'Connecting them now. This page updates on its own.':wiredAll||!wBad.length?'Done automatically on first start.':'Not connected yet: '+wBad.map(([k,x])=>`<b>${esc(k)}</b> (${esc(x.error||'unknown problem')})`).join('; ')+'. Fix that, then press <i>Connect the apps again</i> below.')}
     ${check(vpn.state==='up'||vOn===false,'VPN for the download apps','Upload your VPN provider\'s file below, or leave the VPN off.')}
-    ${check(services.some(x=>x.type==='prowlarr'),'Indexers','Add the sites to search in <a href="#" data-go="idx">Indexers</a>. Prowlarr shares them with Sonarr, Radarr and Lidarr.')}
-    ${check(false,'Usenet (optional)','If you use usenet, add your provider\'s server in <a href="#" data-go="nzb">Usenet</a>.')}
+    ${check(N.indexers>0,'Indexers',N.indexers>0?`${N.indexers} site${N.indexers===1?'':'s'} to search. Prowlarr shares them with Sonarr, Radarr and Lidarr.`:'Add the sites to search in <a href="#" data-go="idx">Indexers</a>. Prowlarr shares them with Sonarr, Radarr and Lidarr.')}
+    ${check(N.newsServers>0,'Usenet (optional)',N.newsServers>0?`${N.newsServers} news server${N.newsServers===1?'':'s'} in SABnzbd.`:'If you use usenet, add your provider\'s server in <a href="#" data-go="nzb">Usenet</a>.')}
     ${hasPlex?check(plexOk,'Link Plex to your account','Use a claim code below.'):''}
     <div class="row"><button class="primary" id="gdone">${ic('check')}I'm done, hide this</button></div></div>`}
   <h2 class="sec">VPN</h2>
@@ -2420,7 +2420,7 @@ async function goatView(){
     if(j.state==='idle')return;
     const S=j.settings,cnt=(o,n)=>`${o.added} ${n}${o.added===1?'':'s'} added, ${o.updated} replaced`;
     el.innerHTML=`<div class="box" style="margin-top:10px"><b>${j.state==='running'?(j.phase==='profiles'?'Copying quality profiles and custom formats…':'Bringing in '+esc(j.kind)+'…'):j.state==='done'?'Finished '+esc(j.kind):'Stopped'}</b>
-      ${S?`<div class="mute">Quality profiles: ${cnt(S.profiles,'profile')}. Custom formats: ${cnt(S.formats,'format')}.</div>`:''}
+      ${S?`<div class="mute">Quality profiles: ${cnt(S.profiles,'profile')}. Custom formats: ${cnt(S.formats,'format')}.${S.delay?` Delay profiles: ${cnt(S.delay,'profile')}.`:''}${S.release?` Release profiles: ${cnt(S.release,'profile')}.`:''}${S.naming?' File naming copied.':''}</div>`:''}
       <progress value="${j.done||0}" max="${j.total||1}" style="width:100%;margin:8px 0"></progress>
       <div class="mute">${j.added||0} added, ${j.skipped||0} already there${(j.failed||[]).length?', '+j.failed.length+' could not be added':''}${j.error?' · '+esc(j.error):''}</div>
       ${(j.failed||[]).length?`<details style="margin-top:6px"><summary>What could not be added</summary>${j.failed.slice(0,100).map(f=>`<div class="mute">${esc(f.name)}: ${esc(f.error)}</div>`).join('')}</details>`:''}
@@ -2436,7 +2436,7 @@ async function goatView(){
         ${plan.kind==='prowlarr'?'':`<div style="margin-top:10px"><b>Where are these folders in GoatMediaStackarr?</b><div class="mute">The old app saw your media at the paths on the left. Enter where the same files are inside this container (your Media folder is ${esc(plan.newRoots[0]||'/media')}).</div>
           ${plan.suggest.map(([a,c],i)=>`<div class="row" style="gap:8px;margin:6px 0"><code style="min-width:160px">${esc(a)}</code><span>→</span><input data-gm="${i}" data-from="${esc(a)}" value="${esc(c)}" list="ginr" style="flex:1" aria-label="New folder for ${esc(a)}"></div>`).join('')}
           <datalist id="ginr">${plan.newRoots.map(r=>`<option value="${esc(r)}">`).join('')}</datalist>
-          ${plan.settings&&plan.settings.profiles.length?`<label class="row" style="gap:10px;margin-top:12px;align-items:flex-start;cursor:pointer"><input type="checkbox" id="gisp" checked style="margin-top:3px"><span><b>Also bring in your ${plan.settings.profiles.length} quality profile${plan.settings.profiles.length===1?'':'s'}${plan.settings.formats?` and ${plan.settings.formats} custom format${plan.settings.formats===1?'':'s'}`:''}</b><div class="mute">${esc(plan.settings.profiles.slice(0,6).join(', '))}${plan.settings.profiles.length>6?'…':''}. Ones with the same name here are replaced by yours, so every ${lbl.replace(/s$/,'')} keeps the profile it had.</div></span></label>`:''}
+          ${plan.settings&&plan.settings.profiles.length?`<label class="row" style="gap:10px;margin-top:12px;align-items:flex-start;cursor:pointer"><input type="checkbox" id="gisp" checked style="margin-top:3px"><span><b>Also bring in your settings: ${plan.settings.profiles.length} quality profile${plan.settings.profiles.length===1?'':'s'}${plan.settings.formats?`, ${plan.settings.formats} custom format${plan.settings.formats===1?'':'s'}`:''}, delay and release profiles, and file naming</b><div class="mute">${esc(plan.settings.profiles.slice(0,6).join(', '))}${plan.settings.profiles.length>6?'…':''}. Ones with the same name here are replaced by yours, so every ${lbl.replace(/s$/,'')} keeps the profile it had and new downloads are named like your files. Tags are always kept.</div></span></label>`:''}
           ${Object.entries(plan.profiles).some(([a,c])=>a!==c)?`<div class="mute" id="gisn">Without them, quality profiles that have no match here use ${esc(Object.values(plan.profiles)[0]||'the default')}.</div>`:''}</div>`}
         <div class="row" style="margin-top:10px"><button class="primary" id="gis"${plan.todo?'':' disabled'}>${ic('dl')}Bring in ${plan.todo} ${lbl}</button><span class="mute">Nothing is downloaded or searched for.</span></div></div>`;
       const go=$('#gis');if(go)go.onclick=async()=>{busy(go,'Starting…');

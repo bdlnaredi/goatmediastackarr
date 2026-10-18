@@ -21,13 +21,16 @@ function fakeArr(ver, key, data) {
       if (ids !== want) return json(400, [{ errorMessage: 'All Custom Formats and no extra ones need to be included' }]);
     }
     if (req.method === 'PUT') {
-      const [k, id] = p.split('/'), list = st[k] || [], i = list.findIndex(x => String(x.id) === id);
+      const id = p.split('/').pop(), k = p.slice(0, -(id.length + 1));
+      if (st[k] && !Array.isArray(st[k])) { if (String(st[k].id) !== id) return json(404, {}); st[k] = { ...b, id: Number(id) }; return json(202, st[k]); }
+      const list = st[k] || [], i = list.findIndex(x => String(x.id) === id);
       if (i < 0) return json(404, {});
       list[i] = { ...b, id: Number(id) }; return json(202, list[i]);
     }
     if (b.title === 'Broken Show') return json(400, [{ errorMessage: 'Path does not exist' }]);
-    (st[p] = st[p] || []).push({ id: st[p].length + 100, ...b });
-    json(201, b);
+    const item = { id: (st[p] || []).length + 100, ...b };
+    (st[p] = st[p] || []).push(item);
+    json(201, item);
   });
   return { srv, st, listen: () => new Promise(r => srv.listen(0, '127.0.0.1', () => r(`http://127.0.0.1:${srv.address().port}`))) };
 }
@@ -147,7 +150,7 @@ test('quality profiles and custom formats come first, with scores following each
     const r = await importer.run('sonarr', from, to, [['/tv', '/media/tv']], x => x.phase && phases.push(x.phase), { settings: true });
     assert.deepEqual(r.failed, []);
     assert.deepEqual(phases.slice(0, 2), ['profiles', 'items'], 'profiles before the shows');
-    assert.deepEqual(r.settings, { formats: { added: 1, updated: 1 }, profiles: { added: 1, updated: 1 } });
+    assert.deepEqual({ formats: r.settings.formats, profiles: r.settings.profiles }, { formats: { added: 1, updated: 1 }, profiles: { added: 1, updated: 1 } });
     const cf = Object.fromEntries(neu.st.customformat.map(f => [f.name, f]));
     assert.equal(cf['Bad Groups'].id, 1, 'the existing one is replaced in place');
     assert.equal(cf['Bad Groups'].specifications[0].fields[0].value, 'BAD');
@@ -174,5 +177,53 @@ test('an app version without custom formats still gets its profiles', async () =
     const r = await importer.run('lidarr', { url: ou, apiKey: 'oldkey-123456' }, { url: nu, apiKey: 'newkey-123456' }, [['/music', '/media/music']], () => {}, { settings: true });
     assert.deepEqual(r.settings.profiles, { added: 1, updated: 0 });
     assert.deepEqual(neu.st.qualityprofile.map(x => x.name), ['Any', 'Lossless']);
+  } finally { old.srv.close(); neu.srv.close(); }
+});
+
+test('tags, delay profiles, release profiles and file naming come across too', async () => {
+  const old = fakeArr('v3', 'oldkey-123456', {
+    series: [{ id: 1, title: 'Kids Show', tvdbId: 11, path: '/tv/Kids Show', rootFolderPath: '/tv', monitored: true, qualityProfileId: 1, seasons: [], tags: [7] }],
+    rootfolder: [{ path: '/tv' }], qualityprofile: [{ id: 1, name: 'Any', items: [] }],
+    tag: [{ id: 7, label: 'kids' }, { id: 8, label: 'anime' }, { id: 9, label: 'unused' }],
+    delayprofile: [{ id: 1, order: 2147483647, enableUsenet: true, enableTorrent: true, preferredProtocol: 'usenet', usenetDelay: 60, torrentDelay: 120, tags: [] },
+                   { id: 2, order: 1, enableUsenet: false, enableTorrent: true, preferredProtocol: 'torrent', usenetDelay: 0, torrentDelay: 0, tags: [8] }],
+    releaseprofile: [{ id: 3, name: 'No CAM', enabled: true, required: [], ignored: ['CAM', 'TS'], indexerId: 4, tags: [] }],
+    'config/naming': { id: 1, renameEpisodes: true, standardEpisodeFormat: '{Series Title} - S{season:00}E{episode:00} - {Episode Title}' } });
+  const neu = fakeArr('v3', 'newkey-123456', {
+    series: [], rootfolder: [{ path: '/media/tv' }], qualityprofile: [{ id: 1, name: 'Any', items: [] }],
+    tag: [{ id: 1, label: 'Kids' }],
+    delayprofile: [{ id: 1, order: 2147483647, enableUsenet: true, enableTorrent: true, preferredProtocol: 'usenet', usenetDelay: 0, torrentDelay: 0, tags: [] }],
+    releaseprofile: [], 'config/naming': { id: 1, renameEpisodes: false, standardEpisodeFormat: 'default' } });
+  const [ou, nu] = [await old.listen(), await neu.listen()];
+  try {
+    const r = await importer.run('sonarr', { url: ou, apiKey: 'oldkey-123456' }, { url: nu, apiKey: 'newkey-123456' }, [['/tv', '/media/tv']], () => {}, { settings: true });
+    assert.deepEqual(r.failed, []);
+    assert.deepEqual(r.settings.delay, { added: 1, updated: 1 }); assert.deepEqual(r.settings.release, { added: 1, updated: 0 }); assert.equal(r.settings.naming, true);
+    const tag = l => neu.st.tag.find(t => t.label.toLowerCase() === l).id;
+    assert.deepEqual(neu.st.tag.map(t => t.label).sort(), ['Kids', 'anime'], 'matched by name; tags nothing uses are not made');
+    assert.deepEqual(neu.st.posts.find(x => x.p === 'series').b.tags, [tag('kids')], 'the show keeps its tag');
+    const def = neu.st.delayprofile.find(d => d.id === 1);
+    assert.equal(def.torrentDelay, 120); assert.equal(def.order, 2147483647, 'the default stays the default');
+    const extra = neu.st.delayprofile.find(d => d.id !== 1);
+    assert.deepEqual(extra.tags, [tag('anime')]); assert.equal(extra.preferredProtocol, 'torrent'); assert.equal(extra.order, undefined);
+    assert.deepEqual(neu.st.releaseprofile[0].ignored, ['CAM', 'TS']); assert.equal(neu.st.releaseprofile[0].indexerId, 0, 'not tied to an indexer number from the old app');
+    assert.equal(neu.st['config/naming'].standardEpisodeFormat, '{Series Title} - S{season:00}E{episode:00} - {Episode Title}');
+    assert.equal(neu.st['config/naming'].id, 1);
+    assert.equal(old.st.writesToOld, 0);
+    // Again: the release profile is replaced, not doubled, and no new delay profile appears.
+    const r2 = await importer.run('sonarr', { url: ou, apiKey: 'oldkey-123456' }, { url: nu, apiKey: 'newkey-123456' }, [['/tv', '/media/tv']], () => {}, { settings: true });
+    assert.deepEqual(r2.settings.release, { added: 0, updated: 1 }); assert.deepEqual(r2.settings.delay, { added: 0, updated: 2 });
+    assert.equal(neu.st.delayprofile.length, 2); assert.equal(neu.st.releaseprofile.length, 1);
+  } finally { old.srv.close(); neu.srv.close(); }
+});
+
+test('Prowlarr indexers keep their tags', async () => {
+  const old = fakeArr('v1', 'oldkey-123456', { indexer: [{ id: 1, name: 'Cloudy Site', tags: [5], fields: [] }], tag: [{ id: 5, label: 'flaresolverr' }] });
+  const neu = fakeArr('v1', 'newkey-123456', { indexer: [], tag: [{ id: 2, label: 'flaresolverr' }], appprofile: [{ id: 1, name: 'Standard' }] });
+  const [ou, nu] = [await old.listen(), await neu.listen()];
+  try {
+    const r = await importer.run('prowlarr', { url: ou, apiKey: 'oldkey-123456' }, { url: nu, apiKey: 'newkey-123456' }, []);
+    assert.equal(r.added, 1);
+    assert.deepEqual(neu.st.posts.find(x => x.p === 'indexer').b.tags, [2]);
   } finally { old.srv.close(); neu.srv.close(); }
 });
