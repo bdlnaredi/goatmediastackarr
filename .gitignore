@@ -5,3 +5,5 @@ node_modules/
 .env
 .DS_Store
 Thumbs.db
+# The Android app has a code folder named "data"; that one is source code, not runtime data.
+!android/app/src/main/java/com/bdlnaredi/goatstack/data/
