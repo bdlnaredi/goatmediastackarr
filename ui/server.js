@@ -10,7 +10,8 @@ fs.mkdirSync(DATA, { recursive: true });
 const totp = require('./lib/totp'), channels = require('./lib/channels'), listsLib = require('./lib/lists');
 const PORT = +process.env.PORT || 5080, DEMO = /^(1|true|yes)$/i.test(process.env.DEMO || ''), DAY = 864e5;
 const demo = DEMO ? require('./lib/demo').create({ streams: 2 }) : null;
-const VERSION = (() => { try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'))).version; } catch { return 'dev'; } })();
+// Inside the container the release number comes from the image (GOAT_VERSION); otherwise from package.json.
+const VERSION = (() => { const g = String(process.env.GOAT_VERSION || '').replace(/^v/, ''); if (g && g !== 'dev') return g; try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'))).version; } catch { return 'dev'; } })();
 const TRUST = /^(1|true|yes)$/i.test(process.env.TRUST_PROXY || ''), SETUP_TOKEN = process.env.SETUP_TOKEN || '';
 const same = (a, b) => { const x = Buffer.from(String(a || '')), y = Buffer.from(String(b || '')); return x.length === y.length && crypto.timingSafeEqual(x, y); };
 const PUB = path.join(__dirname, 'public'), KEYF = path.join(DATA, 'secret.key');
@@ -166,7 +167,22 @@ const goatPublicIp = async () => {
   const g = k => ((t.match(new RegExp('^' + k + '=(.*)$', 'm')) || [])[1] || '');
   return { ip: g('ip'), country: g('loc') };
 };
-goatSync(); if (GOAT_MANAGED) setInterval(goatSync, 15000).unref();
+// No media server inside the container: Seerr signs in through the Plex server added under Settings, then Apps
+// (the one used for Plex sign-in if there are several). Its address and token are passed on, and the apps connected again.
+const goatOwnPlex = () => {
+  if (!goatSettings || !GOAT_MANAGED || DEMO) return;
+  if (db.services.some(x => x.managed === 'jellyfin' || x.managed === 'plex')) return;
+  const own = db.services.filter(x => x.type === 'plex' && !x.managed && x.url && x.apiKey);
+  const c = db.settings.plexLogin || {}, p = own.find(x => x.id === c.sid) || own[0];
+  if (!p) return;
+  const url = p.url.replace(/\/+$/, ''), cur = goatSettings.read().plex || {};
+  if (cur.url === url && cur.token === p.apiKey) return;
+  try { goatSettings.update({ plex: { url, token: p.apiKey } }); } catch (e) { console.log('[goat] could not pass your Plex server on to Seerr:', e.message); return; }
+  console.log(`[goat] Seerr will use your Plex server at ${url}; connecting the apps again.`);
+  goatControl({ cmd: 'rewire' });
+};
+goatSync(); goatOwnPlex();
+if (GOAT_MANAGED) setInterval(() => { goatSync(); goatOwnPlex(); }, Number(process.env.GOAT_SYNC_MS) || 15000).unref();
 // Admins can open each built-in engine's own page at /engines/<name>/ (the "Advanced" pages), signed in through
 // GoatMediaStackarr. The engines themselves listen only inside the container, so this is the only way in.
 // Seerr has no setting for living under a sub-path, and Jellyfin has its own port, so they are not proxied.

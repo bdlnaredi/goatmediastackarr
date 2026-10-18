@@ -2341,9 +2341,10 @@ async function goatView(){
   // Linking Plex to an account has its own item below, so it does not hold back this one.
   const wSteps=Object.entries(steps).filter(([k])=>k!=='plex');
   const wiredAll=!wiring&&wSteps.length>0&&wSteps.every(([,x])=>x.ok);
+  const wBad=wSteps.filter(([,x])=>!x.ok);
   $('#m').innerHTML=`
   ${done?'':`<div class="panel" id="gw"><h2 style="margin-top:0">Finish setting up</h2>
-    ${check(wiredAll,'Apps connected to each other',wiring?'Connecting them now. This page updates on its own.':'Done automatically on first start.'+(wiredAll?'':' See Connections below.'))}
+    ${check(wiredAll,'Apps connected to each other',wiring?'Connecting them now. This page updates on its own.':wiredAll||!wBad.length?'Done automatically on first start.':'Not connected yet: '+wBad.map(([k,x])=>`<b>${esc(k)}</b> (${esc(x.error||'unknown problem')})`).join('; ')+'. Fix that, then press <i>Connect the apps again</i> below.')}
     ${check(vpn.state==='up'||vOn===false,'VPN for the download apps','Upload your VPN provider\'s file below, or leave the VPN off.')}
     ${check(services.some(x=>x.type==='prowlarr'),'Indexers','Add the sites to search in <a href="#" data-go="idx">Indexers</a>. Prowlarr shares them with Sonarr, Radarr and Lidarr.')}
     ${check(false,'Usenet (optional)','If you use usenet, add your provider\'s server in <a href="#" data-go="nzb">Usenet</a>.')}

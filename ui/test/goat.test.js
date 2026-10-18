@@ -220,3 +220,28 @@ test('usenet news servers: add, test with the saved password, change, remove', a
     assert.equal((await v.get(base)).status, 403);
   } finally { await s.stop(); sabSrv.close(); }
 });
+
+test('no media server inside: your own Plex is passed on to Seerr and the apps connected again', async () => {
+  const net = require('node:net');
+  const dir = tmp(), cfg = path.join(dir, 'config'), run = tmp(), mf = path.join(dir, 'managed.json');
+  fs.mkdirSync(path.join(cfg, 'goat'), { recursive: true });
+  fs.writeFileSync(mf, JSON.stringify({ services: [{ key: 'seerr', type: 'seerr', name: 'Seerr', url: 'http://127.0.0.1:5055', apiKey: '' }] }));
+  const sockPath = path.join(run, 'control.sock'), got = [];
+  const ctl = net.createServer(x => x.on('data', d => { got.push(JSON.parse(String(d)).cmd); x.end('{"ok":true}\n'); }));
+  await new Promise(r => ctl.listen(sockPath, r));
+  const s = await boot({ GOAT_MANAGED: mf, GOAT_RUN: run, GOAT_CONFIG_DIR: cfg, GOAT_CONTROL_SOCK: sockPath, GOAT_SYNC_MS: '200',
+    GOAT_BIN: path.join(__dirname, '..', '..', 'goat'), GOAT_VERSION: 'v0.2.3' }, dir);
+  const wait = async f => { for (let i = 0; i < 50 && !f(); i++) await new Promise(r => setTimeout(r, 100)); };
+  const file = () => { try { return JSON.parse(fs.readFileSync(path.join(cfg, 'goat', 'settings.json'), 'utf8')); } catch { return {}; } };
+  try {
+    const c = client(s.base); await setup(c);
+    assert.equal((await c.get('/api/me')).data.version, '0.2.3', 'the installed release is shown, not package.json');
+    assert.equal((await c.post('/api/services', { type: 'plex', name: 'My Plex', url: 'http://192.168.1.10:32400/', apiKey: 'myplextoken' })).status, 200);
+    await wait(() => got.includes('rewire'));
+    assert.deepEqual(file().plex, { url: 'http://192.168.1.10:32400', token: 'myplextoken' });
+    assert.deepEqual(got, ['rewire']);
+    assert.equal((await c.get('/api/goat/status')).data.settings.plex.token, '••••');
+    await new Promise(r => setTimeout(r, 600));
+    assert.deepEqual(got, ['rewire'], 'only once, not every few seconds');
+  } finally { await s.stop(); ctl.close(); }
+});
