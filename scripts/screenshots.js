@@ -11,7 +11,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 const PAGES = [
   ['dash', 'dashboard'], ['disc', 'discover'], ['lib', 'library'], ['dl', 'downloads'], ['rq', 'requests'],
-  ['up', 'upcoming'], ['idx', 'indexers'], ['hl', 'health'], ['stats', 'stats'], ['goat', 'stack'],
+  ['up', 'upcoming'], ['idx', 'indexers'], ['hl', 'health'], ['stats', 'stats'], ['nzb', 'usenet'], ['goat', 'stack'],
 ];
 
 // Pretend container status for the Stack page: VPN connected, everything wired, logins made.
@@ -59,7 +59,7 @@ function goatDemo() {
       if (!(await btn.count())) { console.log('no tab', tab); continue; }
       await btn.click(); await shot(page, name, tab === 'goat');
       // Every tab has its own address: the address bar must follow the click.
-      const want = { dash: '/', disc: '/discover', lib: '/library', dl: '/downloads', rq: '/requests', up: '/upcoming', idx: '/indexers', hl: '/health', stats: '/stats', goat: '/stack' }[tab];
+      const want = { dash: '/', disc: '/discover', lib: '/library', dl: '/downloads', rq: '/requests', up: '/upcoming', idx: '/indexers', hl: '/health', stats: '/stats', nzb: '/usenet', goat: '/stack' }[tab];
       const got = new URL(page.url()).pathname;
       if (want && got !== want) throw new Error(`after opening ${tab} the address is ${got}, expected ${want}`);
     }

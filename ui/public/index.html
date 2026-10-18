@@ -2395,13 +2395,52 @@ async function goatView(){
     const g=e.target.closest('[data-go]');if(g){e.preventDefault();goto(g.dataset.go)}};
 }
 
+// ---------- Usenet news servers (SABnzbd): the provider's server, so usenet downloads can start
+async function nzbServers(s){
+  const box=$('#nsv');if(!box)return;
+  let list;try{list=await api(`/api/sab/${s.id}/servers`)}catch(e){box.innerHTML=`<div class="panel err">${esc(e.message)}</div>`;return}
+  if(tab!=='nzb')return;
+  const form=(x={})=>`<form class="panel" id="nsf" style="max-width:640px" data-name="${esc(x.name||'')}">
+    <h3 style="margin-top:0">${x.name?'Change '+esc(x.displayname):'Add your usenet provider\'s server'}</h3>
+    <div class="mute">Your provider's welcome email or account page lists these details.</div>
+    <input name="host" placeholder="Server address, like news.example.com" value="${esc(x.host||'')}" required aria-label="Server address">
+    <div class="row" style="gap:10px"><input name="port" type="number" min="1" max="65535" placeholder="Port" value="${x.port||563}" style="max-width:120px" aria-label="Port">
+      <label class="row" style="gap:6px"><input type="checkbox" name="ssl"${x.name?(x.ssl?' checked':''):' checked'}> Encrypted (SSL)</label>
+      <input name="connections" type="number" min="1" max="100" value="${x.connections||8}" style="max-width:110px" aria-label="Connections" title="How many connections your plan allows"><span class="mute">connections</span></div>
+    <input name="username" placeholder="Username" value="${esc(x.username||'')}" autocomplete="off" aria-label="Username">
+    <input name="password" type="password" placeholder="${x.hasPassword?'Password saved (type to change)':'Password'}" autocomplete="new-password" aria-label="Password">
+    <div class="row"><button class="primary" type="submit">${ic('check')}Save</button><button type="button" data-ntest>Test connection</button>${x.name?'<button type="button" data-ncancel>Cancel</button>':''}</div>
+    <div class="mute" id="nsr" role="status"></div></form>`;
+  const draw=()=>{
+    box.innerHTML=(list.length?`<div class="panel">${list.map(x=>`<div class="row" style="gap:10px;padding:6px 0;border-bottom:1px solid var(--line)">
+        <span class="pill ${x.enable?'ok':''}">${x.enable?'On':'Off'}</span><b>${esc(x.displayname)}</b><span class="mute">${esc(x.host)}:${x.port}${x.ssl?' · SSL':''} · ${x.connections} connections</span><span class="grow"></span>
+        <button data-nedit="${esc(x.name)}">Change</button><button data-ndel="${esc(x.name)}">${ic('trash')}Remove</button></div>`).join('')}
+        <div class="row" style="margin-top:10px"><button data-nadd>+ Add another server</button></div></div>`
+      :`<div class="panel"><b>No news server yet.</b> <span class="mute">Usenet downloads need your provider's server. Add it below.</span></div>${form()}`);
+  };
+  draw();
+  const vals=f=>({name:f.dataset.name||'',host:f.host.value.trim(),port:+f.port.value,ssl:f.ssl.checked,connections:+f.connections.value,username:f.username.value.trim(),password:f.password.value});
+  box.onclick=async e=>{
+    const t=e.target.closest('button');if(!t)return;
+    if(t.dataset.nadd!==undefined){box.insertAdjacentHTML('beforeend',form());t.remove();return}
+    if(t.dataset.ncancel!==undefined){draw();return}
+    if(t.dataset.nedit){const x=list.find(y=>y.name===t.dataset.nedit);draw();box.insertAdjacentHTML('beforeend',form(x));return}
+    if(t.dataset.ndel){if(!confirm('Remove this news server from SABnzbd?'))return;try{list=await api(`/api/sab/${s.id}/servers/${encodeURIComponent(t.dataset.ndel)}`,'DELETE');draw();toast('Server removed','ok')}catch(x){toast(x.message,'bad')}return}
+    if(t.dataset.ntest!==undefined){const f=$('#nsf'),r=$('#nsr');t.disabled=true;r.textContent='Connecting…';
+      try{const d=await api(`/api/sab/${s.id}/servers/test`,'POST',vals(f));r.innerHTML=`<span class="pill ${d.ok?'ok':'bad'}">${d.ok?'Works':'Failed'}</span> ${esc(d.message)}`}catch(x){r.textContent=x.message}t.disabled=false}};
+  box.onsubmit=async e=>{e.preventDefault();const f=e.target,r=$('#nsr');
+    try{list=await api(`/api/sab/${s.id}/servers`,'POST',vals(f));draw();toast('News server saved','ok')}catch(x){r.textContent=x.message}};
+}
+
 // ---------- Usenet (SABnzbd)
 async function nzbView(){
   const s=first('sabnzbd');if(!s)return noSvc('SABnzbd');
   const canCtl=can('control'),canAdd=can('add');
   $('#m').innerHTML=`<div id="nq"></div>${canAdd?`<h2 class="sec">Add a download</h2><form id="na" class="panel" style="max-width:640px"><label class="mute">NZB file <input type="file" name="file" accept=".nzb,.gz,application/x-nzb"></label>
       <input name="url" placeholder="or paste an address to an NZB" aria-label="NZB address"><input name="cat" placeholder="Category (optional)" aria-label="Category"><div class="row"><button class="primary">Add to SABnzbd</button></div><div class="err" id="ne"></div></form>`:''}
+    ${me.role==='admin'?`<h2 class="sec">News servers</h2><div id="nsv">${skel(1)}</div>`:''}
     <h2 class="sec">History</h2><div id="nh">${skel(3)}</div>`;
+  if(me.role==='admin')nzbServers(s);
   const q=async()=>{try{const d=await api(`/api/sab/${s.id}/queue`),el=$('#nq');if(!el||tab!=='nzb')return;
     el.innerHTML=`<div class="panel"><div class="row" style="gap:28px"><div><div class="mute">Speed</div><b style="font-size:24px;color:var(--link)">${fmt(d.speed)}/s</b></div><div><div class="mute">In queue</div><b style="font-size:22px">${d.slots}</b></div><span class="mute">${esc(d.timeleft||'')}${d.paused?' (paused)':''}</span><span class="grow"></span>${canCtl?`<button data-sp="${d.paused?'resume':'pause'}">${ic(d.paused?'play':'pause')}${d.paused?'Resume':'Pause'}</button>`:''}</div>
       ${d.jobs.map(j=>`<div class="box"><b>${esc(j.name)}</b><div class="mute">${esc(j.size)}${j.left?', '+esc(j.left):''}</div><progress value="${j.pct}" max="100" style="margin-top:6px" aria-label="Progress"></progress></div>`).join('')}</div>`;

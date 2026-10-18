@@ -320,6 +320,8 @@ function create(opts = {}) {
     if (type === 'sabnzbd' || sub === '/api') {
       const mode = q.get('mode');
       if (mode === 'version') return json(res, { version: '4.3.0-demo' });
+      if (mode === 'get_config' && q.get('section') === 'servers') return json(res, { config: { servers: [{ name: 'news.example.net', displayname: 'Example Usenet', host: 'news.example.net', port: 563, ssl: 1, username: 'demo', password: '*****', connections: 30, enable: 1, priority: 0 }] } });
+      if (mode === 'config' && q.get('name') === 'test_server') return json(res, { value: { result: true, message: 'Connection Successful!' } });
       if (mode === 'queue') return json(res, { queue: { paused: false, status: 'Downloading', kbpersec: '5120', noofslots_total: 1, sizeleft: '2.1 GB', timeleft: '0:07:12', slots: [{ filename: 'Night.Shift.S06E01.1080p', percentage: '48', size: '3.1 GB', timeleft: '0:07:12' }] } });
       if (mode === 'history') {
         if (q.get('name') === 'delete') { st.sabHist = st.sabHist.filter(h => h.nzo_id !== q.get('value')); return json(res, { status: true }); }

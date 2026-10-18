@@ -1652,6 +1652,42 @@ const goatServer = http.createServer(async (req, res) => {
       res.writeHead(200, { 'Content-Type': ct, 'Cache-Control': 'private, max-age=86400' });
       return res.end(Buffer.from(await x.arrayBuffer()));
     }
+    // ---- SABnzbd news servers (admins): list, add or change, test, remove.
+    if ((r = p.match(/^\/api\/sab\/(\w+)\/servers(?:\/(test)|\/([\w.-]{1,80}))?$/))) {
+      if (adminOnly()) return;
+      const s = svcOf(r[1], 'sabnzbd'); if (!s) return send(res, 404, { error: 'Not found' });
+      const pub = x => ({ name: x.name, displayname: x.displayname || x.name, host: x.host, port: +x.port || 0, ssl: !!+x.ssl, username: x.username || '',
+        hasPassword: !!x.password, connections: +x.connections || 0, enable: !!+x.enable, priority: +x.priority || 0 });
+      const list = async () => (((await sab(s, 'mode=get_config&section=servers')).config || {}).servers || []).map(pub);
+      if (!r[2] && !r[3] && m === 'GET') return send(res, 200, await list());
+      if (r[3] && m === 'DELETE') {
+        if (DEMO) return send(res, 403, { error: 'This is turned off in the demo' });
+        await sab(s, 'mode=del_config&section=servers&keyword=' + encodeURIComponent(r[3]));
+        audit(me.name, 'Removed a usenet server', r[3]); return send(res, 200, await list());
+      }
+      if (m !== 'POST') return send(res, 404, { error: 'Not found' });
+      const b = await readBody(req), host = String(b.host || '').trim(), port = +b.port || (b.ssl ? 563 : 119), conns = +b.connections || 8;
+      if (!/^[A-Za-z0-9.-]{1,253}$/.test(host)) return send(res, 400, { error: 'Enter the server address, like news.example.com' });
+      if (!(port >= 1 && port <= 65535)) return send(res, 400, { error: 'The port must be between 1 and 65535' });
+      if (!(conns >= 1 && conns <= 100)) return send(res, 400, { error: 'Connections must be between 1 and 100' });
+      if (/[\r\n]/.test(String(b.username || '') + String(b.password || ''))) return send(res, 400, { error: 'Bad sign-in details' });
+      const name = String(b.name || host).replace(/[^\w.-]+/g, '_').slice(0, 80);
+      const q = new URLSearchParams({ host, port: String(port), ssl: b.ssl ? '1' : '0', username: String(b.username || ''), connections: String(conns) });
+      // A blank password keeps the one already saved (SABnzbd reads ***** as "the stored password").
+      q.set('password', b.password ? String(b.password) : '*****');
+      if (r[2] === 'test') {
+        q.set('mode', 'config'); q.set('name', 'test_server'); q.set('server', String(b.name || ''));
+        const t = ((await sab(s, q.toString())).value) || {};
+        return send(res, 200, { ok: !!t.result, message: String(t.message || (t.result ? 'Connected' : 'Could not connect')) });
+      }
+      if (DEMO) return send(res, 403, { error: 'This is turned off in the demo' });
+      if (!b.password && !b.name) return send(res, 400, { error: 'Enter the password for this server' });
+      q.set('mode', 'set_config'); q.set('section', 'servers'); q.set('keyword', name); q.set('name', name);
+      q.set('displayname', String(b.displayname || host).slice(0, 80)); q.set('enable', b.enable === false ? '0' : '1');
+      if (!b.password) q.delete('password');
+      await sab(s, q.toString());
+      audit(me.name, b.name ? 'Changed a usenet server' : 'Added a usenet server', host); return send(res, 200, await list());
+    }
     if ((r = p.match(/^\/api\/sab\/(\w+)\/queue$/))) {
       const s = svcOf(r[1], 'sabnzbd'); if (!s) return send(res, 404, { error: 'Not found' });
       const d = (await sab(s, 'mode=queue&limit=8')).queue || {};

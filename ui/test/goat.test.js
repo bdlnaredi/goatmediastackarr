@@ -170,3 +170,53 @@ test('every page address opens the app, while files, the API and status pages ke
     assert.equal((await fetch(s.base + '/api/health')).status, 200);
   } finally { await s.stop(); }
 });
+
+test('usenet news servers: add, test with the saved password, change, remove', async () => {
+  const http = require('node:http');
+  const servers = {}, seen = [];
+  const sabSrv = http.createServer((req, res) => {
+    const q = new URL(req.url, 'http://x').searchParams; seen.push(Object.fromEntries(q));
+    if (q.get('apikey') !== 'sabkey') { res.writeHead(403); return res.end(); }
+    const out = o => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(o)); };
+    const m = q.get('mode');
+    if (m === 'get_config') return out({ config: { servers: Object.values(servers) } });
+    if (m === 'set_config') { const k = q.get('keyword'); servers[k] = { ...(servers[k] || {}), name: k, displayname: q.get('displayname'), host: q.get('host'), port: q.get('port'), ssl: q.get('ssl'), username: q.get('username'), connections: q.get('connections'), enable: q.get('enable'), password: q.has('password') ? '*****' : (servers[k] || {}).password || '' }; return out({ config: {} }); }
+    if (m === 'del_config') { delete servers[q.get('keyword')]; return out({ status: true }); }
+    if (m === 'config' && q.get('name') === 'test_server') return out({ value: { result: q.get('host') === 'news.good.example', message: q.get('host') === 'news.good.example' ? 'Connection Successful!' : 'Server address is invalid' } });
+    out({});
+  });
+  await new Promise(r => sabSrv.listen(0, '127.0.0.1', r));
+  const dir = tmp(), mf = path.join(dir, 'managed.json');
+  fs.writeFileSync(mf, JSON.stringify({ services: [{ key: 'sabnzbd', type: 'sabnzbd', name: 'SABnzbd', url: `http://127.0.0.1:${sabSrv.address().port}`, apiKey: 'sabkey' }] }));
+  const s = await boot({ GOAT_MANAGED: mf }, dir);
+  try {
+    const c = client(s.base); await setup(c);
+    const sid = (await c.get('/api/services')).data[0].id, base = `/api/sab/${sid}/servers`;
+    assert.deepEqual((await c.get(base)).data, []);
+    assert.equal((await c.post(base, { host: 'bad host;rm', port: 563 })).status, 400);
+    assert.equal((await c.post(base, { host: 'news.good.example', port: 99999 })).status, 400);
+    assert.equal((await c.post(base, { host: 'news.good.example', port: 563, ssl: true })).status, 400, 'a new server needs its password');
+
+    let r = await c.post(base + '/test', { host: 'news.good.example', port: 563, ssl: true, username: 'me', password: 'pw' });
+    assert.deepEqual(r.data, { ok: true, message: 'Connection Successful!' });
+    r = await c.post(base, { host: 'news.good.example', port: 563, ssl: true, connections: 20, username: 'me', password: 'pw' });
+    assert.equal(r.status, 200);
+    assert.equal(r.data[0].host, 'news.good.example'); assert.equal(r.data[0].ssl, true); assert.equal(r.data[0].connections, 20); assert.equal(r.data[0].hasPassword, true);
+    assert.equal(seen.at(-2).password, 'pw');
+
+    // Testing a saved server without retyping the password sends SABnzbd's "use the stored one" marker.
+    r = await c.post(base + '/test', { name: 'news.good.example', host: 'news.good.example', port: 563, ssl: true, username: 'me' });
+    assert.equal(seen.at(-1).password, '*****'); assert.equal(seen.at(-1).server, 'news.good.example');
+    // Changing other details keeps the saved password (no password sent at all).
+    r = await c.post(base, { name: 'news.good.example', host: 'news.good.example', port: 443, ssl: true, connections: 10, username: 'me' });
+    assert.equal(r.data[0].port, 443);
+    assert.ok(!('password' in seen.find(x => x.mode === 'set_config' && x.port === '443')));
+
+    r = await c.del(base + '/news.good.example');
+    assert.deepEqual(r.data, []);
+    // Not for regular users.
+    await c.post('/api/users', { name: 'viewer', password: 'viewer-pass-1', role: 'user' });
+    const v = client(s.base); await v.post('/api/login', { name: 'viewer', password: 'viewer-pass-1' });
+    assert.equal((await v.get(base)).status, 403);
+  } finally { await s.stop(); sabSrv.close(); }
+});
