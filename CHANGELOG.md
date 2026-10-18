@@ -13,7 +13,7 @@ First stage: the container foundation.
 - Library and downloads are separate folders (`/media`, `/downloads`) by default; `MEDIA_DIR` and `DOWNLOADS_DIR` let both live inside one shared folder instead.
 - Optional built-in Plex: downloaded from plex.tv on first start, linked with a claim code, libraries created, and Tautulli and (optionally) Seerr connected to it. An existing Plex server can be added instead.
 - Jellyfin's first-run setup survives its start-up restart, and failed connections are retried right away.
-- New goat logo and app icons; the interface is named GoatMediaStackarr.
+- New G.O.A.T. (Greatest Of All Time) logo and app icons: a gold laurel and star around radar rings and a play-button G; the interface is named GoatMediaStackarr.
 - README screenshots, refreshed by the "Update screenshots" workflow.
 - Every tab and Settings section has its own address (/downloads, /settings/apps); dialogs open as layers that the back button closes.
 - Stack page: setup checklist, VPN controls with file upload and leak test, app health and restarts, generated logins, Plex linking, connection results.

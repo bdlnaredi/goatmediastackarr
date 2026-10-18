@@ -1,172 +1,128 @@
 #!/usr/bin/env python3
-"""Draws the GoatMediaStackarr logo: a goat head with amber horns and a play button on its forehead.
+"""Draws the GoatMediaStackarr logo: G.O.A.T. as in Greatest Of All Time.
 
-The same shapes produce docs/logo/logo.svg (sharp at any size, used in the README) and the PNG icons the
-web app and Unraid use. Needs only Pillow:  python3 docs/logo/make_logo.py
+A victory laurel and star around radar rings and a G drawn as a ring with a play button inside,
+gold on navy. The same shapes produce docs/logo/logo.svg (sharp at any size, used in the README)
+and the PNG icons the web app and Unraid use. Needs only Pillow:  python3 docs/logo/make_logo.py
 """
+import math
 from pathlib import Path
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parents[2]
-S = 512  # design grid
 
-BG_TOP, BG_BOTTOM = (36, 22, 74), (12, 70, 78)        # deep violet to deep teal
-HORN_A, HORN_B = (255, 205, 92), (236, 112, 52)       # amber to orange
-FACE = (246, 240, 229)
-INK = (36, 22, 74)
-PLAY = (236, 112, 52)
+NAVY = (15, 26, 46)
+GOLD = (232, 192, 104)
+SS = 4  # supersampling for smooth PNG edges
 
-
-def cubic(p0, p1, p2, p3, n=48):
-    pts = []
-    for i in range(n + 1):
-        t = i / n
-        a, b, c, d = (1 - t) ** 3, 3 * (1 - t) ** 2 * t, 3 * (1 - t) * t ** 2, t ** 3
-        pts.append((a * p0[0] + b * p1[0] + c * p2[0] + d * p3[0], a * p0[1] + b * p1[1] + c * p2[1] + d * p3[1]))
-    return pts
-
-
-class Shape:
-    """A closed outline made of cubic curves, kept both as SVG path data and as points for Pillow."""
-    def __init__(self, start):
-        self.start, self.cur, self.d, self.pts = start, start, [f"M{start[0]:g} {start[1]:g}"], [start]
-
-    def c(self, p1, p2, p3):
-        self.d.append(f"C{p1[0]:g} {p1[1]:g} {p2[0]:g} {p2[1]:g} {p3[0]:g} {p3[1]:g}")
-        self.pts += cubic(self.cur, p1, p2, p3)[1:]
-        self.cur = p3
-        return self
-
-    def l(self, p):
-        self.d.append(f"L{p[0]:g} {p[1]:g}")
-        self.pts.append(p); self.cur = p
-        return self
-
-    def path(self):
-        return " ".join(self.d) + " Z"
-
-    def mirrored(self):
-        m = Shape((S - self.start[0], self.start[1]))
-        m.d = [seg for seg in self._mirror_d()]
-        m.pts = [(S - x, y) for x, y in self.pts]
-        return m
-
-    def _mirror_d(self):
-        out = []
-        for seg in self.d:
-            nums = [float(v) for v in seg[1:].split()]
-            for i in range(0, len(nums), 2):
-                nums[i] = S - nums[i]
-            out.append(seg[0] + " ".join(f"{v:g}" for v in nums))
-        return out
-
-
-# ---- shapes (left side; the right side is mirrored) ----
-horn = (Shape((192, 230))
-        .c((150, 186), (100, 146), (96, 88))       # outer edge sweeping up and out
-        .c((94, 52), (126, 34), (158, 46))         # rounded tip curling back
-        .c((140, 62), (146, 104), (186, 136))      # inner edge coming back down
-        .c((216, 160), (240, 176), (254, 206)))    # into the forehead
-
-ear = (Shape((182, 246))
-       .c((150, 236), (112, 244), (86, 268))
-       .c((116, 286), (152, 290), (186, 280)))
-
-face = (Shape((256, 190))
-        .c((300, 190), (330, 206), (338, 236))     # right forehead
-        .c((346, 268), (336, 300), (316, 336))     # right cheek
-        .c((302, 362), (300, 396), (282, 414))     # right muzzle
-        .c((272, 424), (240, 424), (230, 414))     # chin
-        .c((212, 396), (210, 362), (196, 336))     # left muzzle
-        .c((176, 300), (166, 268), (174, 236))     # left cheek
-        .c((182, 206), (212, 190), (256, 190)))    # left forehead
-
-beard = (Shape((236, 414))
-         .c((246, 430), (250, 452), (256, 474))
-         .c((262, 452), (266, 430), (276, 414)))
-
-eye = (Shape((204, 284))
-       .c((210, 270), (234, 268), (242, 282))
-       .c((236, 298), (210, 300), (204, 284)))
-
-nose = (Shape((236, 376)).c((240, 368), (250, 370), (250, 380)).c((246, 386), (238, 384), (236, 376)))
-
-play = Shape((242, 226)).l((242, 266)).l((276, 246))
+# Design grid is 200 x 200. The mark is drawn around (100, 93) and placed on the tile scaled to 0.84.
+SCALE, MARK_CY = 0.84, 93
+STAR = [(100, 12), (103.5, 21), (113, 21), (105.5, 27), (108.5, 36), (100, 30.5),
+        (91.5, 36), (94.5, 27), (87, 21), (96.5, 21)]
+LEAVES_LEFT = [(55, 159, 150), (39.4, 140, 170), (31, 117, 190), (31, 93, 210), (39.4, 70, 230), (55, 51, 250)]
+LEAVES = LEAVES_LEFT + [(200 - x, y, -a) for x, y, a in LEAVES_LEFT]
+LEAF_RX, LEAF_RY = 6, 14
+RING = (100, 105, 55, 3)          # cx, cy, r, stroke width (drawn at half opacity)
+DOT = (138.9, 66.1, 6)
+G_CX, G_CY, G_R, G_W = 100, 105, 40, 14
+G_START, G_SWEEP = -45, -315      # degrees, y axis pointing down; the arc runs over the top and round to 3 o'clock
+BAR_END = 116
+PLAY = [(82, 90), (82, 120), (104, 105)]
+PLAY_W = 5
 
 
 def svg():
-    parts = [
-        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {S} {S}" role="img" aria-label="GoatMediaStackarr">',
-        '<defs>',
-        f'<linearGradient id="bg" x1="0" y1="0" x2="0.35" y2="1"><stop offset="0" stop-color="rgb{BG_TOP}"/><stop offset="1" stop-color="rgb{BG_BOTTOM}"/></linearGradient>',
-        f'<linearGradient id="horn" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="rgb{HORN_A}"/><stop offset="1" stop-color="rgb{HORN_B}"/></linearGradient>',
-        '</defs>',
-        f'<rect width="{S}" height="{S}" rx="116" fill="url(#bg)"/>',
-    ]
-    for shp in (horn, horn.mirrored()):
-        parts.append(f'<path d="{shp.path()}" fill="url(#horn)"/>')
-    for shp in (ear, ear.mirrored()):
-        parts.append(f'<path d="{shp.path()}" fill="rgb{FACE}" opacity="0.92"/>')
-    parts.append(f'<path d="{face.path()}" fill="rgb{FACE}"/>')
-    parts.append(f'<path d="{beard.path()}" fill="rgb{FACE}"/>')
-    for shp in (eye, eye.mirrored(), nose, nose.mirrored()):
-        parts.append(f'<path d="{shp.path()}" fill="rgb{INK}"/>')
-    parts.append(f'<path d="{play.path()}" fill="rgb{PLAY}" stroke="rgb{PLAY}" stroke-width="6" stroke-linejoin="round"/>')
-    parts.append('</svg>')
-    return "\n".join(parts) + "\n"
-
-
-def gradient(size, top, bottom, slant=0.35):
-    w, h = size
-    g = Image.new("RGB", size)
-    px = g.load()
-    for y in range(h):
-        for x in range(w):
-            t = min(1.0, max(0.0, (y / h) * (1 - slant) + (x / w) * slant))
-            px[x, y] = tuple(round(a + (b - a) * t) for a, b in zip(top, bottom))
-    return g
+    leaves = "\n".join(
+        f'<ellipse cx="{x:g}" cy="{y:g}" rx="{LEAF_RX}" ry="{LEAF_RY}" transform="rotate({a:g} {x:g} {y:g})"/>'
+        for x, y, a in LEAVES)
+    sx = G_CX + G_R * math.cos(math.radians(G_START))
+    sy = G_CY + G_R * math.sin(math.radians(G_START))
+    star = " ".join(f"{x:g},{y:g}" for x, y in STAR)
+    play = " ".join(f"{x:g},{y:g}" for x, y in PLAY)
+    gold = "rgb(%d, %d, %d)" % GOLD
+    return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="GoatMediaStackarr">
+<rect width="200" height="200" rx="44" fill="rgb({NAVY[0]}, {NAVY[1]}, {NAVY[2]})"/>
+<g transform="translate(100 100) scale({SCALE}) translate(-100 -{MARK_CY})" fill="{gold}">
+<polygon points="{star}"/>
+{leaves}
+<circle cx="{RING[0]}" cy="{RING[1]}" r="{RING[2]}" fill="none" stroke="{gold}" stroke-width="{RING[3]}" opacity="0.5"/>
+<circle cx="{DOT[0]}" cy="{DOT[1]}" r="{DOT[2]}"/>
+<path d="M{sx:.1f} {sy:.1f} A{G_R} {G_R} 0 1 0 {G_CX + G_R} {G_CY} H{BAR_END}" fill="none" stroke="{gold}" stroke-width="{G_W}" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon points="{play}" stroke="{gold}" stroke-width="{PLAY_W}" stroke-linejoin="round"/>
+</g>
+</svg>
+'''
 
 
 def png(size, rounded=True):
-    k = 4                      # draw large, then shrink, for smooth edges
-    W = S * k
-    sc = lambda pts: [(x * k, y * k) for x, y in pts]
+    k = size * SS / 200
+
+    def p(x, y):  # design grid -> pixels
+        return ((x - 100) * SCALE + 100) * k, ((y - MARK_CY) * SCALE + 100) * k
+
+    def dot(d, x, y, r, fill):
+        cx, cy = p(x, y); rr = r * SCALE * k
+        d.ellipse([cx - rr, cy - rr, cx + rr, cy + rr], fill=fill)
+
+    W = size * SS
     img = Image.new("RGBA", (W, W), (0, 0, 0, 0))
-    bg = gradient((W // 8, W // 8), BG_TOP, BG_BOTTOM).resize((W, W), Image.BICUBIC)
-    mask = Image.new("L", (W, W), 0)
-    ImageDraw.Draw(mask).rounded_rectangle((0, 0, W - 1, W - 1), radius=116 * k if rounded else 0, fill=255)
-    img.paste(bg, (0, 0), mask)
-
-    horns = Image.new("L", (W, W), 0)
-    d = ImageDraw.Draw(horns)
-    for shp in (horn, horn.mirrored()):
-        d.polygon(sc(shp.pts), fill=255)
-    hg = gradient((8, W // 8), HORN_A, HORN_B, slant=0).resize((W, W), Image.BICUBIC)
-    img.paste(hg, (0, 0), horns)
-
     d = ImageDraw.Draw(img)
-    for shp in (ear, ear.mirrored()):
-        d.polygon(sc(shp.pts), fill=FACE + (235,))
-    d.polygon(sc(face.pts), fill=FACE + (255,))
-    d.polygon(sc(beard.pts), fill=FACE + (255,))
-    for shp in (eye, eye.mirrored(), nose, nose.mirrored()):
-        d.polygon(sc(shp.pts), fill=INK + (255,))
-    # Rounded play button: the triangle, a thick outline and a dot on each corner (matches stroke-linejoin round).
-    corners = [(242, 226), (242, 266), (276, 246)]
-    d.polygon(sc(corners), fill=PLAY + (255,))
-    for a, b in zip(corners, corners[1:] + corners[:1]):
-        d.line(sc([a, b]), fill=PLAY + (255,), width=6 * k)
-    for x, y in corners:
-        d.ellipse(((x - 3) * k, (y - 3) * k, (x + 3) * k, (y + 3) * k), fill=PLAY + (255,))
+    if rounded:
+        d.rounded_rectangle([0, 0, W - 1, W - 1], radius=44 * k, fill=NAVY + (255,))
+    else:
+        d.rectangle([0, 0, W, W], fill=NAVY + (255,))
+
+    # radar ring at half opacity, on its own layer
+    layer = Image.new("RGBA", (W, W), (0, 0, 0, 0))
+    ld = ImageDraw.Draw(layer)
+    cx, cy = p(RING[0], RING[1]); r = RING[2] * SCALE * k; w = RING[3] * SCALE * k
+    ld.ellipse([cx - r - w / 2, cy - r - w / 2, cx + r + w / 2, cy + r + w / 2], outline=GOLD + (128,), width=max(1, round(w)))
+    img.alpha_composite(layer)
+    d = ImageDraw.Draw(img)
+
+    fill = GOLD + (255,)
+    d.polygon([p(x, y) for x, y in STAR], fill=fill)
+    for x, y, a in LEAVES:
+        t = math.radians(a)
+        pts = []
+        for i in range(72):
+            u = 2 * math.pi * i / 72
+            ex, ey = LEAF_RX * math.cos(u), LEAF_RY * math.sin(u)
+            pts.append(p(x + ex * math.cos(t) - ey * math.sin(t), y + ex * math.sin(t) + ey * math.cos(t)))
+        d.polygon(pts, fill=fill)
+    dot(d, *DOT, fill)
+
+    # the G: a thick arc band with round ends, then the bar
+    h = G_W / 2
+    steps = 180
+    outer, inner = [], []
+    for i in range(steps + 1):
+        t = math.radians(G_START + G_SWEEP * i / steps)
+        outer.append(p(G_CX + (G_R + h) * math.cos(t), G_CY + (G_R + h) * math.sin(t)))
+        inner.append(p(G_CX + (G_R - h) * math.cos(t), G_CY + (G_R - h) * math.sin(t)))
+    d.polygon(outer + inner[::-1], fill=fill)
+    st = math.radians(G_START)
+    dot(d, G_CX + G_R * math.cos(st), G_CY + G_R * math.sin(st), h, fill)
+    x0, y0 = p(BAR_END, G_CY - h); x1, y1 = p(G_CX + G_R, G_CY + h)
+    d.rectangle([x0, y0, x1, y1], fill=fill)
+    dot(d, BAR_END, G_CY, h, fill)
+    dot(d, G_CX + G_R, G_CY, h, fill)
+
+    # play button with rounded corners
+    tri = [p(x, y) for x, y in PLAY]
+    d.polygon(tri, fill=fill)
+    d.line(tri + [tri[0]], fill=fill, width=round(PLAY_W * SCALE * k), joint="curve")
+    for x, y in PLAY:
+        dot(d, x, y, PLAY_W / 2, fill)
+
     return img.resize((size, size), Image.LANCZOS)
 
 
 if __name__ == "__main__":
     out = ROOT / "docs" / "logo"
-    out.mkdir(parents=True, exist_ok=True)
+    pub = ROOT / "ui" / "public"
     (out / "logo.svg").write_text(svg())
     png(1024).save(out / "logo-1024.png")
-    pub = ROOT / "ui" / "public"
     png(512).save(pub / "icon-512.png")
     png(192).save(pub / "icon-192.png")
     png(180, rounded=False).convert("RGB").save(pub / "apple-touch-icon.png")
