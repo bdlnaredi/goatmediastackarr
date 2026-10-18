@@ -199,7 +199,7 @@ class ScreensTest {
         scrollTo("Season 3"); tap("Season 3"); waitFor("The storm cuts")
         scrollTo("5. Chapter 21"); tap("5. Chapter 21"); waitFor("Search for this episode"); shot("33-episodes")
         back()
-        tap("Downloads"); waitFor("Downloading"); tap("Categories"); waitFor("Categories and tags"); shot("34-categories"); tap("Done")
+        tap("Downloads"); waitFor("Every category"); waitFor("Add a link"); shot("34-downloads-categories")
         tap("More"); waitFor("Go to")
         openFromMore("RSS"); waitFor("Ubuntu 26.04"); shot("35-rss")
         tap("Rules"); waitFor("Ubuntu releases"); shot("36-rss-rules"); back()
