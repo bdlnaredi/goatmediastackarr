@@ -38,15 +38,16 @@ jobs:
         run: |
           set -o pipefail
           if ! gradle --no-daemon --console=plain -PappVersion="${{ steps.v.outputs.name }}" -PappCode="$GITHUB_RUN_NUMBER" testDebugUnitTest assembleRelease 2>&1 | tee /tmp/build.log; then
+            set +e
             # Kotlin errors look like "e: file:///…/Foo.kt:12:5 Message": show each one on its file and line.
-            grep -E '^e: ' /tmp/build.log | head -60 | while IFS= read -r line; do
-              loc=$(echo "$line" | sed -E 's#^e: (file://)?([^ ]+\.kt):([0-9]+):([0-9]+) .*#\2|\3|\4#')
+            grep -E '^e: ' /tmp/build.log | head -80 | while IFS= read -r line; do
+              f=$(echo "$line" | sed -E 's#^e: (file://)?([^ ]+\.kt):([0-9]+):([0-9]+) .*#\2#' | sed "s#^$GITHUB_WORKSPACE/##")
+              l=$(echo "$line" | sed -E 's#^e: (file://)?[^ ]+\.kt:([0-9]+):([0-9]+) .*#\2#')
               msg=$(echo "$line" | sed -E 's#^e: (file://)?[^ ]+\.kt:[0-9]+:[0-9]+ ##')
-              f=$(echo "$loc" | cut -d'|' -f1 | sed "s#^$GITHUB_WORKSPACE/##"); l=$(echo "$loc" | cut -d'|' -f2); c=$(echo "$loc" | cut -d'|' -f3)
-              echo "::error file=$f,line=$l,col=$c::$msg"
+              echo "::error file=$f,line=$l::$msg"
             done
-            # Anything else that went wrong (dependencies, resources, tests).
-            grep -E 'FAILED|What went wrong|Could not|error:|AAPT|> Task .* FAILED|Test.*FAILED|expected:<' /tmp/build.log | grep -v '^e: ' | head -25 | sed 's/^/::error::/'
+            # The end of the log, for anything else (dependencies, resources, tests).
+            tail -n 70 /tmp/build.log | grep -v '^\s*at ' | sed 's/%/%25/g' | awk 'BEGIN{ORS="%0A"}{print}' | sed 's/^/::error title=End of the build log::/'; echo
             exit 1
           fi
       - name: Name the file
