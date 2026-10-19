@@ -117,4 +117,27 @@ const donePage = (ok, title, text) => `<!doctype html><meta name="viewport" cont
 <h2 style="margin:8px 0">${enc(title)}</h2><p style="color:#b8bad8">${enc(text)}</p>
 <button onclick="history.back()" style="font:inherit;padding:10px 18px;border-radius:12px;border:0;background:#ffb938;color:#1d1400;font-weight:600">Back to the site</button></div>`;
 
-module.exports = { prox, real, rwHtml, rwCss, store, cookieHeader, isTorrent, donePage };
+// ---------- Speed: pictures, styles, scripts and fonts are kept for a while, so pages after the first load quickly ----------
+/** Things worth keeping: they are the same on every page, and the slow part of a tracker page. */
+const cacheable = ct => /^(image|font)\/|text\/css|javascript|ecmascript|application\/(x-)?font|woff/i.test(String(ct || ''));
+/** Text worth compressing on the way to the phone. */
+const squeezable = ct => /text\/|javascript|json|xml|svg/i.test(String(ct || ''));
+
+/** A small memory store, oldest out first, limited by total size. */
+function memCache({ maxBytes = 120e6, maxItem = 8e6, ttl = 6 * 3600e3 } = {}) {
+  const m = new Map(); let size = 0;
+  const drop = k => { const e = m.get(k); if (e) { size -= e.buf.length; m.delete(k); } };
+  return {
+    get(k) { const e = m.get(k); if (!e) return null; if (Date.now() - e.at > ttl) { drop(k); return null; } m.delete(k); m.set(k, e); return e; },
+    put(k, e) {
+      if (!e.buf || e.buf.length > maxItem) return false;
+      drop(k); e.at = Date.now(); m.set(k, e); size += e.buf.length;
+      for (const key of m.keys()) { if (size <= maxBytes) break; drop(key); }
+      return true;
+    },
+    clear(prefix) { for (const k of [...m.keys()]) if (!prefix || k.startsWith(prefix)) drop(k); },
+    get size() { return size; }, get count() { return m.size; },
+  };
+}
+
+module.exports = { prox, real, rwHtml, rwCss, store, cookieHeader, isTorrent, donePage, cacheable, squeezable, memCache };

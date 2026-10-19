@@ -25,6 +25,7 @@
 
 ## Fixes
 
+- Tracker websites load much faster, especially through the VPN: pages pass through as they arrive instead of being fetched whole twice first; pictures, styles, scripts and fonts are kept for six hours (on the server and on the phone), so later pages skip them; text is compressed on the way to the phone; sign-in cookies are saved a few seconds later in one go instead of on every picture; and reopening a site keeps its address, so the phone's own cache keeps working.
 - Admins can sign in with Plex: link your Plex account first in Settings → Account (web page or app); until then Plex sign-in still refuses admin accounts, so nobody can take one over through Plex.
 - Tracker websites opened on a phone use the phone's width instead of a zoomed-out desktop page, when the site does not say how to show itself on phones.
 - From outside the home: phone apps for Sonarr, Radarr, Lidarr, Prowlarr, Bazarr, SABnzbd and Tautulli (nzb360, LunaSea…) work through GoatMediaStackarr's address at `/engines/<app>` with that app's own API key; the Stack page takes the outside addresses of Jellyfin, Seerr and Plex (a Cloudflare hostname), and its Open buttons use them away from home.

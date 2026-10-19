@@ -4,9 +4,11 @@
 // 127.0.0.1, and only does what the interface asks: one request in, one answer back.
 //
 // POST /fetch   headers: X-Goat-Url, X-Goat-Method, X-Goat-Headers (base64 JSON)   body: the request body
-// answer:       200 with X-Goat-Status, X-Goat-Headers (base64 JSON; set-cookie as a list) and the body
+// answer:       200 with X-Goat-Status, X-Goat-Headers (base64 JSON; set-cookie as a list) and the body.
+//               The body is passed on as it arrives, so the first bytes reach the phone without waiting for the rest.
 'use strict';
 const http = require('http');
+const { Readable } = require('stream');
 const PORT = +process.env.SITEFETCH_PORT || 8899, MAX = 40e6;
 
 const b64 = o => Buffer.from(JSON.stringify(o)).toString('base64');
@@ -24,12 +26,14 @@ http.createServer((req, res) => {
     try {
       const headers = unb64(req.headers['x-goat-headers']);
       if (process.env.SITEFETCH_TAG) headers['x-goat-tag'] = process.env.SITEFETCH_TAG; // tests only: shows a request came this way
-      const r = await fetch(url, { method, headers, body, redirect: 'manual', signal: AbortSignal.timeout(45000) });
-      const h = {}; r.headers.forEach((v, k) => { if (k !== 'set-cookie') h[k] = v; });
+      const r = await fetch(url, { method, headers, body, redirect: 'manual', signal: AbortSignal.timeout(120000) });
+      const h = {}; r.headers.forEach((v, k) => { if (k !== 'set-cookie' && k !== 'content-length' && k !== 'content-encoding') h[k] = v; });
       h['set-cookie'] = r.headers.getSetCookie ? r.headers.getSetCookie() : [];
-      const buf = Buffer.from(await r.arrayBuffer());
-      res.writeHead(200, { 'X-Goat-Status': String(r.status), 'X-Goat-Headers': b64(h), 'Content-Type': 'application/octet-stream', 'Content-Length': buf.length });
-      res.end(buf);
+      res.writeHead(200, { 'X-Goat-Status': String(r.status), 'X-Goat-Headers': b64(h), 'Content-Type': 'application/octet-stream' });
+      if (!r.body) return res.end();
+      const out = Readable.fromWeb(r.body);
+      out.on('error', () => res.destroy()); res.on('close', () => out.destroy());
+      out.pipe(res);
     } catch (e) {
       res.writeHead(502, { 'Content-Type': 'text/plain' });
       res.end(String((e.cause && (e.cause.code || e.cause.message)) || e.message || 'failed'));

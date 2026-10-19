@@ -46,6 +46,7 @@ test('browsing a tracker: sign in once, links stay inside, magnet links and .tor
     if (req.url === '/download.php?id=1') { if (!signed) { res.writeHead(403); return res.end(); }
       res.writeHead(200, { 'Content-Type': 'application/x-bittorrent', 'Content-Disposition': 'attachment; filename="Movie.2024.1080p.torrent"' }); return res.end('d8:announce3:urle'); }
     if (req.url === '/poster.jpg') { res.writeHead(200, { 'Content-Type': 'image/jpeg' }); return res.end('JPEGDATA'); }
+    if (req.url === '/style.css') { res.writeHead(200, { 'Content-Type': 'text/css' }); return res.end('body{background:url(/bg.png)}\n' + '.row{padding:4px;margin:0}\n'.repeat(200)); }
     res.writeHead(200, { 'Content-Type': 'text/html' }); res.end('<form method="post" action="/login.php"><input name="user"></form>');
   });
   await new Promise(r => tracker.listen(0, '127.0.0.1', r));
@@ -77,6 +78,16 @@ test('browsing a tracker: sign in once, links stay inside, magnet links and .tor
     assert.match(page, /href="\/site\/[\w-]+\/_grab\?m=magnet/); assert.match(page, /Pretend tracker · without the VPN/);
     assert.equal(seen.at(-1).cookie, 'session=abc');
     const img = await go(pre + `/~/http/127.0.0.1:${tracker.address().port}/poster.jpg`); assert.equal(await img.text(), 'JPEGDATA');
+    // Speed: the same site keeps the same address, pictures and styles are kept for the next page, and text is compressed.
+    assert.equal((await a.post(`/api/sites/${site.id}/open`, {})).data.url, url, 'opening it again gives the same address, so the phone can use its own cache');
+    assert.match(img.headers.get('cache-control'), /max-age/);
+    const hits = seen.length, again = await go(pre + `/~/http/127.0.0.1:${tracker.address().port}/poster.jpg`);
+    assert.equal(await again.text(), 'JPEGDATA'); assert.equal(again.headers.get('x-goat-cache'), 'hit'); assert.equal(seen.length, hits, 'the second time it did not go to the site');
+    const css1 = await go(pre + `/~/http/127.0.0.1:${tracker.address().port}/style.css`, { headers: { 'Accept-Encoding': 'gzip' } });
+    assert.equal(css1.headers.get('content-encoding'), 'gzip'); const cssText = await css1.text();
+    assert.match(cssText, /url\(\/site\/[\w-]+\/~\/http\/127\.0\.0\.1:\d+\/bg\.png\)/, 'still rewritten');
+    const css2 = await go(pre + `/~/http/127.0.0.1:${tracker.address().port}/style.css`);
+    assert.equal(css2.headers.get('x-goat-cache'), 'hit'); assert.equal(await css2.text(), cssText);
     // A magnet link and a .torrent file both end up in qBittorrent, in the site's category.
     const mg = page.match(/href="([^"]*_grab[^"]*)"/)[1].replace(/&amp;/g, '&');
     assert.match(await (await go(mg)).text(), /Added to qBittorrent/);
@@ -90,6 +101,9 @@ test('browsing a tracker: sign in once, links stay inside, magnet links and .tor
     const v = (await a.post(`/api/sites/${site.id}/open`, {})).data.url;
     assert.match(await (await go(v)).text(), /Pretend tracker · through the VPN/);
     assert.equal(seen.at(-1).tag, 'vpn', 'fetched by the VPN helper');
+    const vp = v.split('/~/')[0], vimg = await go(vp + `/~/http/127.0.0.1:${tracker.address().port}/poster.jpg`);
+    assert.equal(await vimg.text(), 'JPEGDATA'); assert.equal(vimg.headers.get('x-goat-cache'), null, 'changing the site starts its cache again');
+    assert.equal(seen.at(-1).tag, 'vpn', 'pictures come through the VPN helper as they arrive');
     // Expired or made-up links do nothing; other profiles cannot see or open sites.
     assert.equal((await go('/site/' + 'x'.repeat(32) + '/~/http/127.0.0.1:1/')).status, 403);
     await a.post('/api/users', { name: 'kid', password: 'kidkidkid', role: 'user' });

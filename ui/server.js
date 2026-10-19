@@ -4,7 +4,7 @@
 // as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details: see the LICENSE file.
-const http = require('http'), fs = require('fs'), path = require('path'), crypto = require('crypto');
+const http = require('http'), fs = require('fs'), path = require('path'), crypto = require('crypto'), zlib = require('zlib');
 const DATA = process.env.DATA_DIR || '/data', FILE = path.join(DATA, 'db.json');
 fs.mkdirSync(DATA, { recursive: true });
 const totp = require('./lib/totp'), channels = require('./lib/channels'), listsLib = require('./lib/lists');
@@ -586,39 +586,50 @@ if (DEMO) db.statusLinks.push({ id: 'demo-link', name: 'Living room tablet', has
 const sitesLib = require('./lib/sites');
 const siteTokens = new Map(); // token -> { site, uid, exp, last }
 const SITEFETCH = process.env.SITEFETCH_URL || 'http://127.0.0.1:8899';
+const siteCache = sitesLib.memCache({ maxBytes: (+process.env.SITE_CACHE_MB || 150) * 1e6 });
 const pubSite = x => ({ id: x.id, name: x.name, url: x.url, vpn: !!x.vpn, category: x.category || '', signedIn: Object.values(x.jar || {}).some(c => Object.keys(c).length > 0) });
 const qbFirst = () => db.services.find(x => x.type === 'qbittorrent' && x.managed) || db.services.find(x => x.type === 'qbittorrent');
+// Is this address inside your home network? Looked up once every 10 minutes per name, not on every picture.
+const hostCheck = new Map();
 const privateHost = async host => {
   if (/^(1|true|yes)$/i.test(process.env.SITES_ALLOW_PRIVATE || '')) return false;
   const h = String(host).replace(/^\[|\]$/g, '').replace(/:\d+$/, '').toLowerCase();
   if (h === 'localhost' || h.endsWith('.local') || h.endsWith('.internal')) return true;
+  const c = hostCheck.get(h); if (c && Date.now() - c.at < 600e3) return c.v;
   let ip = h; if (!require('net').isIP(h)) { try { ip = (await require('dns').promises.lookup(h)).address; } catch { return false; } }
-  return /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|0\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|::1$|f[cd]|fe80)/i.test(ip);
+  const v = /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|0\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|::1$|f[cd]|fe80)/i.test(ip);
+  if (hostCheck.size > 500) hostCheck.clear(); hostCheck.set(h, { v, at: Date.now() }); return v;
 };
-// One request to a tracker site, straight or through the VPN helper. The body comes back whole (pages and pictures).
+// Sites set cookies on almost every answer; write them to disk a few seconds later, once, instead of on every picture.
+let siteSaveT = null;
+const siteSaveSoon = () => { if (!siteSaveT) siteSaveT = setTimeout(() => { siteSaveT = null; save(); }, 3000); };
+const readAll = async body => body ? Buffer.from(await new Response(body).arrayBuffer()) : Buffer.alloc(0);
+// One request to a tracker site, straight or through the VPN helper. The body is a stream, read as it arrives.
 async function siteFetch(site, url, { method = 'GET', headers = {}, body } = {}) {
   if (site.vpn) {
     if (!GOAT_MANAGED && !process.env.SITEFETCH_URL) throw Object.assign(new Error('Going through the VPN needs the GoatMediaStackarr container.'), { plain: true });
     const v = goatRead(path.join(GOAT_RUN, 'vpn.json'));
     if (GOAT_MANAGED && (!v || !v.enabled)) throw Object.assign(new Error('The VPN is off. Turn it on on the Stack page, or change this site to go without the VPN.'), { plain: true });
     let r;
-    try { r = await fetch(SITEFETCH + '/fetch', { method: 'POST', signal: AbortSignal.timeout(50000), body: body || undefined,
+    try { r = await fetch(SITEFETCH + '/fetch', { method: 'POST', signal: AbortSignal.timeout(130000), body: body || undefined,
       headers: { 'X-Goat-Url': url, 'X-Goat-Method': method, 'X-Goat-Headers': Buffer.from(JSON.stringify(headers)).toString('base64') } }); }
     catch { throw Object.assign(new Error('The VPN is not connected right now, so the site cannot be reached. Look at the VPN on the Stack page.'), { plain: true }); }
     if (r.status !== 200) throw Object.assign(new Error('The site could not be reached through the VPN (' + (await r.text()).slice(0, 120) + ').'), { plain: true });
     let h = {}; try { h = JSON.parse(Buffer.from(r.headers.get('x-goat-headers') || '', 'base64').toString()); } catch {}
-    return { status: +r.headers.get('x-goat-status') || 502, headers: h, buf: Buffer.from(await r.arrayBuffer()) };
+    return { status: +r.headers.get('x-goat-status') || 502, headers: h, body: r.body };
   }
-  let r; try { r = await fetch(url, { method, headers, body: body || undefined, redirect: 'manual', signal: AbortSignal.timeout(45000) }); }
+  let r; try { r = await fetch(url, { method, headers, body: body || undefined, redirect: 'manual', signal: AbortSignal.timeout(120000) }); }
   catch (e) { throw Object.assign(new Error('The site could not be reached (' + ((e.cause && e.cause.code) || e.message) + ').'), { plain: true }); }
-  const h = {}; r.headers.forEach((v, k) => { if (k !== 'set-cookie') h[k] = v; }); h['set-cookie'] = r.headers.getSetCookie ? r.headers.getSetCookie() : [];
-  return { status: r.status, headers: h, buf: Buffer.from(await r.arrayBuffer()) };
+  const h = {}; r.headers.forEach((v, k) => { if (k !== 'set-cookie' && k !== 'content-length' && k !== 'content-encoding') h[k] = v; }); h['set-cookie'] = r.headers.getSetCookie ? r.headers.getSetCookie() : [];
+  return { status: r.status, headers: h, body: r.body };
 }
 const rawBody = (req, max = 20e6) => new Promise((ok, no) => { const c = []; let n = 0; req.on('data', x => { n += x.length; if (n > max) { req.destroy(); no(new Error('too big')); } else c.push(x); }); req.on('end', () => ok(Buffer.concat(c))); req.on('error', no); });
+// The same person opening the same site keeps the same address, so the phone's own cache works across visits.
 const siteOpen = (site, uid, to) => {
-  const token = crypto.randomBytes(24).toString('base64url');
-  siteTokens.set(token, { site: site.id, uid, exp: Date.now() + 12 * 3600e3, last: '' });
   for (const [k, v] of siteTokens) if (v.exp < Date.now()) siteTokens.delete(k);
+  let token = [...siteTokens].find(([, v]) => v.site === site.id && v.uid === uid)?.[0];
+  if (!token) { token = crypto.randomBytes(24).toString('base64url'); siteTokens.set(token, { site: site.id, uid, exp: Date.now() + 12 * 3600e3, last: '' }); }
+  else siteTokens.get(token).exp = Date.now() + 12 * 3600e3;
   return sitesLib.prox(to || site.url, site.url, '/site/' + token);
 };
 // Adds a magnet link or a .torrent file to qBittorrent, into the site's category.
@@ -638,6 +649,18 @@ async function siteHandle(req, res, p) {
   if (!site || !who || who.role !== 'admin') return send2(403, sitesLib.donePage(false, 'This link has expired', 'Open the site again from GoatMediaStackarr (Trackers).'));
   tok.exp = Date.now() + 12 * 3600e3;
   const pre = '/site/' + m[1], q = new URL(req.url, 'http://x');
+  const gz = /\bgzip\b/.test(String(req.headers['accept-encoding'] || ''));
+  const headOf = (status, type, len, extra = {}) => ({ 'Content-Type': type, ...(len != null ? { 'Content-Length': len } : {}),
+    'Cache-Control': sitesLib.cacheable(type) ? 'private, max-age=86400' : 'no-store', Vary: 'Accept-Encoding',
+    'Content-Security-Policy': 'sandbox allow-forms allow-scripts allow-popups allow-popups-to-escape-sandbox allow-modals', 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff', ...extra });
+  // A whole answer we already have: text is compressed for the phone.
+  const sendBuf = (status, type, buf, extra) => {
+    if (req.method === 'HEAD') { res.writeHead(status, headOf(status, type, buf.length, extra)); return res.end(); }
+    if (gz && buf.length > 1024 && sitesLib.squeezable(type)) return zlib.gzip(buf, { level: 5 }, (e, z) => {
+      if (e) { res.writeHead(status, headOf(status, type, buf.length, extra)); return res.end(buf); }
+      res.writeHead(status, headOf(status, type, z.length, { ...extra, 'Content-Encoding': 'gzip' })); res.end(z); });
+    res.writeHead(status, headOf(status, type, buf.length, extra)); res.end(buf);
+  };
   try {
     if (m[2] === '_grab') { const mg = q.searchParams.get('m') || ''; if (!/^magnet:\?/i.test(mg)) return send2(400, sitesLib.donePage(false, 'Not a magnet link', ''));
       await siteAdd(site, { magnet: mg, name: (/[?&]dn=([^&]+)/.exec(mg) || [])[1] ? decodeURIComponent((/[?&]dn=([^&]+)/.exec(mg))[1].replace(/\+/g, ' ')) : '' });
@@ -645,35 +668,57 @@ async function siteHandle(req, res, p) {
     const target = sitesLib.real(m[2], q.search);
     if (!target) return send2(404, sitesLib.donePage(false, 'Not found', ''));
     if (await privateHost(target.host)) return send2(403, sitesLib.donePage(false, 'Not allowed', 'The site browser only opens sites on the internet.'));
+    const ckey = site.id + '|' + target.href, get = ['GET', 'HEAD'].includes(req.method);
+    // Kept from an earlier page: no trip through the VPN at all.
+    const hit = get && siteCache.get(ckey);
+    if (hit) return sendBuf(200, hit.type, /text\/css/i.test(hit.type) ? Buffer.from(sitesLib.rwCss(hit.buf.toString('utf8'), target.href, pre)) : hit.buf, { 'X-Goat-Cache': 'hit' });
     const hd = { 'user-agent': String(req.headers['user-agent'] || 'Mozilla/5.0').slice(0, 300), accept: String(req.headers.accept || '*/*').slice(0, 300), 'accept-language': String(req.headers['accept-language'] || 'en').slice(0, 100) };
     const ck = sitesLib.cookieHeader(site.jar, target.hostname, target.pathname); if (ck) hd.cookie = ck;
     if (tok.last) hd.referer = tok.last;
     let body;
-    if (!['GET', 'HEAD'].includes(req.method)) { body = await rawBody(req); if (req.headers['content-type']) hd['content-type'] = String(req.headers['content-type']); hd.origin = target.origin; }
+    if (!get) { body = await rawBody(req); if (req.headers['content-type']) hd['content-type'] = String(req.headers['content-type']); hd.origin = target.origin; }
     const r = await siteFetch(site, target.href, { method: req.method, headers: hd, body });
-    if (sitesLib.store(site.jar, target.hostname, r.headers['set-cookie'])) save();
+    const cookies = (r.headers['set-cookie'] || []).length > 0;
+    if (sitesLib.store(site.jar, target.hostname, r.headers['set-cookie'])) siteSaveSoon();
     if (r.status >= 300 && r.status < 400 && r.headers.location) {
+      if (r.body) r.body.cancel().catch(() => {});
       const loc = String(r.headers.location);
       if (/^magnet:/i.test(loc)) { await siteAdd(site, { magnet: loc }); return send2(200, sitesLib.donePage(true, 'Added to qBittorrent', 'The magnet link is downloading.')); }
       res.writeHead(302, { Location: sitesLib.prox(loc, target.href, pre), 'Cache-Control': 'no-store' }); return res.end();
     }
-    const ct = String(r.headers['content-type'] || '');
-    if (r.status === 200 && sitesLib.isTorrent(r.headers, target.pathname, r.buf)) {
-      const fn = (/filename\*?=(?:UTF-8'')?"?([^";]+)/i.exec(r.headers['content-disposition'] || '') || [])[1] || decodeURIComponent(target.pathname.split('/').pop() || 'download.torrent');
-      await siteAdd(site, { buf: r.buf, name: fn });
-      return send2(200, sitesLib.donePage(true, 'Added to qBittorrent', `${fn} is downloading` + (site.category ? ` in the ${site.category} category.` : '.')));
+    const ct = String(r.headers['content-type'] || ''), disp = r.headers['content-disposition'];
+    const extra = disp ? { 'Content-Disposition': disp } : {};
+    const torrentish = /bittorrent/i.test(ct) || /\.torrent/i.test(disp || '') || /\.torrent$/i.test(target.pathname);
+    const html = /text\/html|application\/xhtml/i.test(ct), css = /text\/css/i.test(ct);
+    const keep = get && r.status === 200 && !cookies && sitesLib.cacheable(ct) && !/no-store/i.test(r.headers['cache-control'] || '');
+    if (torrentish || html || css) {
+      const buf = await readAll(r.body);
+      if (r.status === 200 && sitesLib.isTorrent(r.headers, target.pathname, buf)) {
+        const fn = (/filename\*?=(?:UTF-8'')?"?([^";]+)/i.exec(disp || '') || [])[1] || decodeURIComponent(target.pathname.split('/').pop() || 'download.torrent');
+        await siteAdd(site, { buf, name: fn });
+        return send2(200, sitesLib.donePage(true, 'Added to qBittorrent', `${fn} is downloading` + (site.category ? ` in the ${site.category} category.` : '.')));
+      }
+      const cs = (/charset=([\w-]+)/i.exec(ct) || [])[1] || 'utf-8', text = () => { try { return new TextDecoder(cs).decode(buf); } catch { return buf.toString('utf8'); } };
+      if (html) {
+        if (r.status === 200) tok.last = target.href;
+        return sendBuf(r.status, 'text/html; charset=utf-8', Buffer.from(sitesLib.rwHtml(text(), target.href, pre, `${site.name} · ${site.vpn ? 'through the VPN' : 'without the VPN'}`)), extra);
+      }
+      if (css) { const raw = text(); if (keep) siteCache.put(ckey, { type: 'text/css; charset=utf-8', buf: Buffer.from(raw) });
+        return sendBuf(r.status, 'text/css; charset=utf-8', Buffer.from(sitesLib.rwCss(raw, target.href, pre)), extra); }
+      return sendBuf(r.status, ct || 'application/octet-stream', buf, extra);
     }
-    let out = r.buf, type = ct || 'application/octet-stream';
-    const cs = (/charset=([\w-]+)/i.exec(ct) || [])[1] || 'utf-8', text = () => { try { return new TextDecoder(cs).decode(r.buf); } catch { return r.buf.toString('utf8'); } };
-    if (/text\/html|application\/xhtml/i.test(ct)) {
-      if (r.status === 200) tok.last = target.href;
-      out = Buffer.from(sitesLib.rwHtml(text(), target.href, pre, `${site.name} · ${site.vpn ? 'through the VPN' : 'without the VPN'}`)); type = 'text/html; charset=utf-8';
-    } else if (/text\/css/i.test(ct)) { out = Buffer.from(sitesLib.rwCss(text(), target.href, pre)); type = 'text/css; charset=utf-8'; }
-    const h = { 'Content-Type': type, 'Content-Length': out.length, 'Cache-Control': /^(image|font)\//.test(ct) ? 'private, max-age=3600' : 'no-store',
-      'Content-Security-Policy': 'sandbox allow-forms allow-scripts allow-popups allow-popups-to-escape-sandbox allow-modals', 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff' };
-    if (r.headers['content-disposition']) h['Content-Disposition'] = r.headers['content-disposition'];
-    res.writeHead(r.status, h); return res.end(req.method === 'HEAD' ? undefined : out);
+    // Pictures, scripts, fonts and the rest go on to the phone as they arrive (compressed when it is text),
+    // and are kept for the next page when they are the kind that does not change.
+    const type = ct || 'application/octet-stream', squeeze = gz && sitesLib.squeezable(type);
+    res.writeHead(r.status, headOf(r.status, type, null, { ...extra, ...(squeeze ? { 'Content-Encoding': 'gzip' } : {}) }));
+    if (req.method === 'HEAD' || !r.body) { if (r.body) r.body.cancel().catch(() => {}); return res.end(); }
+    const src = require('stream').Readable.fromWeb(r.body), parts = []; let n = 0, ok = keep;
+    if (ok) src.on('data', c => { n += c.length; if (n > 8e6) { ok = false; parts.length = 0; } else parts.push(c); });
+    src.on('end', () => { if (ok) siteCache.put(ckey, { type, buf: Buffer.concat(parts) }); });
+    src.on('error', () => res.destroy()); res.on('close', () => { if (!res.writableFinished) src.destroy(); });
+    if (squeeze) { const z = zlib.createGzip({ level: 5 }); z.on('error', () => res.destroy()); src.pipe(z).pipe(res); } else src.pipe(res);
   } catch (e) {
+    if (res.headersSent) return res.destroy();
     return send2(502, sitesLib.donePage(false, 'Could not open this page', e.plain ? e.message : 'Something went wrong: ' + String(e.message || e).slice(0, 160)));
   }
 }
@@ -2743,12 +2788,13 @@ const goatServer = http.createServer(async (req, res) => {
       if (await privateHost(url.host)) return send(res, 400, { error: 'The site browser only opens sites on the internet.' });
       x.url = url.href; x.name = cut(String(b.name == null ? x.name || '' : b.name).trim() || url.hostname.replace(/^www\./, ''), 60);
       if ('vpn' in b || !r) x.vpn = b.vpn !== false; if ('category' in b) x.category = cut(String(b.category || '').trim(), 100);
+      if (r) siteCache.clear(x.id + '|');
       if (!r) db.sites.push(x); save(); audit(me.name, r ? 'Changed a tracker site' : 'Added a tracker site', `${x.name}${x.vpn ? ' (through the VPN)' : ''}`); return send(res, 200, pubSite(x));
     }
-    if ((r = p.match(/^\/api\/sites\/(\w+)$/)) && m === 'DELETE') { const x = db.sites.find(y => y.id === r[1]); db.sites = db.sites.filter(y => y.id !== r[1]); save(); if (x) audit(me.name, 'Removed a tracker site', x.name); return send(res, 200, {}); }
+    if ((r = p.match(/^\/api\/sites\/(\w+)$/)) && m === 'DELETE') { const x = db.sites.find(y => y.id === r[1]); db.sites = db.sites.filter(y => y.id !== r[1]); siteCache.clear(r[1] + '|'); for (const [k, v] of siteTokens) if (v.site === r[1]) siteTokens.delete(k); save(); if (x) audit(me.name, 'Removed a tracker site', x.name); return send(res, 200, {}); }
     if ((r = p.match(/^\/api\/sites\/(\w+)\/(open|signout)$/)) && m === 'POST') {
       const x = db.sites.find(y => y.id === r[1]); if (!x) return send(res, 404, { error: 'Not found' });
-      if (r[2] === 'signout') { x.jar = {}; save(); return send(res, 200, pubSite(x)); }
+      if (r[2] === 'signout') { x.jar = {}; siteCache.clear(x.id + '|'); save(); return send(res, 200, pubSite(x)); }
       const b = await readBody(req); return send(res, 200, { url: siteOpen(x, me.id, /^https?:\/\//i.test(b.to || '') ? String(b.to) : '') });
     }
     // A tracker page from a search result: opened in the site browser when one of your sites is that tracker.
