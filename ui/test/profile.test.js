@@ -194,3 +194,25 @@ test('updates: the newest release from GitHub, for the phone app and (for admins
     assert.equal(hits, 1, 'GitHub is asked once, then the answer is kept');
   } finally { await s.stop(); gh.close(); }
 });
+
+test('notifications: each person gets their own events, admins get the server\'s, and the app asks for what is new', async () => {
+  const w = await world();
+  try {
+    const { a, k, kid, ids } = w;
+    await k.post('/api/requests', { sid: ids.seerr, mediaType: 'movie', mediaId: 5002, title: 'Salt & Ember', year: '2023' });
+    let an = (await a.get('/api/notifications')).data;
+    const asked = an.items.find(x => x.kind === 'request');
+    assert.ok(asked); assert.match(asked.body, /kid asked for Salt & Ember/); assert.equal(asked.link, 'requests'); assert.equal(asked.to, undefined, 'who it is for is not sent');
+    assert.equal((await k.get('/api/notifications')).data.items.length, 0, 'admin events are not shown to others');
+    const req = (await a.get('/api/requests')).data.find(x => x.title === 'Salt & Ember');
+    await a.post(`/api/requests/${req.id}/approve`);
+    const kn = (await k.get('/api/notifications')).data;
+    assert.equal(kn.items[0].kind, 'reqstatus'); assert.equal(kn.items[0].title, 'Request approved'); assert.equal(kn.items[0].link, 'title:movie:5002');
+    // Only what is new since the last one the app saw.
+    assert.equal((await k.get('/api/notifications?after=' + kn.last)).data.items.length, 0);
+    await k.post('/api/notifications/test');
+    const t = (await k.get('/api/notifications?after=' + kn.last)).data.items;
+    assert.equal(t.length, 1); assert.equal(t[0].kind, 'test');
+    assert.equal((await k.post('/api/notifications/read', { upTo: 1e9 })).data.read, (await k.get('/api/notifications')).data.last, 'read marker never passes the newest');
+  } finally { await w.stop(); }
+});

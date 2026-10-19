@@ -18,7 +18,7 @@ sealed interface Phase {
     data class Offline(val message: String) : Phase
 }
 
-class AppState(private val store: Store) {
+class AppState(val store: Store) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     val api = Api(onSession = { s -> scope.launch { store.setSid(s) } })
 
@@ -28,6 +28,11 @@ class AppState(private val store: Store) {
     val theme: StateFlow<String> = _theme
     private val _services = MutableStateFlow<List<Service>>(emptyList())
     val services: StateFlow<List<Service>> = _services
+    private val _link = MutableStateFlow<String?>(null)
+    /** A page to open, from a tapped notification ("title:movie:5002", "requests", ...). */
+    val pendingLink: StateFlow<String?> = _link
+    fun openLink(l: String?) { if (!l.isNullOrBlank()) _link.value = l }
+    fun linkDone() { _link.value = null }
     private val _updates = MutableStateFlow<Updates?>(null)
     /** The newest release, asked of the server once per start (an older server without the check just leaves it empty). */
     val updates: StateFlow<Updates?> = _updates

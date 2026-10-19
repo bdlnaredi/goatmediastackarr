@@ -63,7 +63,9 @@ LABEL org.opencontainers.image.title="GoatMediaStackarr" \
       org.opencontainers.image.description="A whole self-hosted media stack in one container: Sonarr, Radarr, Lidarr, Prowlarr, Bazarr, qBittorrent, SABnzbd, Jellyfin, Seerr and Tautulli behind one interface, with a built-in VPN" \
       org.opencontainers.image.source="https://github.com/bdlnaredi/goatmediastackarr" \
       org.opencontainers.image.licenses="GPL-3.0-or-later" \
-      org.opencontainers.image.version="${VERSION}"
+      org.opencontainers.image.version="${VERSION}" \
+      net.unraid.docker.icon="https://raw.githubusercontent.com/bdlnaredi/goatmediastackarr/main/ui/public/icon-192.png" \
+      net.unraid.docker.webui="http://[IP]:[PORT:2806]/"
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PATH=/command:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \

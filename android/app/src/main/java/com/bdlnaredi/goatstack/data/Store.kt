@@ -27,6 +27,8 @@ class Store(private val ctx: Context) {
     private val kTheme = stringPreferencesKey("theme")
     private val kLibrary = stringPreferencesKey("library")
     private val kPrefs = stringPreferencesKey("prefs")
+    private val kFeed = stringPreferencesKey("feedLast")
+    private val kUpd = stringPreferencesKey("notifiedUpdate")
 
     data class Saved(val server: String, val sid: String?, val theme: String, val library: String, val prefs: Prefs = Prefs())
 
@@ -40,6 +42,11 @@ class Store(private val ctx: Context) {
     suspend fun setTheme(v: String) = ctx.store.edit { it[kTheme] = v }
     suspend fun setLibrary(v: String) = ctx.store.edit { it[kLibrary] = v }
     suspend fun setPrefs(v: Prefs) = ctx.store.edit { it[kPrefs] = v.text() }
+    /** The newest notification this phone has already shown (kept apart from Prefs, as the background check writes it). */
+    suspend fun feedLast(): Long = ctx.store.data.first()[kFeed]?.toLongOrNull() ?: -1L
+    suspend fun setFeedLast(v: Long) = ctx.store.edit { it[kFeed] = v.toString() }
+    suspend fun notifiedUpdate(): String = ctx.store.data.first()[kUpd].orEmpty()
+    suspend fun setNotifiedUpdate(v: String) = ctx.store.edit { it[kUpd] = v }
 }
 
 /** The choices on the Settings page that only change this phone. Kept as "key=value" lines so new ones can be added freely. */
@@ -50,16 +57,24 @@ data class Prefs(
     val spoilers: Boolean = false,
     val confirmRemove: Boolean = true,
     val dismissedUpdate: String = "",
+    val notify: Boolean = true,
+    val kinds: String = DEFAULT_KINDS,
+    val every: Int = 15,
+    val askedNotify: Boolean = false,
 ) {
+    fun wants(kind: String) = notify && (kind == "test" || kind in kinds.split(','))
     /** How wide a poster is in the grids. */
     val posterDp get() = when (posters) { "small" -> 88; "large" -> 140; else -> 108 }
     /** How often the downloads list asks again, in milliseconds. */
     val refreshMs get() = when (refresh) { "fast" -> 1500L; "slow" -> 6000L; else -> 2500L }
 
-    fun text() = "start=$start\nposters=$posters\nrefresh=$refresh\nspoilers=$spoilers\nconfirmRemove=$confirmRemove\ndismissedUpdate=$dismissedUpdate"
+    fun text() = "start=$start\nposters=$posters\nrefresh=$refresh\nspoilers=$spoilers\nconfirmRemove=$confirmRemove\ndismissedUpdate=$dismissedUpdate\nnotify=$notify\nkinds=$kinds\nevery=$every\naskedNotify=$askedNotify"
 
     companion object {
         val STARTS = listOf("home", "discover", "library", "downloads")
+        val ALL_KINDS = listOf("ready", "reqstatus", "request", "report", "download", "problem", "stream", "update")
+        /** Everything except each finished download, which can be a lot. */
+        const val DEFAULT_KINDS = "ready,reqstatus,request,report,problem,stream,update"
         fun parse(t: String): Prefs {
             val m = t.lines().mapNotNull { l -> l.split('=', limit = 2).takeIf { it.size == 2 }?.let { it[0].trim() to it[1].trim() } }.toMap()
             val d = Prefs()
@@ -70,6 +85,10 @@ data class Prefs(
                 spoilers = m["spoilers"]?.toBooleanStrictOrNull() ?: d.spoilers,
                 confirmRemove = m["confirmRemove"]?.toBooleanStrictOrNull() ?: d.confirmRemove,
                 dismissedUpdate = m["dismissedUpdate"]?.take(40) ?: "",
+                notify = m["notify"]?.toBooleanStrictOrNull() ?: d.notify,
+                kinds = m["kinds"]?.split(',')?.filter { it in ALL_KINDS }?.joinToString(",") ?: d.kinds,
+                every = m["every"]?.toIntOrNull()?.takeIf { it in listOf(15, 30, 60) } ?: d.every,
+                askedNotify = m["askedNotify"]?.toBooleanStrictOrNull() ?: d.askedNotify,
             )
         }
     }

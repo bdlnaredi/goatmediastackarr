@@ -28,6 +28,7 @@ import androidx.compose.material.icons.rounded.Inbox
 import androidx.compose.material.icons.rounded.Layers
 import androidx.compose.material.icons.rounded.PlayCircle
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material3.Icon
@@ -83,6 +84,8 @@ fun HomeScreen() {
     val healthy = l?.health?.values?.count { it } ?: 0
     val known = l?.health?.size ?: 0
 
+    val feed = rememberLoad { ctx.api.get<com.bdlnaredi.goatstack.data.Feed>("/api/notifications") }
+    val unread = feed.value?.let { f -> f.items.count { it.id > f.read } } ?: 0
     val upd by ctx.app.updates.collectAsStateWithLifecycle()
     val prefs by ctx.app.prefs.collectAsStateWithLifecycle()
 
@@ -95,6 +98,15 @@ fun HomeScreen() {
                             Text(greeting(), style = MaterialTheme.typography.labelLarge, color = g.primary)
                             Text(ctx.user.name, style = MaterialTheme.typography.displaySmall, color = g.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
+                        Box {
+                            IconButton(onClick = { ctx.go("notifications") }, modifier = Modifier.size(48.dp).clip(CircleShape).background(g.card)) {
+                                Icon(Icons.Rounded.Notifications, if (unread > 0) "$unread new notifications" else "Notifications", tint = g.text)
+                            }
+                            if (unread > 0) Box(Modifier.align(Alignment.TopEnd).size(18.dp).clip(CircleShape).background(g.bad), contentAlignment = Alignment.Center) {
+                                Text(if (unread > 9) "9+" else "$unread", style = MaterialTheme.typography.labelSmall, color = androidx.compose.ui.graphics.Color.White)
+                            }
+                        }
+                        Spacer(Modifier.width(10.dp))
                         IconButton(onClick = { ctx.go("search") }, modifier = Modifier.size(48.dp).clip(CircleShape).background(g.card)) {
                             Icon(Icons.Rounded.Search, "Search", tint = g.text)
                         }

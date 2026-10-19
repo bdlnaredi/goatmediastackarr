@@ -201,6 +201,9 @@ fun SettingsScreen() {
         }
         item { Text("The start page is used the next time the app opens.", style = MaterialTheme.typography.labelSmall, color = g.muted, modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) }
 
+        item { SectionTitle("Notifications", Modifier.padding(top = 10.dp), trailing = { Icon(Icons.Rounded.Notifications, null, tint = g.primary, modifier = Modifier.size(18.dp)) }) }
+        item { NotifySettings(prefs, set) }
+
         item { SectionTitle("Account", Modifier.padding(top = 10.dp)) }
         item {
             GoatCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp), padding = 10.dp) {
@@ -399,3 +402,54 @@ fun DevicesScreen() {
     }
 }
 
+
+/** Which notifications this phone shows, how often it looks in the background, and a test. */
+@Composable
+private fun NotifySettings(prefs: Prefs, set: (Prefs) -> Unit) {
+    val ctx = LocalCtx.current
+    val g = LocalGoat.current
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+    val toast = toaster()
+    var allowed by remember { mutableStateOf(com.bdlnaredi.goatstack.data.Notify.allowed(context)) }
+    val ask = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { ok ->
+        allowed = ok; if (!ok) toast("Notifications are off for this app in Android's settings")
+    }
+    val kinds = prefs.kinds.split(',').filter { it.isNotEmpty() }.toSet()
+    Column {
+        GoatCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp), padding = 10.dp) {
+            SettingRow(Icons.Rounded.Notifications, "Notify me on this phone", if (prefs.notify && !allowed) "Android is blocking them: tap to allow" else "Also when the app is closed") {
+                Toggle(prefs.notify && allowed) { on ->
+                    set(prefs.copy(notify = on))
+                    if (on && !allowed && android.os.Build.VERSION.SDK_INT >= 33) ask.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                }
+            }
+            if (prefs.notify) {
+                com.bdlnaredi.goatstack.data.Notify.KINDS.filter { !it.adminOnly || ctx.user.admin }.forEach { k ->
+                    val (icon, _) = kindIcon(k.id)
+                    SettingRow(icon, k.title, k.text) {
+                        Toggle(k.id in kinds) { on -> set(prefs.copy(kinds = (if (on) kinds + k.id else kinds - k.id).joinToString(","))) }
+                    }
+                }
+            }
+        }
+        if (prefs.notify) {
+            Label("When the app is closed, look every")
+            ChoiceRow(listOf(15 to "15 minutes", 30 to "30 minutes", 60 to "Hour"), prefs.every, { set(prefs.copy(every = it)) })
+            Text("While the app is open it looks every 30 seconds. Android may wait a little longer to save battery.", style = MaterialTheme.typography.labelSmall, color = g.muted, modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp))
+            Row(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                GhostButton("Send a test", icon = Icons.Rounded.Notifications, modifier = Modifier.weight(1f), onClick = {
+                    scope.launch {
+                        try {
+                            ctx.api.send("POST", "/api/notifications/test")
+                            if (ctx.app.store.feedLast() < 0) ctx.app.store.setFeedLast(ctx.api.get<com.bdlnaredi.goatstack.data.Feed>("/api/notifications").last - 1)
+                            val n = com.bdlnaredi.goatstack.data.Notify.check(context, ctx.app.store, ctx.api, prefs)
+                            toast(if (n > 0) "Sent. Look at the top of your screen." else if (!allowed) "Allow notifications first" else "Sent")
+                        } catch (e: Exception) { toast(e.message ?: "That did not work") }
+                    }
+                })
+                GhostButton("See them all", modifier = Modifier.weight(1f), onClick = { ctx.go("notifications") })
+            }
+        }
+    }
+}

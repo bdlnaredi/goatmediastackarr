@@ -65,6 +65,17 @@ class Ctx(val app: AppState, val me: Me, val user: User, val nav: NavHostControl
     fun title(type: String, id: Long) = go("title/${if (type == "tv") "tv" else "movie"}/$id")
     fun profile(uid: String? = null) = go(if (uid == null || uid == user.id) "profile" else "profile/$uid")
     val prefs get() = app.prefs.value
+    /** Opens what a notification points at. */
+    fun openLink(l: String) {
+        val p = l.split(':')
+        when {
+            p[0] == "title" && p.size == 3 -> p[2].toLongOrNull()?.let { title(p[1], it) }
+            l == "update" -> go("settings")
+            l == "profile" -> profile()
+            l in listOf("requests", "downloads", "health", "stack", "users", "unraid", "notifications") -> go(l)
+            else -> go("notifications")
+        }
+    }
 }
 
 val LocalCtx = staticCompositionLocalOf<Ctx> { error("No context") }
@@ -105,6 +116,27 @@ private fun MainShell(state: AppState, me: Me, user: User) {
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route ?: "home"
     val showBar = TABS.any { it.route == route }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs by state.prefs.collectAsStateWithLifecycle()
+    val link by state.pendingLink.collectAsStateWithLifecycle()
+    // A tapped notification opens its page.
+    androidx.compose.runtime.LaunchedEffect(link) { link?.let { l -> state.linkDone(); ctx.openLink(l) } }
+    // Notifications: checked every 30 seconds while the app is open, and in the background by Android.
+    androidx.compose.runtime.LaunchedEffect(prefs.notify, prefs.every) { com.bdlnaredi.goatstack.data.Notify.schedule(context, prefs) }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        if (!Tuning.still) while (true) {
+            try { com.bdlnaredi.goatstack.data.Notify.check(context, state.store, state.api, state.prefs.value) } catch (_: Exception) { }
+            kotlinx.coroutines.delay(30_000)
+        }
+    }
+    // Android 13 and newer ask once whether the app may show notifications.
+    val ask = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        val p = state.prefs.value
+        if (!Tuning.still && p.notify && !p.askedNotify && android.os.Build.VERSION.SDK_INT >= 33 && !com.bdlnaredi.goatstack.data.Notify.allowed(context)) {
+            state.setPrefs(p.copy(askedNotify = true)); ask.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
     CompositionLocalProvider(LocalCtx provides ctx) {
         Scaffold(
             containerColor = g.bg,
@@ -158,6 +190,7 @@ private fun MainShell(state: AppState, me: Me, user: User) {
                     com.bdlnaredi.goatstack.ui.screens.ProfileScreen(e.arguments?.getString("uid"))
                 }
                 composable("devices") { com.bdlnaredi.goatstack.ui.screens.DevicesScreen() }
+                composable("notifications") { com.bdlnaredi.goatstack.ui.screens.NotificationsScreen() }
                 composable(
                     "title/{type}/{id}",
                     arguments = listOf(navArgument("type") { type = NavType.StringType }, navArgument("id") { type = NavType.LongType }),

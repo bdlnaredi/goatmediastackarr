@@ -16,10 +16,17 @@ class MainActivity : ComponentActivity() {
         val state = (application as GoatApp).state
         installSplashScreen().setKeepOnScreenCondition { state.phase.value is Phase.Starting }
         super.onCreate(savedInstanceState)
+        state.openLink(intent?.getStringExtra("link"))
         enableEdgeToEdge()
         setContent {
             val theme by state.theme.collectAsStateWithLifecycle()
             GoatTheme(theme) { GoatRoot(state) }
         }
+    }
+
+    // A notification tapped while the app is already open.
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        (application as GoatApp).state.openLink(intent.getStringExtra("link"))
     }
 }

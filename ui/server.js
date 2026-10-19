@@ -94,7 +94,17 @@ async function pushTo(url, title, body) {
   else await go(url, { headers: { Title: title }, body });
   return true;
 }
-const notifyUser = (u, title, body) => u && u.notify ? pushTo(u.notify, title, body) : Promise.resolve(false);
+// ---------- What happened, for the phone app's notifications ----------
+// One list for everyone: each entry is for one profile (its id) or for every admin ('@admins'). The app asks for what
+// is new since the last one it saw, and shows the kinds the person turned on. [link] says which page a tap opens.
+const FEED_KINDS = ['ready', 'reqstatus', 'request', 'report', 'download', 'problem', 'stream', 'update', 'test'];
+const feed = (to, kind, title, body, link = '') => {
+  if (!db.feed) db.feed = { n: 0, items: [] };
+  const f = db.feed; f.n++; f.items.push({ id: f.n, at: Date.now(), to, kind, title: String(title).slice(0, 120), body: String(body || '').slice(0, 500), link: String(link).slice(0, 80) });
+  if (f.items.length > 600) f.items.splice(0, f.items.length - 600);
+  save();
+};
+const notifyUser = (u, title, body, kind = 'reqstatus', link = '') => { if (u) feed(u.id, kind, title, body, link); return u && u.notify ? pushTo(u.notify, title, body) : Promise.resolve(false); };
 const KINDS = ['sonarr', 'radarr', 'prowlarr', 'jackett', 'qbittorrent', 'seerr', 'unraid', 'plex', 'jellyfin', 'tautulli', 'sabnzbd', 'bazarr', 'lidarr', 'readarr'];
 const SESSF = path.join(DATA, 'sessions.json'), th = t => crypto.createHash('sha256').update(String(t || '')).digest('hex');
 let sessions; try { sessions = new Map(Object.entries(JSON.parse(fs.readFileSync(SESSF))).map(([k, v]) => [k, typeof v === 'string' ? { uid: v, at: 0, seen: 0, ua: '', ip: '' } : v])); } catch { sessions = new Map(); }
@@ -127,6 +137,9 @@ async function latestRelease() {
     if (!d.tag_name) return relCache.v;
     relCache.v = { version: String(d.tag_name).replace(/^v/, '').slice(0, 40), url: /^https:\/\//.test(d.html_url || '') ? d.html_url : '', apk: apk && /^https:\/\//.test(apk.browser_download_url || '') ? apk.browser_download_url : '',
       published: d.published_at || '', notes: String(d.body || '').slice(0, 3000) };
+    if (/^\d+\.\d+\.\d+$/.test(VERSION) && isNewer(relCache.v.version, VERSION) && db.settings.updFed !== relCache.v.version) {
+      db.settings.updFed = relCache.v.version; feed('@admins', 'update', `GoatMediaStackarr ${relCache.v.version} is out`, `You have ${VERSION}. On Unraid open the Docker tab and click Update.`, 'update');
+    }
   } catch {}
   return relCache.v;
 }
@@ -800,9 +813,10 @@ async function refreshRequests() {
       if (d && (d.media || {}).status === 5 && !db.services.some(y => y.type === (x.mediaType === 'tv' ? 'sonarr' : 'radarr'))) { x.stage = 'available'; changed = true; return; } }
     const st = await stageOf(x, cache);
     const before = JSON.stringify([x.stage, x.progress, x.eta, x.where]);
+    if (st.stage === 'failed' && x.stage !== 'failed') notifyUser(userOf(x.uid), 'Download failed', `${x.title} could not be downloaded. It is being looked for again.`, 'reqstatus', 'requests').catch(() => {});
     x.stage = st.stage; x.progress = st.progress; x.eta = st.eta || undefined; x.where = st.where || undefined; x.paused = st.paused || undefined; x.checked = Date.now();
     if (JSON.stringify([x.stage, x.progress, x.eta, x.where]) !== before) changed = true;
-    if (st.stage === 'available' && !x.toldReady) { x.toldReady = Date.now(); await notifyUser(userOf(x.uid), 'Ready to watch', `${x.title} is now available${st.where ? ' on ' + st.where : ''}.`).catch(() => {}); }
+    if (st.stage === 'available' && !x.toldReady) { x.toldReady = Date.now(); await notifyUser(userOf(x.uid), 'Ready to watch', `${x.title} is now available${st.where ? ' on ' + st.where : ''}.`, 'ready', `title:${x.mediaType}:${x.mediaId}`).catch(() => {}); }
   } catch {} }));
   if (changed) save();
 }
@@ -850,14 +864,14 @@ async function streamTick() {
       }
       const lim = streamLimitOf(u); if (!u || !(lim > 0) || !playing) continue;
       const used = streamUsed(e, cfg), pct = used / (lim * 1e9) * 100, gbs = gbText(used);
-      if (pct >= 80 && !(e.warn >= 80)) { e.warn = 80; changed = true; notifyUser(u, 'Streaming: 80% used', `You have streamed ${gbs} of your ${lim} GB for this month.`).catch(() => {}); }
+      if (pct >= 80 && !(e.warn >= 80)) { e.warn = 80; changed = true; notifyUser(u, 'Streaming: 80% used', `You have streamed ${gbs} of your ${lim} GB for this month.`, 'stream', 'profile').catch(() => {}); }
       if (pct < 100 || (cfg.wanOnly && x.where !== 'wan')) continue;
       if (streamStopped[k] && now - streamStopped[k] < 60000) continue;
       streamStopped[k] = now;
       const why = `You have streamed your ${lim} GB for this month. It starts again on ${new Date(nextMonth()).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}. Ask the server owner if you need more.`;
       try { await stopStream(s, x, why); audit('GoatMediaStackarr', 'Stopped a stream', `${u.name}: monthly streaming limit of ${lim} GB reached (${s.name})`); }
       catch (err) { if (!e.stopErr) { e.stopErr = 1; audit('GoatMediaStackarr', 'Could not stop a stream', `${u.name} is over the streaming limit, but ${s.name} refused: ${cut(err.message, 160)}`); } }
-      if (!(e.warn >= 100)) { e.warn = 100; changed = true; notifyUser(u, 'Streaming limit reached', why).catch(() => {}); if ((db.alerts || {}).streamLimit !== false) notify('Streaming limit reached', `${u.name} has streamed ${gbs} of ${lim} GB this month. Their streams are stopped until the 1st.`).catch(() => {}); }
+      if (!(e.warn >= 100)) { e.warn = 100; changed = true; notifyUser(u, 'Streaming limit reached', why, 'stream', 'profile').catch(() => {}); feed('@admins', 'stream', 'Streaming limit reached', `${u.name} has streamed ${gbs} of ${lim} GB this month.`, 'users'); if ((db.alerts || {}).streamLimit !== false) notify('Streaming limit reached', `${u.name} has streamed ${gbs} of ${lim} GB this month. Their streams are stopped until the 1st.`).catch(() => {}); }
     }
     for (const k of Object.keys(streamSeen)) if (k.startsWith(s.id + ':') && !alive.has(k)) { delete streamSeen[k]; delete streamStopped[k]; }
   }
@@ -883,6 +897,7 @@ async function monitor() {
           if (!histKeys.has(key)) {
             histKeys.add(key); added = true;
             db.history.push({ hash: x.hash, name: x.name, size: x.size, at: x.completion_on * 1000, cat: x.category || '', svc: s.id });
+            if (!first) feed('@admins', 'download', 'Download finished', x.name, 'downloads');
             if (!first && a.finished) await notify('Download finished', x.name).catch(() => {});
           }
         }
@@ -902,19 +917,18 @@ async function monitor() {
       let ok = false; try { ok = await test(s); } catch {}
       health[s.id] = { ok, t: Date.now() };
       uptNote(s.id, ok);
-      if (!a.offline) return;
       const st = mon.up[s.id] || (mon.up[s.id] = { ok: true, n: 0 });
-      if (ok) { if (!st.ok) await notify('App back online', s.name + ' is reachable again').catch(() => {}); st.ok = true; st.n = 0; }
-      else if (++st.n >= 2 && st.ok) { st.ok = false; await notify('App offline', s.name + ' is not responding').catch(() => {}); }
+      if (ok) { if (!st.ok) { feed('@admins', 'problem', 'App back online', s.name + ' is reachable again', 'health'); if (a.offline) await notify('App back online', s.name + ' is reachable again').catch(() => {}); } st.ok = true; st.n = 0; }
+      else if (++st.n >= 2 && st.ok) { st.ok = false; feed('@admins', 'problem', 'App offline', s.name + ' is not responding', 'health'); if (a.offline) await notify('App offline', s.name + ' is not responding').catch(() => {}); }
     }));
-    if (a.disk) for (const s of db.services.filter(x => x.type === 'unraid')) await safe(async () => {
-      const k = (await gql(s, '{ array { capacity { kilobytes { used total } } } }')).array.capacity.kilobytes, pct = +k.used / +k.total * 100;
-      if (pct >= a.diskPct && !mon.disk[s.id]) { mon.disk[s.id] = 1; await notify('Array almost full', pct.toFixed(0) + '% of the array is used'); }
-      else if (pct < a.diskPct - 3) mon.disk[s.id] = 0;
+    for (const s of db.services.filter(x => x.type === 'unraid')) await safe(async () => {
+      const k = (await gql(s, '{ array { capacity { kilobytes { used total } } } }')).array.capacity.kilobytes, pct = +k.used / +k.total * 100, lim = a.diskPct || 90;
+      if (pct >= lim && !mon.disk[s.id]) { mon.disk[s.id] = 1; feed('@admins', 'problem', 'Array almost full', pct.toFixed(0) + '% of the array is used', 'unraid'); if (a.disk) await notify('Array almost full', pct.toFixed(0) + '% of the array is used'); }
+      else if (pct < lim - 3) mon.disk[s.id] = 0;
     });
-    if (a.vpn) for (const s of db.services.filter(x => x.type === 'qbittorrent')) await safe(async () => {
+    for (const s of db.services.filter(x => x.type === 'qbittorrent')) await safe(async () => {
       const v = await vpnStatus(s);
-      if (v.vpn === false && !mon.vpn[s.id]) { mon.vpn[s.id] = 1; await notify('VPN not active', s.name + ' is not using the VPN'); }
+      if (v.vpn === false && !mon.vpn[s.id]) { mon.vpn[s.id] = 1; feed('@admins', 'problem', 'VPN not active', s.name + ' is not using the VPN', 'stack'); if (a.vpn) await notify('VPN not active', s.name + ' is not using the VPN'); }
       else if (v.vpn === true) mon.vpn[s.id] = 0;
     });
     const th0 = db.settings.throttle || {}, held = th0.held || {};
@@ -939,6 +953,7 @@ async function monitor() {
     for (const [k, v] of tickets) if (v.exp < Date.now()) tickets.delete(k);
     if (mon.n % 10 === 0) uptSave();
     await safe(streamTick);
+    if (mon.n % 120 === 0 && !DEMO) await safe(latestRelease);
     if (++mon.n % 2 === 0) await safe(refreshRequests);
   } finally { mon.busy = false; }
 }
@@ -1672,7 +1687,7 @@ const goatServer = http.createServer(async (req, res) => {
       const x = { id: uid(), sid: s.id, uid: me.id, user: me.name, mediaType: b.mediaType, mediaId: +b.mediaId, title: String(b.title || '').slice(0, 200),
         year: String(b.year || '').slice(0, 4), poster: String(b.poster || '').slice(0, 300), status: 'pending', at: Date.now(), ...(seasons.length ? { seasons } : {}) };
       if (me.role === 'admin' || me.autoApprove) { const sr = await seerrAdd(s, x); x.seerrId = sr && sr.id; x.status = 'approved'; x.stage = 'approved'; }
-      else if (db.alerts && db.alerts.requests) notify('New request', `${me.name} requested ${x.title}`).catch(() => {});
+      else { feed('@admins', 'request', 'New request', `${me.name} asked for ${x.title}`, 'requests'); if (db.alerts && db.alerts.requests) notify('New request', `${me.name} requested ${x.title}`).catch(() => {}); }
       db.requests.push(x); save(); audit(me.name, me.role !== 'admin' && me.autoApprove ? 'Requested (auto-approved)' : 'Requested', x.title); return send(res, 200, x);
     }
     if (p === '/api/seerr/tv' && m === 'GET') {
@@ -1712,6 +1727,7 @@ const goatServer = http.createServer(async (req, res) => {
       let result = ''; if (x.status === 'approved' && Date.now() - (x.researched || 0) > 600000) { result = await researchRequest(x); if (result) x.researched = Date.now(); }
       const rp = { id: uid(), rid: x.id, uid: me.id, user: me.name, title: x.title, text, at: Date.now(), status: 'open', result };
       db.reports.push(rp); if (db.reports.length > 300) db.reports.splice(0, db.reports.length - 300); save(); audit(me.name, 'Reported a problem', x.title);
+      feed('@admins', 'report', 'Problem report', `${me.name}: ${x.title}: ${text}`, 'requests');
       if ((db.alerts || {}).reports !== false) notify('Problem report', `${me.name} reported a problem with ${x.title}: ${text}${result ? ' (' + result + ')' : ''}`).catch(() => {});
       return send(res, 200, { ok: true, result });
     }
@@ -2039,6 +2055,13 @@ const goatServer = http.createServer(async (req, res) => {
       delete me.avatar; save(); return send(res, 200, pubUser(me));
     }
     if (p === '/api/usage' && m === 'GET') return send(res, 200, await usageOf(me));
+    if (p === '/api/notifications' && m === 'GET') {
+      const q = new URL(req.url, 'http://x').searchParams, after = Math.max(0, +q.get('after') || 0), f = db.feed || { n: 0, items: [] };
+      const mine = f.items.filter(x => x.to === me.id || (x.to === '@admins' && me.role === 'admin'));
+      return send(res, 200, { last: f.n, read: me.feedRead || 0, items: mine.filter(x => x.id > after).slice(-60).reverse().map(({ to, ...x }) => x) });
+    }
+    if (p === '/api/notifications/read' && m === 'POST') { const b = await readBody(req); me.feedRead = Math.max(me.feedRead || 0, Math.min(+b.upTo || 0, (db.feed || {}).n || 0)); save(); return send(res, 200, { read: me.feedRead }); }
+    if (p === '/api/notifications/test' && m === 'POST') { feed(me.id, 'test', 'Notifications work', 'This is how GoatMediaStackarr tells you things on this phone.', ''); return send(res, 200, {}); }
     if (p === '/api/updates' && m === 'GET') {
       const rel = DEMO ? null : await latestRelease(), dev = !/^\d+\.\d+\.\d+$/.test(VERSION);
       return send(res, 200, { server: VERSION, latest: rel ? rel.version : '', url: rel ? rel.url : '', apk: rel ? rel.apk : '', published: rel ? rel.published : '', notes: me.role === 'admin' && rel ? rel.notes : '',
@@ -2346,7 +2369,7 @@ const goatServer = http.createServer(async (req, res) => {
         const sr = await seerrAdd(s, x); x.seerrId = sr && sr.id; x.status = 'approved'; x.stage = 'approved';
       } else { x.status = 'declined'; x.stage = 'declined'; }
       save(); audit(me.name, r[2] === 'approve' ? 'Approved a request' : 'Declined a request', x.title + ' (' + x.user + ')');
-      notifyUser(userOf(x.uid), r[2] === 'approve' ? 'Request approved' : 'Request declined', x.title).catch(() => {});
+      notifyUser(userOf(x.uid), r[2] === 'approve' ? 'Request approved' : 'Request declined', r[2] === 'approve' ? `${x.title} will be downloaded.` : `${x.title} was declined.`, 'reqstatus', `title:${x.mediaType}:${x.mediaId}`).catch(() => {});
       mon.reqT = 0;
       return send(res, 200, x);
     }

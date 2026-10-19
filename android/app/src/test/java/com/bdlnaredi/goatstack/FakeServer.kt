@@ -65,6 +65,8 @@ class FakeServer(private val server: MockWebServer) : Dispatcher() {
             p == "/api/users" -> json("""[{"id":"u1","name":"Ann","role":"admin","twofa":true},{"id":"u2","name":"Ravi","role":"user","plex":{"name":"ravi"},"dataLimit":500,"avatar":"/img/p7.png"},{"id":"u3","name":"Mira","role":"user","plex":{"name":"mira"}},{"id":"u4","name":"Leo","role":"user"}]""")
             p == "/api/title" -> json(title(request.requestUrl?.queryParameter("type") == "tv"))
             p == "/api/usage" -> json(usage("u1", "Ann", 0))
+            p == "/api/notifications" -> json(feed())
+            p == "/api/notifications/read" -> json("""{"read":9}""")
             p == "/api/updates" -> json("""{"server":"0.3.6","latest":"$latest","url":"https://github.com/bdlnaredi/goatmediastackarr/releases/tag/v$latest","apk":"${if (latest.isEmpty()) "" else "https://github.com/bdlnaredi/goatmediastackarr/releases/download/v$latest/goatmediastackarr.apk"}","serverUpdate":${latest.isNotEmpty()}}""")
             p == "/api/streaming" -> json("""{"month":"${java.time.YearMonth.now()}","months":[],"defaultGb":100,"wanOnly":false,"resets":${System.currentTimeMillis() + 9 * 86_400_000L},"users":[{"id":"u2","name":"Ravi","profile":true,"bytes":63400000000,"all":63400000000,"wan":21000000000,"limitGb":100},{"id":"u3","name":"Mira","profile":true,"bytes":97100000000,"all":97100000000,"wan":0,"limitGb":100},{"id":"","name":"grandma.plex","profile":false,"bytes":12800000000,"all":12800000000,"wan":12800000000,"limitGb":0},{"id":"u1","name":"Ann","profile":true,"bytes":5100000000,"all":5100000000,"wan":0,"limitGb":0},{"id":"u4","name":"Leo","profile":true,"bytes":0,"all":0,"wan":0,"limitGb":250}]}""")
             p.matches(Regex("/api/users/\\w+/usage")) -> json(usage(p.split('/')[3], "Ravi", 500))
@@ -127,6 +129,20 @@ class FakeServer(private val server: MockWebServer) : Dispatcher() {
         return """{"type":"${if (tv) "tv" else "movie"}","id":304,"title":"Quiet Orbit","year":"2025","date":"2025-04-11","tagline":"Some signals should stay unanswered.","overview":"A lone engineer on a dying space station picks up a voice that should not exist, and has three days to decide whether to answer before the station falls out of orbit.",
             "poster":"${img(5)}","backdrop":"${server.url("/img/fanart.png")}","rating":7.9,"runtime":${if (tv) 48 else 121},"genres":["Sci-Fi","Thriller","Drama"],"status":"Released","studio":"Northlight Pictures",
             "cast":[$cast],"seasons":[$seasons],"trailer":"dQw4w9WgXcQ","seerr":"e1","available":0,"library":null,"request":null}""".replace("\n", "")
+    }
+
+    private fun feed(): String {
+        val now = System.currentTimeMillis()
+        val l = listOf(
+            listOf("ready", "Ready to watch", "Quiet Orbit is now available on Plex.", "title:movie:304"),
+            listOf("request", "New request", "Ravi asked for Neon Saints", "requests"),
+            listOf("problem", "VPN not active", "qBittorrent is not using the VPN", "stack"),
+            listOf("reqstatus", "Request approved", "Paper Moon will be downloaded.", "title:tv:205"),
+            listOf("stream", "Streaming limit reached", "Mira has streamed 100 GB of 100 GB this month.", "users"),
+            listOf("download", "Download finished", "Stormline.S03E01.2160p.WEB-DL", "downloads"),
+            listOf("update", "GoatMediaStackarr 0.3.8 is out", "You have 0.3.7. On Unraid open the Docker tab and click Update.", "update"),
+        )
+        return """{"last":9,"read":6,"items":[""" + l.withIndex().joinToString(",") { (i, x) -> """{"id":${9 - i},"at":${now - i * 5_400_000L},"kind":"${x[0]}","title":"${x[1]}","body":"${x[2]}","link":"${x[3]}"}""" } + "]}"
     }
 
     private fun stream(member: Boolean): String {

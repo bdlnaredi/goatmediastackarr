@@ -73,3 +73,7 @@ object Versions {
         return false
     }
 }
+
+// ---------- Notifications (/api/notifications) ----------
+@Serializable data class Feed(val last: Long = 0, val read: Long = 0, val items: List<FeedItem> = emptyList())
+@Serializable data class FeedItem(val id: Long = 0, val at: Long = 0, val kind: String = "", val title: String = "", val body: String = "", val link: String = "")
