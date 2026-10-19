@@ -45,7 +45,12 @@ chain() { # table chain parent
 OWN=(-m owner --gid-owner "$GID" --suppl-groups)
 
 # Mark the VPN apps' packets.
+# WireGuard encrypts a packet in place, so the encrypted copy still looks as if a VPN app sent it. It carries
+# WireGuard's own mark (WGMARK, set in wg-prepare.sh) and must leave the normal way, not be marked back into the
+# tunnel, or it loops there forever and nothing reaches the VPN server.
+WGMARK=0x5158
 chain mangle GOAT_MARK OUTPUT
+must iptables -w -t mangle -A GOAT_MARK -m mark --mark "$WGMARK" -j RETURN
 must iptables -w -t mangle -A GOAT_MARK "${OWN[@]}" -j MARK --set-mark "$MARK"
 
 # DNS from VPN apps goes to the VPN's DNS server through the tunnel (vpn.sh fills this chain in).
