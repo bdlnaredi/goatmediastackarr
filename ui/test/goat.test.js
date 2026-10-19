@@ -65,7 +65,7 @@ test('engine pages open through the sign-in, including live updates', async () =
   const port = eng.address().port;
   const dir = tmp(), mf = path.join(dir, 'managed.json');
   fs.writeFileSync(mf, JSON.stringify({ services: [
-    { key: 'sonarr', type: 'sonarr', name: 'Sonarr', url: `http://127.0.0.1:${port}/engines/sonarr`, apiKey: 'k' },
+    { key: 'sonarr', type: 'sonarr', name: 'Sonarr', url: `http://127.0.0.1:${port}/engines/sonarr`, apiKey: '0123456789abcdef0123456789abcdef' },
     { key: 'qbittorrent', type: 'qbittorrent', name: 'qBittorrent', url: `http://127.0.0.1:${port}`, user: 'u', pass: 'p' },
     { key: 'seerr', type: 'seerr', name: 'Seerr', url: `http://127.0.0.1:${port}`, apiKey: 's' }] }));
   const s = await boot({ GOAT_MANAGED: mf }, dir);
@@ -97,6 +97,18 @@ test('engine pages open through the sign-in, including live updates', async () =
     });
     assert.match(await ws(c.cookie), /101 Switching Protocols[\s\S]*hello \/engines\/sonarr\/signalr\/messages/);
     assert.match(await ws(''), /403/);
+    // Phone apps (nzb360, LunaSea…) send the app's own API key instead of signing in.
+    const key = '0123456789abcdef0123456789abcdef';
+    r = await fetch(s.base + '/engines/sonarr/api/v3/system/status', { redirect: 'manual', headers: { 'X-Api-Key': key } });
+    assert.equal(r.status, 200, 'the right API key is let through'); assert.equal(await r.text(), 'engine /engines/sonarr/api/v3/system/status');
+    assert.equal((await fetch(s.base + '/engines/sonarr/api/v3/system/status?apikey=' + key, { redirect: 'manual' })).status, 200);
+    assert.equal((await fetch(s.base + '/engines/sonarr/api/v3/system/status', { redirect: 'manual', headers: { 'X-Api-Key': key.replace('0', '1') } })).status, 302, 'a wrong key is not');
+    assert.equal((await fetch(s.base + '/engines/qbittorrent/api/v2/app/version', { redirect: 'manual', headers: { 'X-Api-Key': key } })).status, 302, 'one app\'s key does not open another');
+    assert.match(await ws('x=1\r\nX-Api-Key: ' + key), /101 Switching Protocols/);
+    // Where Jellyfin, Seerr and Plex are from outside the home.
+    assert.equal((await c.post('/api/goat/outside', { jellyfin: 'ftp://nope' })).status, 400);
+    assert.deepEqual((await c.post('/api/goat/outside', { jellyfin: 'https://jellyfin.example.com/', seerr: '' })).data, { jellyfin: 'https://jellyfin.example.com' });
+    assert.equal((await c.get('/api/goat/status')).data.outside.jellyfin, 'https://jellyfin.example.com');
 
     const user = await c.post('/api/users', { name: 'viewer', password: 'viewer-pass-1', role: 'user' });
     assert.equal(user.status, 200);

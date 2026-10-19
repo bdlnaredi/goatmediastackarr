@@ -19,6 +19,7 @@
 
 ## Fixes
 
+- From outside the home: phone apps for Sonarr, Radarr, Lidarr, Prowlarr, Bazarr, SABnzbd and Tautulli (nzb360, LunaSea…) work through GoatMediaStackarr's address at `/engines/<app>` with that app's own API key; the Stack page takes the outside addresses of Jellyfin, Seerr and Plex (a Cloudflare hostname), and its Open buttons use them away from home.
 - Requests show where they really are, read from Radarr or Sonarr and from Plex or Jellyfin instead of waiting on Seerr: Requested (waiting for an admin), Approved, looking for a download, Downloading (with how far along and time left), Copying to the library, In the library (waiting for Plex), and Available (on Plex or Jellyfin). Plex and Jellyfin are asked to look for the new files, and the person is told when it is ready. Before, a finished download could stay on "Downloading".
 - Movie and show pages (web page and app) have the title's picture faded in behind them.
 - Health page: disk space is shown once (not under every app), each folder says what it is (Media library, Downloads, App data, the container's Docker image), big disks are shown in TB with how full they are, and an app's name is no longer repeated next to it.

@@ -92,6 +92,14 @@ A real Android app (not a web page in a frame), with its own design and eight th
 
 **Install:** download `goatmediastackarr.apk` from the [latest release](https://github.com/bdlnaredi/goatmediastackarr/releases/latest) on your phone and open it (Android asks once to allow installing from your browser). Newer versions install over older ones. Open the app and enter the same address you use in the browser, for example `192.168.1.10:2806` at home. Android 8 or newer.
 
+## Using it from outside your home
+
+GoatMediaStackarr's own page (port 2806) is the way in to everything except Jellyfin, Seerr and Plex: Sonarr, Radarr, Lidarr, Prowlarr, Bazarr, qBittorrent, SABnzbd and Tautulli open at `/engines/<app>/` on the same address, signed in through GoatMediaStackarr (admins only).
+
+- **Tailscale** (the Unraid Tailscale plugin, so Unraid itself is on your tailnet): use `http://<unraid's tailscale name>:2806` in the browser and the app. Jellyfin (`:8096`), Seerr (`:5055`) and Plex (`:32400`) work on their ports as they are.
+- **Cloudflare Tunnel**: add a public hostname such as `goat.example.com` pointing to `http://<unraid's address>:2806`. For Jellyfin and Seerr add their own hostnames (`jellyfin.example.com` to port 8096, `requests.example.com` to port 5055) and enter them on the Stack page under *From outside your home*, so the Open buttons use them away from home. Plex has its own remote access; use that. Cloudflare's terms do not allow streaming lots of video through a free tunnel, so Tailscale is the better way to watch Jellyfin away from home.
+- **Phone apps** for Sonarr, Radarr and the others (nzb360, LunaSea, Ruddarr…): the address is `https://goat.example.com/engines/sonarr` (or `/engines/radarr`, `/engines/prowlarr`…) with that app's API key, which you find in the app under Settings → General. qBittorrent's phone apps need a sign-in GoatMediaStackarr cannot pass on, so use the Downloads page instead.
+
 ## Install on Unraid
 
 Use the template in [`unraid/goatmediastackarr.xml`](unraid/goatmediastackarr.xml), or add a container with:

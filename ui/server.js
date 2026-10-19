@@ -232,7 +232,7 @@ const goatStatus = () => {
   return { vpn: goatRead(path.join(GOAT_RUN, 'vpn.json')) || { enabled: false, state: 'off' }, wired: GOAT_WIRED ? goatRead(GOAT_WIRED) : null,
     engines: [...db.services.filter(x => x.managed).map(x => ({ id: x.id, key: x.managed, name: x.name, ok: health[x.id] ? health[x.id].ok : null })),
       ...((GOAT_MANAGED && (goatRead(GOAT_MANAGED) || {}).extras) || []).map(x => ({ key: x.key, name: x.name, ok: null }))],
-    settings: goatSettings ? goatSettings.view() : null, vpnFiles: goatVpnFiles(), container: !!GOAT_MANAGED,
+    settings: goatSettings ? goatSettings.view() : null, vpnFiles: goatVpnFiles(), container: !!GOAT_MANAGED, outside: { ...((db.settings || {}).outside || {}) },
     logins: { jellyfin: sec.jellyfinUser ? { user: sec.jellyfinUser, pass: sec.jellyfinPass } : null, qbittorrent: sec.qbitUser ? { user: sec.qbitUser, pass: sec.qbitPass } : null } };
 };
 // For the setup checklist: how many indexers the built-in Prowlarr has and how many news servers SABnzbd has.
@@ -296,6 +296,14 @@ const goatAdmin = req => {
   const token = ((req.headers.cookie || '').match(/sid=(\w+)/) || [])[1];
   const sess = token && sessions.get(th(token)), me = sess && db.users.find(u => u.id === sess.uid);
   return !!(me && me.role === 'admin');
+};
+// Phone apps for Sonarr, Radarr and the others (nzb360, LunaSea, Ruddarr…) cannot sign in to GoatMediaStackarr, so a
+// request that carries that app's own API key is let through: the app checks the same key itself.
+const goatKeyOk = (req, t) => {
+  const s = db.services.find(x => x.managed === t.key); if (!s || !s.apiKey || String(s.apiKey).length < 16) return false;
+  let q; try { q = new URL(req.url, 'http://x').searchParams; } catch { return false; }
+  const given = [req.headers['x-api-key'], q.get('apikey'), q.get('api_key'), q.get('access_token')].filter(Boolean).map(String);
+  return given.some(k => k.length === String(s.apiKey).length && crypto.timingSafeEqual(Buffer.from(k), Buffer.from(String(s.apiKey))));
 };
 const goatHeaders = (req, t) => {
   const h = { ...req.headers, host: '127.0.0.1:' + t.port };
@@ -1123,7 +1131,7 @@ const goatServer = http.createServer(async (req, res) => {
   if (p.startsWith('/engines/')) {
     const t = goatTarget(req.url);
     if (!t) return send(res, 404, { error: 'Not found' });
-    if (!goatAdmin(req)) { res.writeHead(302, { Location: '/' }); return res.end(); }
+    if (!goatAdmin(req) && !goatKeyOk(req, t)) { res.writeHead(302, { Location: '/' }); return res.end(); }
     if (t.bare) { res.writeHead(301, { Location: '/engines/' + t.key + '/' }); return res.end(); }
     return goatProxy(req, res, t);
   }
@@ -1353,6 +1361,12 @@ const goatServer = http.createServer(async (req, res) => {
     if (p.startsWith('/api/goat/') && m === 'POST') {
       if (adminOnly()) return;
       if (DEMO) return send(res, 403, { error: 'This is turned off in the demo' });
+      // The addresses Jellyfin, Seerr and Plex have from outside the home (a Cloudflare hostname, say), for the Open buttons.
+      if (p === '/api/goat/outside') {
+        const b = await readBody(req), o = {};
+        for (const k of ['jellyfin', 'seerr', 'plex']) { const v = String(b[k] || '').trim().replace(/\/+$/, ''); if (v && !/^https?:\/\/[^\s/]+(\/[^\s]*)?$/i.test(v)) return send(res, 400, { error: `The ${k} address must start with https:// (or http://)` }); if (v) o[k] = v.slice(0, 300); }
+        db.settings.outside = o; save(); return send(res, 200, o);
+      }
       if (p === '/api/goat/settings') {
         if (!goatSettings) return send(res, 404, { error: 'Not running inside GoatMediaStackarr' });
         const b = await readBody(req);
@@ -2632,7 +2646,7 @@ const goatServer = http.createServer(async (req, res) => {
 // Live updates in the engines' own pages (Sonarr and Radarr use WebSockets) go through the same sign-in check.
 goatServer.on('upgrade', (req, sock, head) => {
   const t = goatTarget(req.url);
-  if (!t || !goatAdmin(req)) { sock.end('HTTP/1.1 403 Forbidden\r\n\r\n'); return; }
+  if (!t || !(goatAdmin(req) || goatKeyOk(req, t))) { sock.end('HTTP/1.1 403 Forbidden\r\n\r\n'); return; }
   const up = require('net').connect(t.port, '127.0.0.1', () => {
     const h = goatHeaders(req, t);
     up.write(`${req.method} ${t.path} HTTP/1.1\r\n` + Object.entries(h).map(([k, v]) => `${k}: ${v}`).join('\r\n') + '\r\n\r\n');
