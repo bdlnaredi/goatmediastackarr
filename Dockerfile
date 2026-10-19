@@ -6,7 +6,9 @@ ARG NODE_VERSION=22
 # ---------- Seerr is built from source on glibc so it runs on the Ubuntu base below ----------
 FROM node:${NODE_VERSION}-bookworm AS seerr
 ARG SEERR_VERSION=v3.5.0
-ENV CYPRESS_INSTALL_BINARY=0 CI=true
+# COMMIT_TAG has to be set while building: Seerr bakes it into its page and compares it with committag.json (the
+# server's copy). If they differ, the page shows "Seerr Updated, please reload" on every visit.
+ENV CYPRESS_INSTALL_BINARY=0 CI=true COMMIT_TAG=${SEERR_VERSION}
 RUN corepack enable && \
     git clone --depth 1 --branch "${SEERR_VERSION}" https://github.com/seerr-team/seerr /app
 WORKDIR /app
@@ -16,7 +18,9 @@ RUN pnpm install --frozen-lockfile && \
     pnpm prune --prod && \
     # Source maps, tests and docs are not needed to run it.
     find . -name '*.map' -not -path './.git/*' -delete && rm -rf .git cypress docs && \
-    echo "{\"commitTag\": \"${SEERR_VERSION}\"}" > committag.json
+    echo "{\"commitTag\": \"${SEERR_VERSION}\"}" > committag.json && \
+    # Stop the build if the page and the server would disagree about the version.
+    grep -rqsF "${SEERR_VERSION}" .next/static .next/required-server-files.json || { echo "Seerr version tag missing from its page build"; exit 1; }
 
 # ---------- Bazarr and SABnzbd with their Python packages, built with compilers the final image never carries ----------
 FROM ubuntu:24.04 AS python
