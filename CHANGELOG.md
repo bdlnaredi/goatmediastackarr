@@ -25,6 +25,7 @@
 
 ## Fixes
 
+- OpenVPN no longer fails with "Cannot ioctl TUNSETIFF goatvpn: Device or resource busy" after the VPN is reconnected or its settings are saved: the VPN service now takes its tunnel down when it is stopped or restarted, stops a connection attempt that timed out, and clears any tunnel left over from before it starts a new one.
 - Seerr's own page (port 5055) no longer shows "Seerr Updated, please reload" every time it opens: its version number is now built into the page as well as the server, so the two agree.
 - Tracker websites load much faster, especially through the VPN: pages pass through as they arrive instead of being fetched whole twice first; pictures, styles, scripts and fonts are kept for six hours (on the server and on the phone), so later pages skip them; text is compressed on the way to the phone; sign-in cookies are saved a few seconds later in one go instead of on every picture; and reopening a site keeps its address, so the phone's own cache keeps working.
 - Admins can sign in with Plex: link your Plex account first in Settings → Account (web page or app); until then Plex sign-in still refuses admin accounts, so nobody can take one over through Plex.

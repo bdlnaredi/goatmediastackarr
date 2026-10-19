@@ -76,6 +76,16 @@ wg_up() {
 wg_down() { wg-quick down "$RUN/$IF.conf" >/dev/null 2>&1 || true; }
 
 OVPN_PID=""
+# A tunnel left over from before (this service restarted while OpenVPN was still running) keeps the goatvpn device
+# busy, and a new OpenVPN then fails with "Cannot ioctl TUNSETIFF goatvpn: Device or resource busy". Clear it first.
+ovpn_clear() {
+  local p
+  for p in $(pgrep -x openvpn 2>/dev/null); do
+    tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null | grep -q -- "--dev $IF " && kill "$p" 2>/dev/null
+  done
+  for _ in $(seq 1 10); do ip link show "$IF" >/dev/null 2>&1 || return 0; sleep 1; done
+  ip link del "$IF" 2>/dev/null || true
+}
 ovpn_up() {
   local src="$1" auth=()
   if [ -n "${VPN_USER:-}" ]; then
@@ -93,6 +103,7 @@ ovpn_up() {
     fi
   fi
   rm -f "$RUN/ovpn-ready"
+  ovpn_clear
   # Our options come after --config so they override the file: fixed interface name, no routes in the main table.
   # --cd: files the .ovpn names without a folder (ca.crt, keys, credentials) are found next to it in the vpn folder.
   openvpn --cd /config/vpn --config "$src" --dev "$IF" --dev-type tun --route-noexec \
@@ -102,14 +113,20 @@ ovpn_up() {
   OVPN_PID=$!
   for _ in $(seq 1 45); do
     [ -f "$RUN/ovpn-ready" ] && break
-    kill -0 "$OVPN_PID" 2>/dev/null || { status error "OpenVPN stopped while connecting. Check the .ovpn file and the VPN_USER / VPN_PASS settings."; return 1; }
+    kill -0 "$OVPN_PID" 2>/dev/null || { OVPN_PID=""; status error "OpenVPN stopped while connecting. Check the .ovpn file and the VPN_USER / VPN_PASS settings."; return 1; }
     sleep 1
   done
-  [ -f "$RUN/ovpn-ready" ] || { status error "OpenVPN did not connect within 45 seconds."; return 1; }
+  [ -f "$RUN/ovpn-ready" ] || { ovpn_down; status error "OpenVPN did not connect within 45 seconds."; return 1; }
   set_dns "${VPN_DNS:-$(cat "$RUN/vpn-dns" 2>/dev/null || echo 1.1.1.1)}"
   from_rule "$(cat "$RUN/ovpn-local" 2>/dev/null)"
 }
-ovpn_down() { [ -n "$OVPN_PID" ] && kill "$OVPN_PID" 2>/dev/null; wait "$OVPN_PID" 2>/dev/null; OVPN_PID=""; }
+ovpn_down() { [ -n "$OVPN_PID" ] && kill "$OVPN_PID" 2>/dev/null; [ -n "$OVPN_PID" ] && wait "$OVPN_PID" 2>/dev/null; OVPN_PID=""; return 0; }
+
+# When this service is stopped or restarted, take the tunnel down with it, so the next start finds the device free.
+# Sleeps run in the background and are waited for, so a stop is handled at once instead of after the sleep.
+nap() { sleep "$1" & wait $!; }
+stop_all() { trap - TERM INT; log "Stopping"; if [ "$TYPE" = "openvpn" ]; then ovpn_down; ovpn_clear; else wg_down; fi; exit 0; }
+trap stop_all TERM INT
 
 # Checks the tunnel the way the VPN apps see it: through their routing table, with their group.
 check() {
@@ -138,11 +155,11 @@ while true; do
   CFG=$(find_config)
   if [ -z "$CFG" ]; then
     status waiting "Put your VPN provider's $([ "$TYPE" = openvpn ] && echo .ovpn || echo WireGuard .conf) file in the vpn folder of the app data. VPN apps stay offline until then."
-    sleep 20; continue
+    nap 20; continue
   fi
   status connecting "Connecting with $(basename "$CFG")"
   log "Connecting ($TYPE) with $(basename "$CFG")"
-  if [ "$TYPE" = "openvpn" ]; then ovpn_up "$CFG"; else wg_up "$CFG"; fi || { sleep "$backoff"; backoff=$(( backoff < 120 ? backoff * 2 : 120 )); continue; }
+  if [ "$TYPE" = "openvpn" ]; then ovpn_up "$CFG"; else wg_up "$CFG"; fi || { nap "$backoff"; backoff=$(( backoff < 120 ? backoff * 2 : 120 )); continue; }
 
   fails=0; n=0
   while true; do
@@ -155,11 +172,11 @@ while true; do
       log "Tunnel check failed ($fails/3)"
       [ "$fails" -ge 3 ] && break
     fi
-    n=$((n + 1)); sleep 30
+    n=$((n + 1)); nap 30
     [ "$TYPE" = "openvpn" ] && ! kill -0 "$OVPN_PID" 2>/dev/null && break
   done
   status down "Connection lost, reconnecting. VPN apps are offline until it is back."
   log "Reconnecting"
   if [ "$TYPE" = "openvpn" ]; then ovpn_down; else wg_down; fi
-  PORT=""; sleep "$backoff"
+  PORT=""; nap "$backoff"
 done
