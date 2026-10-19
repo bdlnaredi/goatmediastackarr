@@ -15,6 +15,8 @@ import java.time.ZoneOffset
 class FakeServer(private val server: MockWebServer) : Dispatcher() {
     @Volatile var signedIn = true
     @Volatile var admin = true
+    /** The newest release the pretend server reports; empty means none is known. */
+    @Volatile var latest = ""
     val calls = java.util.concurrent.CopyOnWriteArrayList<String>()
     /** Calls the app made that the pretend server does not know: each one is a mistake in the app (or here). */
     val misses = java.util.concurrent.CopyOnWriteArrayList<String>()
@@ -63,6 +65,7 @@ class FakeServer(private val server: MockWebServer) : Dispatcher() {
             p == "/api/users" -> json("""[{"id":"u1","name":"Ann","role":"admin","twofa":true},{"id":"u2","name":"Ravi","role":"user","plex":{"name":"ravi"},"dataLimit":500,"avatar":"/img/p7.png"},{"id":"u3","name":"Mira","role":"user","plex":{"name":"mira"}},{"id":"u4","name":"Leo","role":"user"}]""")
             p == "/api/title" -> json(title(request.requestUrl?.queryParameter("type") == "tv"))
             p == "/api/usage" -> json(usage("u1", "Ann", 0))
+            p == "/api/updates" -> json("""{"server":"0.3.6","latest":"$latest","url":"https://github.com/bdlnaredi/goatmediastackarr/releases/tag/v$latest","apk":"${if (latest.isEmpty()) "" else "https://github.com/bdlnaredi/goatmediastackarr/releases/download/v$latest/goatmediastackarr.apk"}","serverUpdate":${latest.isNotEmpty()}}""")
             p == "/api/streaming" -> json("""{"month":"${java.time.YearMonth.now()}","months":[],"defaultGb":100,"wanOnly":false,"resets":${System.currentTimeMillis() + 9 * 86_400_000L},"users":[{"id":"u2","name":"Ravi","profile":true,"bytes":63400000000,"all":63400000000,"wan":21000000000,"limitGb":100},{"id":"u3","name":"Mira","profile":true,"bytes":97100000000,"all":97100000000,"wan":0,"limitGb":100},{"id":"","name":"grandma.plex","profile":false,"bytes":12800000000,"all":12800000000,"wan":12800000000,"limitGb":0},{"id":"u1","name":"Ann","profile":true,"bytes":5100000000,"all":5100000000,"wan":0,"limitGb":0},{"id":"u4","name":"Leo","profile":true,"bytes":0,"all":0,"wan":0,"limitGb":250}]}""")
             p.matches(Regex("/api/users/\\w+/usage")) -> json(usage(p.split('/')[3], "Ravi", 500))
             p == "/api/sessions" -> json("""[{"id":"a1","user":"Ann","device":"GoatStack app on Android","ip":"192.168.1.20","at":1,"seen":${System.currentTimeMillis() - 60_000},"current":true},{"id":"b2","user":"Ann","device":"Chrome on Windows","ip":"192.168.1.12","at":1,"seen":${System.currentTimeMillis() - 7_200_000},"current":false},{"id":"c3","user":"Ann","device":"Safari on iPhone","ip":"10.0.0.4","at":1,"seen":${System.currentTimeMillis() - 400_000_000},"current":false}]""")

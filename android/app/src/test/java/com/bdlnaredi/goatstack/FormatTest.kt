@@ -68,6 +68,7 @@ class FormatTest {
     @Test fun newerHelpers() {
         assertEquals("4.2 GB", Format.gb(4_200_000_000)); assertEquals("0 GB", Format.gb(0)); assertEquals("250 GB", Format.gb(250_000_000_000))
         assertEquals("29.11 TB", Format.disk(29_105_700_000_000)); assertEquals("42.3 GB", Format.disk(42_300_000_000))
+        assertTrue(com.bdlnaredi.goatstack.data.Versions.newer("0.3.10", "0.3.9")); assertFalse(com.bdlnaredi.goatstack.data.Versions.newer("0.3.6", "0.3.6")); assertTrue(com.bdlnaredi.goatstack.data.Versions.newer("0.3.6", "0.0.41-dev")); assertFalse(com.bdlnaredi.goatstack.data.Versions.newer("", "1.0.0"))
         assertEquals("100 GB", Format.limit(100.0)); assertEquals("0.5 GB", Format.limit(0.5)); assertEquals("1.5 TB", Format.limit(1500.0)); assertEquals("2 TB", Format.limit(2000.0))
         assertEquals("3 h 20 min", Format.hours(12_000)); assertEquals("5 min", Format.hours(300))
         assertTrue(Format.parseMillis("Sat, 17 Oct 2026 10:00:00 +0000") > 0)

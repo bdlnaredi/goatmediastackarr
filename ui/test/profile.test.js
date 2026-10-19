@@ -175,3 +175,22 @@ test('request stages follow the real download: searching, downloading with progr
     x = await stage(); assert.equal(x.stage, 'available'); assert.equal(x.where, 'Plex');
   } finally { await s.stop(); srv.close(); }
 });
+
+test('updates: the newest release from GitHub, for the phone app and (for admins) the container', async () => {
+  let hits = 0;
+  const gh = http.createServer((req, res) => { hits++; res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ tag_name: 'v9.1.0', html_url: 'https://github.com/bdlnaredi/goatmediastackarr/releases/tag/v9.1.0', published_at: '2026-10-20T10:00:00Z', body: 'New things',
+      assets: [{ name: 'goatmediastackarr.apk', browser_download_url: 'https://github.com/bdlnaredi/goatmediastackarr/releases/download/v9.1.0/goatmediastackarr.apk' }] })); }).listen(0);
+  await new Promise(r => gh.once('listening', r));
+  const s = await boot({ MONITOR_MS: '60000', GOAT_VERSION: 'v0.3.6', RELEASES_URL: `http://127.0.0.1:${gh.address().port}/latest` }), a = client(s.base); await setup(a);
+  try {
+    const u = (await a.get('/api/updates')).data;
+    assert.equal(u.server, '0.3.6'); assert.equal(u.latest, '9.1.0'); assert.equal(u.serverUpdate, true); assert.equal(u.notes, 'New things');
+    assert.match(u.apk, /goatmediastackarr\.apk$/);
+    await a.post('/api/users', { name: 'kid', password: 'kidkidkid', role: 'user' });
+    const k = client(s.base); await k.post('/api/login', { name: 'kid', password: 'kidkidkid' });
+    const ku = (await k.get('/api/updates')).data;
+    assert.equal(ku.latest, '9.1.0', 'everyone learns about a newer phone app'); assert.equal(ku.serverUpdate, false, 'only admins are told to update the container');
+    assert.equal(hits, 1, 'GitHub is asked once, then the answer is kept');
+  } finally { await s.stop(); gh.close(); }
+});

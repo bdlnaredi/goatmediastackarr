@@ -58,3 +58,18 @@ data class Device(val id: String = "", val user: String = "", val device: String
 // ---------- Download categories and tags (/api/qb/{sid}/meta) ----------
 @Serializable data class QbMeta(val free: Long = 0, val categories: List<QbCategory> = emptyList(), val tags: List<String> = emptyList())
 @Serializable data class QbCategory(val name: String = "", val path: String = "")
+
+/** The newest release on GitHub (/api/updates), and whether the server itself is behind (told to admins only). */
+@Serializable
+data class Updates(val server: String = "", val latest: String = "", val url: String = "", val apk: String = "", val published: String = "", val notes: String = "", val serverUpdate: Boolean = false)
+
+object Versions {
+    private fun parts(v: String) = v.removePrefix("v").split('.', '-').take(3).map { it.toIntOrNull() ?: 0 } .let { it + List(3 - it.size) { 0 } }
+    /** True when [a] is a later version than [b] ("0.3.10" is later than "0.3.9"; "0.0.41-dev" counts as 0.0.41). */
+    fun newer(a: String, b: String): Boolean {
+        if (a.isBlank()) return false
+        val x = parts(a); val y = parts(b)
+        for (i in 0..2) if (x[i] != y[i]) return x[i] > y[i]
+        return false
+    }
+}

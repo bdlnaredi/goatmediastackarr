@@ -49,13 +49,14 @@ data class Prefs(
     val refresh: String = "normal",
     val spoilers: Boolean = false,
     val confirmRemove: Boolean = true,
+    val dismissedUpdate: String = "",
 ) {
     /** How wide a poster is in the grids. */
     val posterDp get() = when (posters) { "small" -> 88; "large" -> 140; else -> 108 }
     /** How often the downloads list asks again, in milliseconds. */
     val refreshMs get() = when (refresh) { "fast" -> 1500L; "slow" -> 6000L; else -> 2500L }
 
-    fun text() = "start=$start\nposters=$posters\nrefresh=$refresh\nspoilers=$spoilers\nconfirmRemove=$confirmRemove"
+    fun text() = "start=$start\nposters=$posters\nrefresh=$refresh\nspoilers=$spoilers\nconfirmRemove=$confirmRemove\ndismissedUpdate=$dismissedUpdate"
 
     companion object {
         val STARTS = listOf("home", "discover", "library", "downloads")
@@ -68,6 +69,7 @@ data class Prefs(
                 refresh = m["refresh"]?.takeIf { it in listOf("fast", "normal", "slow") } ?: d.refresh,
                 spoilers = m["spoilers"]?.toBooleanStrictOrNull() ?: d.spoilers,
                 confirmRemove = m["confirmRemove"]?.toBooleanStrictOrNull() ?: d.confirmRemove,
+                dismissedUpdate = m["dismissedUpdate"]?.take(40) ?: "",
             )
         }
     }

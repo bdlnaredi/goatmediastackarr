@@ -28,6 +28,7 @@ import androidx.compose.material.icons.rounded.Inbox
 import androidx.compose.material.icons.rounded.Layers
 import androidx.compose.material.icons.rounded.PlayCircle
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -36,6 +37,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -81,6 +83,9 @@ fun HomeScreen() {
     val healthy = l?.health?.values?.count { it } ?: 0
     val known = l?.health?.size ?: 0
 
+    val upd by ctx.app.updates.collectAsStateWithLifecycle()
+    val prefs by ctx.app.prefs.collectAsStateWithLifecycle()
+
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
         item {
             Box(Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(g.primary.copy(alpha = 0.20f), g.bg)))) {
@@ -113,6 +118,12 @@ fun HomeScreen() {
                         }
                     }
                 }
+            }
+        }
+        upd?.let { u ->
+            val appOld = u.apk.isNotEmpty() && com.bdlnaredi.goatstack.data.Versions.newer(u.latest, com.bdlnaredi.goatstack.BuildConfig.VERSION_NAME)
+            if ((appOld || u.serverUpdate) && prefs.dismissedUpdate != u.latest) item(key = "update") {
+                UpdateCard(u, appOld) { ctx.app.setPrefs(prefs.copy(dismissedUpdate = u.latest)) }
             }
         }
         item {
@@ -242,4 +253,28 @@ private fun greeting(): String = when (LocalTime.now().hour) {
     in 12..16 -> "Good afternoon"
     in 17..21 -> "Good evening"
     else -> "Hello, night owl"
+}
+
+/** "A new version is out": get the new app, and (for admins) a reminder to update the container. */
+@Composable
+private fun UpdateCard(u: com.bdlnaredi.goatstack.data.Updates, appOld: Boolean, onLater: () -> Unit) {
+    val g = LocalGoat.current
+    val uri = androidx.compose.ui.platform.LocalUriHandler.current
+    com.bdlnaredi.goatstack.ui.GoatCard(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.SystemUpdate, null, tint = g.primary)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Version ${u.latest} is out", style = MaterialTheme.typography.titleSmall, color = g.text)
+                if (appOld) Text("A newer GoatStack app is ready. You have ${com.bdlnaredi.goatstack.BuildConfig.VERSION_NAME}.", style = MaterialTheme.typography.bodySmall, color = g.muted)
+                if (u.serverUpdate) Text("The server has ${u.server}. On Unraid, open the Docker tab and click Update on GoatMediaStackarr.", style = MaterialTheme.typography.bodySmall, color = g.muted)
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (appOld) com.bdlnaredi.goatstack.ui.PrimaryButton("Get the new app", { runCatching { uri.openUri(u.apk) } }, Modifier.weight(1f))
+            else if (u.url.isNotEmpty()) com.bdlnaredi.goatstack.ui.GhostButton("What is new", onClick = { runCatching { uri.openUri(u.url) } }, modifier = Modifier.weight(1f))
+            com.bdlnaredi.goatstack.ui.GhostButton("Later", onClick = onLater, color = g.muted, modifier = Modifier.weight(1f))
+        }
+    }
 }

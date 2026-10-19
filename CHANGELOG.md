@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Update notices: when a newer release is out, the phone app says so on Home (with a button to get the new app) and in Settings; admins are also told, in the app and on the web page, to update the container (Unraid's Docker tab, Update). Checked against GitHub's latest release at most every 6 hours; "Later" or "Got it" hides it until the next version.
 - Streaming limits: each person may stream 100 GB a month from Plex and Jellyfin by default; at 80% they get a phone message, and at the limit their streams are stopped with a message until the 1st. The default, "only count streams from outside the home", and a limit per person (or none) are set in the app and on the web page (Settings → Users). The app's Profile shows this month's streaming and the last six months; the Users page shows everyone's.
 - Android app, version 3: movies and shows open their own page (story, cast, seasons, trailer, in the library or not) instead of a pop-up; each episode shows its story and can be searched for; an RSS page (articles, feeds, auto-download rules); Downloads adds magnet links, filters and moves by category, and admins manage categories and tags; a Profile page with your picture, the space your requests take and your watch time; a fuller Settings page (start page, poster size, update speed, hide episode stories, password, recovery email, phone messages, signed-in devices).
 - Profile pictures: upload one from the app (it is made small on the phone first); it shows next to your name.

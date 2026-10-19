@@ -520,6 +520,18 @@ async function api(url,method='GET',body){
 let DEMO=false;
 let REC=false,PLEXLOGIN=false;
 let VER='',GOAT=false;const APPMODE=/MediaHubApp\//.test(navigator.userAgent);
+// Tells an admin, once per version, that a newer GoatMediaStackarr is out and how to get it.
+async function updNote(){
+  let u;try{u=await api('/api/updates')}catch{return}
+  if(!u.serverUpdate)return;let seen='';try{seen=localStorage.getItem('updSeen')||''}catch{}
+  if(seen===u.latest)return;
+  const b=document.createElement('div');b.className='panel';b.setAttribute('role','status');
+  b.style.cssText='position:fixed;right:16px;bottom:16px;z-index:8;max-width:min(380px,calc(100vw - 32px));box-shadow:var(--sh)';
+  b.innerHTML=`<b>GoatMediaStackarr ${esc(u.latest)} is out</b><p class="mute" style="margin:6px 0 10px">You have ${esc(u.server)}. On Unraid open the Docker tab and click <b>Update</b> on GoatMediaStackarr. Your settings and libraries are kept.${u.apk?' The phone app has a new version too.':''}</p>
+    <div class="row">${u.url?`<a class="pill" href="${esc(u.url)}" target="_blank" rel="noopener noreferrer">What is new ${ic('ext')}</a>`:''}<span class="grow"></span><button data-ok>Got it</button></div>`;
+  b.querySelector('[data-ok]').onclick=()=>{try{localStorage.setItem('updSeen',u.latest)}catch{}b.remove()};
+  document.body.append(b);
+}
 async function start(){
   await loadLang();
   const s=await api('/api/me');
@@ -533,6 +545,7 @@ async function start(){
   // First visit to a new GoatMediaStackarr: open the Stack page, where the setup checklist is, until it is marked done.
   if(!fromUrl&&GOAT&&me.role==='admin')try{const g=await api('/api/goat/status');if(!(g.settings&&g.settings.setup&&g.settings.setup.done))tab='goat'}catch{}
   render();
+  if(me.role==='admin'&&!DEMO)updNote();
 }
 async function load(){
   services=await api('/api/services');

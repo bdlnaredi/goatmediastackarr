@@ -28,6 +28,9 @@ class AppState(private val store: Store) {
     val theme: StateFlow<String> = _theme
     private val _services = MutableStateFlow<List<Service>>(emptyList())
     val services: StateFlow<List<Service>> = _services
+    private val _updates = MutableStateFlow<Updates?>(null)
+    /** The newest release, asked of the server once per start (an older server without the check just leaves it empty). */
+    val updates: StateFlow<Updates?> = _updates
     private val _prefs = MutableStateFlow(Prefs())
     val prefs: StateFlow<Prefs> = _prefs
     var server: String = ""
@@ -68,6 +71,7 @@ class AppState(private val store: Store) {
 
     suspend fun loadServices() {
         try { _services.value = api.get("/api/services") } catch (_: Exception) { }
+        if (_updates.value == null) scope.launch { try { _updates.value = api.get<Updates>("/api/updates") } catch (_: Exception) { } }
     }
 
     /** Checks an address really is a GoatMediaStackarr (or MediaHub) server before keeping it. */

@@ -230,7 +230,11 @@ fun SettingsScreen() {
         item {
             GoatCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp), padding = 10.dp) {
                 SettingRow(Icons.Rounded.PhoneAndroid, "GoatStack app", "Version ${BuildConfig.VERSION_NAME}")
-                SettingRow(Icons.Rounded.SystemUpdate, "Get the newest app", "Download it from the latest release", onClick = { runCatching { uri.openUri(RELEASES) } })
+                val upd by ctx.app.updates.collectAsStateWithLifecycle()
+                val appOld = upd?.let { it.apk.isNotEmpty() && com.bdlnaredi.goatstack.data.Versions.newer(it.latest, BuildConfig.VERSION_NAME) } == true
+                SettingRow(Icons.Rounded.SystemUpdate, if (appOld) "Version ${upd?.latest} is ready" else "Get the newest app",
+                    when { appOld -> "Tap to download it, then open it to install over this one"; upd?.latest?.isNotEmpty() == true -> "You have the newest app (${upd?.latest})"; else -> "Download it from the latest release" },
+                    onClick = { runCatching { uri.openUri(if (appOld) upd!!.apk else RELEASES) } })
                 SettingRow(Icons.Rounded.BugReport, "Report a problem", "On GitHub", onClick = { runCatching { uri.openUri(ISSUES) } })
             }
         }

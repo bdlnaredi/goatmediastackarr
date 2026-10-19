@@ -112,6 +112,24 @@ const pubUser = u => ({ email: u.email || '', twofa: !!(u.totp && u.totp.on), id
 // What the folders the apps report mean, in words (these are the container's own folders).
 const DISK_NAMES = { '/media': 'Media library', '/data': 'Media library', '/downloads': 'Downloads', '/config': 'App data', '/': 'Container (Docker image)' };
 const DISK_ORDER = ['Media library', 'Downloads', '', 'App data', 'Container (Docker image)'];
+// ---------- Is there a newer GoatMediaStackarr or phone app? Asked of GitHub's latest release, at most every 6 hours ----------
+const RELEASES_URL = process.env.RELEASES_URL || 'https://api.github.com/repos/bdlnaredi/goatmediastackarr/releases/latest';
+let relCache = { t: 0, v: null };
+const verParts = v => String(v || '').replace(/^v/, '').split(/[.-]/).slice(0, 3).map(n => parseInt(n, 10) || 0);
+const isNewer = (a, b) => { const x = verParts(a), y = verParts(b); for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] > y[i]; return false; };
+async function latestRelease() {
+  if (Date.now() - relCache.t < (relCache.v ? 6 * 3600e3 : 1800e3)) return relCache.v;
+  relCache.t = Date.now();
+  try {
+    const r = await fetch(RELEASES_URL, { signal: AbortSignal.timeout(8000), headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'GoatMediaStackarr' } });
+    if (!r.ok) return relCache.v;
+    const d = await r.json(), apk = (d.assets || []).find(a => /\.apk$/i.test(a.name || ''));
+    if (!d.tag_name) return relCache.v;
+    relCache.v = { version: String(d.tag_name).replace(/^v/, '').slice(0, 40), url: /^https:\/\//.test(d.html_url || '') ? d.html_url : '', apk: apk && /^https:\/\//.test(apk.browser_download_url || '') ? apk.browser_download_url : '',
+      published: d.published_at || '', notes: String(d.body || '').slice(0, 3000) };
+  } catch {}
+  return relCache.v;
+}
 const pubSvc = s => ({ id: s.id, type: s.type, name: s.name, url: s.url, managed: !!s.managed });
 
 // ---------- What each person uses: the space their requests take on the disks, and what they watched ----------
@@ -2021,6 +2039,11 @@ const goatServer = http.createServer(async (req, res) => {
       delete me.avatar; save(); return send(res, 200, pubUser(me));
     }
     if (p === '/api/usage' && m === 'GET') return send(res, 200, await usageOf(me));
+    if (p === '/api/updates' && m === 'GET') {
+      const rel = DEMO ? null : await latestRelease(), dev = !/^\d+\.\d+\.\d+$/.test(VERSION);
+      return send(res, 200, { server: VERSION, latest: rel ? rel.version : '', url: rel ? rel.url : '', apk: rel ? rel.apk : '', published: rel ? rel.published : '', notes: me.role === 'admin' && rel ? rel.notes : '',
+        serverUpdate: !!rel && !dev && isNewer(rel.version, VERSION) && me.role === 'admin' });
+    }
     if (p === '/api/me/dash' && m === 'PUT') {
       const b = await readBody(req), ok = a => (Array.isArray(a) ? a : []).filter(x => typeof x === 'string' && /^\w{1,20}$/.test(x)).slice(0, 20);
       me.dash = { order: ok(b.order), hidden: ok(b.hidden) }; save(); return send(res, 200, {});

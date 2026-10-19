@@ -186,8 +186,10 @@ class ScreensTest {
     }
 
     @Test fun version3Pages() {
+        fake.latest = "9.9.0"
         connect()
         show()
+        waitFor("Version 9.9.0 is out"); shot("45-home-update")
         waitFor("Playing now")
         // A movie opens its own page, not a pop-up.
         tap("Discover"); waitFor("Quiet Orbit")
