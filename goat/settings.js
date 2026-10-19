@@ -13,7 +13,7 @@ const FILE = () => path.join(CONFIG, 'goat', 'settings.json');
 // Which settings the interface may change, and the environment variable each one stands for.
 const MAP = {
   'vpn.enabled': 'VPN_ENABLED', 'vpn.type': 'VPN_TYPE', 'vpn.apps': 'VPN_APPS', 'vpn.user': 'VPN_USER', 'vpn.pass': 'VPN_PASS',
-  'vpn.dns': 'VPN_DNS', 'vpn.portForward': 'VPN_PORT_FORWARD', 'vpn.pfGateway': 'VPN_PF_GATEWAY',
+  'vpn.dns': 'VPN_DNS', 'vpn.portForward': 'VPN_PORT_FORWARD', 'vpn.pfGateway': 'VPN_PF_GATEWAY', 'vpn.provider': 'VPN_PROVIDER', 'vpn.region': 'VPN_REGION',
   'plex.claim': 'PLEX_CLAIM', 'plex.update': 'PLEX_UPDATE', 'plex.url': 'PLEX_URL', 'plex.token': 'PLEX_TOKEN', 'seerr.mediaServer': 'SEERR_MEDIA_SERVER',
 };
 const ALLOWED = {
@@ -23,7 +23,10 @@ const ALLOWED = {
   'vpn.user': v => typeof v === 'string' && v.length <= 200 && !/[\r\n]/.test(v),
   'vpn.pass': v => typeof v === 'string' && v.length <= 200 && !/[\r\n]/.test(v),
   'vpn.dns': v => v === '' || /^\d{1,3}(\.\d{1,3}){3}$/.test(v),
-  'vpn.portForward': v => ['off', 'natpmp'].includes(v),
+  'vpn.portForward': v => ['off', 'natpmp', 'pia'].includes(v),
+  // '' = your own .conf or .ovpn file; 'pia' = Private Internet Access, set up from your PIA username and password.
+  'vpn.provider': v => ['', 'pia'].includes(v),
+  'vpn.region': v => v === '' || /^[a-z0-9_-]{1,40}$/.test(v),
   'vpn.pfGateway': v => v === '' || /^\d{1,3}(\.\d{1,3}){3}$/.test(v),
   'plex.claim': v => v === '' || /^claim-[A-Za-z0-9_-]{4,64}$/.test(v),
   'plex.update': v => typeof v === 'boolean',

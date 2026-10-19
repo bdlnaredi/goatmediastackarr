@@ -13,6 +13,9 @@ RUN=/run/goat
 STATUS=$RUN/vpn.json
 PUID="${PUID:-99}"; PGID="${PGID:-100}"
 TYPE="${VPN_TYPE:-wireguard}"; TYPE="${TYPE,,}"
+PROVIDER="${VPN_PROVIDER:-}"; PROVIDER="${PROVIDER,,}"
+# PIA is set up from your username and password over WireGuard; no file is needed.
+[ "$PROVIDER" = "pia" ] && TYPE=wireguard
 mkdir -p "$RUN" && chmod 755 "$RUN"
 
 log() { echo "[goat-vpn] $*"; }
@@ -136,22 +139,55 @@ check() {
   [ -n "$IP" ]
 }
 
-# NAT-PMP port forwarding (ProtonVPN and others): keeps a public port open and gives it to qBittorrent.
+# Port forwarding: keeps a public port open and gives it to qBittorrent.
+# NAT-PMP for ProtonVPN and others; PIA has its own way (a signed port, renewed every 15 minutes through the tunnel).
 PORT=""
-forward_port() {
-  [ "${VPN_PORT_FORWARD,,}" = "natpmp" ] || return 0
-  local gw="${VPN_PF_GATEWAY:-10.2.0.1}" out p
-  out=$(as_vpn natpmpc -g "$gw" -a 1 0 udp 60 2>/dev/null; as_vpn natpmpc -g "$gw" -a 1 0 tcp 60 2>/dev/null) || true
-  p=$(printf '%s\n' "$out" | sed -n 's/.*Mapped public port \([0-9]*\).*/\1/p' | tail -n1)
+set_qb_port() {
+  local p="$1"
   if [ -n "$p" ] && [ "$p" != "$PORT" ]; then
     if curl -fsS --max-time 5 --data-urlencode "json={\"listen_port\":$p}" http://127.0.0.1:8080/api/v2/app/setPreferences >/dev/null 2>&1; then
       PORT="$p"; log "Forwarded port $p set in qBittorrent."
     fi
   fi
 }
+PIA_PAYLOAD=""; PIA_SIG=""; PIA_BOUND=0
+pia_port() {
+  local now out
+  now=$(date +%s)
+  [ $((now - PIA_BOUND)) -lt 840 ] && [ -n "$PORT" ] && return 0
+  out=$(as_vpn env PIA_HOST="$(jq -r .host "$RUN/pia.json")" PIA_VIP="$(jq -r .vip "$RUN/pia.json")" PIA_TOKEN="$(jq -r .token "$RUN/pia.json")" \
+        PIA_PAYLOAD="$PIA_PAYLOAD" PIA_SIG="$PIA_SIG" node /opt/goat/bin/pia.js port 2>&1) || { log "PIA port forwarding: $out"; PIA_PAYLOAD=""; PIA_SIG=""; return 0; }
+  PIA_PAYLOAD=$(jq -r .payload <<<"$out"); PIA_SIG=$(jq -r .signature <<<"$out"); PIA_BOUND=$now
+  set_qb_port "$(jq -r .port <<<"$out")"
+}
+forward_port() {
+  case "${VPN_PORT_FORWARD,,}" in
+    pia) [ "$PROVIDER" = "pia" ] && pia_port ;;
+    natpmp)
+      local gw="${VPN_PF_GATEWAY:-10.2.0.1}" out
+      out=$(as_vpn natpmpc -g "$gw" -a 1 0 udp 60 2>/dev/null; as_vpn natpmpc -g "$gw" -a 1 0 tcp 60 2>/dev/null) || true
+      set_qb_port "$(printf '%s\n' "$out" | sed -n 's/.*Mapped public port \([0-9]*\).*/\1/p' | tail -n1)" ;;
+  esac
+  return 0
+}
+
+# PIA: sign in, pick the region (the fastest one unless one was chosen) and write a fresh WireGuard file for it.
+pia_up() {
+  local msg
+  msg=$(node /opt/goat/bin/pia.js connect "$RUN/pia.conf" "$RUN/pia.json" 2>&1 >/dev/null) || { status error "${msg##*$'\n'}"; return 1; }
+  PIA_PAYLOAD=""; PIA_SIG=""; PIA_BOUND=0
+  log "PIA region: $(jq -r .name "$RUN/pia.json")"
+  wg_up "$RUN/pia.conf"
+}
 
 backoff=5
 while true; do
+  if [ "$PROVIDER" = "pia" ]; then
+    status connecting "Connecting to PIA${VPN_REGION:+ ($VPN_REGION)}"
+    log "Connecting to PIA${VPN_REGION:+ ($VPN_REGION)}"
+    pia_up || { nap "$backoff"; backoff=$(( backoff < 120 ? backoff * 2 : 120 )); continue; }
+    CFG="$RUN/pia.conf"
+  else
   CFG=$(find_config)
   if [ -z "$CFG" ]; then
     status waiting "Put your VPN provider's $([ "$TYPE" = openvpn ] && echo .ovpn || echo WireGuard .conf) file in the vpn folder of the app data. VPN apps stay offline until then."
@@ -160,13 +196,14 @@ while true; do
   status connecting "Connecting with $(basename "$CFG")"
   log "Connecting ($TYPE) with $(basename "$CFG")"
   if [ "$TYPE" = "openvpn" ]; then ovpn_up "$CFG"; else wg_up "$CFG"; fi || { nap "$backoff"; backoff=$(( backoff < 120 ? backoff * 2 : 120 )); continue; }
+  fi
 
   fails=0; n=0
   while true; do
     if check; then
       fails=0; backoff=5
       forward_port   # NAT-PMP leases last 60 seconds, so renew on every check
-      status up "Connected" "$IP" "$LOC" "$PORT"
+      status up "Connected${PROVIDER:+ to PIA $(jq -r .name "$RUN/pia.json" 2>/dev/null)}" "$IP" "$LOC" "$PORT"
     else
       fails=$((fails + 1))
       log "Tunnel check failed ($fails/3)"

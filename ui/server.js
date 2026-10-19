@@ -226,6 +226,9 @@ const goatSync = () => {
 };
 const GOAT_CONFIG = process.env.GOAT_CONFIG_DIR || '/config', GOAT_SOCK = process.env.GOAT_CONTROL_SOCK || path.join(GOAT_RUN, 'control.sock');
 // The container's settings helper (goat/settings.js). Missing when the interface runs on its own, as plain MediaHub.
+// The PIA helper (the region list for the VPN settings), found the same way as the settings.
+const goatPia = (() => { for (const p of [process.env.GOAT_BIN && path.join(process.env.GOAT_BIN, 'pia.js'), path.join(__dirname, '..', 'bin', 'pia.js'), path.join(__dirname, '..', 'goat', 'pia.js')]) { try { if (p && fs.existsSync(p)) return require(p); } catch {} } return null; })();
+let piaRegions = null;
 const goatSettings = (() => { for (const p of [process.env.GOAT_BIN && path.join(process.env.GOAT_BIN, 'settings.js'), path.join(__dirname, '..', 'bin', 'settings.js'), path.join(__dirname, '..', 'goat', 'settings.js')]) { try { if (p && fs.existsSync(p)) return require(p); } catch {} } return null; })();
 const goatRead = f => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; } };
 const goatVpnFiles = () => { try { return fs.readdirSync(path.join(GOAT_CONFIG, 'vpn')).filter(f => /\.(conf|ovpn)$/i.test(f) && f !== 'credentials.conf'); } catch { return []; } };
@@ -1518,6 +1521,15 @@ const goatServer = http.createServer(async (req, res) => {
     const adminOnly = () => me.role === 'admin' ? false : (send(res, 403, { error: 'Admins only' }), true);
     if (p === '/api/goat/status' && m === 'GET') { if (adminOnly()) return; return send(res, 200, { ...goatStatus(), counts: await goatCounts() }); }
     if (p === '/api/goat/import' && m === 'GET') { if (adminOnly()) return; return send(res, 200, goatImport || { state: 'idle' }); }
+    // PIA's regions, for picking one in the VPN settings (kept for an hour).
+    if (p === '/api/goat/pia/regions' && m === 'GET') {
+      if (adminOnly()) return; if (!goatPia) return send(res, 404, { error: 'Not running inside GoatMediaStackarr' });
+      if (!piaRegions || Date.now() - piaRegions.at > 3600e3) {
+        try { piaRegions = { at: Date.now(), list: (await goatPia.regions()).map(r => ({ id: r.id, name: r.name, country: r.country, pf: r.pf })) }; }
+        catch (e) { return send(res, 502, { error: e.message }); }
+      }
+      return send(res, 200, piaRegions.list);
+    }
     if (p.startsWith('/api/goat/') && m === 'POST') {
       if (adminOnly()) return;
       if (DEMO) return send(res, 403, { error: 'This is turned off in the demo' });

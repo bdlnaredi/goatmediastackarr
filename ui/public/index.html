@@ -2434,7 +2434,7 @@ async function goatView(){
   const S=st.settings||{},V=S.vpn||{},vpn=st.vpn||{},steps=(st.wired&&st.wired.steps)||{};
   // Still connecting: no results yet, or a run in progress (a run older than 30 minutes has stopped without saying so).
   const wiring=!st.wired||(st.wired.running&&Date.now()-st.wired.at<30*60e3);
-  const vOn=V.enabled!==undefined?V.enabled:!!vpn.enabled,vType=V.type||vpn.type||'wireguard',vApps=V.apps||vpn.apps||GOAT_VPNAPPS.map(a=>a[0]);
+  const pia=V.provider==='pia',vOn=V.enabled!==undefined?V.enabled:!!vpn.enabled,vType=V.type||vpn.type||'wireguard',vApps=V.apps||vpn.apps||GOAT_VPNAPPS.map(a=>a[0]);
   const pill=vpn.state==='up'?`<span class="pill ok">Connected${vpn.country?' · '+esc(vpn.country):''}${vpn.ip?' · '+esc(vpn.ip):''}</span>`
     :vpn.enabled?`<span class="pill bad">${vpn.state==='waiting'?'Waiting for a VPN file':vpn.state==='connecting'?'Connecting…':'Not connected'}</span>`:'<span class="pill">Off</span>';
   const hasPlex=st.engines.some(e=>e.key==='plex'),plexOk=steps.plex&&steps.plex.ok,N=st.counts||{};
@@ -2460,10 +2460,18 @@ async function goatView(){
     <div id="gvset"${vOn?'':' hidden'}>
       <div class="mute">Apps that use the VPN. The others, like Jellyfin streaming, keep your normal connection.</div>
       <div class="row" style="gap:16px;margin:6px 0 12px">${GOAT_VPNAPPS.map(([k,n])=>`<label class="row" style="gap:6px"><input type="checkbox" data-va="${k}"${vApps.includes(k)?' checked':''}> ${n}</label>`).join('')}</div>
-      <label class="mute">VPN provider file (WireGuard .conf or OpenVPN .ovpn)<input type="file" id="gvf" accept=".conf,.ovpn"></label>
-      <div class="mute" style="margin:4px 0 10px">${st.vpnFiles.length?'Using '+esc(st.vpnFiles.join(', ')):'No file yet.'}</div>
-      <div id="govpn"${vType==='openvpn'?'':' hidden'}><input id="gvu" placeholder="OpenVPN username (if your provider uses one)" value="${esc(V.user||'')}" aria-label="OpenVPN username"><input id="gvpw" type="password" placeholder="${V.pass?'Password saved (type to change)':'OpenVPN password'}" aria-label="OpenVPN password"></div>
-      <label class="mute">Port forwarding <select id="gvpf"><option value="off">Off</option><option value="natpmp"${V.portForward==='natpmp'?' selected':''}>NAT-PMP (ProtonVPN and others)</option></select></label>
+      <label class="mute">VPN provider <select id="gvpv"><option value="">My own file from my VPN provider (WireGuard .conf or OpenVPN .ovpn)</option><option value="pia"${pia?' selected':''}>Private Internet Access (PIA)</option></select></label>
+      <div id="gvown"${pia?' hidden':''}>
+        <label class="mute">VPN provider file (WireGuard .conf or OpenVPN .ovpn)<input type="file" id="gvf" accept=".conf,.ovpn"></label>
+        <div class="mute" style="margin:4px 0 10px">${st.vpnFiles.length?'Using '+esc(st.vpnFiles.join(', ')):'No file yet.'}</div>
+      </div>
+      <div id="gvpia"${pia?'':' hidden'}>
+        <div class="mute" style="margin:2px 0 6px">Sign in with your PIA username (it starts with p, like p1234567) and password. GoatMediaStackarr makes the WireGuard connection itself, so there is no file to download.</div>
+        <label class="mute">PIA region <select id="gvrg"><option value="">Fastest from here (picked automatically)</option>${V.region?`<option value="${esc(V.region)}" selected>${esc(V.region)}</option>`:''}</select></label>
+        <div class="mute" id="gvrgm" style="font-size:13px;margin:2px 0 8px"></div>
+      </div>
+      <div id="govpn"${vType==='openvpn'||pia?'':' hidden'}><input id="gvu" placeholder="${pia?'PIA username (p1234567)':'OpenVPN username (if your provider uses one)'}" value="${esc(V.user||'')}" aria-label="VPN username"><input id="gvpw" type="password" placeholder="${V.pass?'Password saved (type to change)':pia?'PIA password':'OpenVPN password'}" aria-label="VPN password"></div>
+      <label class="mute">Port forwarding <select id="gvpf"><option value="off">Off</option><option value="pia"${V.portForward==='pia'?' selected':''}${pia?'':' hidden'}>PIA port forwarding (for qBittorrent)</option><option value="natpmp"${V.portForward==='natpmp'?' selected':''}${pia?' hidden':''}>NAT-PMP (ProtonVPN and others)</option></select></label>
     </div>
     <div class="row" style="margin-top:12px"><button class="primary" id="gva">${ic('check')}Save and apply</button><span class="mute">Restarts the VPN and the download apps.</span></div>
     <div class="err" id="gve"></div>
@@ -2498,11 +2506,23 @@ async function goatView(){
   if(wiring){const again=()=>{if(tab!=='goat')return;const a=document.activeElement;if(a&&a.closest&&a.closest('#m')&&/^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)){goatPoll=setTimeout(again,8000);return}goatQuiet=true;goatView()};goatPoll=setTimeout(again,8000)}
   const busy=(b,t)=>{b.disabled=true;b.dataset.t=b.innerHTML;b.textContent=t};
   const idle=b=>{b.disabled=false;b.innerHTML=b.dataset.t};
-  $('#gvon').onchange=e=>{$('#gvset').hidden=!e.target.checked};
+  $('#gvon').onchange=e=>{$('#gvset').hidden=!e.target.checked;if(e.target.checked&&$('#gvpv').value==='pia')piaLoad()};
+  // PIA: the regions come from PIA, loaded when PIA is chosen; regions with port forwarding say so.
+  let piaList=null;const piaLoad=async()=>{if(piaList)return;const sel=$('#gvrg'),msg=$('#gvrgm');msg.textContent='Loading PIA regions…';
+    try{piaList=await api('/api/goat/pia/regions');const cur=V.region||'';
+      sel.innerHTML='<option value="">Fastest from here (picked automatically)</option>'+piaList.map(r=>`<option value="${esc(r.id)}"${r.id===cur?' selected':''}>${esc(r.name)}${r.pf?' · port forwarding':''}</option>`).join('');
+      msg.textContent='Regions marked "port forwarding" let qBittorrent accept incoming connections (faster torrents). With port forwarding on, "Fastest" only picks those.'}
+    catch(x){msg.textContent=x.message}};
+  const piaShow=()=>{const on=$('#gvpv').value==='pia';$('#gvpia').hidden=!on;$('#gvown').hidden=on;$('#govpn').hidden=!(on||vType==='openvpn');
+    $('#gvu').placeholder=on?'PIA username (p1234567)':'OpenVPN username (if your provider uses one)';
+    const pf=$('#gvpf');pf.querySelector('[value=pia]').hidden=!on;pf.querySelector('[value=natpmp]').hidden=on;
+    if(on&&pf.value==='natpmp')pf.value='off';if(!on&&pf.value==='pia')pf.value='off';if(on)piaLoad()};
+  $('#gvpv').onchange=piaShow;if(pia&&vOn)piaLoad();
   $('#gvf').onchange=async e=>{const f=e.target.files[0];if(!f)return;
     try{const r=await api('/api/goat/vpn-file','POST',{name:f.name,content:await f.text()});toast('VPN file saved. Press Save and apply.','ok');$('#govpn').hidden=!(r.settings&&r.settings.vpn&&r.settings.vpn.type==='openvpn')}catch(x){$('#gve').textContent=x.message}};
   $('#gva').onclick=async e=>{const b=e.currentTarget;$('#gve').textContent='';busy(b,'Applying… (up to a minute)');
-    try{const vpnS={enabled:$('#gvon').checked,apps:[...document.querySelectorAll('[data-va]')].filter(x=>x.checked).map(x=>x.dataset.va),portForward:$('#gvpf').value};
+    try{const vpnS={enabled:$('#gvon').checked,apps:[...document.querySelectorAll('[data-va]')].filter(x=>x.checked).map(x=>x.dataset.va),portForward:$('#gvpf').value,provider:$('#gvpv').value};
+      if(vpnS.provider==='pia'){vpnS.region=$('#gvrg').value;if(vpnS.enabled&&!$('#gvu').value.trim()){idle(b);$('#gve').textContent='Enter your PIA username.';return}}
       if($('#gvu'))vpnS.user=$('#gvu').value.trim();if($('#gvpw')&&$('#gvpw').value)vpnS.pass=$('#gvpw').value;
       await api('/api/goat/settings','POST',{vpn:vpnS});await api('/api/goat/apply-vpn','POST',{});toast('VPN settings applied','ok');setTimeout(()=>tab==='goat'&&goatView(),4000)}
     catch(x){$('#gve').textContent=x.message;idle(b)}};

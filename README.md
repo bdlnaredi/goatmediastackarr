@@ -161,20 +161,24 @@ Only the apps that need it use the VPN. By default those are qBittorrent, SABnzb
 2. Download a WireGuard `.conf` (or OpenVPN `.ovpn`) file from your VPN provider and put it in `appdata/goatmediastackarr/vpn/`.
 3. For OpenVPN, set **VPN type** to `openvpn`, plus **VPN username** and **VPN password** if your provider uses them.
 
+**Private Internet Access (PIA)** needs no file. On the Stack page, under VPN, choose **Private Internet Access (PIA)**, enter your PIA username (it starts with p, like `p1234567`) and password, pick a region or leave it on *Fastest*, and press **Save and apply**. GoatMediaStackarr signs in to PIA, registers a new WireGuard key on the region's server and connects, the same way PIA's own Linux scripts do; it does it again on every reconnect. In the template: `VPN_PROVIDER=pia`, `VPN_USER`, `VPN_PASS` and optionally `VPN_REGION` (a region id like `swiss` or `ca_toronto`).
+
 **Kill switch.** The VPN apps are blocked from the internet before they even start, and they stay blocked whenever the tunnel is down. They never fall back to your home connection. They can still talk to the other apps inside the container, so Sonarr can always tell qBittorrent what to download.
 
 **DNS** for the VPN apps goes through the tunnel too, which also gets around ISP blocks on indexer sites.
 
-**Port forwarding.** For ProtonVPN and other NAT-PMP providers, set `VPN_PORT_FORWARD=natpmp`. The forwarded port is set in qBittorrent automatically.
+**Port forwarding.** For ProtonVPN and other NAT-PMP providers, set `VPN_PORT_FORWARD=natpmp`. For PIA, choose *PIA port forwarding* (`VPN_PORT_FORWARD=pia`); PIA only allows it in some regions (they are marked in the list, and *Fastest* then picks only those), and it is renewed every 15 minutes. Either way the forwarded port is set in qBittorrent automatically.
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `VPN_ENABLED` | `false` | Turn the VPN on |
-| `VPN_TYPE` | `wireguard` | `wireguard` or `openvpn` |
-| `VPN_USER`, `VPN_PASS` | | OpenVPN sign-in, if needed |
+| `VPN_PROVIDER` | | `pia` for Private Internet Access (no file needed); empty uses your file |
+| `VPN_REGION` | fastest | PIA region id, like `swiss`, `uk_london` or `ca_toronto` |
+| `VPN_TYPE` | `wireguard` | `wireguard` or `openvpn` (PIA always uses WireGuard) |
+| `VPN_USER`, `VPN_PASS` | | PIA sign-in, or OpenVPN sign-in if needed |
 | `VPN_APPS` | `qbittorrent,sabnzbd,prowlarr` | Which apps use the VPN |
 | `VPN_DNS` | from the VPN file | DNS server used through the tunnel |
-| `VPN_PORT_FORWARD` | `off` | `natpmp` for ProtonVPN-style port forwarding |
+| `VPN_PORT_FORWARD` | `off` | `pia` for PIA, `natpmp` for ProtonVPN-style port forwarding |
 | `VPN_PF_GATEWAY` | `10.2.0.1` | NAT-PMP gateway inside the tunnel |
 
 Unraid 7 includes WireGuard. If your server's kernel does not, use an OpenVPN file instead.
@@ -184,7 +188,7 @@ Unraid 7 includes WireGuard. If your server's kernel does not, use an OpenVPN fi
 Admins get a **Stack** page (`/stack`) for everything about the container itself:
 
 - **Setup checklist** on first start: connections, VPN, indexers, usenet, Plex.
-- **VPN**: on or off, upload your provider's file, pick which apps use it, OpenVPN login, port forwarding, **Save and apply**, and a **Leak test** that compares the VPN apps' address with your server's own.
+- **VPN**: on or off, Private Internet Access (PIA) with a region list or upload your provider's file, pick which apps use it, OpenVPN login, port forwarding, **Save and apply**, and a **Leak test** that compares the VPN apps' address with your server's own.
 - **Apps**: each engine's health, its own page, and a **Restart** button.
 - **Logins made for you**: the Jellyfin admin and qBittorrent passwords.
 - **Plex**: link the built-in Plex with a claim code.
