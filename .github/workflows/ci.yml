@@ -33,7 +33,7 @@ jobs:
       - name: VPN kill switch with a real WireGuard tunnel
         run: |
           sudo apt-get install -y -qq wireguard-tools >/dev/null
-          sudo bash test/vpn-wireguard.sh
+          sudo GITHUB_ACTIONS=1 bash test/vpn-wireguard.sh
 
   image:
     name: image (${{ matrix.arch }})

@@ -10,7 +10,7 @@ set -u
 HERE=$(cd "$(dirname "$0")/.." && pwd)
 pass=0; fail=0
 ok() { echo "  ok   - $1"; pass=$((pass+1)); }
-bad() { echo "  FAIL - $1"; fail=$((fail+1)); }
+bad() { echo "  FAIL - $1"; [ -n "${GITHUB_ACTIONS:-}" ] && echo "::error title=WireGuard test::$1"; fail=$((fail+1)); }
 expect() { [ "$2" = "$3" ] && ok "$1" || bad "$1 (expected '$3', got '$2')"; }
 
 cleanup() { for n in box srv; do ip netns pids $n 2>/dev/null | xargs -r kill 2>/dev/null; ip netns del $n 2>/dev/null; done; }
@@ -64,11 +64,14 @@ expect "root uses the normal connection" "$(get)" "10.0.0.2"
 n=$("${BOX[@]}" "${AS_VPN[@]}" sh -c 'curl -s --max-time 10 http://203.0.113.10/ -o /dev/null -w "%{http_code}"; for i in 1 2 3 4 5; do curl -s --max-time 4 http://203.0.113.10/ >/dev/null; done; echo')
 expect "repeated requests through the tunnel work" "$n" "200"
 read -r rx tx < <("${BOX[@]}" wg show goatvpn transfer | awk '{print $2, $3}')
-echo "  | tunnel bytes: received $rx, sent $tx"
+echo "  | tunnel bytes: received $rx, sent $tx"; [ -n "${GITHUB_ACTIONS:-}" ] && echo "::notice title=WireGuard bytes::received $rx, sent $tx"
 [ "${tx:-0}" -lt 2000000 ] && ok "no packet loop (sent $tx bytes)" || bad "packet loop: $tx bytes sent for a few small requests"
 [ "${rx:-0}" -gt 1000 ] && ok "answers come back through the tunnel (received $rx bytes)" || bad "nothing comes back through the tunnel (received $rx bytes)"
-"${BOX[@]}" iptables -t mangle -L GOAT_KILL -v -n | sed 's/^/  | /'
-"${BOX[@]}" ip rule | sed 's/^/  | /'
+note() { [ -n "${GITHUB_ACTIONS:-}" ] && echo "::notice title=$1::$(tr '\n' ';' | tr -s ' ')"; }
+"${BOX[@]}" iptables -t mangle -L GOAT_KILL -v -n | tee >(note "GOAT_KILL counters") | sed 's/^/  | /'
+"${BOX[@]}" iptables -t nat -L GOAT_POST -v -n | tee >(note "GOAT_POST counters") | sed 's/^/  | /'
+"${BOX[@]}" ip rule | tee >(note "ip rules") | sed 's/^/  | /'
+"${BOX[@]}" wg show goatvpn | tee >(note "wg show") | sed 's/^/  | /'
 
 echo "Tunnel down:"
 "${BOX[@]}" wg-quick down /run/goat/goatvpn.conf >/dev/null 2>&1
