@@ -30,6 +30,10 @@ jobs:
         run: shellcheck -S error -s bash goat/*.sh test/*.sh
       - name: VPN kill switch (real network namespaces)
         run: sudo bash test/vpn-killswitch.sh
+      - name: VPN kill switch with a real WireGuard tunnel
+        run: |
+          sudo apt-get install -y -qq wireguard-tools >/dev/null
+          sudo bash test/vpn-wireguard.sh
 
   image:
     name: image (${{ matrix.arch }})
