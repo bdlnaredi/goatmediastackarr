@@ -9,7 +9,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function boot(env = {}, dir = tmp()) {
   const port = await free(), log = [];
   const child = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
-    env: { ...process.env, DATA_DIR: dir, PORT: String(port), TRUST_PROXY: '', SETUP_TOKEN: '', DEMO: '', ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
+    env: { ...process.env, DATA_DIR: dir, PORT: String(port), TRUST_PROXY: '', SETUP_TOKEN: '', DEMO: '', RELEASES_URL: 'http://127.0.0.1:9/no-github-in-tests', ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
   child.stdout.on('data', d => log.push(String(d))); child.stderr.on('data', d => log.push(String(d)));
   const base = `http://127.0.0.1:${port}`;
   for (let i = 0; i < 80 && child.exitCode === null; i++) { try { if ((await fetch(base + '/api/health')).ok) break; } catch {} await sleep(100); }
