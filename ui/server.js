@@ -38,7 +38,7 @@ if (fs.existsSync(FILE)) {
 }
 const defaults = d => {
   d.users = d.users || []; d.services = d.services || []; d.requests = d.requests || []; d.log = d.log || []; d.history = d.history || [];
-  d.seedRules = d.seedRules || []; d.reports = d.reports || []; d.statusLinks = d.statusLinks || []; d.settings = d.settings || {};
+  d.seedRules = d.seedRules || []; d.reports = d.reports || []; d.statusLinks = d.statusLinks || []; d.settings = d.settings || {}; d.sites = d.sites || [];
   return d;
 };
 // Turns the on-disk form (secrets encrypted) into the in-memory form, and upgrades the old single alert channel.
@@ -52,12 +52,14 @@ const decryptAll = d => {
     delete d.alerts.type; delete d.alerts.target; delete d.alerts.token; delete d.alerts.chat;
   }
   d.users.forEach(u => { if (u.totp && u.totp.secret) u.totp.secret = dec(u.totp.secret); });
+  (d.sites || []).forEach(x => { if (typeof x.jar === 'string') { try { x.jar = JSON.parse(dec(x.jar) || '{}'); } catch { x.jar = {}; } } x.jar = x.jar || {}; });
   return d;
 };
 const dehydrate = d => JSON.stringify({ ...d,
   services: d.services.map(s => ({ ...s, apiKey: enc(s.apiKey), pass: enc(s.pass) })),
   alerts: d.alerts && { ...d.alerts, channels: (d.alerts.channels || []).map(c => ({ ...c, token: enc(c.token), pass: enc(c.pass) })) },
-  users: d.users.map(u => u.totp ? { ...u, totp: { ...u.totp, secret: enc(u.totp.secret) } } : u) }, null, 1);
+  users: d.users.map(u => u.totp ? { ...u, totp: { ...u.totp, secret: enc(u.totp.secret) } } : u),
+  sites: (d.sites || []).map(x => ({ ...x, jar: enc(JSON.stringify(x.jar || {})) })) }, null, 1);
 db = decryptAll(defaults(db));
 let lastBak = 0;
 const save = () => {
@@ -580,6 +582,101 @@ const uptPct = id => { const a = uptime[id] || [], n = a.reduce((s, e) => s + e.
 function uptSave() { if (DEMO) return; try { fs.writeFileSync(UPF + '.tmp', JSON.stringify(uptime)); fs.renameSync(UPF + '.tmp', UPF); } catch {} }
 if (DEMO) for (const x of db.services) uptime[x.id] = Array.from({ length: UPN }, (_, i) => ({ b: Math.floor(Date.now() / UPB) * UPB - (UPN - 1 - i) * UPB, n: 12, ok: (x.type === 'prowlarr' && i > 30 && i < 34) || (x.type === 'readarr' && i === 12) ? 5 : 12 }));
 if (DEMO) db.statusLinks.push({ id: 'demo-link', name: 'Living room tablet', hash: th('demo-status-page-token-0001'), at: Date.now(), used: 0, scopes: { apps: true, traffic: true, downloads: true, upcoming: true, watching: true } });
+// ---------- Tracker sites: browsed through GoatMediaStackarr, with or without the VPN (lib/sites.js) ----------
+const sitesLib = require('./lib/sites');
+const siteTokens = new Map(); // token -> { site, uid, exp, last }
+const SITEFETCH = process.env.SITEFETCH_URL || 'http://127.0.0.1:8899';
+const pubSite = x => ({ id: x.id, name: x.name, url: x.url, vpn: !!x.vpn, category: x.category || '', signedIn: Object.values(x.jar || {}).some(c => Object.keys(c).length > 0) });
+const qbFirst = () => db.services.find(x => x.type === 'qbittorrent' && x.managed) || db.services.find(x => x.type === 'qbittorrent');
+const privateHost = async host => {
+  if (/^(1|true|yes)$/i.test(process.env.SITES_ALLOW_PRIVATE || '')) return false;
+  const h = String(host).replace(/^\[|\]$/g, '').replace(/:\d+$/, '').toLowerCase();
+  if (h === 'localhost' || h.endsWith('.local') || h.endsWith('.internal')) return true;
+  let ip = h; if (!require('net').isIP(h)) { try { ip = (await require('dns').promises.lookup(h)).address; } catch { return false; } }
+  return /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|0\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|::1$|f[cd]|fe80)/i.test(ip);
+};
+// One request to a tracker site, straight or through the VPN helper. The body comes back whole (pages and pictures).
+async function siteFetch(site, url, { method = 'GET', headers = {}, body } = {}) {
+  if (site.vpn) {
+    if (!GOAT_MANAGED && !process.env.SITEFETCH_URL) throw Object.assign(new Error('Going through the VPN needs the GoatMediaStackarr container.'), { plain: true });
+    const v = goatRead(path.join(GOAT_RUN, 'vpn.json'));
+    if (GOAT_MANAGED && (!v || !v.enabled)) throw Object.assign(new Error('The VPN is off. Turn it on on the Stack page, or change this site to go without the VPN.'), { plain: true });
+    let r;
+    try { r = await fetch(SITEFETCH + '/fetch', { method: 'POST', signal: AbortSignal.timeout(50000), body: body || undefined,
+      headers: { 'X-Goat-Url': url, 'X-Goat-Method': method, 'X-Goat-Headers': Buffer.from(JSON.stringify(headers)).toString('base64') } }); }
+    catch { throw Object.assign(new Error('The VPN is not connected right now, so the site cannot be reached. Look at the VPN on the Stack page.'), { plain: true }); }
+    if (r.status !== 200) throw Object.assign(new Error('The site could not be reached through the VPN (' + (await r.text()).slice(0, 120) + ').'), { plain: true });
+    let h = {}; try { h = JSON.parse(Buffer.from(r.headers.get('x-goat-headers') || '', 'base64').toString()); } catch {}
+    return { status: +r.headers.get('x-goat-status') || 502, headers: h, buf: Buffer.from(await r.arrayBuffer()) };
+  }
+  let r; try { r = await fetch(url, { method, headers, body: body || undefined, redirect: 'manual', signal: AbortSignal.timeout(45000) }); }
+  catch (e) { throw Object.assign(new Error('The site could not be reached (' + ((e.cause && e.cause.code) || e.message) + ').'), { plain: true }); }
+  const h = {}; r.headers.forEach((v, k) => { if (k !== 'set-cookie') h[k] = v; }); h['set-cookie'] = r.headers.getSetCookie ? r.headers.getSetCookie() : [];
+  return { status: r.status, headers: h, buf: Buffer.from(await r.arrayBuffer()) };
+}
+const rawBody = (req, max = 20e6) => new Promise((ok, no) => { const c = []; let n = 0; req.on('data', x => { n += x.length; if (n > max) { req.destroy(); no(new Error('too big')); } else c.push(x); }); req.on('end', () => ok(Buffer.concat(c))); req.on('error', no); });
+const siteOpen = (site, uid, to) => {
+  const token = crypto.randomBytes(24).toString('base64url');
+  siteTokens.set(token, { site: site.id, uid, exp: Date.now() + 12 * 3600e3, last: '' });
+  for (const [k, v] of siteTokens) if (v.exp < Date.now()) siteTokens.delete(k);
+  return sitesLib.prox(to || site.url, site.url, '/site/' + token);
+};
+// Adds a magnet link or a .torrent file to qBittorrent, into the site's category.
+async function siteAdd(site, what) {
+  const s = qbFirst(); if (!s) throw Object.assign(new Error('There is no qBittorrent to add it to.'), { plain: true });
+  const opts = site && site.category ? { category: site.category } : {};
+  if (what.magnet) { const out = await qb(s, '/api/v2/torrents/add', { urls: what.magnet, ...opts }); if (String(out).trim() === 'Fails.') throw Object.assign(new Error('qBittorrent did not accept that magnet link.'), { plain: true }); }
+  else await qbUpload(s, opts, [{ name: String(what.name || 'download.torrent').replace(/[^\w.\- ]/g, '_').slice(0, 120), buf: what.buf }]);
+  audit('GoatMediaStackarr', 'Added a download from a site', `${site ? site.name : 'Tracker search'}: ${String(what.name || what.magnet || '').slice(0, 120)}`);
+  feed('@admins', 'download', 'Added to downloads', `${String(what.name || 'A magnet link').slice(0, 100)}${site ? ' from ' + site.name : ''}`, 'downloads');
+}
+async function siteHandle(req, res, p) {
+  const send2 = (code, html) => { res.writeHead(code, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Security-Policy': 'sandbox allow-scripts', 'Referrer-Policy': 'no-referrer' }); res.end(html); };
+  const m = /^\/site\/([\w-]{20,80})\/(.*)$/.exec(p), tok = m && siteTokens.get(m[1]);
+  const site = tok && tok.exp > Date.now() && db.sites.find(x => x.id === tok.site), who = tok && userOf(tok.uid);
+  if (!site || !who || who.role !== 'admin') return send2(403, sitesLib.donePage(false, 'This link has expired', 'Open the site again from GoatMediaStackarr (Trackers).'));
+  tok.exp = Date.now() + 12 * 3600e3;
+  const pre = '/site/' + m[1], q = new URL(req.url, 'http://x');
+  try {
+    if (m[2] === '_grab') { const mg = q.searchParams.get('m') || ''; if (!/^magnet:\?/i.test(mg)) return send2(400, sitesLib.donePage(false, 'Not a magnet link', ''));
+      await siteAdd(site, { magnet: mg, name: (/[?&]dn=([^&]+)/.exec(mg) || [])[1] ? decodeURIComponent((/[?&]dn=([^&]+)/.exec(mg))[1].replace(/\+/g, ' ')) : '' });
+      return send2(200, sitesLib.donePage(true, 'Added to qBittorrent', 'The magnet link is downloading' + (site.category ? ` in the ${site.category} category.` : '.'))); }
+    const target = sitesLib.real(m[2], q.search);
+    if (!target) return send2(404, sitesLib.donePage(false, 'Not found', ''));
+    if (await privateHost(target.host)) return send2(403, sitesLib.donePage(false, 'Not allowed', 'The site browser only opens sites on the internet.'));
+    const hd = { 'user-agent': String(req.headers['user-agent'] || 'Mozilla/5.0').slice(0, 300), accept: String(req.headers.accept || '*/*').slice(0, 300), 'accept-language': String(req.headers['accept-language'] || 'en').slice(0, 100) };
+    const ck = sitesLib.cookieHeader(site.jar, target.hostname, target.pathname); if (ck) hd.cookie = ck;
+    if (tok.last) hd.referer = tok.last;
+    let body;
+    if (!['GET', 'HEAD'].includes(req.method)) { body = await rawBody(req); if (req.headers['content-type']) hd['content-type'] = String(req.headers['content-type']); hd.origin = target.origin; }
+    const r = await siteFetch(site, target.href, { method: req.method, headers: hd, body });
+    if (sitesLib.store(site.jar, target.hostname, r.headers['set-cookie'])) save();
+    if (r.status >= 300 && r.status < 400 && r.headers.location) {
+      const loc = String(r.headers.location);
+      if (/^magnet:/i.test(loc)) { await siteAdd(site, { magnet: loc }); return send2(200, sitesLib.donePage(true, 'Added to qBittorrent', 'The magnet link is downloading.')); }
+      res.writeHead(302, { Location: sitesLib.prox(loc, target.href, pre), 'Cache-Control': 'no-store' }); return res.end();
+    }
+    const ct = String(r.headers['content-type'] || '');
+    if (r.status === 200 && sitesLib.isTorrent(r.headers, target.pathname, r.buf)) {
+      const fn = (/filename\*?=(?:UTF-8'')?"?([^";]+)/i.exec(r.headers['content-disposition'] || '') || [])[1] || decodeURIComponent(target.pathname.split('/').pop() || 'download.torrent');
+      await siteAdd(site, { buf: r.buf, name: fn });
+      return send2(200, sitesLib.donePage(true, 'Added to qBittorrent', `${fn} is downloading` + (site.category ? ` in the ${site.category} category.` : '.')));
+    }
+    let out = r.buf, type = ct || 'application/octet-stream';
+    const cs = (/charset=([\w-]+)/i.exec(ct) || [])[1] || 'utf-8', text = () => { try { return new TextDecoder(cs).decode(r.buf); } catch { return r.buf.toString('utf8'); } };
+    if (/text\/html|application\/xhtml/i.test(ct)) {
+      if (r.status === 200) tok.last = target.href;
+      out = Buffer.from(sitesLib.rwHtml(text(), target.href, pre, `${site.name} · ${site.vpn ? 'through the VPN' : 'without the VPN'}`)); type = 'text/html; charset=utf-8';
+    } else if (/text\/css/i.test(ct)) { out = Buffer.from(sitesLib.rwCss(text(), target.href, pre)); type = 'text/css; charset=utf-8'; }
+    const h = { 'Content-Type': type, 'Content-Length': out.length, 'Cache-Control': /^(image|font)\//.test(ct) ? 'private, max-age=3600' : 'no-store',
+      'Content-Security-Policy': 'sandbox allow-forms allow-scripts allow-popups allow-popups-to-escape-sandbox allow-modals', 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff' };
+    if (r.headers['content-disposition']) h['Content-Disposition'] = r.headers['content-disposition'];
+    res.writeHead(r.status, h); return res.end(req.method === 'HEAD' ? undefined : out);
+  } catch (e) {
+    return send2(502, sitesLib.donePage(false, 'Could not open this page', e.plain ? e.message : 'Something went wrong: ' + String(e.message || e).slice(0, 160)));
+  }
+}
+
 async function qbUpload(s, fields, files) {
   await qb(s, '/api/v2/app/version');
   const u = s.url.replace(/\/+$/, ''), fd = new FormData();
@@ -1128,6 +1225,7 @@ const goatServer = http.createServer(async (req, res) => {
     res.writeHead(200, { 'Content-Type': WPM[n.split('.').pop().toLowerCase()], 'Cache-Control': 'public, max-age=86400', 'X-Content-Type-Options': 'nosniff' });
     return fs.createReadStream(path.join(WPD, n)).pipe(res);
   }
+  if (p.startsWith('/site/')) return siteHandle(req, res, p).catch(() => { if (!res.headersSent) { res.writeHead(500); res.end(); } });
   if (p.startsWith('/engines/')) {
     const t = goatTarget(req.url);
     if (!t) return send(res, 404, { error: 'Not found' });
@@ -2609,6 +2707,56 @@ const goatServer = http.createServer(async (req, res) => {
       audit(me.name, 'Ended a Plex stream', s.name); return send(res, 200, {});
     }
     if (p === '/api/users' && m === 'GET') return send(res, 200, db.users.map(pubUser));
+    // ---------- Tracker sites (the site browser) and searching trackers through Prowlarr; admins only ----------
+    if (p === '/api/sites' && m === 'GET') return send(res, 200, db.sites.map(pubSite));
+    if ((p === '/api/sites' && m === 'POST') || ((r = p.match(/^\/api\/sites\/(\w+)$/)) && m === 'PUT')) {
+      const b = await readBody(req), x = r ? db.sites.find(y => y.id === r[1]) : { id: uid(), jar: {} };
+      if (!x) return send(res, 404, { error: 'Not found' });
+      let u = String(b.url == null ? x.url || '' : b.url).trim(); if (u && !/^https?:\/\//i.test(u)) u = 'https://' + u;
+      let url; try { url = new URL(u); } catch { return send(res, 400, { error: 'Enter the site address, like https://iptorrents.com' }); }
+      if (!/^https?:$/.test(url.protocol)) return send(res, 400, { error: 'Enter the site address, like https://iptorrents.com' });
+      if (await privateHost(url.host)) return send(res, 400, { error: 'The site browser only opens sites on the internet.' });
+      x.url = url.href; x.name = cut(String(b.name == null ? x.name || '' : b.name).trim() || url.hostname.replace(/^www\./, ''), 60);
+      if ('vpn' in b || !r) x.vpn = b.vpn !== false; if ('category' in b) x.category = cut(String(b.category || '').trim(), 100);
+      if (!r) db.sites.push(x); save(); audit(me.name, r ? 'Changed a tracker site' : 'Added a tracker site', `${x.name}${x.vpn ? ' (through the VPN)' : ''}`); return send(res, 200, pubSite(x));
+    }
+    if ((r = p.match(/^\/api\/sites\/(\w+)$/)) && m === 'DELETE') { const x = db.sites.find(y => y.id === r[1]); db.sites = db.sites.filter(y => y.id !== r[1]); save(); if (x) audit(me.name, 'Removed a tracker site', x.name); return send(res, 200, {}); }
+    if ((r = p.match(/^\/api\/sites\/(\w+)\/(open|signout)$/)) && m === 'POST') {
+      const x = db.sites.find(y => y.id === r[1]); if (!x) return send(res, 404, { error: 'Not found' });
+      if (r[2] === 'signout') { x.jar = {}; save(); return send(res, 200, pubSite(x)); }
+      const b = await readBody(req); return send(res, 200, { url: siteOpen(x, me.id, /^https?:\/\//i.test(b.to || '') ? String(b.to) : '') });
+    }
+    // A tracker page from a search result: opened in the site browser when one of your sites is that tracker.
+    if (p === '/api/sites/open-url' && m === 'POST') {
+      const b = await readBody(req); let u; try { u = new URL(String(b.url || '')); } catch { return send(res, 400, { error: 'Bad address' }); }
+      const host = u.hostname.replace(/^www\./, ''), x = db.sites.find(y => { try { const h = new URL(y.url).hostname.replace(/^www\./, ''); return h === host || host.endsWith('.' + h) || h.endsWith('.' + host); } catch { return false; } });
+      return send(res, 200, x ? { url: siteOpen(x, me.id, u.href), site: x.name } : { url: u.href, direct: true });
+    }
+    if (p === '/api/trackers/search' && m === 'GET') {
+      const q = new URL(req.url, 'http://x').searchParams, term = cut(q.get('q') || '', 200).trim(), pr = db.services.find(x => x.type === 'prowlarr' && x.managed) || db.services.find(x => x.type === 'prowlarr');
+      if (!pr) return send(res, 400, { error: 'Searching trackers needs Prowlarr, with your trackers added to it (Indexers).' });
+      if (!term) return send(res, 400, { error: 'Type what to look for' });
+      const cat = { movie: '&categories=2000', tv: '&categories=5000' }[q.get('type')] || '', ix = /^\d+$/.test(q.get('indexer') || '') ? '&indexerIds=' + q.get('indexer') : '';
+      const l = await ext(pr, `/api/v1/search?query=${encodeURIComponent(term)}&type=search&limit=100&offset=0${cat}${ix}`);
+      return send(res, 200, (Array.isArray(l) ? l : []).sort((a, b) => (b.seeders || 0) - (a.seeders || 0)).slice(0, 100).map(x => {
+        if (grabCache.size > 600) grabCache.clear(); const id = uid(); grabCache.set(id, { u: x.magnetUrl || x.downloadUrl, title: x.title, indexer: x.indexer });
+        return { id, title: cut(x.title, 300), size: x.size || 0, seeders: x.seeders || 0, leechers: x.leechers || 0, indexer: cut(x.indexer, 60), indexerId: x.indexerId || 0,
+          date: x.publishDate || '', info: /^https?:\/\//.test(x.infoUrl || '') ? String(x.infoUrl).slice(0, 600) : '', poster: /^https?:\/\//.test(x.posterUrl || '') ? String(x.posterUrl).slice(0, 600) : '', imdb: x.imdbId ? 'tt' + String(x.imdbId).replace(/^tt/, '').padStart(7, '0') : '' };
+      }));
+    }
+    if (p === '/api/trackers/grab' && m === 'POST') {
+      const b = await readBody(req), g = grabCache.get(String(b.id || '')); if (!g || !g.u) return send(res, 400, { error: 'Search again; that result is too old.' });
+      const site = { name: g.indexer || 'Tracker search', category: cut(String(b.category || '').trim(), 100) };
+      if (/^magnet:/i.test(g.u)) await siteAdd(site, { magnet: g.u, name: g.title });
+      else {
+        // Prowlarr's own download link: Prowlarr fetches the file from the tracker (through the VPN when Prowlarr uses it).
+        const x = await fetch(g.u, { redirect: 'manual', signal: AbortSignal.timeout(45000) });
+        const loc = x.headers.get('location') || '';
+        if (x.status >= 300 && x.status < 400 && /^magnet:/i.test(loc)) await siteAdd(site, { magnet: loc, name: g.title });
+        else { const buf = Buffer.from(await x.arrayBuffer()); if (!x.ok || buf[0] !== 0x64) return send(res, 502, { error: 'The tracker did not send a torrent file (' + x.status + ').' }); await siteAdd(site, { buf, name: g.title + '.torrent' }); }
+      }
+      return send(res, 200, {});
+    }
     // Streaming this month for everyone (profiles and media-server accounts that match no profile), and the defaults.
     if (p === '/api/streaming' && m === 'GET') {
       const cfg = streamCfg(), mk = new URL(req.url, 'http://x').searchParams.get('month') || monthKey(), month = (db.streamUse || {})[mk] || {};

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Trackers (web page and app, admins): search all your Prowlarr trackers at once and send a result to qBittorrent; and browse tracker websites (IPTorrents, TorrentLeech, TorrentDay…) inside GoatMediaStackarr, each through the VPN or not (your choice when adding it), signed in once, with every download or magnet button going straight to qBittorrent. A small helper inside the container fetches the VPN sites, so they use the tunnel and stop when it is down.
 - Android app notifications: real phone notifications, also when the app is closed (it looks every 15, 30 or 60 minutes, and every 30 seconds while open; no Google services needed). For everyone: ready to watch, request approved or declined, a download that failed, streaming limits, new versions. For admins also: new requests, problem reports, server problems (an app stops answering, the VPN drops, the array is nearly full) and, if wanted, every finished download. Each kind can be switched off in Settings → Notifications, with a test button; tapping one opens its page. Home has a bell with the number of new ones, and a list of all of them.
 - Unraid: the image carries Unraid's icon label, so the Docker tab can pick up the current icon.
 - Update notices: when a newer release is out, the phone app says so on Home (with a button to get the new app) and in Settings; admins are also told, in the app and on the web page, to update the container (Unraid's Docker tab, Update). Checked against GitHub's latest release at most every 6 hours; "Later" or "Got it" hides it until the next version.

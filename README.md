@@ -92,6 +92,15 @@ A real Android app (not a web page in a frame), with its own design and eight th
 
 **Install:** download `goatmediastackarr.apk` from the [latest release](https://github.com/bdlnaredi/goatmediastackarr/releases/latest) on your phone and open it (Android asks once to allow installing from your browser). Newer versions install over older ones. Open the app and enter the same address you use in the browser, for example `192.168.1.10:2806` at home. Android 8 or newer.
 
+## Trackers: search them, browse their websites
+
+Under **Trackers** (admins, web page and app):
+
+- **Search** every tracker you added to Prowlarr (IPTorrents, TorrentLeech, TorrentDay…) at once, most seeders first. **Download** sends a result to qBittorrent (into the category you pick); **Page** opens the tracker's own page for it.
+- **Tracker websites**: add a site's address and choose **through the VPN** (the site sees the VPN's address, like qBittorrent; if the VPN is down the site does not open) or **without the VPN**. Open it and you browse the real site, with its pictures and descriptions, in a new tab (in the app: your phone's browser). Sign in once; GoatMediaStackarr keeps the sign-in on the server. Clicking a download or magnet button on the site adds it to qBittorrent, into the site's category.
+
+The site's pages run in a sandbox, apart from GoatMediaStackarr, so a site's own scripts cannot act as you. Sites that check you with a puzzle (Cloudflare and similar) may not open this way; for those, Prowlarr with FlareSolverr still searches them.
+
 ## Using it from outside your home
 
 GoatMediaStackarr's own page (port 2806) is the way in to everything except Jellyfin, Seerr and Plex: Sonarr, Radarr, Lidarr, Prowlarr, Bazarr, qBittorrent, SABnzbd and Tautulli open at `/engines/<app>/` on the same address, signed in through GoatMediaStackarr (admins only).

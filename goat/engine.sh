@@ -8,7 +8,7 @@ name="$1"
 PUID="${PUID:-99}"; PGID="${PGID:-100}"; GID="${GOAT_VPN_GID:-9000}"
 in_list() { [[ ",${2// /}," == *",$1,"* ]]; }
 
-if [[ "$name" != ui && "$name" != wire ]] && ! in_list "$name" "${GOAT_ENGINES,,}"; then
+if [[ "$name" != ui && "$name" != wire && "$name" != sitefetch ]] && ! in_list "$name" "${GOAT_ENGINES,,}"; then
   echo "[goat] $name is turned off (GOAT_ENGINES)."
   exec sleep infinity
 fi
@@ -17,6 +17,8 @@ groups="$PGID"
 vpn_list="${VPN_APPS,,}"
 # FlareSolverr visits indexer sites on Prowlarr's behalf, so it uses the VPN whenever Prowlarr does.
 in_list prowlarr "$vpn_list" && vpn_list="$vpn_list,flaresolverr"
+# The site browser's helper always uses the VPN when the VPN is on (sites added "without the VPN" do not use it at all).
+vpn_list="$vpn_list,sitefetch"
 if [[ "${VPN_ENABLED,,}" == "true" ]] && in_list "$name" "$vpn_list"; then
   if [[ ! -f /run/goat/killswitch-ok ]]; then
     echo "[goat] Not starting $name: the VPN kill switch is not active, and $name must only use the VPN."
@@ -100,6 +102,9 @@ case "$name" in
     cd /opt/goat/ui || exit 1
     export HOME=/config/ui PORT=2806 DATA_DIR=/config/ui GOAT_MANAGED=/config/goat/managed.json GOAT_RUN=/run/goat GOAT_WIRED=/config/goat/wired.json
     cmd=(/usr/local/bin/node server.js) ;;
+  sitefetch)
+    export HOME=/config/goat SITEFETCH_PORT=8899
+    cmd=(/usr/local/bin/node /opt/goat/bin/sitefetch.js) ;;
   wire)
     export HOME=/config/goat
     # Connects the engines, then stays idle so s6 does not run it again until the next start.

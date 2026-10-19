@@ -27,6 +27,7 @@ import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.Hub
+import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Group
 import androidx.compose.material.icons.rounded.HealthAndSafety
 import androidx.compose.material.icons.rounded.Inbox
@@ -254,6 +255,7 @@ fun MoreScreen() {
                     if (ctx.me.goat) MenuRow(Icons.Rounded.Shield, "Stack", "VPN, apps and connections") { ctx.go("stack") }
                     MenuRow(Icons.Rounded.HealthAndSafety, "Health", "Problems the apps report, disk space") { ctx.go("health") }
                     if (has("prowlarr")) MenuRow(Icons.Rounded.TravelExplore, "Indexers", "The sites Prowlarr searches") { ctx.go("indexers") }
+                    if (has("qbittorrent")) MenuRow(Icons.Rounded.Language, "Trackers", "Search them, or browse their websites") { ctx.go("trackers") }
                     if (has("sabnzbd")) MenuRow(Icons.Rounded.Dns, "Usenet servers", "Your provider's news servers") { ctx.go("newsservers") }
                     if (has("unraid")) MenuRow(Icons.Rounded.Storage, "Unraid", "Array, disks and containers") { ctx.go("unraid") }
                     MenuRow(Icons.Rounded.Group, "Users", "Who can sign in") { ctx.go("users") }

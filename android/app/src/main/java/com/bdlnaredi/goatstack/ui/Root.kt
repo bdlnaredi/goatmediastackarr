@@ -190,6 +190,7 @@ private fun MainShell(state: AppState, me: Me, user: User) {
                     com.bdlnaredi.goatstack.ui.screens.ProfileScreen(e.arguments?.getString("uid"))
                 }
                 composable("devices") { com.bdlnaredi.goatstack.ui.screens.DevicesScreen() }
+                composable("trackers") { com.bdlnaredi.goatstack.ui.screens.TrackersScreen() }
                 composable("notifications") { com.bdlnaredi.goatstack.ui.screens.NotificationsScreen() }
                 composable(
                     "title/{type}/{id}",

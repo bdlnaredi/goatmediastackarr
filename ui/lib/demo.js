@@ -304,6 +304,7 @@ function create(opts = {}) {
     if (type === 'prowlarr') {
       const data = m === 'POST' ? await body(req) : {};
       if (sub === '/api/v1/system/status') return json(res, { version: '1.0.0.demo' });
+      if (sub === '/api/v1/search') { const t = String(q.get('query') || 'Demo'); return json(res, [['IPTorrents', 2160, 412, 9.8e9], ['TorrentLeech', 1080, 230, 4.1e9], ['TorrentDay', 720, 61, 1.9e9]].map(([ix, r, se, sz], i) => ({ guid: 'g' + i, title: `${t}.2024.${r}p.WEB-DL.DDP5.1.x265-DEMO`, indexer: ix, indexerId: i + 1, size: sz, seeders: se, leechers: Math.round(se / 7), publishDate: new Date(Date.now() - i * 86400e3).toISOString(), infoUrl: `https://${ix.toLowerCase()}.example/details.php?id=${100 + i}`, magnetUrl: `magnet:?xt=urn:btih:${String(i).repeat(40)}&dn=${encodeURIComponent(t)}` }))); }
       if (sub === '/api/v1/health') return json(res, [{ type: 'warning', source: 'IndexerStatusCheck', message: 'Indexers unavailable due to failures: Broken Tracker' }]);
       if (sub === '/api/v1/appprofile') return json(res, [{ id: 1, name: 'Standard' }]);
       if (sub === '/api/v1/indexer/schema') return json(res, PROWLARR_CATALOG.map(c => ({ id: 0, name: c.name, definitionName: c.def, implementation: 'Cardigann', protocol: 'torrent', privacy: c.privacy, language: 'en-US', description: 'A pretend tracker for the demo.', enable: false, fields: c.fields })));

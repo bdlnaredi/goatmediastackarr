@@ -668,6 +668,7 @@ const ICONS={goat:'<path d="M12 3 3 7.5l9 4.5 9-4.5L12 3zM3 12l9 4.5 9-4.5M3 16.
  dl:'<path d="M12 3v12m0 0-4-4m4 4 4-4M4 20h16"/>',
  up:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
  idx:'<path d="M4 6h16M4 12h16M4 18h10"/>',
+ trk:'<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18"/>',
  ur:'<rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/>',
  svc:'<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>',
  usr:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.5 3.5-5 6.5-5s5.7 1.5 6.5 5M16 4.5a3.5 3.5 0 0 1 0 7M18 15c2 .6 3.3 2.2 3.8 5"/>',
@@ -692,15 +693,15 @@ const ic=k=>`<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${ICONS[k]}<
 const LOGO='<img src="/icon-192.png" alt="" width="38" height="38">';
 const PAGES={dash:['',''],find:['Search','Find a show or movie and add it to Sonarr or Radarr.'],disc:['Discover','What is trending, popular and anticipated on Trakt, TMDB and TheTVDB.'],rq:['Requests','Ask for something new, or approve what others asked for.'],lib:['Library','Everything in Sonarr and Radarr, and what is still missing.'],
  wt:['Wanted','Episodes and movies you are still missing, or that could be a better quality.'],dl:['Downloads','What qBittorrent is fetching right now.'],rss:['RSS','Feeds and auto-download rules from qBittorrent.'],up:['Upcoming','Releases coming soon, and what is downloading.'],
- idx:['Indexers','Search, check, add and remove the indexers in Jackett and Prowlarr.'],mb:['Music and books','Artists and authors from Lidarr and Readarr.'],sub:['Subtitles','Episodes and movies that are missing subtitles in Bazarr.'],nzb:['Usenet','What SABnzbd is fetching, what finished, and adding NZB files.'],hl:['Health','Problems, disk space and stuck downloads across your apps.'],ur:['Unraid','Server health, disks and containers.'],stats:['Watch stats','Who watches what on Plex.'],goat:['Stack','The apps inside GoatMediaStackarr: VPN, connections, logins and restarts.'],set:['Settings','Apps, profiles, alerts, backups and how GoatMediaStackarr looks.']};
-const TABS=[['dash','Dashboard'],['find','Search'],['disc','Discover'],['rq','Requests'],['lib','Library'],['wt','Wanted'],['dl','Downloads'],['rss','RSS'],['up','Upcoming'],['idx','Indexers'],['mb','Music & books'],['sub','Subtitles'],['nzb','Usenet'],['hl','Health'],['ur','Unraid'],['stats','Stats'],['goat','Stack'],['set','Settings']];
-const TYPE_TABS={find:['sonarr','radarr'],rq:['seerr'],lib:['sonarr','radarr'],wt:['sonarr','radarr'],dl:['qbittorrent'],rss:['qbittorrent'],up:['sonarr','radarr'],idx:['jackett','prowlarr'],mb:['lidarr','readarr'],sub:['bazarr'],nzb:['sabnzbd'],ur:['unraid'],stats:['tautulli']};
+ idx:['Indexers','Search, check, add and remove the indexers in Jackett and Prowlarr.'],trk:['Trackers','Search your trackers, and browse their websites (through the VPN if you like). Downloads go straight to qBittorrent.'],mb:['Music and books','Artists and authors from Lidarr and Readarr.'],sub:['Subtitles','Episodes and movies that are missing subtitles in Bazarr.'],nzb:['Usenet','What SABnzbd is fetching, what finished, and adding NZB files.'],hl:['Health','Problems, disk space and stuck downloads across your apps.'],ur:['Unraid','Server health, disks and containers.'],stats:['Watch stats','Who watches what on Plex.'],goat:['Stack','The apps inside GoatMediaStackarr: VPN, connections, logins and restarts.'],set:['Settings','Apps, profiles, alerts, backups and how GoatMediaStackarr looks.']};
+const TABS=[['dash','Dashboard'],['find','Search'],['disc','Discover'],['rq','Requests'],['lib','Library'],['wt','Wanted'],['dl','Downloads'],['rss','RSS'],['up','Upcoming'],['idx','Indexers'],['trk','Trackers'],['mb','Music & books'],['sub','Subtitles'],['nzb','Usenet'],['hl','Health'],['ur','Unraid'],['stats','Stats'],['goat','Stack'],['set','Settings']];
+const TYPE_TABS={trk:['qbittorrent'],find:['sonarr','radarr'],rq:['seerr'],lib:['sonarr','radarr'],wt:['sonarr','radarr'],dl:['qbittorrent'],rss:['qbittorrent'],up:['sonarr','radarr'],idx:['jackett','prowlarr'],mb:['lidarr','readarr'],sub:['bazarr'],nzb:['sabnzbd'],ur:['unraid'],stats:['tautulli']};
 const PICK={sub:'bazarr',nzb:'sabnzbd',dl:'qbittorrent',rss:'qbittorrent',idx:'jackett',ur:'unraid',rq:'seerr',stats:'tautulli'};
-const visibleTabs=()=>TABS.filter(([k])=>!TYPE_TABS[k]||TYPE_TABS[k].some(t=>ofType(t).length)).filter(([k])=>k!=='disc'||Object.values(me.lists||{}).some(Boolean)).filter(([k])=>k!=='hl'||(me.role==='admin'&&services.some(s=>['sonarr','radarr','lidarr','readarr','prowlarr'].includes(s.type)))).filter(([k])=>k!=='goat'||(GOAT&&me.role==='admin'));
+const visibleTabs=()=>TABS.filter(([k])=>!TYPE_TABS[k]||TYPE_TABS[k].some(t=>ofType(t).length)).filter(([k])=>k!=='disc'||Object.values(me.lists||{}).some(Boolean)).filter(([k])=>k!=='hl'||(me.role==='admin'&&services.some(s=>['sonarr','radarr','lidarr','readarr','prowlarr'].includes(s.type)))).filter(([k])=>k!=='goat'||(GOAT&&me.role==='admin')).filter(([k])=>k!=='trk'||me.role==='admin');
 let stSub='acct';
 // ---------- Addresses: every tab and every Settings section has its own address (/downloads, /settings/apps),
 // so the browser's back button, bookmarks and links work.
-const SLUG={dash:'dashboard',find:'search',disc:'discover',rq:'requests',lib:'library',wt:'wanted',dl:'downloads',rss:'rss',up:'upcoming',idx:'indexers',mb:'music',sub:'subtitles',nzb:'usenet',hl:'health',ur:'unraid',stats:'stats',goat:'stack',set:'settings'};
+const SLUG={dash:'dashboard',find:'search',disc:'discover',rq:'requests',lib:'library',wt:'wanted',dl:'downloads',rss:'rss',up:'upcoming',idx:'indexers',trk:'trackers',mb:'music',sub:'subtitles',nzb:'usenet',hl:'health',ur:'unraid',stats:'stats',goat:'stack',set:'settings'};
 const UNSLUG=Object.fromEntries(Object.entries(SLUG).map(([k,v])=>[v,k]));
 const pathFor=()=>tab==='dash'?'/':'/'+(SLUG[tab]||tab)+(tab==='set'&&stSub&&stSub!=='acct'?'/'+encodeURIComponent(stSub):'');
 // Reads the tab (and Settings section) from the address. Returns false when the address names no page.
@@ -750,7 +751,7 @@ $('#rl').onclick=()=>{UI.rail=!UI.rail;saveUI()};$('#qs').onclick=quick;
     $('#pk2').onchange=e=>{UI['pick_'+pt]=e.target.value;saveUI();render()}}
   [].concat(timer||[]).forEach(clearInterval);liveFns=[];LIVE.subs.clear();if(tab!=='dash'&&tab!=='ur')liveStop();
   const on=document.querySelector('.nv.on');if(on&&on.scrollIntoView)on.scrollIntoView({inline:'center',block:'nearest'});
-  ({dash:dashView,find:findView,disc:discView,rq:rqView,lib:libView,wt:wtView,dl:dlView,rss:rssView,up:upView,idx:idxView,mb:mbView,sub:subView,nzb:nzbView,hl:hlView,ur:urView,stats:statsView,goat:goatView,set:setView})[tab]();
+  ({trk:trkView,dash:dashView,find:findView,disc:discView,rq:rqView,lib:libView,wt:wtView,dl:dlView,rss:rssView,up:upView,idx:idxView,mb:mbView,sub:subView,nzb:nzbView,hl:hlView,ur:urView,stats:statsView,goat:goatView,set:setView})[tab]();
   // Keep the address bar in step with what is on screen: a new history entry for each move, none for back/forward.
   {const want=pathFor();if(location.pathname!==want){if(routeQuiet)history.replaceState(null,'',want+location.search);else history.pushState(null,'',want)}routeQuiet=false;
    document.title=(tab==='dash'?'':(PAGES[tab]&&PAGES[tab][0]?PAGES[tab][0]+' · ':''))+'GoatMediaStackarr'}
@@ -2568,6 +2569,56 @@ async function nzbView(){
 }
 
 // ---------- Health (admin)
+// ---------- Trackers: search them through Prowlarr, and browse their websites inside GoatMediaStackarr ----------
+// The site browser opens in a new tab. A window is opened straight away (so it is not blocked as a pop-up) and pointed
+// at the page once the server has made its link.
+function openTab(getUrl){const w=window.open('about:blank','_blank');Promise.resolve(getUrl()).then(u=>{if(!u){w&&w.close();return}if(w){w.opener=null;w.location=u}else location.href=u}).catch(x=>{w&&w.close();toast(x.message,'bad')})}
+async function trkView(){
+  const qbS=ofType('qbittorrent')[0];
+  $('#m').innerHTML=`<div class="panel" style="margin-bottom:16px"><h3 style="margin-top:0">Search your trackers</h3>
+    <form id="tsf" class="row" style="gap:8px"><input name="q" placeholder="Movie or show, e.g. Dune 2021 2160p" style="flex:1;min-width:200px" required>
+      <select name="type" aria-label="What"><option value="">Everything</option><option value="movie">Movies</option><option value="tv">Shows</option></select><button class="primary">${ic('find')}Search</button></form>
+    <div class="row" style="margin-top:8px"><label class="mute">Download into <select id="tcat" aria-label="Category"><option value="">No category</option></select></label><span class="mute" style="font-size:13px">Searches the trackers you added to Prowlarr (Indexers). Prowlarr fetches through the VPN when it uses it.</span></div>
+    <div class="err" id="tse"></div><div id="tsr"></div></div>
+  <div class="panel"><div class="row"><h3 style="margin:0;flex:1">Tracker websites</h3></div>
+    <p class="mute">Browse a tracker's own website here: read a title's page with its pictures, then tap its download or magnet button and it goes straight to qBittorrent. You sign in to each site once; GoatMediaStackarr keeps the sign-in. Pages open in a new tab.</p>
+    <div id="tsl">${skel(2)}</div>
+    <h3>Add a website</h3><form id="taf" style="max-width:560px">
+      <input name="name" placeholder="Name, e.g. IPTorrents"><input name="url" placeholder="Address, e.g. https://iptorrents.com" required>
+      <div class="opts" role="radiogroup" aria-label="Through the VPN" style="margin:8px 0"><label class="opt on"><input type="radio" name="vpn" value="1" checked style="width:auto;min-height:0"><b>Through the VPN</b><span>The site sees the VPN's address, like qBittorrent does. If the VPN is down, the site does not open.</span></label>
+        <label class="opt"><input type="radio" name="vpn" value="0" style="width:auto;min-height:0"><b>Without the VPN</b><span>The site sees your home address. Use this if the site does not allow VPNs.</span></label></div>
+      <label class="mute">Its downloads go into <select name="category" class="tcats"><option value="">No category</option></select></label>
+      <div class="row"><button class="primary">Add website</button></div><div class="err" id="tae"></div></form></div>`;
+  $('#taf').addEventListener('change',e=>{if(e.target.name==='vpn')$('#taf').querySelectorAll('.opt').forEach(o=>o.classList.toggle('on',o.querySelector('input').checked))});
+  let cats=[];if(qbS)try{cats=(await api(`/api/qb/${qbS.id}/meta`)).categories.map(c=>c.name)}catch{}
+  const catOpts=sel=>'<option value="">No category</option>'+cats.map(c=>`<option ${c===sel?'selected':''}>${esc(c)}</option>`).join('');
+  $('#tcat').innerHTML=catOpts('');document.querySelectorAll('.tcats').forEach(x=>x.innerHTML=catOpts(''));
+  let list=[];
+  const draw=()=>{$('#tsl').innerHTML=list.map(x=>`<div class="box row" data-s="${x.id}" style="gap:8px"><div class="grow" style="min-width:200px"><b>${esc(x.name)}</b> <span class="pill ${x.vpn?'ok':''}">${x.vpn?'Through the VPN':'Without the VPN'}</span>${x.signedIn?' <span class="pill acc">Signed in</span>':''}<div class="mute" style="word-break:break-all">${esc(x.url)}${x.category?' · into '+esc(x.category):''}</div></div>
+    <button class="primary" data-op>${ic('ext')}Open</button><button data-ed>Edit</button>${x.signedIn?'<button data-so>Sign out</button>':''}<button class="danger" data-rm>Remove</button></div>`).join('')||'<p class="mute">No websites yet. Add one below.</p>'};
+  const load=async()=>{try{list=await api('/api/sites');draw()}catch(x){$('#tsl').innerHTML=`<div class="err">${esc(x.message)}</div>`}};load();
+  $('#tsl').onclick=async e=>{const row=e.target.closest('[data-s]');if(!row)return;const x=list.find(y=>y.id===row.dataset.s);
+    if(e.target.closest('[data-op]'))return openTab(async()=>(await api(`/api/sites/${x.id}/open`,'POST',{})).url);
+    if(e.target.closest('[data-rm]')){if(!confirm(`Remove ${x.name}? Its sign-in is forgotten.`))return;await api('/api/sites/'+x.id,'DELETE');return load()}
+    if(e.target.closest('[data-so]')){await api(`/api/sites/${x.id}/signout`,'POST',{});toast('Signed out of '+x.name,'ok');return load()}
+    if(e.target.closest('[data-ed]')){const o=modal(`<h2 style="margin-top:0">${esc(x.name)}</h2><form id="tef"><input name="name" value="${esc(x.name)}"><input name="url" value="${esc(x.url)}">
+      <label class="chk"><input type="checkbox" name="vpn" ${x.vpn?'checked':''}>Through the VPN</label><label class="mute">Downloads go into <select name="category">${catOpts(x.category)}</select></label>
+      <div class="err" id="tee"></div><div class="row"><button class="primary">Save</button><button type="button" data-x>Cancel</button></div></form>`);
+      o.querySelector('[data-x]').onclick=o.close;o.querySelector('#tef').onsubmit=async ev=>{ev.preventDefault();const f=ev.target;
+        try{await api('/api/sites/'+x.id,'PUT',{name:f.name.value,url:f.url.value,vpn:f.vpn.checked,category:f.category.value});o.close();load()}catch(er){o.querySelector('#tee').textContent=er.message}}}};
+  $('#taf').onsubmit=async e=>{e.preventDefault();const f=e.target;$('#tae').textContent='';
+    try{await api('/api/sites','POST',{name:f.name.value,url:f.url.value,vpn:f.vpn.value==='1',category:f.category.value});f.reset();f.querySelectorAll('.opt').forEach(o=>o.classList.toggle('on',o.querySelector('input').checked));toast('Added','ok');load()}catch(x){$('#tae').textContent=x.message}};
+  let results=[];
+  $('#tsf').onsubmit=async e=>{e.preventDefault();const f=e.target;$('#tse').textContent='';$('#tsr').innerHTML=skel(3);
+    try{results=await api(`/api/trackers/search?q=${encodeURIComponent(f.q.value)}&type=${f.type.value}`);
+      $('#tsr').innerHTML=results.length?`<div class="mute" style="margin:10px 0 4px">${results.length} found, most seeders first</div>`+results.map((x,i)=>`<div class="box row" data-r="${i}" style="gap:8px">
+        <div class="grow" style="min-width:220px"><b style="word-break:break-word;font-weight:560">${esc(x.title)}</b><div class="mute">${esc(x.indexer)} · ${fmt(x.size)} · ${x.seeders} seeding · ${x.leechers} getting${x.date?' · '+esc(new Date(x.date).toLocaleDateString()):''}</div></div>
+        ${x.info?`<button data-pg>${ic('ext')}Page</button>`:''}<button class="primary" data-dl>${ic('dl')}Download</button></div>`).join(''):'<p class="mute">Nothing found.</p>'}
+    catch(x){$('#tsr').innerHTML='';$('#tse').textContent=x.message}};
+  $('#tsr').onclick=async e=>{const row=e.target.closest('[data-r]');if(!row)return;const x=results[+row.dataset.r];
+    if(e.target.closest('[data-pg]'))return openTab(async()=>{const r=await api('/api/sites/open-url','POST',{url:x.info});if(r.direct)toast('Add this tracker under Tracker websites to open its pages through GoatMediaStackarr','');return r.url});
+    const b=e.target.closest('[data-dl]');if(b){b.disabled=true;try{await api('/api/trackers/grab','POST',{id:x.id,category:$('#tcat').value});toast('Added to qBittorrent','ok');b.textContent='Added'}catch(er){toast(er.message,'bad');b.disabled=false}}};
+}
 async function hlView(){
   $('#m').innerHTML=skel(4);
   let l;try{l=await api('/api/libhealth')}catch(x){$('#m').innerHTML=`<div class="err">${esc(x.message)}</div>`;return}

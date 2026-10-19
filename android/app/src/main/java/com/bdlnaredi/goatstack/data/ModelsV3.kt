@@ -77,3 +77,8 @@ object Versions {
 // ---------- Notifications (/api/notifications) ----------
 @Serializable data class Feed(val last: Long = 0, val read: Long = 0, val items: List<FeedItem> = emptyList())
 @Serializable data class FeedItem(val id: Long = 0, val at: Long = 0, val kind: String = "", val title: String = "", val body: String = "", val link: String = "")
+
+// ---------- Trackers: searching them, and their websites (/api/sites, /api/trackers) ----------
+@Serializable data class SiteInfo(val id: String = "", val name: String = "", val url: String = "", val vpn: Boolean = true, val category: String = "", val signedIn: Boolean = false)
+@Serializable data class TrackerHit(val id: String = "", val title: String = "", val size: Long = 0, val seeders: Int = 0, val leechers: Int = 0, val indexer: String = "", val date: String = "", val info: String = "")
+@Serializable data class OpenReply(val url: String = "", val direct: Boolean = false, val site: String = "")

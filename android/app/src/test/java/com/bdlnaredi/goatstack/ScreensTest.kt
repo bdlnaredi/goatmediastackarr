@@ -7,6 +7,7 @@ import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -165,6 +166,10 @@ class ScreensTest {
         )) {
             openFromMore(entry); waitFor(wait); shot(name); back(); waitFor(entry)
         }
+        openFromMore("Trackers"); waitFor("Search your trackers")
+        compose.onNode(hasSetTextAction()).performTextInput("Dune")
+        compose.onNode(hasSetTextAction()).performImeAction(); waitFor("Dune.Part.Two"); shot("48-tracker-search")
+        tap("Websites"); waitFor("TorrentLeech"); shot("49-tracker-sites"); back()
         openFromMore("Bring in your setup"); waitFor("The old app")
         tap("Sonarr")
         compose.onNode(hasText("Its address", substring = true) and hasSetTextAction()).performTextInput("http://192.168.1.10:8989")
