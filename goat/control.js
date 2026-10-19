@@ -22,15 +22,27 @@ const run = (file, args) => new Promise(resolve => {
     resolve({ ok: !err, out: String(stdout || '').slice(-2000), err: String(stderr || (err && err.message) || '').slice(-2000) }));
 });
 const restart = name => run('/command/s6-svc', ['-r', `${SERVICES}/${name}`]);
+const svc = (name, up) => run('/command/s6-svc', [up ? '-u' : '-d', `${SERVICES}/${name}`]);
+// Which apps were stopped by hand, so the interface can show them. Kept in /run, so a restart of the container starts everything again.
+const STOPPED = process.env.GOAT_STOPPED || '/run/goat/stopped.json';
+const stoppedList = () => { try { return JSON.parse(fs.readFileSync(STOPPED, 'utf8')); } catch { return []; } };
+const markStopped = (name, on) => { const l = new Set(stoppedList()); on ? l.add(name) : l.delete(name); try { fs.writeFileSync(STOPPED, JSON.stringify([...l])); fs.chmodSync(STOPPED, 0o644); } catch {} };
 
 // Each command is a fixed list of steps; nothing from the request reaches a shell.
-async function handle(msg, exec = { run, restart }) {
+async function handle(msg, exec = { run, restart, svc, markStopped }) {
   const cmd = msg && msg.cmd;
   if (cmd === 'ping') return { ok: true };
   if (cmd === 'restart') {
     if (!ENGINES.includes(msg.engine)) return { ok: false, error: 'Unknown app' };
     const r = await exec.restart(msg.engine);
+    if (r.ok && exec.markStopped) exec.markStopped(msg.engine, false);
     return r.ok ? { ok: true } : { ok: false, error: r.err || 'Could not restart' };
+  }
+  if (cmd === 'stop' || cmd === 'start') {
+    if (!ENGINES.includes(msg.engine)) return { ok: false, error: 'Unknown app' };
+    const r = await exec.svc(msg.engine, cmd === 'start');
+    if (r.ok && exec.markStopped) exec.markStopped(msg.engine, cmd === 'stop');
+    return r.ok ? { ok: true } : { ok: false, error: r.err || 'Could not ' + cmd + ' it' };
   }
   if (cmd === 'rewire') {
     // Settings first (keys, paths, VPN binding), then the wiring runs again from the start.
@@ -46,7 +58,7 @@ async function handle(msg, exec = { run, restart }) {
     if (!i.ok) return { ok: false, error: 'Writing the app settings failed: ' + i.err };
     const k = await exec.run('/bin/bash', [`${BIN}/vpn-init.sh`]);
     if (!k.ok) return { ok: false, error: 'Setting up the kill switch failed: ' + k.err };
-    const steps = ['goat-vpn', 'qbittorrent', 'sabnzbd', 'prowlarr', 'flaresolverr'];
+    const steps = ['goat-vpn', 'qbittorrent', 'sabnzbd', 'prowlarr', 'flaresolverr', 'sitefetch'];
     const failed = [];
     for (const s of steps) { const r = await exec.restart(s); if (!r.ok) failed.push(s); }
     return failed.length ? { ok: false, error: 'Could not restart ' + failed.join(', '), output: k.out } : { ok: true, output: k.out };

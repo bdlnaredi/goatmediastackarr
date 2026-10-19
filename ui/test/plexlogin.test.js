@@ -75,3 +75,21 @@ test('sign in with Plex: only people you added, admins never, and name clashes',
     assert.equal((await client(w.s.base).put('/api/plexsettings', { on: false })).status, 401);
   } finally { await w.stop(); }
 });
+
+test('sign in with Plex for admins: only after they link their own Plex account, and they can unlink it', async () => {
+  const w = await world();
+  try {
+    const { a } = w;
+    await a.put('/api/plexsettings', { on: true, sid: w.plex, auto: false });
+    const before = await plexSignIn(w); assert.notEqual(before.r.status, 200, 'not linked yet: refused');
+    const st = await a.post('/api/plexlogin/start', { link: true }); assert.equal(st.status, 200);
+    let r; for (let i = 0; i < 30; i++) { r = await a.get('/api/plexlogin/poll?t=' + st.data.ticket); if (!r.data.pending) break; await sleep(200); }
+    assert.equal(r.status, 200, JSON.stringify(r.data)); assert.equal(r.data.linked, true); assert.equal(r.data.name, 'alex'); assert.equal(r.data.user.role, 'admin');
+    assert.equal((await a.get('/api/me')).data.user.plex.name, 'alex');
+    const now = await plexSignIn(w); assert.equal(now.r.status, 200, JSON.stringify(now.r.data)); assert.equal(now.r.data.user.role, 'admin', 'the admin signs in with Plex');
+    assert.equal((await now.c.get('/api/plexsettings')).status, 200);
+    assert.equal((await a.del('/api/me/plex')).status, 200);
+    assert.equal((await a.get('/api/me')).data.user.plex, null);
+    const after = await plexSignIn(w); assert.notEqual(after.r.status, 200, 'unlinked: refused again');
+  } finally { await w.stop(); }
+});

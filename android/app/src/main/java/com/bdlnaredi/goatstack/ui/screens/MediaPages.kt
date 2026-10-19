@@ -112,6 +112,10 @@ fun WantedScreen() {
                                 Text(x.sub, style = MaterialTheme.typography.bodySmall, color = g.muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                 x.date?.let { if (it.isNotEmpty()) Text(Format.day(it), style = MaterialTheme.typography.labelSmall, color = g.primary) }
                             }
+                            // Interactive search: see every release for it and pick one.
+                            if (ctx.user.can("add")) IconButton(onClick = { ctx.releases(cur.id, x.id, if (cur.type == "sonarr") "${x.title} · ${x.sub}" else x.title) }) {
+                                Icon(Icons.Rounded.Search, "Choose a release", tint = g.primary)
+                            }
                         }
                     }
                 }

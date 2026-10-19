@@ -140,7 +140,7 @@ async function latestRelease() {
     relCache.v = { version: String(d.tag_name).replace(/^v/, '').slice(0, 40), url: /^https:\/\//.test(d.html_url || '') ? d.html_url : '', apk: apk && /^https:\/\//.test(apk.browser_download_url || '') ? apk.browser_download_url : '',
       published: d.published_at || '', notes: String(d.body || '').slice(0, 3000) };
     if (/^\d+\.\d+\.\d+$/.test(VERSION) && isNewer(relCache.v.version, VERSION) && db.settings.updFed !== relCache.v.version) {
-      db.settings.updFed = relCache.v.version; feed('@admins', 'update', `GoatMediaStackarr ${relCache.v.version} is out`, `You have ${VERSION}. On Unraid open the Docker tab and click Update.`, 'update');
+      db.settings.updFed = relCache.v.version; feed('@admins', 'update', `GoatMediaStackarr ${relCache.v.version} is out`, `You have ${VERSION}. On Unraid open the Docker tab and click Update.`, 'update'); notify('update', `GoatMediaStackarr ${relCache.v.version} is out`, `You have ${VERSION}. On Unraid open the Docker tab and click Update.`).catch(() => {});
     }
   } catch {}
   return relCache.v;
@@ -232,8 +232,8 @@ const goatVpnFiles = () => { try { return fs.readdirSync(path.join(GOAT_CONFIG, 
 const goatStatus = () => {
   const sec = goatRead(path.join(GOAT_CONFIG, 'goat', 'secrets.json')) || {};
   return { vpn: goatRead(path.join(GOAT_RUN, 'vpn.json')) || { enabled: false, state: 'off' }, wired: GOAT_WIRED ? goatRead(GOAT_WIRED) : null,
-    engines: [...db.services.filter(x => x.managed).map(x => ({ id: x.id, key: x.managed, name: x.name, ok: health[x.id] ? health[x.id].ok : null })),
-      ...((GOAT_MANAGED && (goatRead(GOAT_MANAGED) || {}).extras) || []).map(x => ({ key: x.key, name: x.name, ok: null }))],
+    engines: [...db.services.filter(x => x.managed).map(x => ({ id: x.id, key: x.managed, name: x.name, ok: health[x.id] ? health[x.id].ok : null, stopped: (goatRead(path.join(GOAT_RUN, 'stopped.json')) || []).includes(x.managed) })),
+      ...((GOAT_MANAGED && (goatRead(GOAT_MANAGED) || {}).extras) || []).map(x => ({ key: x.key, name: x.name, ok: null, stopped: (goatRead(path.join(GOAT_RUN, 'stopped.json')) || []).includes(x.key) }))],
     settings: goatSettings ? goatSettings.view() : null, vpnFiles: goatVpnFiles(), container: !!GOAT_MANAGED, outside: { ...((db.settings || {}).outside || {}) },
     logins: { jellyfin: sec.jellyfinUser ? { user: sec.jellyfinUser, pass: sec.jellyfinPass } : null, qbittorrent: sec.qbitUser ? { user: sec.qbitUser, pass: sec.qbitPass } : null } };
 };
@@ -629,6 +629,7 @@ async function siteAdd(site, what) {
   else await qbUpload(s, opts, [{ name: String(what.name || 'download.torrent').replace(/[^\w.\- ]/g, '_').slice(0, 120), buf: what.buf }]);
   audit('GoatMediaStackarr', 'Added a download from a site', `${site ? site.name : 'Tracker search'}: ${String(what.name || what.magnet || '').slice(0, 120)}`);
   feed('@admins', 'download', 'Added to downloads', `${String(what.name || 'A magnet link').slice(0, 100)}${site ? ' from ' + site.name : ''}`, 'downloads');
+  notify('grabbed', 'Added to downloads', `${String(what.name || 'A magnet link').slice(0, 100)}${site ? ' from ' + site.name : ''}`).catch(() => {});
 }
 async function siteHandle(req, res, p) {
   const send2 = (code, html) => { res.writeHead(code, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Security-Policy': 'sandbox allow-scripts', 'Referrer-Policy': 'no-referrer' }); res.end(html); };
@@ -700,8 +701,12 @@ const ruleDef = x => ({ enabled: !!x.enabled, mustContain: cut(x.mustContain, 50
   savePath: cut(x.savePath, 500), assignedCategory: cut(x.assignedCategory, 200), ignoreDays: Math.max(0, +x.ignoreDays || 0), addPaused: x.addPaused === true ? true : null,
   ...(x.torrentContentLayout ? { torrentContentLayout: cut(x.torrentContentLayout, 40) } : {}), ...(x.lastMatch ? { lastMatch: cut(x.lastMatch, 60) } : {}),
   ...(Array.isArray(x.previouslyMatchedEpisodes) ? { previouslyMatchedEpisodes: x.previouslyMatchedEpisodes.slice(0, 2000).map(e => cut(e, 60)) } : {}) });
-async function notify(title, body, html) {
-  const list = ((db.alerts || {}).channels || []).filter(c => !channels.problem(c));
+// What an alert channel can be told about. Each channel has its own list (like Tautulli's notification agents).
+const ALERT_EVENTS = ['finished', 'grabbed', 'requests', 'available', 'reports', 'offline', 'vpn', 'disk', 'streamLimit', 'update', 'weekly'];
+// A channel saved before channels had their own list gets what the old shared switches said.
+const chanEvents = c => Array.isArray(c.events) ? c.events : (a => ALERT_EVENTS.filter(k => k === 'reports' || k === 'streamLimit' ? a[k] !== false : k === 'weekly' || k === 'update' ? true : !!a[k]))(db.alerts || {});
+async function notify(kind, title, body, html) {
+  const list = ((db.alerts || {}).channels || []).filter(c => !channels.problem(c) && chanEvents(c).includes(kind));
   if (!list.length) return false;
   const res = await Promise.allSettled(list.map(c => channels.send(c, title, body, html)));
   const bad = res.filter(x => x.status === 'rejected');
@@ -824,7 +829,7 @@ ${h('This week in numbers')}<table role="presentation" width="100%" cellpadding=
 ${link ? `<p style="margin:26px 0 0"><a href="${hx(link)}" style="${F};display:inline-block;background:#4f7cff;color:#fff;text-decoration:none;font-size:14px;font-weight:600;padding:10px 18px;border-radius:8px">Open GoatMediaStackarr</a></p>` : ''}
 </td></tr><tr><td style="padding:22px 26px;${F};font-size:11px;color:#889">You get this because the weekly newsletter is on in GoatMediaStackarr, under Settings, Alerts.</td></tr></table></td></tr></table></body></html>`;
 }
-const sendNews = async () => { const n = await newsData(); return notify('GoatMediaStackarr weekly newsletter', newsText(n), newsHtml(n, baseUrl())); };
+const sendNews = async () => { const n = await newsData(); return notify('weekly', 'GoatMediaStackarr weekly newsletter', newsText(n), newsHtml(n, baseUrl())); };
 const BK = path.join(DATA, 'backups'), BKRE = /^(auto|pre-restore)-\d{4}-\d{2}-\d{2}-\d{4}\.json$/;
 function backupNow(kind = 'auto') {
   fs.mkdirSync(BK, { recursive: true, mode: 0o700 });
@@ -921,7 +926,7 @@ async function refreshRequests() {
     if (st.stage === 'failed' && x.stage !== 'failed') notifyUser(userOf(x.uid), 'Download failed', `${x.title} could not be downloaded. It is being looked for again.`, 'reqstatus', 'requests').catch(() => {});
     x.stage = st.stage; x.progress = st.progress; x.eta = st.eta || undefined; x.where = st.where || undefined; x.paused = st.paused || undefined; x.checked = Date.now();
     if (JSON.stringify([x.stage, x.progress, x.eta, x.where]) !== before) changed = true;
-    if (st.stage === 'available' && !x.toldReady) { x.toldReady = Date.now(); await notifyUser(userOf(x.uid), 'Ready to watch', `${x.title} is now available${st.where ? ' on ' + st.where : ''}.`, 'ready', `title:${x.mediaType}:${x.mediaId}`).catch(() => {}); }
+    if (st.stage === 'available' && !x.toldReady) { x.toldReady = Date.now(); await notifyUser(userOf(x.uid), 'Ready to watch', `${x.title} is now available${st.where ? ' on ' + st.where : ''}.`, 'ready', `title:${x.mediaType}:${x.mediaId}`).catch(() => {}); notify('available', 'Ready to watch', `${x.title} (asked for by ${x.user}) is now available${st.where ? ' on ' + st.where : ''}.`).catch(() => {}); }
   } catch {} }));
   if (changed) save();
 }
@@ -976,7 +981,7 @@ async function streamTick() {
       const why = `You have streamed your ${lim} GB for this month. It starts again on ${new Date(nextMonth()).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}. Ask the server owner if you need more.`;
       try { await stopStream(s, x, why); audit('GoatMediaStackarr', 'Stopped a stream', `${u.name}: monthly streaming limit of ${lim} GB reached (${s.name})`); }
       catch (err) { if (!e.stopErr) { e.stopErr = 1; audit('GoatMediaStackarr', 'Could not stop a stream', `${u.name} is over the streaming limit, but ${s.name} refused: ${cut(err.message, 160)}`); } }
-      if (!(e.warn >= 100)) { e.warn = 100; changed = true; notifyUser(u, 'Streaming limit reached', why, 'stream', 'profile').catch(() => {}); feed('@admins', 'stream', 'Streaming limit reached', `${u.name} has streamed ${gbs} of ${lim} GB this month.`, 'users'); if ((db.alerts || {}).streamLimit !== false) notify('Streaming limit reached', `${u.name} has streamed ${gbs} of ${lim} GB this month. Their streams are stopped until the 1st.`).catch(() => {}); }
+      if (!(e.warn >= 100)) { e.warn = 100; changed = true; notifyUser(u, 'Streaming limit reached', why, 'stream', 'profile').catch(() => {}); feed('@admins', 'stream', 'Streaming limit reached', `${u.name} has streamed ${gbs} of ${lim} GB this month.`, 'users'); notify('streamLimit', 'Streaming limit reached', `${u.name} has streamed ${gbs} of ${lim} GB this month. Their streams are stopped until the 1st.`).catch(() => {}); }
     }
     for (const k of Object.keys(streamSeen)) if (k.startsWith(s.id + ':') && !alive.has(k)) { delete streamSeen[k]; delete streamStopped[k]; }
   }
@@ -1003,7 +1008,7 @@ async function monitor() {
             histKeys.add(key); added = true;
             db.history.push({ hash: x.hash, name: x.name, size: x.size, at: x.completion_on * 1000, cat: x.category || '', svc: s.id });
             if (!first) feed('@admins', 'download', 'Download finished', x.name, 'downloads');
-            if (!first && a.finished) await notify('Download finished', x.name).catch(() => {});
+            if (!first) await notify('finished', 'Download finished', x.name).catch(() => {});
           }
         }
       }
@@ -1023,17 +1028,17 @@ async function monitor() {
       health[s.id] = { ok, t: Date.now() };
       uptNote(s.id, ok);
       const st = mon.up[s.id] || (mon.up[s.id] = { ok: true, n: 0 });
-      if (ok) { if (!st.ok) { feed('@admins', 'problem', 'App back online', s.name + ' is reachable again', 'health'); if (a.offline) await notify('App back online', s.name + ' is reachable again').catch(() => {}); } st.ok = true; st.n = 0; }
-      else if (++st.n >= 2 && st.ok) { st.ok = false; feed('@admins', 'problem', 'App offline', s.name + ' is not responding', 'health'); if (a.offline) await notify('App offline', s.name + ' is not responding').catch(() => {}); }
+      if (ok) { if (!st.ok) { feed('@admins', 'problem', 'App back online', s.name + ' is reachable again', 'health'); await notify('offline', 'App back online', s.name + ' is reachable again').catch(() => {}); } st.ok = true; st.n = 0; }
+      else if (++st.n >= 2 && st.ok) { st.ok = false; feed('@admins', 'problem', 'App offline', s.name + ' is not responding', 'health'); await notify('offline', 'App offline', s.name + ' is not responding').catch(() => {}); }
     }));
     for (const s of db.services.filter(x => x.type === 'unraid')) await safe(async () => {
       const k = (await gql(s, '{ array { capacity { kilobytes { used total } } } }')).array.capacity.kilobytes, pct = +k.used / +k.total * 100, lim = a.diskPct || 90;
-      if (pct >= lim && !mon.disk[s.id]) { mon.disk[s.id] = 1; feed('@admins', 'problem', 'Array almost full', pct.toFixed(0) + '% of the array is used', 'unraid'); if (a.disk) await notify('Array almost full', pct.toFixed(0) + '% of the array is used'); }
+      if (pct >= lim && !mon.disk[s.id]) { mon.disk[s.id] = 1; feed('@admins', 'problem', 'Array almost full', pct.toFixed(0) + '% of the array is used', 'unraid'); await notify('disk', 'Array almost full', pct.toFixed(0) + '% of the array is used'); }
       else if (pct < lim - 3) mon.disk[s.id] = 0;
     });
     for (const s of db.services.filter(x => x.type === 'qbittorrent')) await safe(async () => {
       const v = await vpnStatus(s);
-      if (v.vpn === false && !mon.vpn[s.id]) { mon.vpn[s.id] = 1; feed('@admins', 'problem', 'VPN not active', s.name + ' is not using the VPN', 'stack'); if (a.vpn) await notify('VPN not active', s.name + ' is not using the VPN'); }
+      if (v.vpn === false && !mon.vpn[s.id]) { mon.vpn[s.id] = 1; feed('@admins', 'problem', 'VPN not active', s.name + ' is not using the VPN', 'stack'); await notify('vpn', 'VPN not active', s.name + ' is not using the VPN'); }
       else if (v.vpn === true) mon.vpn[s.id] = 0;
     });
     const th0 = db.settings.throttle || {}, held = th0.held || {};
@@ -1205,7 +1210,8 @@ async function plexProfile(token) {
     u = mkUser(name, crypto.randomBytes(24).toString('hex'), 'user'); u.access = cfg.access; u.perms = cfg.perms; u.plex = { id: pid, name: pname };
     db.users.push(u); audit('GoatMediaStackarr', 'Created a profile from Plex', name);
   }
-  if (u.role === 'admin') throw new PlexDeny('Admins sign in with their GoatMediaStackarr password.');
+  // An admin signs in with Plex only with the Plex account they linked themselves (Settings, Account).
+  if (u.role === 'admin' && !(u.plex && u.plex.id === pid && u.plex.linked)) throw new PlexDeny('Admins sign in with their GoatMediaStackarr password, or link their Plex account first (Settings, Account, Plex).');
   u.plex.name = pname; u.plexLibs = await plexLibs(cfg.s, srvRes.accessToken || ''); { const rr = await plexRestrict(cfg.s, who.id, pname); if (rr) u.plexRules = rr; } save();
   return u;
 }
@@ -1272,7 +1278,8 @@ const goatServer = http.createServer(async (req, res) => {
       if (plexPend.size > 300) return send(res, 429, { error: 'Busy. Try again in a minute.' });
       let pin; try { pin = await ptv('/api/v2/pins?strong=true', { method: 'POST' }); } catch (e) { return send(res, 502, { error: 'Could not reach plex.tv: ' + e.message }); }
       if (!pin || !pin.id || !pin.code) return send(res, 502, { error: 'plex.tv gave an unexpected answer.' });
-      const ticket = crypto.randomBytes(18).toString('hex'); plexPend.set(ticket, { id: String(Math.round(+pin.id)), at: now });
+      const lb = await readBody(req), linkFor = lb && lb.link && me ? me.id : '';
+      const ticket = crypto.randomBytes(18).toString('hex'); plexPend.set(ticket, { id: String(Math.round(+pin.id)), at: now, ...(linkFor ? { link: linkFor } : {}) });
       return send(res, 200, { ticket, url: `${PLEXAUTH()}#?clientID=${encodeURIComponent(plexCid())}&code=${encodeURIComponent(pin.code)}&context%5Bdevice%5D%5Bproduct%5D=GoatMediaStackarr` });
     }
     if (p === '/api/plexlogin/poll' && m === 'GET') {
@@ -1283,6 +1290,16 @@ const goatServer = http.createServer(async (req, res) => {
         const pin = await ptv('/api/v2/pins/' + e.id);
         if (!pin || !pin.authToken) return send(res, 200, { pending: true });
         plexPend.delete(tk);
+        if (e.link) {
+          // Linking: this Plex account becomes the signed-in profile's own, so it can sign in with Plex from now on.
+          const owner = userOf(e.link); if (!owner) return send(res, 410, { error: 'Please sign in again.' });
+          const who = await ptv('/api/v2/user', { headers: { 'X-Plex-Token': String(pin.authToken) } }), pid = String(who.uuid || who.id || ''), pname = cut(who.username || who.title || '', 60).trim();
+          if (!pid) return send(res, 502, { error: 'Plex did not say who you are. Please try again.' });
+          const other = db.users.find(x => x.id !== owner.id && x.plex && x.plex.id === pid);
+          if (other) return send(res, 400, { error: `That Plex account already belongs to the profile ${other.name}.` });
+          owner.plex = { id: pid, name: pname, linked: true }; save(); audit(owner.name, 'Linked a Plex account', pname);
+          return send(res, 200, { linked: true, name: pname, user: pubUser(owner) });
+        }
         const u = await plexProfile(String(pin.authToken));
         audit(u.name, 'Signed in with Plex', res.info.ip); return login(res, u);
       } catch (x) {
@@ -1489,6 +1506,10 @@ const goatServer = http.createServer(async (req, res) => {
       }
       if (p === '/api/goat/apply-vpn') { const r = await goatControl({ cmd: 'apply-vpn' }); audit(me.name, 'Applied VPN settings', r.ok ? '' : r.error); return send(res, r.ok ? 200 : 500, r.ok ? goatStatus() : { error: r.error }); }
       if (p === '/api/goat/rewire') { const r = await goatControl({ cmd: 'rewire' }); return send(res, r.ok ? 200 : 500, r.ok ? {} : { error: r.error }); }
+      if (p === '/api/goat/stop' || p === '/api/goat/start') {
+        const b = await readBody(req), what = p.endsWith('stop') ? 'stop' : 'start', r = await goatControl({ cmd: what, engine: String(b.engine || '') });
+        audit(me.name, what === 'stop' ? 'Stopped an app' : 'Started an app', String(b.engine || '')); return send(res, r.ok ? 200 : 500, r.ok ? {} : { error: r.error });
+      }
       if (p === '/api/goat/restart') {
         const b = await readBody(req), r = await goatControl({ cmd: 'restart', engine: String(b.engine || '') });
         audit(me.name, 'Restarted an app', String(b.engine || '')); return send(res, r.ok ? 200 : 500, r.ok ? {} : { error: r.error });
@@ -1799,7 +1820,7 @@ const goatServer = http.createServer(async (req, res) => {
       const x = { id: uid(), sid: s.id, uid: me.id, user: me.name, mediaType: b.mediaType, mediaId: +b.mediaId, title: String(b.title || '').slice(0, 200),
         year: String(b.year || '').slice(0, 4), poster: String(b.poster || '').slice(0, 300), status: 'pending', at: Date.now(), ...(seasons.length ? { seasons } : {}) };
       if (me.role === 'admin' || me.autoApprove) { const sr = await seerrAdd(s, x); x.seerrId = sr && sr.id; x.status = 'approved'; x.stage = 'approved'; }
-      else { feed('@admins', 'request', 'New request', `${me.name} asked for ${x.title}`, 'requests'); if (db.alerts && db.alerts.requests) notify('New request', `${me.name} requested ${x.title}`).catch(() => {}); }
+      else { feed('@admins', 'request', 'New request', `${me.name} asked for ${x.title}`, 'requests'); notify('requests', 'New request', `${me.name} requested ${x.title}`).catch(() => {}); }
       db.requests.push(x); save(); audit(me.name, me.role !== 'admin' && me.autoApprove ? 'Requested (auto-approved)' : 'Requested', x.title); return send(res, 200, x);
     }
     if (p === '/api/seerr/tv' && m === 'GET') {
@@ -1840,7 +1861,7 @@ const goatServer = http.createServer(async (req, res) => {
       const rp = { id: uid(), rid: x.id, uid: me.id, user: me.name, title: x.title, text, at: Date.now(), status: 'open', result };
       db.reports.push(rp); if (db.reports.length > 300) db.reports.splice(0, db.reports.length - 300); save(); audit(me.name, 'Reported a problem', x.title);
       feed('@admins', 'report', 'Problem report', `${me.name}: ${x.title}: ${text}`, 'requests');
-      if ((db.alerts || {}).reports !== false) notify('Problem report', `${me.name} reported a problem with ${x.title}: ${text}${result ? ' (' + result + ')' : ''}`).catch(() => {});
+      notify('reports', 'Problem report', `${me.name} reported a problem with ${x.title}: ${text}${result ? ' (' + result + ')' : ''}`).catch(() => {});
       return send(res, 200, { ok: true, result });
     }
     if (p === '/api/reports' && m === 'GET') return send(res, 200, db.reports.filter(x => me.role === 'admin' || x.uid === me.id).slice(-100).reverse());
@@ -2167,6 +2188,7 @@ const goatServer = http.createServer(async (req, res) => {
       delete me.avatar; save(); return send(res, 200, pubUser(me));
     }
     if (p === '/api/usage' && m === 'GET') return send(res, 200, await usageOf(me));
+    if (p === '/api/me/plex' && m === 'DELETE') { if (me.role !== 'admin') return send(res, 403, { error: 'An admin unlinks Plex profiles under Users.' }); delete me.plex; save(); audit(me.name, 'Unlinked their Plex account', ''); return send(res, 200, pubUser(me)); }
     if (p === '/api/notifications' && m === 'GET') {
       const q = new URL(req.url, 'http://x').searchParams, after = Math.max(0, +q.get('after') || 0), f = db.feed || { n: 0, items: [] };
       const mine = f.items.filter(x => x.to === me.id || (x.to === '@admins' && me.role === 'admin'));
@@ -2487,16 +2509,19 @@ const goatServer = http.createServer(async (req, res) => {
     }
     if (p === '/api/alerts' && m === 'GET') {
       const a = db.alerts || {}, pub = c => ({ id: c.id, type: c.type, where: c.target ? (() => { try { return new URL(c.target).origin + '/…'; } catch { return '…'; } })() : '', chat: c.type === 'telegram' || c.type === 'pushover' ? c.chat : '',
-        host: c.host || '', port: c.port || '', secure: c.secure || '', user: c.user || '', from: c.from || '', to: c.to || '', hasSecret: !!(c.token || c.pass) });
-      return send(res, 200, { finished: !!a.finished, offline: !!a.offline, disk: !!a.disk, vpn: !!a.vpn, requests: !!a.requests, reports: a.reports !== false, diskPct: a.diskPct || 90, channels: (a.channels || []).map(pub) });
+        host: c.host || '', port: c.port || '', secure: c.secure || '', user: c.user || '', from: c.from || '', to: c.to || '', hasSecret: !!(c.token || c.pass), name: c.name || '', events: chanEvents(c) });
+      return send(res, 200, { finished: !!a.finished, offline: !!a.offline, disk: !!a.disk, vpn: !!a.vpn, requests: !!a.requests, reports: a.reports !== false, diskPct: a.diskPct || 90, events: ALERT_EVENTS, channels: (a.channels || []).map(pub) });
     }
     if (p === '/api/alerts' && m === 'PUT') {
       const b = await readBody(req), o = db.alerts || { channels: [] };
-      db.alerts = { ...o, finished: !!b.finished, offline: !!b.offline, disk: !!b.disk, vpn: !!b.vpn, requests: !!b.requests, reports: b.reports !== false, diskPct: Math.min(99, Math.max(50, +b.diskPct || 90)) };
+      // The old on/off switches only matter to channels saved before each had its own list; keep them unless sent.
+      const keep = (k, v) => k in b ? v : o[k];
+      db.alerts = { ...o, finished: keep('finished', !!b.finished), offline: keep('offline', !!b.offline), disk: keep('disk', !!b.disk), vpn: keep('vpn', !!b.vpn), requests: keep('requests', !!b.requests), reports: keep('reports', b.reports !== false), diskPct: Math.min(99, Math.max(50, +b.diskPct || o.diskPct || 90)) };
       save(); audit(me.name, 'Changed alert settings', ''); return send(res, 200, {});
     }
     const chanFields = (b, o = {}) => { const g = k => b[k] != null && String(b[k]).trim() !== '' ? String(b[k]).trim().slice(0, 500) : o[k];
-      return { id: o.id || uid(), type: b.type || o.type, target: g('target'), token: g('token'), chat: g('chat'), host: g('host'), port: g('port'), secure: ['ssl', 'starttls', 'none'].includes(b.secure) ? b.secure : o.secure || 'starttls', user: g('user'), pass: g('pass'), from: g('from'), to: g('to') }; };
+      return { id: o.id || uid(), type: b.type || o.type, target: g('target'), token: g('token'), chat: g('chat'), host: g('host'), port: g('port'), secure: ['ssl', 'starttls', 'none'].includes(b.secure) ? b.secure : o.secure || 'starttls', user: g('user'), pass: g('pass'), from: g('from'), to: g('to'),
+        name: b.name != null ? String(b.name).trim().slice(0, 60) : o.name || '', events: Array.isArray(b.events) ? ALERT_EVENTS.filter(k => b.events.includes(k)) : o.events || (o.id ? chanEvents(o) : ALERT_EVENTS.filter(k => !['finished', 'grabbed', 'available'].includes(k))) }; };
     if (p === '/api/alerts/channels' && m === 'POST') {
       const c = chanFields(await readBody(req)), why = channels.problem(c); if (why) return send(res, 400, { error: why });
       db.alerts = db.alerts || {}; (db.alerts.channels = db.alerts.channels || []).push(c); save(); audit(me.name, 'Added an alert channel', c.type); return send(res, 200, { id: c.id });

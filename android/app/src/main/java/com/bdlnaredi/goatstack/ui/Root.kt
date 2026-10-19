@@ -61,6 +61,8 @@ class Ctx(val app: AppState, val me: Me, val user: User, val nav: NavHostControl
     fun go(route: String) = nav.navigate(route) { launchSingleTop = true }
     fun back() { nav.popBackStack() }
     fun item(sid: String, kind: String, id: Long) = go("item/$sid/$kind/$id")
+    /** Interactive search for one Radarr movie or Sonarr episode. */
+    fun releases(sid: String, id: Long, title: String) = go("releases/$sid/$id?t=${android.net.Uri.encode(title)}")
     /** The full page for a movie or show, by its TMDB number. */
     fun title(type: String, id: Long) = go("title/${if (type == "tv") "tv" else "movie"}/$id")
     fun profile(uid: String? = null) = go(if (uid == null || uid == user.id) "profile" else "profile/$uid")
@@ -196,6 +198,10 @@ private fun MainShell(state: AppState, me: Me, user: User) {
                     "title/{type}/{id}",
                     arguments = listOf(navArgument("type") { type = NavType.StringType }, navArgument("id") { type = NavType.LongType }),
                 ) { e -> com.bdlnaredi.goatstack.ui.screens.TitleScreen(e.arguments?.getString("type").orEmpty(), e.arguments?.getLong("id") ?: 0) }
+                composable(
+                    "releases/{sid}/{id}?t={t}",
+                    arguments = listOf(navArgument("sid") { type = NavType.StringType }, navArgument("id") { type = NavType.LongType }, navArgument("t") { type = NavType.StringType; defaultValue = "" }),
+                ) { e -> val a = e.arguments!!; com.bdlnaredi.goatstack.ui.screens.ReleasesScreen(a.getString("sid").orEmpty(), a.getLong("id"), a.getString("t").orEmpty()) }
                 composable(
                     "item/{sid}/{kind}/{id}",
                     arguments = listOf(navArgument("sid") { type = NavType.StringType }, navArgument("kind") { type = NavType.StringType }, navArgument("id") { type = NavType.LongType }),

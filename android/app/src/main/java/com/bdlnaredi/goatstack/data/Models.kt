@@ -56,7 +56,7 @@ data class Service(val id: String = "", val type: String = "", val name: String 
 
 @Serializable data class LoginReply(val user: User? = null, val twofa: Boolean = false, val ticket: String? = null)
 @Serializable data class PlexStart(val ticket: String = "", val url: String = "")
-@Serializable data class PlexPoll(val pending: Boolean = false, val user: User? = null)
+@Serializable data class PlexPoll(val pending: Boolean = false, val user: User? = null, val linked: Boolean = false, val name: String = "")
 
 // ---------- Requests (Seerr) ----------
 @Serializable
@@ -152,7 +152,7 @@ data class Vpn(
 )
 @Serializable data class Wired(val at: Long = 0, val running: Boolean = false, val steps: Map<String, WireStep> = emptyMap())
 @Serializable data class WireStep(val ok: Boolean = false, val error: String? = null)
-@Serializable data class Engine(val id: String = "", val key: String = "", val name: String = "", val ok: Boolean? = null)
+@Serializable data class Engine(val id: String = "", val key: String = "", val name: String = "", val ok: Boolean? = null, val stopped: Boolean = false)
 @Serializable data class Counts(val indexers: Int? = null, val newsServers: Int? = null)
 
 // ---------- Live updates (/api/live) ----------

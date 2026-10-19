@@ -98,3 +98,12 @@ test('browsing a tracker: sign in once, links stay inside, magnet links and .tor
     assert.equal((await a.post(`/api/sites/${site.id}/signout`)).data.signedIn, false);
   } finally { await s.stop(); fsrv.close(); tracker.close(); helper.kill(); }
 });
+
+test('pages without their own phone layout get one, pages with one keep it', () => {
+  const pre = '/site/t';
+  const a = sites.rwHtml('<html><head><title>x</title></head><body><table></table></body></html>', 'https://t.example/', pre, 'VPN');
+  assert.match(a, /name="viewport" content="width=device-width, initial-scale=1"/);
+  const b = sites.rwHtml('<html><head><meta name="viewport" content="width=1200"></head><body></body></html>', 'https://t.example/', pre, 'VPN');
+  assert.equal((b.match(/name="viewport"/g) || []).length, 1);
+  assert.match(b, /width=1200/);
+});

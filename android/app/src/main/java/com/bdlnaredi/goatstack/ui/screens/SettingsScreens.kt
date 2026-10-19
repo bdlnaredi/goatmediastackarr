@@ -1,5 +1,6 @@
 package com.bdlnaredi.goatstack.ui.screens
 
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -155,7 +156,8 @@ fun SettingsScreen() {
     var dialog by remember { mutableStateOf<String?>(null) }
     val themes = Themes.all.filter { !it.dynamic || android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S }
     val set = { p: Prefs -> ctx.app.setPrefs(p) }
-    val hasPassword = ctx.user.plex == null
+    // Plex profiles sign in only through Plex; an admin who linked Plex keeps their password too.
+    val hasPassword = ctx.user.plex == null || ctx.user.admin
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
         item { BackPage("Settings", null) }
@@ -210,6 +212,7 @@ fun SettingsScreen() {
                 SettingRow(Icons.Rounded.Key, "Signed in as", ctx.user.name + (if (ctx.user.admin) " (admin)" else "") + (ctx.user.plex?.let { " · with Plex as ${it.name}" } ?: ""))
                 if (hasPassword) SettingRow(Icons.Rounded.Lock, "Change password", "Signs you out on your other devices", onClick = { dialog = "password" })
                 if (hasPassword) SettingRow(Icons.Rounded.Email, "Recovery email", ctx.user.email.ifEmpty { "Not set. Needed to reset a forgotten password." }, onClick = { dialog = "email" })
+                if (ctx.user.admin && ctx.me.plexLogin) PlexLinkRow()
                 SettingRow(Icons.Rounded.Security, "Two-step sign-in", if (ctx.user.twofa) "On" else if (hasPassword) "Off. Turn it on from the web page under Settings → Account." else "Plex looks after your sign-in")
                 SettingRow(Icons.Rounded.Notifications, "Phone messages", ctx.user.notify.ifEmpty { "Get told when a request is ready (ntfy, Gotify, or any web address)" }, onClick = { dialog = "notify" })
                 SettingRow(Icons.Rounded.Devices, "Signed-in devices", "See them, and sign out the ones you do not use", onClick = { ctx.go("devices") })
@@ -452,4 +455,35 @@ private fun NotifySettings(prefs: Prefs, set: (Prefs) -> Unit) {
             }
         }
     }
+}
+
+/** Admins: link a Plex account so "Sign in with Plex" works for this profile too (it is refused until then). */
+@Composable
+private fun PlexLinkRow() {
+    val ctx = LocalCtx.current
+    val scope = rememberCoroutineScope()
+    val toast = toaster()
+    val android = androidx.compose.ui.platform.LocalContext.current
+    var ticket by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(ticket) {
+        val t = ticket ?: return@LaunchedEffect
+        repeat(150) {
+            kotlinx.coroutines.delay(2000)
+            try { val u = ctx.app.plexLinkPoll(t); if (u != null) { ticket = null; toast("Plex linked as ${u.plex?.name ?: "you"}"); return@LaunchedEffect } }
+            catch (e: Exception) { ticket = null; toast(e.message ?: "Could not link Plex"); return@LaunchedEffect }
+        }
+        ticket = null; toast("That took too long. Please try again.")
+    }
+    val linked = ctx.user.plex
+    SettingRow(Icons.Rounded.Key, "Sign in with Plex",
+        when { ticket != null -> "Waiting for Plex… finish signing in on the Plex page"; linked != null -> "Linked to ${linked.name}. Tap to unlink."; else -> "Not linked. Tap to link your Plex account, then you can sign in with Plex." },
+        onClick = {
+            if (ticket != null) return@SettingRow
+            scope.launch {
+                try {
+                    if (linked != null) { ctx.api.send("DELETE", "/api/me/plex"); ctx.app.updateUser(ctx.user.copy(plex = null)); toast("Plex unlinked") }
+                    else { val st = ctx.app.plexLinkStart(); ticket = st.ticket; openBrowser(android, st.url) }
+                } catch (e: Exception) { toast(e.message ?: "That did not work") }
+            }
+        })
 }

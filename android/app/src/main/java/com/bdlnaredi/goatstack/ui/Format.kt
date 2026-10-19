@@ -91,6 +91,9 @@ object Format {
         }
     }
 
+    /** The local calendar day of a date from the server. */
+    fun localDate(s: String): LocalDate? = parseDate(s)?.atZone(ZoneId.systemDefault())?.toLocalDate()
+
     fun time(s: String): String {
         if (s.length <= 10) return ""
         val z = parseDate(s)?.atZone(ZoneId.systemDefault()) ?: return ""

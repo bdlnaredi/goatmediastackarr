@@ -224,6 +224,8 @@ fun DetailScreen(sid: String, kind: String, id: Long) {
                             })
                             if (ctx.user.admin) GhostButton("Remove", icon = Icons.Rounded.Delete, color = g.bad, modifier = Modifier.weight(1f), onClick = { remove = true })
                         }
+                        // Interactive search: pick the release yourself. For a show it is per episode (open a season, then an episode).
+                        if (!tv) { Spacer(Modifier.height(10.dp)); GhostButton("Choose a release", icon = Icons.Rounded.Search, modifier = Modifier.fillMaxWidth(), onClick = { ctx.releases(sid, id, x.title) }) }
                     }
                 }
             }
@@ -269,10 +271,12 @@ fun DetailScreen(sid: String, kind: String, id: Long) {
                                         if (e.overview.isNotBlank() && (epOpen || !ctx.prefs.spoilers)) Text(e.overview, style = MaterialTheme.typography.bodySmall, color = g.text.copy(alpha = 0.75f),
                                             maxLines = if (epOpen) Int.MAX_VALUE else 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 28.dp, top = 4.dp))
                                         else if (e.overview.isBlank() && epOpen) Text("No description for this episode yet.", style = MaterialTheme.typography.bodySmall, color = g.muted, modifier = Modifier.padding(start = 28.dp, top = 4.dp))
-                                        if (epOpen && ctx.user.can("add") && !e.has && e.aired) Row(Modifier.padding(start = 20.dp, top = 2.dp)) {
-                                            androidx.compose.material3.TextButton(onClick = {
+                                        if (epOpen && ctx.user.can("add") && e.aired) Row(Modifier.padding(start = 20.dp, top = 2.dp)) {
+                                            if (!e.has) androidx.compose.material3.TextButton(onClick = {
                                                 act("Searching for episode ${e.num}") { ctx.api.send("POST", "/api/auto", buildJsonObject { put("sid", sid); put("id", e.id); put("scope", "episode") }) }
-                                            }) { Icon(Icons.Rounded.Search, null, tint = g.primary, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Search for this episode", color = g.primary) }
+                                            }) { Icon(Icons.Rounded.Search, null, tint = g.primary, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Search", color = g.primary) }
+                                            androidx.compose.material3.TextButton(onClick = { ctx.releases(sid, e.id, "${x.title} · S${s.n.toString().padStart(2, '0')}E${e.num.toString().padStart(2, '0')}") }) {
+                                                Icon(Icons.Rounded.Search, null, tint = g.primary, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Choose a release", color = g.primary) }
                                         }
                                     }
                                 }

@@ -108,6 +108,16 @@ class AppState(val store: Store) {
 
     suspend fun plexStart(): PlexStart = api.post("/api/plexlogin/start")
 
+    /** Admins: links a Plex account to this profile, so it can sign in with Plex too. */
+    suspend fun plexLinkStart(): PlexStart = api.post("/api/plexlogin/start", buildJsonObject { put("link", true) })
+
+    /** Null while Plex is still waiting; the updated profile once the Plex account is linked. */
+    suspend fun plexLinkPoll(ticket: String): User? {
+        val r = api.get<PlexPoll>("/api/plexlogin/poll?t=${Api.enc(ticket)}")
+        if (r.pending || !r.linked) return null
+        return r.user?.also { updateUser(it) }
+    }
+
     /** True once Plex has said yes and the server has signed us in. */
     suspend fun plexPoll(ticket: String): Boolean {
         val r = api.get<PlexPoll>("/api/plexlogin/poll?t=${Api.enc(ticket)}")

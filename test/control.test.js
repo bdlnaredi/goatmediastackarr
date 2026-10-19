@@ -10,7 +10,8 @@ const settings = require('../goat/settings');
 
 const fake = () => {
   const calls = [];
-  return { calls, run: async (f, a) => { calls.push(['run', path.basename(a[0])]); return { ok: true, out: '' }; }, restart: async n => { calls.push(['restart', n]); return { ok: true }; } };
+  return { calls, run: async (f, a) => { calls.push(['run', path.basename(a[0])]); return { ok: true, out: '' }; }, restart: async n => { calls.push(['restart', n]); return { ok: true }; },
+    svc: async (n, up) => { calls.push([up ? 'start' : 'stop', n]); return { ok: true }; }, markStopped: (n, on) => calls.push(['mark', n, on]) };
 };
 
 test('restart only accepts known apps', async () => {
@@ -19,13 +20,13 @@ test('restart only accepts known apps', async () => {
   assert.equal((await handle({ cmd: 'restart', engine: '../../etc' }, x)).ok, false);
   assert.equal((await handle({ cmd: 'restart', engine: 'goat-vpn' }, x)).ok, false);
   assert.equal((await handle({ cmd: 'rm -rf /' }, x)).ok, false);
-  assert.deepEqual(x.calls, [['restart', 'sonarr']]);
+  assert.deepEqual(x.calls, [['restart', 'sonarr'], ['mark', 'sonarr', false]], 'a restarted app no longer counts as stopped');
 });
 
 test('applying the VPN rewrites settings, rebuilds the kill switch, then restarts the tunnel and its apps', async () => {
   const x = fake();
   assert.equal((await handle({ cmd: 'apply-vpn' }, x)).ok, true);
-  assert.deepEqual(x.calls, [['run', 'init.js'], ['run', 'vpn-init.sh'], ['restart', 'goat-vpn'], ['restart', 'qbittorrent'], ['restart', 'sabnzbd'], ['restart', 'prowlarr'], ['restart', 'flaresolverr']]);
+  assert.deepEqual(x.calls, [['run', 'init.js'], ['run', 'vpn-init.sh'], ['restart', 'goat-vpn'], ['restart', 'qbittorrent'], ['restart', 'sabnzbd'], ['restart', 'prowlarr'], ['restart', 'flaresolverr'], ['restart', 'sitefetch']]);
   const bad = { ...fake(), run: async (f, a) => ({ ok: !a[0].endsWith('vpn-init.sh'), err: 'no NET_ADMIN' }) };
   const r = await handle({ cmd: 'apply-vpn' }, bad);
   assert.equal(r.ok, false); assert.match(r.error, /kill switch/);
@@ -51,4 +52,12 @@ test('interface settings take priority over the template, and bad values are ref
   settings.update({ plex: { claim: null } });
   assert.equal(settings.effectiveEnv({}).PLEX_CLAIM, undefined);
   assert.equal((fs.statSync(settings.FILE()).mode & 0o777).toString(8), '600');
+});
+
+test('stop and start only accept known apps, and remember what was stopped', async () => {
+  const x = fake();
+  assert.deepEqual(await handle({ cmd: 'stop', engine: 'radarr' }, x), { ok: true });
+  assert.deepEqual(await handle({ cmd: 'start', engine: 'radarr' }, x), { ok: true });
+  assert.equal((await handle({ cmd: 'stop', engine: 'goat-vpn' }, x)).ok, false, 'the VPN and the interface cannot be stopped from here');
+  assert.deepEqual(x.calls, [['stop', 'radarr'], ['mark', 'radarr', true], ['start', 'radarr'], ['mark', 'radarr', false]]);
 });

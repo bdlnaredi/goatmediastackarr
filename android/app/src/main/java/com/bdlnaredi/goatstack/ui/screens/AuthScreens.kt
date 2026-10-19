@@ -164,7 +164,7 @@ fun ServerScreen(state: AppState) {
 
 // ---------- 2. Signing in ----------
 
-private fun openBrowser(ctx: Context, url: String) {
+internal fun openBrowser(ctx: Context, url: String) {
     try {
         CustomTabsIntent.Builder().setShowTitle(true).build().launchUrl(ctx, Uri.parse(url))
     } catch (_: Exception) {

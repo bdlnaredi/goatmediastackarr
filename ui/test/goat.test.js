@@ -154,7 +154,14 @@ test('container settings, VPN file upload, control commands and the leak test', 
     assert.equal((await c.post('/api/goat/apply-vpn', {})).status, 200);
     assert.equal((await c.post('/api/goat/restart', { engine: 'sonarr' })).status, 200);
     assert.equal((await c.post('/api/goat/restart', { engine: 'nope' })).status, 500);
-    assert.deepEqual(got.map(g => g.cmd + (g.engine ? ':' + g.engine : '')), ['apply-vpn', 'restart:sonarr', 'restart:nope']);
+    assert.equal((await c.post('/api/goat/stop', { engine: 'radarr' })).status, 200);
+    assert.equal((await c.post('/api/goat/start', { engine: 'radarr' })).status, 200);
+    assert.deepEqual(got.map(g => g.cmd + (g.engine ? ':' + g.engine : '')), ['apply-vpn', 'restart:sonarr', 'restart:nope', 'stop:radarr', 'start:radarr']);
+    fs.writeFileSync(mf, JSON.stringify({ services: [], extras: [{ key: 'sonarr', name: 'Sonarr' }, { key: 'flaresolverr', name: 'FlareSolverr' }] }));
+    fs.writeFileSync(path.join(run, 'stopped.json'), JSON.stringify(['sonarr']));
+    const eng = (await c.get('/api/goat/status')).data.engines;
+    assert.equal(eng.find(e => e.key === 'sonarr').stopped, true, 'a stopped app says so'); assert.equal(eng.filter(e => e.stopped).length, 1);
+    fs.unlinkSync(path.join(run, 'stopped.json'));
 
     r = await c.post('/api/goat/leaktest', {});
     assert.equal(r.data.safe, true); assert.equal(r.data.home.ip, '198.51.100.7'); assert.equal(r.data.vpn.country, 'NL');
@@ -166,6 +173,7 @@ test('container settings, VPN file upload, control commands and the leak test', 
     const v = client(s.base); await v.post('/api/login', { name: 'viewer', password: 'viewer-pass-1' });
     assert.equal((await v.get('/api/goat/status')).status, 403);
     assert.equal((await v.post('/api/goat/restart', { engine: 'sonarr' })).status, 403);
+    assert.equal((await v.post('/api/goat/stop', { engine: 'sonarr' })).status, 403);
   } finally { await s.stop(); ctl.close(); ipsrv.close(); }
 });
 

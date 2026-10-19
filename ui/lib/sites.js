@@ -50,6 +50,10 @@ d.style.cssText='position:fixed;right:10px;bottom:10px;z-index:2147483647;backgr
 })();</script>`;
 }
 
+const MOBILE = '<meta name="viewport" content="width=device-width, initial-scale=1">'
+  + '<style>@media (max-width:820px){html,body{max-width:100vw;overflow-x:auto}img,video,iframe{max-width:100%!important;height:auto}'
+  + 'table{max-width:100%}td,th{word-break:break-word}pre{white-space:pre-wrap}input,select,textarea{max-width:100%}}</style>';
+
 /** Rewrites one HTML page so every link, picture, form and style stays inside the browser. */
 function rwHtml(html, base, pre, label) {
   let h = String(html);
@@ -64,7 +68,10 @@ function rwHtml(html, base, pre, label) {
     .replace(/(<meta[^>]+http-equiv\s*=\s*["']?refresh["']?[^>]*content\s*=\s*["'][^"']*?url\s*=\s*)([^"'>]+)/gi, (all, a, u) => a + enc(prox(u.trim(), base, pre)))
     .replace(/(<style\b[^>]*>)([\s\S]*?)(<\/style>)/gi, (all, a, css, z) => a + rwCss(css, base, pre) + z)
     .replace(/\bstyle\s*=\s*"([^"]*)"/gi, (all, css) => `style="${rwCss(css, base, pre)}"`);
-  const s = shim(base, pre, label);
+  // Most tracker sites are built for desktops and say nothing about phones, so a phone shows them zoomed out at
+  // desktop width. Tell the phone to use its own width, keep pinch zoom, and stop wide pictures and tables from pushing
+  // the page sideways. Sites that already have their own mobile layout keep theirs.
+  const s = shim(base, pre, label) + (/<meta[^>]+name\s*=\s*["']?viewport/i.test(h) ? '' : MOBILE);
   return /<head\b[^>]*>/i.test(h) ? h.replace(/<head\b[^>]*>/i, m => m + s) : s + h;
 }
 

@@ -39,7 +39,9 @@ import androidx.compose.material.icons.rounded.Subtitles
 import androidx.compose.material.icons.rounded.TravelExplore
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.RestartAlt
+import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material.icons.rounded.RssFeed
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
@@ -98,6 +100,7 @@ fun StackScreen() {
     val scope = rememberCoroutineScope()
     val toast = toaster()
     var busy by remember { mutableStateOf<String?>(null) }
+    var stopping by remember { mutableStateOf<com.bdlnaredi.goatstack.data.Engine?>(null) }
     val data = rememberLoad { ctx.api.get<GoatStatus>("/api/goat/status") }
     AutoRefresh(8000) { data.reload() }
 
@@ -146,15 +149,22 @@ fun StackScreen() {
                     item(key = e.key) {
                         GoatCard(Modifier.fillMaxWidth(), padding = 14.dp) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Dot(when (e.ok) { true -> g.good; false -> g.bad; null -> g.muted }, 11.dp)
+                                Dot(if (e.stopped) g.muted else when (e.ok) { true -> g.good; false -> g.bad; null -> g.muted }, 11.dp)
                                 Spacer(Modifier.width(12.dp))
                                 Column(Modifier.weight(1f)) {
                                     Text(e.name, style = MaterialTheme.typography.titleSmall, color = g.text)
-                                    Text(ENGINE_NOTES[e.key] ?: e.key, style = MaterialTheme.typography.labelSmall, color = g.muted)
+                                    Text(if (e.stopped) "Stopped. Tap Start to run it again; a container restart also starts it." else ENGINE_NOTES[e.key] ?: e.key,
+                                        style = MaterialTheme.typography.labelSmall, color = if (e.stopped) g.warn else g.muted)
                                 }
                                 if (busy == e.key) CircularProgressIndicator(Modifier.size(20.dp), color = g.primary, strokeWidth = 2.dp)
-                                else IconButton(enabled = busy == null, onClick = { run("Restarting ${e.name}", e.key, "/api/goat/restart", buildJsonObject { put("engine", e.key) }) }) {
-                                    Icon(Icons.Rounded.RestartAlt, "Restart ${e.name}", tint = g.muted)
+                                else if (e.stopped) IconButton(enabled = busy == null, onClick = { run("Starting ${e.name}", e.key, "/api/goat/start", buildJsonObject { put("engine", e.key) }) }) {
+                                    Icon(Icons.Rounded.PlayArrow, "Start ${e.name}", tint = g.good)
+                                }
+                                else {
+                                    IconButton(enabled = busy == null, onClick = { run("Restarting ${e.name}", e.key, "/api/goat/restart", buildJsonObject { put("engine", e.key) }) }) {
+                                        Icon(Icons.Rounded.RestartAlt, "Restart ${e.name}", tint = g.muted)
+                                    }
+                                    IconButton(enabled = busy == null, onClick = { stopping = e }) { Icon(Icons.Rounded.Stop, "Stop ${e.name}", tint = g.bad) }
                                 }
                             }
                         }
@@ -190,6 +200,10 @@ fun StackScreen() {
                     }
                 }
             }
+        }
+        stopping?.let { e ->
+            Confirm("Stop ${e.name}?", "It stays stopped until you start it again or the container restarts. Anything that needs it (requests, downloads) waits.", "Stop", danger = true,
+                onYes = { stopping = null; run("Stopping ${e.name}", e.key, "/api/goat/stop", buildJsonObject { put("engine", e.key) }) }, onNo = { stopping = null })
         }
     }
 }

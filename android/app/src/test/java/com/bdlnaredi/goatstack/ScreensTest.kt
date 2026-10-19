@@ -204,7 +204,7 @@ class ScreensTest {
         tap("Library"); waitFor("Paper Moon")
         compose.onAllNodesWithText("Paper Moon").onFirst().performClick(); waitFor("Search now")
         scrollTo("Season 3"); tap("Season 3"); waitFor("The storm cuts")
-        scrollTo("5. Chapter 21"); tap("5. Chapter 21"); waitFor("Search for this episode"); shot("33-episodes")
+        scrollTo("5. Chapter 21"); tap("5. Chapter 21"); waitFor("Choose a release"); shot("33-episodes")
         back()
         tap("Downloads"); waitFor("Every category"); waitFor("Add a link"); shot("34-downloads-categories")
         tap("More"); waitFor("Go to")
@@ -223,6 +223,29 @@ class ScreensTest {
         compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("new notifications", substring = true)).onFirst().performClick()
         waitFor("VPN not active"); shot("47-notifications")
         tap("Ready to watch"); waitFor("Some signals"); back()
+        assertTrue("calls the pretend server does not know: ${fake.misses}", fake.misses.isEmpty())
+    }
+
+    @Test fun version4Pages() {
+        connect()
+        show()
+        waitFor("Playing now")
+        tap("More"); waitFor("Go to")
+        // Upcoming has a month calendar as well as the list.
+        openFromMore("Upcoming"); waitFor("Being downloaded"); tap("Calendar")
+        waitFor(java.time.YearMonth.now().format(java.time.format.DateTimeFormatter.ofPattern("MMMM yyyy", java.util.Locale.getDefault())))
+        waitFor("Today"); shot("50-upcoming-calendar"); back()
+        // Apps can be stopped and started.
+        openFromMore("Stack"); waitFor("VPN connected"); scrollTo("Jellyfin"); waitFor("Tap Start"); shot("51-stack-stopped"); back()
+        // Wanted: interactive search, then download one release.
+        openFromMore("Wanted"); waitFor("in total")
+        compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("Choose a release")).onFirst().performClick()
+        waitFor("2160p.WEB-DL"); waitFor("Not wanted in profile"); shot("52-releases")
+        tap("Download"); waitFor("Sent to downloader")
+        assertTrue("the grab reached the server", fake.calls.any { it.startsWith("POST /api/grab") })
+        back(); back()
+        // Admins link their Plex account here before they can sign in with Plex.
+        openFromMore("Settings"); waitFor("Appearance"); scrollTo("Sign in with Plex"); waitFor("Linked to ann.plex"); shot("53-settings-plex")
         assertTrue("calls the pretend server does not know: ${fake.misses}", fake.misses.isEmpty())
     }
 }

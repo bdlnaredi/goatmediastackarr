@@ -213,6 +213,30 @@ test('weekly newsletter: preview, send to every channel, and the schedule is sav
   } finally { await w.stop(); hook.close(); }
 });
 
+test('alerts: each channel has its own list of what it is told about', async () => {
+  const got = { a: [], b: [] }, mk = k => http.createServer((req, res) => { let x = ''; req.on('data', c => { x += c; }); req.on('end', () => { got[k].push(JSON.parse(x)); res.end('ok'); }); }).listen(0);
+  const ha = mk('a'), hb = mk('b'); await Promise.all([ha, hb].map(h => new Promise(r => h.once('listening', r))));
+  const w = await world();
+  try {
+    const { a } = w;
+    const one = (await a.post('/api/alerts/channels', { type: 'webhook', target: `http://127.0.0.1:${ha.address().port}/`, name: 'Phone' })).data.id;
+    const two = (await a.post('/api/alerts/channels', { type: 'webhook', target: `http://127.0.0.1:${hb.address().port}/`, events: ['finished', 'nonsense'] })).data.id;
+    let al = (await a.get('/api/alerts')).data;
+    assert.ok(al.events.includes('weekly') && al.events.includes('available'));
+    const c1 = al.channels.find(c => c.id === one), c2 = al.channels.find(c => c.id === two);
+    assert.equal(c1.name, 'Phone'); assert.ok(c1.events.includes('weekly') && c1.events.includes('offline'), 'new channels start with the usual things');
+    assert.ok(!c1.events.includes('finished') && !c1.events.includes('grabbed'), 'but not the chatty ones');
+    assert.deepEqual(c2.events, ['finished'], 'unknown kinds are dropped');
+    assert.equal((await a.post('/api/weekly/send')).status, 200);
+    assert.equal(got.a.length, 1); assert.equal(got.b.length, 0, 'the second channel was not asked for the newsletter');
+    assert.equal((await a.put('/api/alerts/channels/' + two, { type: 'webhook', events: ['weekly'] })).status, 200);
+    await a.put('/api/alerts', { diskPct: 85 });
+    al = (await a.get('/api/alerts')).data; assert.deepEqual(al.channels.find(c => c.id === two).events, ['weekly']); assert.equal(al.diskPct, 85);
+    assert.match(al.channels.find(c => c.id === two).where, /^http:\/\/127\.0\.0\.1:\d+\/…$/, 'editing the list keeps the address');
+    await a.post('/api/weekly/send'); assert.equal(got.a.length, 2); assert.equal(got.b.length, 1);
+  } finally { await w.stop(); ha.close(); hb.close(); }
+});
+
 test('demo mode: ready-made sign-in, pretend apps, nothing saved, risky settings locked', async () => {
   const dir = tmp(), s = await boot({ DEMO: '1' }, dir);
   try {

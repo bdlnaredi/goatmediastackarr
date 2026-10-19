@@ -164,6 +164,7 @@ input[type=checkbox]{accent-color:var(--accent);width:18px;height:18px;padding:0
 .bulk{position:sticky;bottom:12px;z-index:5;background:var(--s1);border:1px solid var(--line);border-radius:14px;padding:10px 14px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;box-shadow:0 8px 28px rgba(0,0,0,.2);margin-top:14px}
 .bulk .sep{flex:1}
 .demo{background:color-mix(in srgb,var(--accent) 18%,transparent);border:1px solid var(--accent);border-radius:10px;padding:8px 14px;margin:0 0 14px;font-size:13.5px}
+.tbl{border-collapse:collapse}.tbl th{font-size:12.5px;font-weight:600;color:var(--mute);padding:6px 8px;border-bottom:1px solid var(--line)}.tbl td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:top}
 .bar{height:8px;border-radius:99px;background:var(--s2);overflow:hidden}.bar>i{display:block;height:100%;background:var(--accent)}.bar>i.bad{background:var(--bad)}
 .pill.warn{background:color-mix(in srgb,#e0a100 20%,transparent);color:var(--warn-t)}
 
@@ -269,15 +270,17 @@ progress::-moz-progress-bar{background:linear-gradient(90deg,var(--accent),color
 main{max-width:1180px;padding:34px 36px 70px}
 html[data-rail=min]{--rail:70px}
 /* settings: side menu + content */
-main.sx{display:grid;grid-template-columns:250px minmax(0,1fr);grid-template-areas:"demo demo" "ph ph" "nav t" "nav m";column-gap:30px;align-content:start;grid-template-rows:auto auto auto 1fr}
-main.sx>.demo{grid-area:demo}main.sx>.ph{grid-area:ph}main.sx>.sxn{grid-area:nav}main.sx>.sxt{grid-area:t}main.sx>#m{grid-area:m;min-width:0}
-.sxn{position:sticky;top:20px;align-self:start;display:flex;flex-direction:column;gap:18px}
-.sxh{font-size:12.5px;font-weight:650;color:var(--mute);padding:0 12px 6px}
-.sxn button{display:flex;gap:11px;align-items:flex-start;width:100%;text-align:left;border:0;background:none;border-radius:14px;padding:9px 12px;color:var(--text)}
+/* settings: the sections as a row of tabs across the top, grouped (You, Server, Care) */
+main.sx{display:block}
+.sxn{display:flex;flex-wrap:wrap;gap:10px 22px;margin:0 0 20px;padding-bottom:14px;border-bottom:1px solid var(--line)}
+.sxg{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.sxh{font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--mute);padding:0 4px 0 0}
+.sxn button{display:flex;gap:7px;align-items:center;width:auto;flex:none;text-align:left;border:1px solid var(--line);background:none;border-radius:999px;padding:7px 14px;color:var(--text);white-space:nowrap}
+.sxn button small{display:none}
 .sxn button:hover{background:color-mix(in srgb,var(--s2) 80%,transparent)}
 .sxn button.on,.sxn button.on:hover{background:var(--s1);box-shadow:var(--hl),0 4px 14px -8px rgba(0,0,0,.55)}
-.sxn button .ic{width:20px;height:20px;margin-top:1px;flex:none;color:var(--mute)}.sxn button.on .ic{color:var(--accent)}
-.sxn b{display:block;font-weight:650;font-size:14.5px}.sxn small{display:block;font-size:12px;color:var(--mute);line-height:1.35;margin-top:1px}
+.sxn button .ic{width:18px;height:18px;margin:0;flex:none;color:var(--mute)}.sxn button.on .ic{color:var(--accent)}
+.sxn b{display:block;font-weight:600;font-size:14px}.sxn small{display:block;font-size:12px;color:var(--mute);line-height:1.35;margin-top:1px}
 .sxt{margin:0 0 16px}.sxt h2{margin:0;font-size:22px;letter-spacing:-.025em}.sxt p{margin:3px 0 0}
 main.sx #m .panel{max-width:760px!important}
 @media(max-width:860px){
@@ -678,7 +681,7 @@ const ICONS={goat:'<path d="M12 3 3 7.5l9 4.5 9-4.5L12 3zM3 12l9 4.5 9-4.5M3 16.
  lib:'<rect x="4" y="4" width="5" height="16" rx="1"/><rect x="10.5" y="4" width="5" height="16" rx="1"/><path d="m17.5 5.5 3 .8-3.8 13.7-3-.8z"/>',
  al:'<path d="M6 9a6 6 0 0 1 12 0c0 6 2.5 7.5 2.5 7.5h-17S6 15 6 9M10 20a2 2 0 0 0 4 0"/>',
  rss:'<path d="M5 5a14 14 0 0 1 14 14M5 11a8 8 0 0 1 8 8"/><circle cx="6" cy="18" r="1.4"/>',
- pause:'<path d="M8 5v14M16 5v14"/>',play:'<path d="M7 5l12 7-12 7z"/>',
+ pause:'<path d="M8 5v14M16 5v14"/>',play:'<path d="M7 5l12 7-12 7z"/>',stop:'<rect x="6" y="6" width="12" height="12" rx="2"/>',
  info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
  refresh:'<path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6"/>',
  check:'<path d="m5 12 5 5 9-10"/>',checks:'<path d="m2.5 12.5 5 5 8-10M11 16.5l1 1 9-10"/>',
@@ -939,7 +942,7 @@ function dashView(){
   checks();upt();slow();attn();rq();
   timer=[tick(fallback,4000),setInterval(glide,1000),tick(slow,60000),tick(attn,60000),tick(rq,60000),tick(upt,300000),tick(()=>{if(!LIVE.ok)checks()},30000)];
 }
-const ST_SECTIONS=[['acct','Account',false,'Your password, sign-in and devices','usr','You'],['look','Appearance',false,'Theme, colours and layout','pal','You'],['apps','Apps',true,'The apps GoatMediaStackarr connects to','svc','Server'],['lists','Discover lists',true,'Keys for the Trakt, TMDB and TheTVDB lists','find','Server'],['users','Users',true,'Profiles and what each can do','usr','Server'],['links','Status pages',true,'Public pages that show if your server is up','eye','Server'],['alerts','Alerts',true,'Email, phone messages and reports','al','Care'],['rules','Download rules',true,'Speed schedule and stream throttling','dl','Care'],['backup','Backup',true,'Save and restore your setup','pw','Care'],['audit','Activity',true,'Who did what, and when','hl','Care'],['about','About',false,'Version and where you are connected','eye','You']];
+const ST_SECTIONS=[['acct','Account',false,'Your password, sign-in and devices','usr','You'],['look','Appearance',false,'Theme, colours and layout','pal','You'],['apps','Apps',true,'The apps GoatMediaStackarr connects to','svc','Server'],['lists','Discover lists',true,'Keys for the Trakt, TMDB and TheTVDB lists','find','Server'],['users','Users',true,'Profiles and what each can do','usr','Server'],['limits','Limits',true,'How much each person may stream and keep, and who is using what','dl','Server'],['links','Status pages',true,'Public pages that show if your server is up','eye','Server'],['alerts','Alerts',true,'Email, phone messages and reports','al','Care'],['rules','Download rules',true,'Speed schedule and stream throttling','dl','Care'],['backup','Backup',true,'Save and restore your setup','pw','Care'],['audit','Activity',true,'Who did what, and when','hl','Care'],['about','About',false,'Version and where you are connected','eye','You']];
 function setView(){
   const admin=me.role==='admin',secs=ST_SECTIONS.filter(s=>admin||!s[2]);
   if(!secs.some(s=>s[0]===stSub))stSub='acct';
@@ -951,7 +954,35 @@ function setView(){
   mm.insertAdjacentHTML('beforebegin',`<div class="sxt"><h2>${cur[1]}</h2><p class="mute">${cur[3]}</p></div>`);
   $('#sn').onclick=e=>{const b=e.target.closest('[data-k]');if(!b)return;stSub=b.dataset.k;render()};
   const ob=$('#sn .on');if(ob&&ob.scrollIntoView)ob.scrollIntoView({inline:'center',block:'nearest'});
-  ({acct:stAcct,look:stLook,apps:svcView,lists:stLists,users:usrView,alerts:alView,links:linksView,rules:stRules,backup:stBackup,audit:stAudit,about:stAbout})[stSub]();
+  ({limits:stLimits,acct:stAcct,look:stLook,apps:svcView,lists:stLists,users:usrView,alerts:alView,links:linksView,rules:stRules,backup:stBackup,audit:stAudit,about:stAbout})[stSub]();
+}
+async function stLimits(month){
+  let d,users=[];try{[d,users]=await Promise.all([api('/api/streaming'+(month?'?month='+month:'')),api('/api/users')])}catch(x){$('#m').innerHTML=`<div class="panel err">${esc(x.message)}</div>`;return}
+  if(tab!=='set'||stSub!=='limits')return;
+  const gb=b=>(b/1e9).toFixed(b>=1e11?0:1)+' GB',cur=month||d.month,isNow=cur===d.months.slice(-1)[0]||!month;
+  const prof=d.users.filter(x=>x.profile),other=d.users.filter(x=>!x.profile&&x.bytes>0),byId=Object.fromEntries(users.map(u=>[u.id,u]));
+  const bar=(v,max)=>max?`<div class="bar" style="height:6px;margin-top:4px"><i style="width:${Math.min(100,Math.round(v/max*100))}%;${v>=max?'background:var(--bad)':''}"></i></div>`:'';
+  $('#m').innerHTML=`<form class="panel" id="sdf" style="margin-bottom:16px"><h3 style="margin-top:0">Streaming default</h3>
+    <p class="mute" style="margin:0 0 8px">How much each person may stream from Plex and Jellyfin in a calendar month, unless their own limit below says otherwise. 0 means no limit. Admins are never limited. At the limit their streams are stopped until the 1st.</p>
+    <div class="row"><label class="mute">Default <input type="number" min="0" step="any" name="gb" value="${d.defaultGb||0}" style="width:100px"> GB a month</label><label class="chk"><input type="checkbox" name="wan" ${d.wanOnly?'checked':''}>Only count streams from outside the home</label><button class="primary">Save</button></div>
+    <p class="mute" style="margin:8px 0 0;font-size:13px">Counts start again on ${new Date(d.resets).toLocaleDateString()}.</p></form>
+  <div class="panel"><div class="row" style="justify-content:space-between"><h3 style="margin:0">Who is using what</h3>
+    ${d.months.length>1?`<label class="mute">Month <select id="lmo">${d.months.slice().reverse().map(k=>`<option ${k===cur?'selected':''}>${k}</option>`).join('')}</select></label>`:`<span class="mute">${esc(cur)}</span>`}</div>
+    <p class="mute" style="margin:6px 0 12px;font-size:13px">Change a limit and it is saved straight away. Streaming: empty uses the default, 0 means no limit. Space: what the titles someone asked for may take on disk; empty means no limit.</p>
+    <div style="overflow-x:auto"><table class="tbl" style="width:100%;min-width:560px"><thead><tr><th style="text-align:left">Profile</th><th style="text-align:left">Streamed</th><th>Stream limit</th><th style="text-align:left">Space</th><th>Space limit</th></tr></thead><tbody>
+    ${prof.map(x=>{const u=byId[x.id]||{},adm=u.role==='admin';return`<tr data-lu="${x.id}"><td><b>${esc(x.name)}</b>${adm?' <span class="pill acc">Admin</span>':''}</td>
+      <td>${gb(x.bytes)}${x.limitGb&&!adm?` <span class="mute">of ${x.limitGb} GB</span>`:''}${adm?'':bar(x.bytes,x.limitGb*1e9)}</td>
+      <td style="text-align:center">${adm?'<span class="mute">None</span>':`<input type="number" min="0" step="any" data-sl value="${u.streamLimit==null?'':u.streamLimit}" placeholder="${d.defaultGb||'None'}" style="width:80px">`}</td>
+      <td data-sp class="mute">…</td>
+      <td style="text-align:center">${adm?'<span class="mute">None</span>':`<input type="number" min="0" data-dl value="${u.dataLimit||''}" placeholder="None" style="width:80px">`}</td></tr>`}).join('')}
+    </tbody></table></div>
+    ${other.length?`<p class="mute" style="margin:14px 0 0;font-size:13px">Also streamed, with no profile to match: ${other.map(x=>`${esc(x.name)} ${gb(x.bytes)}`).join(' · ')}. Give a profile their Plex name in Users to count it against them.</p>`:''}</div>`;
+  $('#sdf').onsubmit=async e=>{e.preventDefault();const f=e.target;try{await api('/api/streaming','PUT',{defaultGb:+f.gb.value||0,wanOnly:f.wan.checked});toast('Saved','ok');stLimits(month)}catch(x){toast(x.message,'bad')}};
+  if($('#lmo'))$('#lmo').onchange=e=>stLimits(e.target.value);
+  document.querySelectorAll('[data-lu]').forEach(async tr=>{const el=tr.querySelector('[data-sp]');try{const u=await api(`/api/users/${tr.dataset.lu}/usage`);
+    el.innerHTML=u.space?`${gb(u.space.bytes)}${u.limitGb?` of ${u.limitGb} GB`:''}${bar(u.space.bytes,u.limitGb*1e9)}`:'—'}catch{el.textContent='—'}});
+  $('#m').onchange=async e=>{const tr=e.target.closest('[data-lu]');if(!tr)return;const t=e.target,b=t.matches('[data-sl]')?{streamLimit:t.value===''?null:+t.value}:t.matches('[data-dl]')?{dataLimit:+t.value||0}:null;if(!b)return;
+    try{await api('/api/users/'+tr.dataset.lu,'PUT',b);toast('Saved','ok')}catch(x){toast(x.message,'bad')}};
 }
 function stLook(){$('#m').innerHTML=`<div class="panel" style="max-width:560px">${appearHtml()}</div>`;bindAppear($('#m'))}
 function stAbout(){
@@ -960,6 +991,16 @@ function stAbout(){
     ${row('Server version',esc(VER||'unknown'))}${row('Server address',esc(location.origin))}${row('Opened in',APPMODE?'The Android app':'A web browser')}${row('Signed in as',esc(me.name)+' ('+(me.role==='admin'?'admin':'user')+')')}
     <p class="mute" style="margin-top:14px">Release notes and newer versions are on <a href="https://github.com/bdlnaredi/mediahub/releases" target="_blank" rel="noopener noreferrer">GitHub</a>.</p></div>`;
 }
+// Links the signed-in admin's own Plex account (the same Plex sign-in window as on the sign-in page).
+async function plexLink(){
+  const st=$('#pls'),err=$('#ple'),win=window.open('about:blank','mh_plex','width=620,height=780');err.textContent='';
+  try{const s=await api('/api/plexlogin/start','POST',{link:true});
+    if(win&&!win.closed)win.location.href=s.url;else st.innerHTML=`<a href="${esc(s.url)}" target="_blank" rel="noopener">Open Plex sign-in</a>, then come back here.`;
+    st.textContent='Finish signing in in the Plex window.';const t0=Date.now();
+    while(Date.now()-t0<570000){await new Promise(r=>setTimeout(r,1500));const r=await api('/api/plexlogin/poll?t='+encodeURIComponent(s.ticket));
+      if(r&&r.linked){if(win&&!win.closed)try{win.close()}catch{}me=r.user||me;toast('Linked to '+r.name,'ok');return stAcct()}}
+    st.textContent='';err.textContent='That took too long. Please try again.'}
+  catch(x){if(win&&!win.closed)try{win.close()}catch{}st.textContent='';err.textContent=x.message}}
 async function stAcct(){
   $('#m').innerHTML=`<div class="panel" style="max-width:560px"><h3 style="margin-top:0">Password</h3><form id="pf" style="max-width:360px;margin:0">
       <input name="old" type="password" placeholder="Current password" autocomplete="current-password" required><input name="new" type="password" placeholder="New password (8+ characters)" autocomplete="new-password" required>
@@ -971,10 +1012,15 @@ async function stAcct(){
       <p class="mute">Your own email address. If you ever forget your password, the reset link is sent here. Type your current password to save a change.</p>
       <form id="ef" style="margin:0"><input name="email" type="email" value="${esc(me.email||'')}" placeholder="you@example.com" autocomplete="email"><input name="password" type="password" placeholder="Current password" autocomplete="current-password" required>
       <div class="row"><button class="primary">Save email</button></div><div class="err" id="ee"></div></form></div>
+    ${me.role==='admin'&&PLEXLOGIN?`<div class="panel" style="max-width:560px;margin-top:16px"><h3 style="margin-top:0">Sign in with Plex</h3>
+      <p class="mute">${me.plex?`Linked to the Plex account <b>${esc(me.plex.name)}</b>. You can sign in with Plex as well as with your password.`:'Link your own Plex account, and you can then use "Sign in with Plex" on the sign-in page as well as your password.'}</p>
+      <div class="row">${me.plex?'<button id="plu">Unlink</button>':'<button class="primary" id="pll">Link my Plex account</button>'}</div><div class="mute" id="pls" role="status"></div><div class="err" id="ple"></div></div>`:''}
     ${me.role==='admin'?'<div class="panel" style="max-width:560px;margin-top:16px" id="si">'+skel(2)+'</div>':''}
     <div class="panel" style="max-width:560px;margin-top:16px" id="tf"></div>
     <div class="panel" style="max-width:560px;margin-top:16px"><div class="row"><h3 style="margin:0;flex:1">Signed-in devices</h3><button id="so2">Sign out all other devices</button></div>
       ${me.role==='admin'?'<label class="chk" style="margin-top:10px"><input type="checkbox" id="sall">Show everyone\'s devices</label>':''}<div id="dv" style="margin-top:8px">${skel(2)}</div></div>`;
+  if($('#pll'))$('#pll').onclick=plexLink;
+  if($('#plu'))$('#plu').onclick=async()=>{if(!confirm('Unlink your Plex account? You then sign in with your password only.'))return;try{me=await api('/api/me/plex','DELETE');stAcct()}catch(x){toast(x.message,'bad')}};
   $('#pf').onsubmit=async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target)),m=$('#pe');m.textContent='';
     if(f.new!==f.again){m.textContent='The new passwords do not match';return}
     try{await api('/api/password','POST',{old:f.old,new:f.new});e.target.reset();toast('Password changed','ok')}catch(x){m.textContent=x.message}};
@@ -1179,10 +1225,7 @@ async function usrView(){
     <div class="row" style="margin-top:8px;gap:10px;align-items:flex-end"><label class="mute">Genres <input data-hx-g value="${esc(((px.hide||{}).genre||[]).join(', '))}" placeholder="Horror, Adult" style="min-width:170px"></label><label class="mute">Tags or labels <input data-hx-l value="${esc(((px.hide||{}).label||[]).join(', '))}" placeholder="Private" style="min-width:170px"></label><label class="mute">Content ratings <input data-hx-r value="${esc(((px.hide||{}).rating||[]).join(', '))}" placeholder="R, NC-17" style="min-width:150px"></label></div>
     <div class="mute" style="margin-top:12px">and can</div><div>${PERMS.map(([k,n])=>`<label class="chk" style="margin:6px 14px 0 0"><input type="checkbox" data-pp="${k}" ${px.perms[k]?'checked':''}>${n}</label>`).join('')}</div>
     <div class="row"><button class="primary">Save</button><span class="mute">${px.linked?px.linked+' Plex profile'+(px.linked===1?'':'s')+' so far':''}</span></div><div class="err" id="pxe"></div>`:'<p class="mute" style="margin:0"><b>Add your Plex server first</b> (Settings, then Apps) so GoatMediaStackarr can check who has access.</p>'}</form>`;
-  $('#m').innerHTML=pxPanel+`<div class="panel" style="margin-bottom:16px"><h3 style="margin-top:0">Streaming limit</h3><form id="sdf" style="margin:0">
-      <p class="mute" style="margin:0 0 8px">How much each person may stream from Plex and Jellyfin in a calendar month, unless their profile below says otherwise. 0 means no limit. Admins are never limited. A Plex or Jellyfin account is matched to a profile by its Plex name, or else by the profile name.</p>
-      <div class="row"><label class="mute">Default <input type="number" min="0" step="any" name="gb" style="width:100px"> GB a month</label><label class="chk"><input type="checkbox" name="wan">Only count streams from outside the home</label><button class="primary">Save</button></div>
-      <p class="mute" style="margin:8px 0 0;font-size:13px" id="sdu"></p></form></div><div class="panel" style="margin-bottom:16px"><h3 style="margin-top:0">Add a profile</h3><form id="uf" style="margin:0;max-width:420px"><input name="name" placeholder="Name" required><input name="password" type="password" placeholder="Password (8+ characters)" required>
+  $('#m').innerHTML=pxPanel+`<div class="panel" style="margin-bottom:16px"><h3 style="margin-top:0">Add a profile</h3><form id="uf" style="margin:0;max-width:420px"><input name="name" placeholder="Name" required><input name="password" type="password" placeholder="Password (8+ characters)" required>
       <input name="email" type="email" placeholder="Email for password recovery (optional)" autocomplete="off"><select name="role" aria-label="Role"><option value="user">User</option><option value="admin">Admin</option></select><div class="row"><button class="primary">${ic('rq')}Add profile</button></div><div class="err" id="ue"></div></form></div>
     ${users.map(u=>`<div class="panel" style="margin-bottom:14px" data-u="${u.id}"><div class="row"><b style="font-size:16px">${esc(u.name)}</b><span class="pill ${u.role==='admin'?'acc':''}">${u.role==='admin'?'Admin':'User'}</span>${u.id===me.id?'<span class="pill">You</span>':''}${u.twofa?'<span class="pill ok">2FA</span>':''}${u.plex?`<span class="pill acc">Plex: ${esc(u.plex.name)}</span>`:''}${u.plex&&u.libs?`<span class="pill ${u.libs.limited?'warn':'ok'}" title="Checked each time they sign in with Plex">${u.libs.limited?(u.libs.of?u.libs.n+' of '+u.libs.of+' libraries':'Libraries not checked yet'):'All libraries'}</span>`:''}<span class="grow"></span>${u.twofa&&u.id!==me.id?'<button data-t2>Turn off 2FA</button>':''}
       <button data-rp>Reset password</button>${u.id!==me.id?'<button class="danger" data-del>Delete</button>':''}</div>
@@ -1199,7 +1242,7 @@ async function usrView(){
       <div class="row" style="margin-top:10px"><span class="mute">Space</span><label class="mute">Limit <input type="number" min="0" max="1000000" data-dl value="${u.dataLimit||''}" placeholder="None" style="width:90px"> GB</label><span class="mute" data-du>…</span></div>
       <p class="mute" style="margin:4px 0 0;font-size:13px">The disk space the shows and movies they asked for may take. When it is used up, new requests are refused until you raise it or remove something.</p>
       <div class="row" style="margin-top:10px"><span class="mute">Streaming</span><label class="mute">Limit <input type="number" min="0" step="any" data-sl value="${u.streamLimit==null?'':u.streamLimit}" placeholder="Default" style="width:90px"> GB a month</label><span class="mute" data-su></span></div>
-      <p class="mute" style="margin:4px 0 0;font-size:13px">What they may stream from Plex and Jellyfin each month. Empty uses the default above, 0 means no limit. At the limit their streams are stopped until the 1st.</p>`:'<p class="mute" style="margin:12px 0 0">Admins can open every app and do everything.</p>'}</div>`).join('')}`;
+      <p class="mute" style="margin:4px 0 0;font-size:13px">What they may stream from Plex and Jellyfin each month. Empty uses the default from Settings, Limits; 0 means no limit. At the limit their streams are stopped until the 1st.</p>`:'<p class="mute" style="margin:12px 0 0">Admins can open every app and do everything.</p>'}</div>`).join('')}`;
   if($('#pxf')&&px.servers.length)$('#pxf').onsubmit=async e=>{e.preventDefault();const f=e.target,v=new FormData(f);$('#pxe').textContent='';
     try{await api('/api/plexsettings','PUT',{on:f.on.checked,sid:v.get('sid'),auto:v.get('auto')==='1',access:[...f.querySelectorAll('[data-pa]:checked')].map(c=>c.dataset.pa),perms:Object.fromEntries([...f.querySelectorAll('[data-pp]')].map(c=>[c.dataset.pp,c.checked])),hide:{genre:f.querySelector('[data-hx-g]').value,label:f.querySelector('[data-hx-l]').value,rating:f.querySelector('[data-hx-r]').value}});toast('Saved','ok');if(f.on.checked&&!PLEXLOGIN)PLEXLOGIN=true;usrView()}catch(x){$('#pxe').textContent=x.message}};
   $('#uf').onsubmit=async e=>{e.preventDefault();$('#ue').textContent='';try{await api('/api/users','POST',Object.fromEntries(new FormData(e.target)));toast('Profile added','ok');usrView()}catch(x){$('#ue').textContent=x.message}};
@@ -1207,9 +1250,6 @@ async function usrView(){
   document.querySelectorAll('[data-du]').forEach(async el=>{const id=el.closest('[data-u]').dataset.u;try{const u=await api(`/api/users/${id}/usage`),gb=b=>(b/1e9).toFixed(b>=1e11?0:1)+' GB';
     el.textContent=u.space?`${gb(u.space.bytes)} used by ${u.requests.approved} request${u.requests.approved===1?'':'s'}`+(u.limitGb?` (${Math.min(100,Math.round(u.space.bytes/(u.limitGb*1e9)*100))}% of the limit)`:''):'';
     const su=el.closest('[data-u]').querySelector('[data-su]'),st=u.stream;if(su&&st)su.textContent=`${gb(st.bytes)} streamed this month`+(st.limitGb?` of ${st.limitGb} GB${st.custom?'':' (default)'}`:' · no limit');}catch{el.textContent=''}});
-  api('/api/streaming').then(d=>{const f=$('#sdf');if(!f)return;f.gb.value=d.defaultGb||0;f.wan.checked=d.wanOnly;
-    $('#sdu').textContent=d.users.filter(x=>x.bytes>0).slice(0,8).map(x=>`${x.name}${x.profile?'':' (no profile)'}: ${(x.bytes/1e9).toFixed(1)} GB`).join(' · ')||'Nobody has streamed this month yet.'}).catch(()=>{});
-  if($('#sdf'))$('#sdf').onsubmit=async e=>{e.preventDefault();const f=e.target;try{await api('/api/streaming','PUT',{defaultGb:+f.gb.value||0,wanOnly:f.wan.checked});toast('Saved','ok');usrView()}catch(x){toast(x.message,'bad')}};
   $('#m').onchange=async e=>{const card=e.target.closest('[data-u]');if(!card)return;const id=card.dataset.u,t=e.target;
     if(t.matches('[data-ac]')){const access=[...card.querySelectorAll('[data-ac]:checked')].map(c=>c.dataset.ac);try{await api(`/api/users/${id}/access`,'PUT',{access});toast('Saved','ok')}catch(x){toast(x.message,'bad')}}
     else if(t.matches('[data-role]')){if(await put(id,{role:t.value}))usrView();else usrView()}
@@ -2199,6 +2239,7 @@ function chanDialog(c,done){
   const e0=c||{type:'ntfy'};
   const o=modal(`<h2 style="margin-top:0">${c?'Edit channel':'Add a channel'}</h2><form id="cf">
     ${c?`<input type="hidden" name="type" value="${e0.type}"><div class="mute">${CH_NAMES[e0.type]}</div>`:`<select name="type" aria-label="Service">${Object.entries(CH_NAMES).map(([k,n])=>`<option value="${k}">${n}</option>`).join('')}</select>`}
+    <input name="name" placeholder="Name (optional), e.g. My phone or Family Discord" value="${esc(e0.name||'')}" autocomplete="off" style="margin-bottom:10px">
     <div id="cfx" style="display:grid;gap:10px"></div><div class="err" id="ce"></div>
     <div class="row"><button class="primary">${c?'Save':'Add channel'}</button><button type="button" data-x>Cancel</button></div></form>`);
   const f=o.querySelector('#cf').elements,keep=c?' (saved, leave empty to keep)':'';
@@ -2219,21 +2260,23 @@ function chanDialog(c,done){
   if(!c)f.type.onchange=sync;sync();
   o.querySelector('[data-x]').onclick=o.close;
   o.querySelector('#cf').onsubmit=async e=>{e.preventDefault();
-    const b={};[...o.querySelector('#cf').elements].forEach(x=>{if(x.name&&x.value!=='')b[x.name]=x.value});
+    const b={};[...o.querySelector('#cf').elements].forEach(x=>{if(x.name&&(x.value!==''||x.name==='name'))b[x.name]=x.value});
     try{if(c){await api('/api/alerts/channels/'+c.id,'PUT',b)}else await api('/api/alerts/channels','POST',b);o.close();toast('Saved','ok');done()}
     catch(x){o.querySelector('#ce').textContent=x.message}};
 }
+const ALERT_NAMES={finished:'A download finishes',grabbed:'Something is added from Trackers',requests:'Someone makes a request',available:'A request is ready to watch',reports:'Someone reports a problem',offline:'An app goes offline or comes back',vpn:'The VPN stops working',disk:'The array is almost full',streamLimit:'Someone reaches their streaming limit',update:'A new version is out',weekly:'The weekly newsletter'};
 async function alView(){
   let a={};try{a=await api('/api/alerts')}catch(x){$('#m').innerHTML=`<div class="err">${esc(x.message)}</div>`;return}
   if(tab!=='set'||stSub!=='alerts')return;
   const sub=c=>c.type==='email'?esc(c.to):c.type==='telegram'||c.type==='pushover'?esc(c.chat):esc(c.where);
   $('#m').innerHTML=`<div class="panel" style="max-width:640px"><div class="row" style="margin-bottom:6px"><h3 style="margin:0;flex:1">Where messages go</h3><button class="primary" id="ac">${ic('rq')}Add channel</button></div>
-    <p class="mute" style="margin-top:0">Every channel gets every alert. Needs internet access from the server.</p>
-    <div id="cl">${(a.channels||[]).map(c=>`<div class="srow" style="grid-template-columns:1fr auto" data-c="${c.id}"><div style="min-width:0"><b>${CH_NAMES[c.type]||esc(c.type)}</b> <span class="mute" style="word-break:break-all">${sub(c)}</span><div class="err" data-r style="min-height:0"></div></div>
-      <span class="row"><button data-ct>Test</button><button data-ce>Edit</button><button class="danger" data-cd>Remove</button></span></div>`).join('')||empty('No channels yet','Add ntfy, Discord, Telegram, Pushover, Gotify, a webhook or email.')}</div></div>
-    <form id="f" class="panel" style="max-width:640px;margin-top:16px"><h3 style="margin-top:0">What to tell me about</h3>
-    <div>${[['finished','A download finishes'],['offline','An app goes offline or comes back'],['disk','The Unraid array is almost full'],['vpn','qBittorrent stops using the VPN'],['requests','Someone makes a request'],['reports','Someone reports a problem with a request']].map(([k,n])=>`<label class="chk" style="display:flex;margin:6px 0"><input type="checkbox" name="${k}" ${a[k]?'checked':''}>${n}</label>`).join('')}</div>
-    <label class="mute">Array counts as full at (%) <input name="diskPct" type="number" min="50" max="99" value="${a.diskPct||90}" style="width:80px"></label>
+    <p class="mute" style="margin-top:0">Each channel has its own list of what it is told about: tick what you want on each one. Changes are saved straight away. Needs internet access from the server.</p>
+    <div id="cl">${(a.channels||[]).map(c=>`<div class="box" data-c="${c.id}" style="margin:10px 0"><div class="row" style="gap:8px"><div class="grow" style="min-width:0"><b>${esc(c.name||CH_NAMES[c.type]||c.type)}</b>${c.name?` <span class="mute">${CH_NAMES[c.type]||esc(c.type)}</span>`:''} <span class="mute" style="word-break:break-all">${sub(c)}</span></div>
+      <span class="row"><button data-ct>Test</button><button data-ce>Edit</button><button class="danger" data-cd>Remove</button></span></div><div class="err" data-r style="min-height:0"></div>
+      <div class="mute" style="margin-top:8px;font-size:13px">Tell this channel when</div>
+      <div class="row" style="gap:4px 14px;margin-top:4px">${(a.events||[]).map(k=>`<label class="chk" style="margin:0"><input type="checkbox" data-ev="${k}" ${(c.events||[]).includes(k)?'checked':''}>${esc(ALERT_NAMES[k]||k)}</label>`).join('')}</div></div>`).join('')||empty('No channels yet','Add ntfy, Discord, Telegram, Pushover, Gotify, a webhook or email.')}</div></div>
+    <form id="f" class="panel" style="max-width:640px;margin-top:16px"><h3 style="margin-top:0">When the array counts as full</h3>
+    <label class="mute">At (%) <input name="diskPct" type="number" min="50" max="99" value="${a.diskPct||90}" style="width:80px"></label>
     <div class="row"><button class="primary">Save</button></div><div class="err" id="e"></div></form>`;
   const msg=(t,ok)=>{const m=$('#e');m.style.color=ok?'var(--ok-t)':'';m.textContent=t};
   let wk={on:false,day:0,hour:9};try{wk=await api('/api/weekly')}catch{}
@@ -2252,9 +2295,11 @@ async function alView(){
     if(e.target.closest('[data-cd]')&&confirm('Remove this channel?')){try{await api('/api/alerts/channels/'+c.id,'DELETE');alView()}catch(x){toast(x.message,'bad')}}
     if(e.target.closest('[data-ct]')){const r=row.querySelector('[data-r]');r.style.color='';r.textContent='Sending…';
       try{const d=await api('/api/alerts/test','POST',{id:c.id}),x=d.results[0];r.style.color=x.ok?'var(--ok-t)':'';r.textContent=x.ok?'Test message sent':(x.error||'Failed')}catch(x){r.style.color='';r.textContent=x.message}}};
-  $('#f').onsubmit=async e=>{e.preventDefault();const f=e.target.elements,o={diskPct:f.diskPct.value};
-    ['finished','offline','disk','vpn','requests','reports'].forEach(k=>o[k]=f[k].checked);
+  $('#f').onsubmit=async e=>{e.preventDefault();const f=e.target.elements,o={...a,diskPct:f.diskPct.value};delete o.channels;delete o.events;
     try{await api('/api/alerts','PUT',o);msg('Saved',true)}catch(x){msg(x.message)}};
+  $('#cl').onchange=async e=>{const t=e.target;if(!t.matches('[data-ev]'))return;const row=t.closest('[data-c]'),c=a.channels.find(x=>x.id===row.dataset.c);
+    const ev=[...row.querySelectorAll('[data-ev]:checked')].map(x=>x.dataset.ev);
+    try{await api('/api/alerts/channels/'+c.id,'PUT',{type:c.type,events:ev});c.events=ev;toast('Saved','ok')}catch(x){t.checked=!t.checked;toast(x.message,'bad')}};
 }
 async function linksView(){
   let l=[];try{l=await api('/api/statuslinks')}catch(x){$('#m').innerHTML=`<div class="err">${esc(x.message)}</div>`;return}
@@ -2425,9 +2470,9 @@ async function goatView(){
   </div>
   <h2 class="sec">Apps</h2>
   <div class="panel">${st.engines.map(e=>`<div class="row" style="gap:10px;padding:6px 0;border-bottom:1px solid var(--line)">
-      <span class="pill ${e.ok===true?'ok':e.ok===false?'bad':''}" style="min-width:12px"></span><b>${esc(e.name)}</b><span class="grow"></span>
-      ${goatOpen(e.key)?`<a class="btn" href="${goatOpen(e.key)}" target="_blank" rel="noopener">${ic('ext')}Open</a>`:''}
-      <button data-gr="${esc(e.key)}">${ic('refresh')}Restart</button></div>`).join('')}
+      <span class="pill ${e.stopped?'':e.ok===true?'ok':e.ok===false?'bad':''}" style="min-width:12px"></span><b>${esc(e.name)}</b>${e.stopped?'<span class="pill">Stopped</span>':''}<span class="grow"></span>
+      ${goatOpen(e.key)&&!e.stopped?`<a class="btn" href="${goatOpen(e.key)}" target="_blank" rel="noopener">${ic('ext')}Open</a>`:''}
+      ${e.stopped?`<button class="primary" data-gs="${esc(e.key)}">${ic('play')}Start</button>`:`<button data-gr="${esc(e.key)}">${ic('refresh')}Restart</button><button data-gx="${esc(e.key)}">${ic('stop')}Stop</button>`}</div>`).join('')}
     <div class="mute" style="margin-top:8px">Each app's own page opens signed in through GoatMediaStackarr. Seerr is used through <a href="#" data-go="rq">Requests</a>.</div></div>
   <h2 class="sec">From outside your home</h2>
   <div class="panel"><p class="mute" style="margin-top:0">Sonarr, Radarr and the other apps open through this page's own address, so they work wherever this page works (a Cloudflare tunnel or Tailscale). Phone apps for them (nzb360, LunaSea and similar) use this address plus <code>/engines/sonarr</code> (or radarr, prowlarr…) and that app's API key.</p>
@@ -2500,6 +2545,9 @@ async function goatView(){
   if($('#gof'))$('#gof').onsubmit=async e=>{e.preventDefault();$('#goe').textContent='';try{GOAT_OUT=await api('/api/goat/outside','POST',Object.fromEntries(new FormData(e.target)));toast('Saved','ok');goatView()}catch(x){$('#goe').textContent=x.message}};
   $('#m').onclick=async e=>{
     const sh=e.target.closest('[data-show]');if(sh){const c=sh.previousElementSibling;const on=c.textContent!=='••••••••';c.textContent=on?'••••••••':c.dataset.pw;sh.lastChild.textContent=on?'Show':'Hide';return}
+    const gx=e.target.closest('[data-gx],[data-gs]');if(gx){const k=gx.dataset.gx||gx.dataset.gs,stop=!!gx.dataset.gx;
+      if(stop&&!confirm(`Stop ${k}? It stays stopped until you start it again or the container restarts.`))return;
+      busy(gx,stop?'Stopping…':'Starting…');try{await api('/api/goat/'+(stop?'stop':'start'),'POST',{engine:k});toast((stop?'Stopped ':'Started ')+k,'ok');goatView()}catch(x){toast(x.message,'bad');idle(gx)}return}
     const r=e.target.closest('[data-gr]');if(r){busy(r,'Restarting…');try{await api('/api/goat/restart','POST',{engine:r.dataset.gr});toast('Restarted '+r.dataset.gr,'ok')}catch(x){toast(x.message,'bad')}idle(r);return}
     const g=e.target.closest('[data-go]');if(g){e.preventDefault();goto(g.dataset.go)}};
 }

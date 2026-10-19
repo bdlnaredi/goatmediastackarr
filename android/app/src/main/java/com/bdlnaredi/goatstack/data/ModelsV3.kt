@@ -82,3 +82,10 @@ object Versions {
 @Serializable data class SiteInfo(val id: String = "", val name: String = "", val url: String = "", val vpn: Boolean = true, val category: String = "", val signedIn: Boolean = false)
 @Serializable data class TrackerHit(val id: String = "", val title: String = "", val size: Long = 0, val seeders: Int = 0, val leechers: Int = 0, val indexer: String = "", val date: String = "", val info: String = "")
 @Serializable data class OpenReply(val url: String = "", val direct: Boolean = false, val site: String = "")
+
+/** One release an indexer has for a movie or episode (interactive search). */
+@Serializable data class Release(
+    val guid: String = "", val indexerId: Int = 0, val title: String = "", val size: Long = 0, val seeders: Int = 0, val leechers: Int = 0,
+    val indexer: String = "", val quality: String = "", val age: Int = 0, val rejected: Boolean = false, val why: String = "",
+    val langs: List<String> = emptyList(), val link: String = "", val protocol: String = "", val group: String = "",
+)
