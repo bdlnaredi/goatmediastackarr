@@ -259,23 +259,42 @@ async function wireSeerr(s, keys, on) {
     }
     out.libraries = libs.length;
     out.mediaServer = server;
-    for (const [k, dir, extra] of [
-      ['sonarr', E.DIRS.tv, { seriesType: 'standard', animeSeriesType: 'anime', enableSeasonFolders: true, monitorNewItems: 'all' }],
-      ['radarr', E.DIRS.movies, { minimumAvailability: 'released' }]]) {
-      if (!on.includes(k)) continue;
-      const api = arr(k, keys[k]); await api.ready();
-      const [p] = await api.get('qualityprofile');
-      await http('POST', `${SEERR}/api/v1/settings/${k}`, { headers: ch, body: {
-        name: E.ENGINES[k].name, hostname: '127.0.0.1', port: E.ENGINES[k].port, apiKey: keys[k], useSsl: false,
-        baseUrl: E.ENGINES[k].base, activeProfileId: p.id, activeProfileName: p.name, activeDirectory: dir,
-        tags: [], is4k: false, isDefault: true, syncEnabled: true, preventSearch: false, tagRequests: false, overrideRule: [], ...extra } });
-      out[k] = 'connected';
-    }
+    for (const k of ['sonarr', 'radarr']) if (on.includes(k)) { await seerrAddArr(k, keys, ch); out[k] = 'connected'; }
     await http('POST', `${SEERR}/api/v1/settings/initialize`, { headers: ch });
     out.setup = 'done';
-  } else out.setup = 'already done';
+  } else {
+    out.setup = 'already done';
+    // Every start: Seerr must still reach the built-in Sonarr and Radarr with their current API keys. A key that
+    // changed since setup (a reset or a new key) otherwise breaks requests and the download tracker
+    // ("Unable to get queue from Radarr server") without anything saying why.
+    const own = (readJSON(settingsFile).main || {}).apiKey;
+    if (own) {
+      const ch = { 'X-Api-Key': own };
+      for (const k of ['sonarr', 'radarr']) {
+        if (!on.includes(k)) continue;
+        const list = (await http('GET', `${SEERR}/api/v1/settings/${k}`, { headers: ch })).data || [];
+        const mine = list.find(x => ['127.0.0.1', 'localhost'].includes(String(x.hostname)) && +x.port === E.ENGINES[k].port);
+        if (!mine) { await seerrAddArr(k, keys, ch, !list.some(x => x.isDefault && !x.is4k)); out[k] = 'added again'; continue; }
+        if (mine.apiKey === keys[k] && (mine.baseUrl || '') === E.ENGINES[k].base && !mine.useSsl) { out[k] = 'ok'; continue; }
+        await http('PUT', `${SEERR}/api/v1/settings/${k}/${mine.id}`, { headers: ch, body: { ...mine, apiKey: keys[k], baseUrl: E.ENGINES[k].base, useSsl: false } });
+        out[k] = 'updated';
+      }
+    }
+  }
   const apiKey = (readJSON(settingsFile).main || {}).apiKey || '';
   return { out, apiKey };
+}
+
+// Adds the built-in Sonarr or Radarr to Seerr, with its first quality profile and the library folder.
+async function seerrAddArr(k, keys, headers, isDefault = true) {
+  const dir = k === 'sonarr' ? E.DIRS.tv : E.DIRS.movies;
+  const extra = k === 'sonarr' ? { seriesType: 'standard', animeSeriesType: 'anime', enableSeasonFolders: true, monitorNewItems: 'all' } : { minimumAvailability: 'released' };
+  const api = arr(k, keys[k]); await api.ready();
+  const [p] = await api.get('qualityprofile');
+  await http('POST', `${SEERR}/api/v1/settings/${k}`, { headers, body: {
+    name: E.ENGINES[k].name, hostname: '127.0.0.1', port: E.ENGINES[k].port, apiKey: keys[k], useSsl: false,
+    baseUrl: E.ENGINES[k].base, activeProfileId: p.id, activeProfileName: p.name, activeDirectory: dir,
+    tags: [], is4k: false, isDefault, syncEnabled: true, preventSearch: false, tagRequests: false, overrideRule: [], ...extra } });
 }
 
 // ---------- main ----------

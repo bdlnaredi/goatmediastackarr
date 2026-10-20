@@ -26,6 +26,7 @@
 
 ## Fixes
 
+- Seerr keeps working with Sonarr and Radarr after their API keys change: every start checks the address and key Seerr uses for the built-in Sonarr and Radarr and updates them (or adds them back if they were removed). A stale key showed as "Unable to get queue from Radarr/Sonarr server" in Seerr's download tracker, and requests could fail.
 - WireGuard (PIA and provider files): traffic now really flows. WireGuard's encrypted packets kept the VPN apps' mark, so they were sent back into the tunnel in a loop — the handshake worked but nothing came back, and huge amounts showed as sent. WireGuard now marks its own packets separately. A new test runs a real WireGuard tunnel with the kill switch on every change.
 - OpenVPN no longer fails with "Cannot ioctl TUNSETIFF goatvpn: Device or resource busy" after the VPN is reconnected or its settings are saved: the VPN service now takes its tunnel down when it is stopped or restarted, stops a connection attempt that timed out, and clears any tunnel left over from before it starts a new one.
 - Seerr's own page (port 5055) no longer shows "Seerr Updated, please reload" every time it opens: its version number is now built into the page as well as the server, so the two agree.

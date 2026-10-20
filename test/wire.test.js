@@ -67,7 +67,7 @@ function fakeSeerr(settingsFile) {
   const st = { initialized: false, dvr: {}, enabled: '', configured: false, logins: 0, libs: [{ id: 'a', name: 'Movies', enabled: false }, { id: 'b', name: 'TV Shows', enabled: false }] };
   const srv = http.createServer(async (req, res) => {
     const u = new URL(req.url, 'http://x'), p = u.pathname, b = ['POST', 'PUT'].includes(req.method) ? await body(req) : null;
-    const ok = (req.headers.cookie || '') === 'connect.sid=abc';
+    const ok = (req.headers.cookie || '') === 'connect.sid=abc' || req.headers['x-api-key'] === 'seerrkey';
     if (p === '/api/v1/settings/public') return json(res, 200, { initialized: st.initialized });
     if (p === '/api/v1/auth/jellyfin') {
       st.logins++;
@@ -84,7 +84,10 @@ function fakeSeerr(settingsFile) {
     const lm = p.match(/^\/api\/v1\/settings\/jellyfin\/library\/(\w+)$/);
     if (lm && req.method === 'PUT') { st.libs.find(l => l.id === lm[1]).enabled = b.enabled; st.enabled = st.libs.filter(l => l.enabled).map(l => l.id).join(','); return json(res, 200, {}); }
     const m = p.match(/^\/api\/v1\/settings\/(sonarr|radarr)$/);
-    if (m) { st.dvr[m[1]] = b; return json(res, 201, b); }
+    if (m && req.method === 'GET') return json(res, 200, st.dvr[m[1]] ? [st.dvr[m[1]]] : []);
+    if (m) { st.dvr[m[1]] = { ...b, id: 0 }; return json(res, 201, b); }
+    const mi = p.match(/^\/api\/v1\/settings\/(sonarr|radarr)\/(\d+)$/);
+    if (mi && req.method === 'PUT') { st.puts = (st.puts || 0) + 1; st.dvr[mi[1]] = { ...b, id: +mi[2] }; return json(res, 200, b); }
     if (p === '/api/v1/settings/initialize') { st.initialized = true; return json(res, 200, {}); }
     json(res, 404, {});
   });
@@ -148,6 +151,13 @@ test('wire connects every engine and running it again changes nothing', async ()
     assert.deepEqual([sonarr, radarr, prowlarr].map(f => f.st.posts.length), before);
     assert.equal(jf.st.libs.length, 2);
     assert.equal(jf.st.keys.length, 1);
+    assert.equal(seerr.st.puts, undefined, 'nothing to change in Seerr when the keys still match');
+    // Radarr got a new API key after Seerr was set up: the next start gives Seerr the new one.
+    seerr.st.dvr.radarr.apiKey = 'an-old-key';
+    const s3 = await wire.run();
+    assert.ok(s3.steps.seerr.ok, s3.steps.seerr.error);
+    assert.equal(seerr.st.dvr.radarr.apiKey, a.keys.radarr); assert.equal(seerr.st.puts, 1);
+    assert.equal(seerr.st.dvr.radarr.activeDirectory, path.join(root, 'media/movies'), 'the rest of its settings are kept');
     // Keys found by the second run survive a restart of init.
     const again = init.run(process.env);
     assert.equal(again.managed.services.find(x => x.key === 'seerr').apiKey, 'seerrkey');
