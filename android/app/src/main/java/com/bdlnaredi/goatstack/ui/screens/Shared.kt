@@ -54,7 +54,14 @@ fun services(): List<Service> {
 @Composable
 fun toaster(): (String) -> Unit {
     val c = LocalContext.current
-    return { msg -> Toast.makeText(c, msg, Toast.LENGTH_SHORT).show() }
+    // A message can come from the end of a network call; Android only shows them from the main thread.
+    return toast@{ msg ->
+        // Leaving a page cancels its calls; that is not something to tell anyone about.
+        if (Regex("(Job|coroutine) was cancelled", RegexOption.IGNORE_CASE).containsMatchIn(msg)) return@toast
+        val main = android.os.Looper.getMainLooper()
+        if (android.os.Looper.myLooper() == main) Toast.makeText(c, msg, Toast.LENGTH_SHORT).show()
+        else android.os.Handler(main).post { Toast.makeText(c, msg, Toast.LENGTH_SHORT).show() }
+    }
 }
 
 /** What to ask for: a movie, or a show with all or some seasons. */

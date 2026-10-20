@@ -500,8 +500,8 @@ function trace(series,h,label){
     series.map((s,i)=>s.v.length<2?'':(i===0?`<path d="${line(s.v)}L${W},${h}L${x(s.v,0)},${h}Z" fill="url(#${gid})"/>`:'')+`<path d="${line(s.v)}" fill="none" style="stroke:${s.c}" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`).join('')+'</svg>';
 }
 const esc=t=>String(t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const SVC_ICON={sonarr:['tv','#2fb4e6','#16709f'],radarr:['film','#e6a100','#a86400'],prowlarr:['find','#ff8a3d','#bd4a14'],jackett:['idx','#d9822b','#9a4410'],qbittorrent:['dl','#4a8de0','#274ca0'],seerr:['rq','#9a6bff','#5a30c4'],unraid:['ur','#ff7a45','#cf3a14'],plex:['play','#d9960a','#8f5a00'],jellyfin:['play','#8b5cf6','#3b6fe0'],tautulli:['stats','#c99a1f','#7d5a0e'],sabnzbd:['nzb','#e0a000','#9c6000'],bazarr:['sub','#3fb6cd','#1d7186'],lidarr:['mb','#2fbf71','#127a46'],readarr:['book','#d9534f','#8a2420']};
-const svcGuess=n=>{n=String(n||'').toLowerCase();return Object.keys(SVC_ICON).find(k=>n.includes(k))||(/transmission|deluge|rtorrent/.test(n)?'qbittorrent':/overseerr|jellyseerr/.test(n)?'seerr':/emby/.test(n)?'jellyfin':'')};
+const SVC_ICON={sonarr:['tv','#2fb4e6','#16709f'],radarr:['film','#e6a100','#a86400'],prowlarr:['find','#ff8a3d','#bd4a14'],jackett:['idx','#d9822b','#9a4410'],qbittorrent:['dl','#4a8de0','#274ca0'],seerr:['rq','#9a6bff','#5a30c4'],unraid:['ur','#ff7a45','#cf3a14'],plex:['play','#d9960a','#8f5a00'],jellyfin:['play','#8b5cf6','#3b6fe0'],tautulli:['stats','#c99a1f','#7d5a0e'],sabnzbd:['nzb','#e0a000','#9c6000'],bazarr:['sub','#3fb6cd','#1d7186'],lidarr:['mb','#2fbf71','#127a46'],readarr:['book','#d9534f','#8a2420'],rutorrent:['dl','#7b5ce0','#43309c'],deluge:['dl','#2f8fd6','#1d5590']};
+const svcGuess=n=>{n=String(n||'').toLowerCase();return Object.keys(SVC_ICON).find(k=>n.includes(k))||(/rutorrent|rtorrent/.test(n)?'rutorrent':/deluge/.test(n)?'deluge':/transmission/.test(n)?'qbittorrent':/overseerr|jellyseerr/.test(n)?'seerr':/emby/.test(n)?'jellyfin':'')};
 // A small coloured tile with the app's icon; with an id it also carries the online/offline dot.
 // The real logos come from the public dashboard-icons set, loaded by the browser. If they cannot be reached (no internet, or ICON_BASE is empty) the drawn tile above stays.
 let ICONB='';
@@ -512,7 +512,7 @@ const svcIcon=(type,id,name,url)=>{const k=SVC_ICON[type]?type:svcGuess(name||ty
   return `<span class="si" style="--a:${d[1]};--b:${d[2]}">${ic(d[0])}${lg}${dot}</span>`};
 document.addEventListener('load',e=>{const i=e.target;if(i.classList&&i.classList.contains('lg'))i.parentNode.classList.add('lgon')},true);
 document.addEventListener('error',e=>{const i=e.target;if(!(i.classList&&i.classList.contains('lg')))return;const n=(i.dataset.alt||'').split(',').filter(Boolean);if(n.length){i.dataset.alt=n.slice(1).join(',');i.src=ICONB+n[0]+'.svg'}else i.remove()},true);
-const TYPES={sonarr:'Sonarr',radarr:'Radarr',prowlarr:'Prowlarr',jackett:'Jackett',qbittorrent:'qBittorrent',seerr:'Seerr',unraid:'Unraid',plex:'Plex',jellyfin:'Jellyfin',tautulli:'Tautulli',sabnzbd:'SABnzbd',bazarr:'Bazarr',lidarr:'Lidarr',readarr:'Readarr'};
+const TYPES={sonarr:'Sonarr',radarr:'Radarr',prowlarr:'Prowlarr',jackett:'Jackett',qbittorrent:'qBittorrent',rutorrent:'ruTorrent',deluge:'Deluge',seerr:'Seerr',unraid:'Unraid',plex:'Plex',jellyfin:'Jellyfin',tautulli:'Tautulli',sabnzbd:'SABnzbd',bazarr:'Bazarr',lidarr:'Lidarr',readarr:'Readarr'};
 let me=null,tab='dash',services=[],users=[];
 async function api(url,method='GET',body){
   const r=await fetch(url,{method,headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});
@@ -698,8 +698,8 @@ const PAGES={dash:['',''],find:['Search','Find a show or movie and add it to Son
  wt:['Wanted','Episodes and movies you are still missing, or that could be a better quality.'],dl:['Downloads','What qBittorrent is fetching right now.'],rss:['RSS','Feeds and auto-download rules from qBittorrent.'],up:['Upcoming','Releases coming soon, and what is downloading.'],
  idx:['Indexers','Search, check, add and remove the indexers in Jackett and Prowlarr.'],trk:['Trackers','Search your trackers, and browse their websites (through the VPN if you like). Downloads go straight to qBittorrent.'],mb:['Music and books','Artists and authors from Lidarr and Readarr.'],sub:['Subtitles','Episodes and movies that are missing subtitles in Bazarr.'],nzb:['Usenet','What SABnzbd is fetching, what finished, and adding NZB files.'],hl:['Health','Problems, disk space and stuck downloads across your apps.'],ur:['Unraid','Server health, disks and containers.'],stats:['Watch stats','Who watches what on Plex.'],goat:['Stack','The apps inside GoatMediaStackarr: VPN, connections, logins and restarts.'],set:['Settings','Apps, profiles, alerts, backups and how GoatMediaStackarr looks.']};
 const TABS=[['dash','Dashboard'],['find','Search'],['disc','Discover'],['rq','Requests'],['lib','Library'],['wt','Wanted'],['dl','Downloads'],['rss','RSS'],['up','Upcoming'],['idx','Indexers'],['trk','Trackers'],['mb','Music & books'],['sub','Subtitles'],['nzb','Usenet'],['hl','Health'],['ur','Unraid'],['stats','Stats'],['goat','Stack'],['set','Settings']];
-const TYPE_TABS={trk:['qbittorrent'],find:['sonarr','radarr'],rq:['seerr'],lib:['sonarr','radarr'],wt:['sonarr','radarr'],dl:['qbittorrent'],rss:['qbittorrent'],up:['sonarr','radarr'],idx:['jackett','prowlarr'],mb:['lidarr','readarr'],sub:['bazarr'],nzb:['sabnzbd'],ur:['unraid'],stats:['tautulli']};
-const PICK={sub:'bazarr',nzb:'sabnzbd',dl:'qbittorrent',rss:'qbittorrent',idx:'jackett',ur:'unraid',rq:'seerr',stats:'tautulli'};
+const TYPE_TABS={trk:['qbittorrent'],find:['sonarr','radarr'],rq:['seerr'],lib:['sonarr','radarr'],wt:['sonarr','radarr'],dl:['qbittorrent','rutorrent','deluge'],rss:['qbittorrent'],up:['sonarr','radarr'],idx:['jackett','prowlarr'],mb:['lidarr','readarr'],sub:['bazarr'],nzb:['sabnzbd'],ur:['unraid'],stats:['tautulli']};
+const PICK={sub:'bazarr',nzb:'sabnzbd',dl:'torrent',rss:'qbittorrent',idx:'jackett',ur:'unraid',rq:'seerr',stats:'tautulli'};
 const visibleTabs=()=>TABS.filter(([k])=>!TYPE_TABS[k]||TYPE_TABS[k].some(t=>ofType(t).length)).filter(([k])=>k!=='disc'||Object.values(me.lists||{}).some(Boolean)).filter(([k])=>k!=='hl'||(me.role==='admin'&&services.some(s=>['sonarr','radarr','lidarr','readarr','prowlarr'].includes(s.type)))).filter(([k])=>k!=='goat'||(GOAT&&me.role==='admin')).filter(([k])=>k!=='trk'||me.role==='admin');
 let stSub='acct';
 // ---------- Addresses: every tab and every Settings section has its own address (/downloads, /settings/apps),
@@ -1096,7 +1096,7 @@ function tfaPanel(){
 }
 function copyText(t){(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>toast('Copied','ok')).catch(()=>{const a=document.createElement('textarea');a.value=t;document.body.append(a);a.select();try{document.execCommand('copy');toast('Copied','ok')}catch{toast('Copy failed. Select the text and copy it.','bad')}a.remove()})}
 const APPS={sonarr:{port:8989,key:'In Sonarr: Settings, then General, then API Key.'},radarr:{port:7878,key:'In Radarr: Settings, then General, then API Key.'},prowlarr:{port:9696,key:'In Prowlarr: Settings, then General, then API Key.'},
- jackett:{port:9117,admin:true,key:'The API key is at the top right of the Jackett page. The admin password is only needed to add indexers from GoatMediaStackarr, and only if Jackett has one.'},qbittorrent:{port:8080,user:true,key:'Use the same username and password as the qBittorrent web page.'},
+ jackett:{port:9117,admin:true,key:'The API key is at the top right of the Jackett page. The admin password is only needed to add indexers from GoatMediaStackarr, and only if Jackett has one.'},qbittorrent:{port:8080,user:true,key:'Use the same username and password as the qBittorrent web page.'},rutorrent:{port:8080,user:true,key:'The address you open ruTorrent with, and its username and password if it asks for one. Its httprpc plugin must be on (it is by default). An rTorrent RPC2 address works too.'},deluge:{port:8112,pwOnly:true,key:'The address of Deluge\'s Web UI (port 8112 unless changed) and the Web UI password. Turn on Deluge\'s Label plugin to use categories.'},
  seerr:{port:5055,key:'In Seerr: Settings, then General, then API Key.'},unraid:{port:80,key:'In Unraid: Settings, then Management Access, then API Keys. Allow viewing the system and controlling Docker.'},
  jellyfin:{port:8096,key:'In Jellyfin open Dashboard, then API Keys, and create a key named GoatMediaStackarr. Emby works the same way.'},plex:{port:32400,key:'Needs your Plex token. In Plex Web open any item, choose Get Info, then View XML. The token is at the end of the address.'},tautulli:{port:8181,key:'In Tautulli: Settings, then Web Interface, then API Key.'},
  sabnzbd:{port:8080,key:'In SABnzbd: Config, then General, then API Key.'},bazarr:{port:6767,key:'In Bazarr: Settings, then General, then API Key.'},lidarr:{port:8686,key:'In Lidarr: Settings, then General, then API Key.'},readarr:{port:8787,key:'In Readarr: Settings, then General, then API Key.'}};
@@ -1110,7 +1110,7 @@ function appDialog(existing,done){
     <div class="row"><button class="primary">${existing?'Save changes':'Add app'}</button><button type="button" data-x>Cancel</button></div></form>`);
   const f=o.querySelector('#af3').elements;
   const sync=()=>{const t=f.type.value,a=APPS[t]||{};
-    o.querySelector('#fk').innerHTML=a.user?`<input name="user" placeholder="Username" value="${esc(e0.user||'')}" autocomplete="off"><input name="pass" type="password" placeholder="${existing?'Password (leave empty to keep)':'Password'}" autocomplete="new-password">`
+    o.querySelector('#fk').innerHTML=a.pwOnly?`<input name="pass" type="password" placeholder="${existing?'Web UI password (leave empty to keep)':'Web UI password'}" autocomplete="new-password">`:a.user?`<input name="user" placeholder="Username" value="${esc(e0.user||'')}" autocomplete="off"><input name="pass" type="password" placeholder="${existing?'Password (leave empty to keep)':'Password'}" autocomplete="new-password">`
       :`<input name="apiKey" type="password" placeholder="${existing?'API key or token (leave empty to keep)':'API key or token'}" autocomplete="off">${a.admin?`<input name="pass" type="password" placeholder="${existing?'Admin password (optional, leave empty to keep)':'Admin password (optional)'}" autocomplete="new-password">`:''}`;
     o.querySelector('#fh').textContent=a.key||'';
     if(!existing){f.url.placeholder='Address, for example http://192.168.1.10:'+(a.port||80);if(!f.name.value||f.name.value===f.name.dataset.t){f.name.value=TYPES[t];f.name.dataset.t=TYPES[t]}}};
@@ -1126,11 +1126,12 @@ function appDialog(existing,done){
 function svcView(){
   $('#m').innerHTML=`<div class="row" style="margin-bottom:14px"><span class="mute grow">The apps GoatMediaStackarr talks to. Most pages only appear once the matching app is added.</span><button class="primary" id="aa">${ic('rq')}Add an app</button></div><div class="panel" style="padding:4px 18px" id="al3"></div>`;
   const draw=()=>{$('#al3').innerHTML=services.map(s=>`<div class="srow" style="grid-template-columns:40px 1fr auto auto">${svcIcon(s.type,s.id)}<div style="min-width:0"><b>${esc(s.name)}</b> <span class="mute">${esc(TYPES[s.type]||s.type)}</span><div class="mute" style="word-break:break-all">${esc(s.url)}</div></div>
-      <span class="mute" id="t${s.id}">Checking</span><span class="row"><button data-e="${s.id}">Edit</button><button class="danger" data-x="${s.id}">Remove</button></span></div>`).join('')||empty('No apps yet','Add Sonarr, Radarr, qBittorrent or any other app to get started.');
+      <span class="mute" id="t${s.id}">Checking</span><span class="row">${['rutorrent','deluge'].includes(s.type)&&services.some(x=>['sonarr','radarr','lidarr'].includes(x.type))?`<button data-ua="${s.id}" title="Add it to Sonarr, Radarr and Lidarr as a download client">Use in Sonarr/Radarr</button>`:''}<button data-e="${s.id}">Edit</button><button class="danger" data-x="${s.id}">Remove</button></span></div>`).join('')||empty('No apps yet','Add Sonarr, Radarr, qBittorrent or any other app to get started.');
     services.forEach(async s=>{let ok=false;try{ok=(await api('/api/status/'+s.id)).ok}catch{}const d=$('#d'+s.id);if(!d)return;d.className='dot '+(ok?'ok':'bad');$('#t'+s.id).textContent=ok?'Online':'Not reachable'})};
   draw();
   $('#aa').onclick=()=>appDialog(null,render);
-  $('#al3').onclick=async e=>{const ed=e.target.closest('[data-e]'),rm=e.target.closest('[data-x]');
+  $('#al3').onclick=async e=>{const ed=e.target.closest('[data-e]'),rm=e.target.closest('[data-x]'),ua=e.target.closest('[data-ua]');
+    if(ua){ua.disabled=true;try{const r=await api(`/api/clients/${ua.dataset.ua}/arr`,'POST',{});toast(r.results.map(x=>`${x.app}: ${x.result}`).join(' · '),r.results.every(x=>!/^failed/.test(x.result))?'ok':'bad')}catch(x){toast(x.message,'bad')}ua.disabled=false;return}
     if(ed)appDialog(services.find(s=>s.id===ed.dataset.e),render);
     if(rm&&confirm('Remove this app from GoatMediaStackarr? The app itself is not touched.')){try{await api('/api/services/'+rm.dataset.x,'DELETE');await load();toast('Removed','ok');render()}catch(x){toast(x.message,'bad')}}};
 }
@@ -1301,7 +1302,9 @@ function showFound(){
 let timer;
 const fmt=b=>b>=1e12?(b/1e12).toFixed(2)+' TB':b>=1e9?(b/1e9).toFixed(1)+' GB':b>=1e6?(b/1e6).toFixed(0)+' MB':((b||0)/1e3|0)+' KB';
 const can=k=>me.role==='admin'||!me.perms||me.perms[k]!==false;
-const ofType=t=>services.filter(s=>s.type===t);
+// 'torrent' stands for every torrent client: qBittorrent, ruTorrent and Deluge.
+const TCLIENTS=['qbittorrent','rutorrent','deluge'];
+const ofType=t=>services.filter(s=>t==='torrent'?TCLIENTS.includes(s.type):s.type===t);
 const msBase=id=>'/api/'+((services.find(x=>x.id===id)||{}).type||'plex')+'/'+id;
 const first=t=>{const l=ofType(t);return l.find(s=>s.id===UI['pick_'+t])||l[0]};
 const ago=t=>{const s=(Date.now()-t)/1000;return !t?'a while ago':s<90?'just now':s<5400?Math.round(s/60)+' min ago':s<129600?Math.round(s/3600)+' h ago':Math.round(s/86400)+' days ago'};
@@ -1345,14 +1348,15 @@ function modal(html,page){
 // A faded picture of the title behind its page.
 function pageBg(o,url){if(!url||!o)return;const b=document.createElement('div');b.className='pgbg';b.setAttribute('aria-hidden','true');b.style.backgroundImage='url("'+String(url).replace(/"/g,'%22')+'")';o.prepend(b)}
 function dlView(){
-  const s=first('qbittorrent');if(!s)return noSvc('qBittorrent');
+  const s=first('torrent');if(!s)return noSvc('qBittorrent, ruTorrent or Deluge');
+  const QB=s.type==='qbittorrent';
   const admin=me.role==='admin',act=b=>api(`/api/qb/${s.id}/act`,'POST',b);
   dlH.length=ulH.length=0;dlSel.clear();
   $('#m').innerHTML=`<div class="panel"><div class="row" style="gap:30px;align-items:flex-end"><div><div class="mute">Download</div><b id="dv" style="font-size:28px;letter-spacing:-.03em;color:var(--link)">–</b></div>
     <div><div class="mute">Upload</div><b id="uv" style="font-size:22px;color:var(--ok-t)">–</b></div><span class="mute" id="pk" style="margin-left:auto"></span><span class="mute" id="fr"></span><span class="pill" id="vp">VPN</span></div>
     <div id="gr" style="margin-top:10px"></div><div class="row mute" style="justify-content:space-between"><span>2 minutes ago</span><span>now</span></div></div>
-    <div class="row" style="margin:14px 0"><button id="alt">Speed limits</button><button id="pa">${ic('pause')}Pause all</button><button id="ra">${ic('play')}Resume all</button><button id="hs">${ic('hist')}History</button>
-    ${admin?`<button id="lm">Speed limit settings</button><button id="cm">Categories and tags</button>`:''}</div>
+    <div class="row" style="margin:14px 0">${QB?'<button id="alt">Speed limits</button>':''}<button id="pa">${ic('pause')}Pause all</button><button id="ra">${ic('play')}Resume all</button><button id="hs">${ic('hist')}History</button>
+    ${admin&&QB?`<button id="lm">Speed limit settings</button><button id="cm">Categories and tags</button>`:''}${!QB?`<span class="mute" style="font-size:13px">${s.type==='deluge'?'Deluge':'ruTorrent'}: categories are its labels. Speed limits and schedules stay in its own page.</span>`:''}</div>
     <div class="row" style="margin-bottom:12px"><input id="sq" type="search" placeholder="Search torrents" aria-label="Search torrents" style="flex:1;min-width:150px">
     <select id="sc" aria-label="Category"></select><select id="so" aria-label="Sort"><option value="added">Newest added</option><option value="size">Largest size</option><option value="status">Status (active first)</option></select>
     ${can('add')?`<button class="primary" id="ad">${ic('rq')}Add downloads</button>`:''}</div>
@@ -1397,7 +1401,7 @@ function dlView(){
     try{const d=await api(`/api/qb/${s.id}/list`);if(tab!=='dl')return;
       t=d.torrents;const have=new Set(t.map(x=>x.hash));[...dlSel].forEach(h=>{if(!have.has(h))dlSel.delete(h)});bulkBar();
       hp(dlH,d.dl);hp(ulH,d.ul);$('#dv').textContent=fmt(d.dl)+'/s';$('#uv').textContent=fmt(d.ul)+'/s';
-      const al=$('#alt');al.textContent='Speed limits: '+(d.alt?'On':'Off');al.setAttribute('aria-pressed',d.alt);al.classList.toggle('tog',!!d.alt);
+      const al=$('#alt');if(al){al.textContent='Speed limits: '+(d.alt?'On':'Off');al.setAttribute('aria-pressed',d.alt);al.classList.toggle('tog',!!d.alt)};
       $('#gr').innerHTML=trace([{v:dlH,c:'var(--accent)'},{v:ulH,c:'var(--ok-t)'}],96,'Download and upload speed over the last two minutes');
       $('#pk').textContent='peak '+fmt(Math.max(...dlH,...ulH))+'/s';paint()}
     catch(x){if(tab==='dl')$('#e').textContent=x.message}finally{busy=0}};
@@ -1421,12 +1425,12 @@ function dlView(){
   $('#sc').onchange=e=>{dlCat=e.target.value;key=null;paint()};
   $('#so').onchange=e=>{dlSort=e.target.value;key=null;paint()};
   $('#sa').onchange=e=>{if(e.target.checked)vis.forEach(x=>dlSel.add(x.hash));else vis.forEach(x=>dlSel.delete(x.hash));key=null;paint();bulkBar()};
-  $('#alt').onclick=async()=>{try{await api(`/api/qb/${s.id}/alt`,'POST');await draw()}catch(x){toast(x.message,'bad')}};
+  if($('#alt'))$('#alt').onclick=async()=>{try{await api(`/api/qb/${s.id}/alt`,'POST');await draw()}catch(x){toast(x.message,'bad')}};
   $('#pa').onclick=()=>run('pause','all');$('#ra').onclick=()=>run('resume','all');
   if($('#ad'))$('#ad').onclick=()=>addDialog(s,meta,()=>{toast('Added to downloads','ok');draw()});
   $('#hs').onclick=()=>histDialog(s);
   if(!can('control'))['#alt','#pa','#ra'].forEach(i=>{$(i).disabled=true});
-  if(admin){$('#lm').onclick=()=>limDialog(s);$('#cm').onclick=()=>catDialog(s,()=>meta,loadMeta)}
+  if(admin&&QB){$('#lm').onclick=()=>limDialog(s);$('#cm').onclick=()=>catDialog(s,()=>meta,loadMeta)}
   draw();loadMeta();timer=[tick(draw,1000),tick(loadMeta,30000)];
 }
 function addDialog(s,meta,done){
@@ -1477,7 +1481,7 @@ async function openTorrent(s,x,meta,after){
     const b=e.target.closest('[data-a]');if(!b)return;const a=b.dataset.a;let v;
     if(a==='rename'){v=prompt('New name',x.name);if(!v)return}
     if(a==='location'){v=prompt('Move to this folder (path on the server):',x.path);if(!v)return}
-    if(a==='delete'){if(!confirm('Remove this torrent from qBittorrent?'))return;
+    if(a==='delete'){if(!confirm(`Remove this torrent from ${TYPES[s.type]||'the download app'}?`))return;
       const files=confirm('Also delete the downloaded files?\n\nOK = delete the files, Cancel = keep the files');
       try{await act({action:'delete',files});o.close();after()}catch(ex){err(ex.message)}return}
     try{await act({action:a,value:v});err();if(a==='rename'){x.name=v}after();if(a==='rename'||a==='location')o.close()}catch(ex){err(ex.message)}});

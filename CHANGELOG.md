@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- ruTorrent and Deluge: connect the ones you already run (Settings → Apps). They show in Downloads on the web page and in the app like qBittorrent (list, filters, pause, resume, remove, labels, details, adding links and .torrent files), finished downloads count in the history and alerts, and *Use in Sonarr/Radarr* adds them to Sonarr, Radarr and Lidarr as a download client.
+- Android app: messages that come at the end of a network call no longer crash the app when the page was already left.
 - App updates are visible: the Stack page (web page and app) shows each app's version, and after an update lists what changed ("Sonarr 4.0.15 → 4.0.16"). Admins see it in the bell, and alert channels can be told (Alerts: "Apps inside the container are updated").
 - The weekly rebuild now really updates Seerr, Bazarr and SABnzbd too. Seerr was fixed at 3.5.0, and Bazarr and SABnzbd could be reused from an earlier build.
 - RSS in the app: tick several articles (Select, or press and hold one), then download them all at once into a category, or mark them read. Select all, too.

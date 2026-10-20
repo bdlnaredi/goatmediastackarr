@@ -71,23 +71,26 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
+val TORRENT_CLIENTS = listOf("qbittorrent", "rutorrent", "deluge")
+
 private val FILTERS = listOf("active" to "Active", "all" to "All", "done" to "Finished", "paused" to "Paused")
 
 @Composable
 fun DownloadsScreen() {
     val svcs = services()
-    val qbs = svcs.filter { it.type == "qbittorrent" }
+    // Torrents from qBittorrent, ruTorrent or Deluge: the server answers the same way for all three.
+    val qbs = svcs.filter { it.type in TORRENT_CLIENTS }
     val sabs = svcs.filter { it.type == "sabnzbd" }
     val kinds = buildList { qbs.forEach { add(it.id to it.name) }; sabs.forEach { add(it.id to it.name) } }
     var sel by rememberSaveable { mutableStateOf(kinds.firstOrNull()?.first ?: "") }
-    val cur = svcs.firstOrNull { it.id == sel } ?: svcs.firstOrNull { it.type == "qbittorrent" || it.type == "sabnzbd" }
+    val cur = svcs.firstOrNull { it.id == sel } ?: svcs.firstOrNull { it.type in TORRENT_CLIENTS || it.type == "sabnzbd" }
     val g = LocalGoat.current
 
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
         PageTitle("Downloads", cur?.name)
-        if (cur == null) { EmptyState(Icons.Rounded.Download, "No download apps", "Your profile has no qBittorrent or SABnzbd to show."); return@Column }
+        if (cur == null) { EmptyState(Icons.Rounded.Download, "No download apps", "Your profile has no qBittorrent, ruTorrent, Deluge or SABnzbd to show."); return@Column }
         if (kinds.size > 1) { ChoiceRow(kinds, cur.id, { sel = it }); Spacer(Modifier.height(8.dp)) }
-        if (cur.type == "qbittorrent") Torrents(cur.id) else Usenet(cur.id)
+        if (cur.type in TORRENT_CLIENTS) Torrents(cur.id, cur.type == "qbittorrent") else Usenet(cur.id)
     }
 }
 
@@ -98,7 +101,7 @@ fun AutoRefresh(ms: Long, reload: () -> Unit) {
 }
 
 @Composable
-private fun Torrents(sid: String) {
+private fun Torrents(sid: String, qbit: Boolean = true) {
     val ctx = LocalCtx.current
     val g = LocalGoat.current
     val scope = rememberCoroutineScope()
@@ -147,7 +150,8 @@ private fun Torrents(sid: String) {
         }
         if (ctx.user.can("add") || ctx.user.admin) Row(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (ctx.user.can("add")) GhostButton("Add a link", icon = Icons.Rounded.Add, modifier = Modifier.weight(1f), onClick = { adding = true })
-            if (ctx.user.admin) GhostButton("Categories", icon = Icons.Rounded.Folder, modifier = Modifier.weight(1f), onClick = { managing = true })
+            // ruTorrent and Deluge make their labels themselves when one is first used; managing them is qBittorrent's.
+            if (ctx.user.admin && qbit) GhostButton("Categories", icon = Icons.Rounded.Folder, modifier = Modifier.weight(1f), onClick = { managing = true })
         }
         val list = q.torrents.filter { cat == null || it.category == cat }.filter {
             when (filter) {

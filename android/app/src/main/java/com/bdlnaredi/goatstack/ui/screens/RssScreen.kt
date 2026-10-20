@@ -197,6 +197,7 @@ private fun Articles(sid: String, feeds: List<RssFeed>) {
                             chosen.forEach { readNow[it.id] = true }
                             toast(if (r.failed.isEmpty()) "Added ${r.added} to downloads" else "Added ${r.added}; ${r.failed.size} had no download link")
                             done()
+                        } catch (e: kotlinx.coroutines.CancellationException) { throw e  // the page was left; nothing to say
                         } catch (e: Exception) { toast(e.message ?: "Could not add them") }
                         busy = false
                     }
@@ -207,6 +208,7 @@ private fun Articles(sid: String, feeds: List<RssFeed>) {
                         try {
                             picked.values.forEach { a -> ctx.api.send("POST", "/api/rss/$sid/read", buildJsonObject { put("path", a.feed); put("id", a.id) }); readNow[a.id] = true }
                             toast("Marked as read"); done()
+                        } catch (e: kotlinx.coroutines.CancellationException) { throw e
                         } catch (e: Exception) { toast(e.message ?: "That did not work") }
                         busy = false
                     }

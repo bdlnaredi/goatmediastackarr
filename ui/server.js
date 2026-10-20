@@ -7,6 +7,7 @@
 const http = require('http'), fs = require('fs'), path = require('path'), crypto = require('crypto'), zlib = require('zlib');
 const DATA = process.env.DATA_DIR || '/data', FILE = path.join(DATA, 'db.json');
 fs.mkdirSync(DATA, { recursive: true });
+const tclients = require('./lib/torrentclients');
 const totp = require('./lib/totp'), channels = require('./lib/channels'), listsLib = require('./lib/lists');
 const PORT = +process.env.PORT || 5080, DEMO = /^(1|true|yes)$/i.test(process.env.DEMO || ''), DAY = 864e5;
 const demo = DEMO ? require('./lib/demo').create({ streams: 2 }) : null;
@@ -107,7 +108,7 @@ const feed = (to, kind, title, body, link = '') => {
   save();
 };
 const notifyUser = (u, title, body, kind = 'reqstatus', link = '') => { if (u) feed(u.id, kind, title, body, link); return u && u.notify ? pushTo(u.notify, title, body) : Promise.resolve(false); };
-const KINDS = ['sonarr', 'radarr', 'prowlarr', 'jackett', 'qbittorrent', 'seerr', 'unraid', 'plex', 'jellyfin', 'tautulli', 'sabnzbd', 'bazarr', 'lidarr', 'readarr'];
+const KINDS = ['sonarr', 'radarr', 'prowlarr', 'jackett', 'qbittorrent', 'rutorrent', 'deluge', 'seerr', 'unraid', 'plex', 'jellyfin', 'tautulli', 'sabnzbd', 'bazarr', 'lidarr', 'readarr'];
 const SESSF = path.join(DATA, 'sessions.json'), th = t => crypto.createHash('sha256').update(String(t || '')).digest('hex');
 let sessions; try { sessions = new Map(Object.entries(JSON.parse(fs.readFileSync(SESSF))).map(([k, v]) => [k, typeof v === 'string' ? { uid: v, at: 0, seen: 0, ua: '', ip: '' } : v])); } catch { sessions = new Map(); }
 const saveSess = () => DEMO || fs.writeFileSync(SESSF, JSON.stringify(Object.fromEntries(sessions)), { mode: 0o600 });
@@ -351,6 +352,7 @@ const goatProxy = (req, res, t) => {
 // Checks that a service answers with the details you saved.
 async function test(s) {
   const u = s.url.replace(/\/+$/, ''), t = { signal: AbortSignal.timeout(8000) };
+  if (tclients.TYPES.includes(s.type)) { await tclients.clientFor(s).test(); return true; }
   if (s.type === 'qbittorrent') {
     const r = await fetch(u + '/api/v2/auth/login', { ...t, method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded', Referer: u },
@@ -1070,6 +1072,21 @@ async function monitor() {
   if (mon.busy) return; mon.busy = true;
   try {
     const a = db.alerts || {}, safe = async f => { try { await f(); } catch {} }, now = Date.now() / 1000, sigOf = r => `${r.category}|${r.ratio}|${r.minutes}`;
+    // ruTorrent and Deluge: a torrent that reaches 100% since the last look counts as finished (they give no finish time here).
+    for (const s of db.services.filter(x => tclients.TYPES.includes(x.type))) await safe(async () => {
+      const list = (await tclients.clientFor(s).list()).torrents, first = !mon.seeded[s.id]; mon.seeded[s.id] = 1; let added = false;
+      for (const x of list) {
+        if (x.progress < 1) continue;
+        const key = x.hash + ':done';
+        if (histKeys.has(key) || (first && db.history.some(h => h.hash === x.hash))) { histKeys.add(key); continue; }
+        histKeys.add(key);
+        if (first) continue;   // already finished before GoatMediaStackarr was watching
+        added = true; db.history.push({ hash: x.hash, name: x.name, size: x.size, at: Date.now(), cat: x.category || '', svc: s.id });
+        feed('@admins', 'download', 'Download finished', x.name, 'downloads');
+        await notify('finished', 'Download finished', x.name).catch(() => {});
+      }
+      if (added) { if (db.history.length > 1000) db.history.splice(0, db.history.length - 1000); save(); }
+    });
     for (const s of db.services.filter(x => x.type === 'qbittorrent')) await safe(async () => {
       const list = await qb(s, '/api/v2/torrents/info'), first = !mon.seeded[s.id]; mon.seeded[s.id] = 1; let added = false;
       for (const x of list) {
@@ -1518,6 +1535,34 @@ const goatServer = http.createServer(async (req, res) => {
       if (!r.ok) throw new Error((Array.isArray(d) && d[0] && d[0].errorMessage) || (d && d.message) || 'Request failed (' + r.status + ')');
       return d;
     };
+    // Adds a ruTorrent or Deluge (added under Settings, Apps) to Sonarr, Radarr and Lidarr as a download client, from each
+    // app's own template so the field names match its version. Each app tests the connection itself before saving.
+    if ((r = p.match(/^\/api\/clients\/(\w+)\/arr$/)) && m === 'POST') {
+      if (me.role !== 'admin') return send(res, 403, { error: 'Admins only' });
+      const c = db.services.find(x => x.id === r[1] && tclients.TYPES.includes(x.type)); if (!c) return send(res, 404, { error: 'Not found' });
+      const impl = c.type === 'deluge' ? 'Deluge' : 'RTorrent', label = `${c.type === 'deluge' ? 'Deluge' : 'ruTorrent'} (${c.name})`;
+      let u; try { u = new URL(c.url); } catch { return send(res, 400, { error: 'The address is not valid' }); }
+      let urlBase = u.pathname.replace(/^\/+|\/+$/g, '');
+      if (c.type === 'rutorrent') { try { urlBase = new URL(await tclients.clientFor(c).endpoint()).pathname.replace(/^\/+/, ''); } catch (e) { return send(res, 400, { error: e.message }); } }
+      const values = { host: u.hostname, port: +u.port || (u.protocol === 'https:' ? 443 : 80), useSsl: u.protocol === 'https:', urlBase, username: c.user || '', password: c.pass || '' };
+      const out = [];
+      for (const a of db.services.filter(x => ['sonarr', 'radarr', 'lidarr'].includes(x.type))) {
+        const v = a.type === 'lidarr' ? 'v1' : 'v3';
+        try {
+          const have = await call(a, `/api/${v}/downloadclient`);
+          if (have.some(x => x.name === label)) { out.push({ app: a.name, result: 'already there' }); continue; }
+          const t = ((await call(a, `/api/${v}/downloadclient/schema`)) || []).find(x => x.implementation === impl);
+          if (!t) { out.push({ app: a.name, result: `${a.name} has no ${impl} client` }); continue; }
+          for (const f of t.fields || []) if (f.name in values) f.value = values[f.name];
+          Object.assign(t, { name: label, enable: true, protocol: 'torrent', priority: 1 });
+          await call(a, `/api/${v}/downloadclient`, { method: 'POST', body: JSON.stringify(t) });
+          out.push({ app: a.name, result: 'added' });
+        } catch (e) { out.push({ app: a.name, result: 'failed: ' + cut(e.message, 160) }); }
+      }
+      if (!out.length) return send(res, 400, { error: 'Add Sonarr, Radarr or Lidarr first.' });
+      audit(me.name, 'Added a download client to the apps', label);
+      return send(res, 200, { results: out });
+    }
     if (p === '/api/search' && m === 'GET') {
       const q = new URL(req.url, 'http://x').searchParams, s = arr(db.services.find(x => x.id === q.get('sid')));
       if (!s) return send(res, 404, { error: 'Pick a Sonarr or Radarr service' });
@@ -1625,9 +1670,13 @@ const goatServer = http.createServer(async (req, res) => {
       }
       return send(res, 404, { error: 'Not found' });
     }
+    // ruTorrent and Deluge answer the same /api/qb/... pages as qBittorrent, through lib/torrentclients.js.
+    const tcOf = id => { const x = db.services.find(y => y.id === id); return x && allowed(x) && (x.type === 'qbittorrent' || tclients.TYPES.includes(x.type)) ? x : null; };
+    const tcOnly = x => x && x.type !== 'qbittorrent' ? (send(res, 400, { error: `${x.type === 'deluge' ? 'Deluge' : 'ruTorrent'} cannot do this here; it is a qBittorrent feature.` }), true) : false;
     if ((r = p.match(/^\/api\/qb\/(\w+)\/list$/))) {
-      const s = svcOf(r[1], 'qbittorrent'); if (!s) return send(res, 404, { error: 'Not found' });
+      const s = tcOf(r[1]); if (!s) return send(res, 404, { error: 'Not found' });
       const hit = qbListCache[s.id]; if (hit && Date.now() - hit.t < 800) return send(res, 200, hit.d);
+      if (s.type !== 'qbittorrent') { const out = await tclients.clientFor(s).list(); qbListCache[s.id] = { t: Date.now(), d: out }; return send(res, 200, out); }
       const [t, ti, alt] = await Promise.all([qb(s, '/api/v2/torrents/info'), qb(s, '/api/v2/transfer/info'), qb(s, '/api/v2/transfer/speedLimitsMode').catch(() => 0)]);
       const out = { dl: ti.dl_info_speed || 0, ul: ti.up_info_speed || 0, alt: +alt === 1, torrents: t.map(x => ({ hash: x.hash, name: x.name, state: x.state, progress: x.progress,
         dlspeed: x.dlspeed, upspeed: x.upspeed, size: x.size, added: x.added_on, eta: x.eta, ratio: x.ratio, seeds: x.num_seeds, peers: x.num_leechs, category: x.category || '',
@@ -1636,11 +1685,17 @@ const goatServer = http.createServer(async (req, res) => {
     }
     if ((r = p.match(/^\/api\/qb\/(\w+)\/act$/)) && m === 'POST') {
       delete qbListCache[r[1]];
-      const b = await readBody(req), s = svcOf(r[1], 'qbittorrent'), act = b.action;
+      const b = await readBody(req), s = tcOf(r[1]), act = b.action;
       if (deny(act === 'delete' ? 'remove' : 'control', act === 'delete' ? 'remove downloads' : 'control downloads')) return;
       const hashes = b.hashes === 'all' ? 'all' : hs(b.hashes || b.hash);
       if (!s || !hashes) return send(res, 400, { error: 'Bad request' });
       if (hashes === 'all' && !['pause', 'resume'].includes(act)) return send(res, 400, { error: 'Bad request' });
+      if (s.type !== 'qbittorrent') {
+        if (act === 'location' && adminOnly()) return;
+        await tclients.clientFor(s).act(act, hashes === 'all' ? 'all' : hashes.split('|'), { value: b.value, files: !!b.files });
+        if (act === 'delete') audit(me.name, 'Removed downloads', (hashes === 'all' ? 'all' : hashes.split('|').length) + ' torrent(s)' + (b.files ? ' with files' : ''));
+        return send(res, 200, {});
+      }
       const either = async (n, f) => { try { await qb(s, '/api/v2/torrents/' + n[0], f); } catch (e) { if (!e.nf) throw e; await qb(s, '/api/v2/torrents/' + n[1], f); } };
       const f = { hashes };
       if (act === 'pause') await either(['stop', 'pause'], f);
@@ -1658,8 +1713,9 @@ const goatServer = http.createServer(async (req, res) => {
       return send(res, 200, {});
     }
     if ((r = p.match(/^\/api\/qb\/(\w+)\/info$/))) {
-      const s = svcOf(r[1], 'qbittorrent'), h = new URL(req.url, 'http://x').searchParams.get('hash') || '';
+      const s = tcOf(r[1]), h = new URL(req.url, 'http://x').searchParams.get('hash') || '';
       if (!s || !hs(h) || h.includes('|')) return send(res, 400, { error: 'Bad request' });
+      if (s.type !== 'qbittorrent') return send(res, 200, await tclients.clientFor(s).info(h));
       const [pr, files, trk, pe] = await Promise.all([qb(s, '/api/v2/torrents/properties?hash=' + h), qb(s, '/api/v2/torrents/files?hash=' + h),
         qb(s, '/api/v2/torrents/trackers?hash=' + h), qb(s, '/api/v2/sync/torrentPeers?hash=' + h + '&rid=0').catch(() => ({}))]);
       return send(res, 200, {
@@ -1670,7 +1726,8 @@ const goatServer = http.createServer(async (req, res) => {
         peers: Object.values(pe.peers || {}).slice(0, 100).map(x => ({ ip: x.ip, client: x.client, progress: x.progress, dl: x.dl_speed, up: x.up_speed })) });
     }
     if ((r = p.match(/^\/api\/qb\/(\w+)\/meta$/))) {
-      const s = svcOf(r[1], 'qbittorrent'); if (!s) return send(res, 404, { error: 'Not found' });
+      const s = tcOf(r[1]); if (!s) return send(res, 404, { error: 'Not found' });
+      if (s.type !== 'qbittorrent') return send(res, 200, { ...(await tclients.clientFor(s).meta()), client: s.type });
       const md = await qb(s, '/api/v2/sync/maindata?rid=0');
       return send(res, 200, { free: (md.server_state || {}).free_space_on_disk, categories: Object.values(md.categories || {}).map(c => ({ name: c.name, path: c.savePath })), tags: md.tags || [] });
     }
@@ -1849,20 +1906,22 @@ const goatServer = http.createServer(async (req, res) => {
     }
     if (p === '/api/torrent/add' && m === 'POST') {
       if (deny('add', 'add downloads')) return;
-      const b = await readBody(req), s = svcOf(b.sid, 'qbittorrent');
+      const b = await readBody(req), s = tcOf(b.sid);
       const urls = (b.jid ? [(grabCache.get(b.jid) || {}).u] : String(b.url || '').split(/\r?\n/).map(x => x.trim())).filter(Boolean).slice(0, 50);
       const ok = u => /^magnet:\?/i.test(u) || (/^https?:\/\//i.test(u) && (b.jid || me.role === 'admin'));
       if (!s || !urls.length || !urls.every(ok)) return send(res, 400, { error: 'Paste magnet links, one per line (admins can also paste torrent web addresses)' });
+      if (s.type !== 'qbittorrent') { await tclients.clientFor(s).add({ urls, category: cut(b.category), paused: !!b.paused }); return send(res, 200, {}); }
       const out = await qb(s, '/api/v2/torrents/add', { urls: urls.join('\n'), ...addOpts(b) });
       if (String(out).trim() === 'Fails.') return send(res, 400, { error: 'qBittorrent could not add that link' });
       return send(res, 200, {});
     }
     if (p === '/api/torrent/upload' && m === 'POST') {
       if (deny('add', 'add downloads')) return;
-      const b = await readBody(req), s = svcOf(b.sid, 'qbittorrent');
+      const b = await readBody(req), s = tcOf(b.sid);
       const files = (Array.isArray(b.files) ? b.files : []).slice(0, 5).map(f => ({ name: cut(f.name || 'file.torrent', 120).replace(/[^\w.\- ]/g, '_'), buf: Buffer.from(String(f.data || ''), 'base64') }));
       if (!s || !files.length || !files.every(f => f.buf.length > 20 && f.buf.length < 2e6 && f.buf[0] === 0x64)) return send(res, 400, { error: 'Choose valid .torrent files (up to 5, each under 2 MB)' });
-      await qbUpload(s, addOpts(b), files);
+      if (s.type !== 'qbittorrent') await tclients.clientFor(s).add({ files, category: cut(b.category), paused: !!b.paused });
+      else await qbUpload(s, addOpts(b), files);
       return send(res, 200, {});
     }
     if ((r = p.match(/^\/api\/vpn\/(\w+)$/))) {
@@ -2121,7 +2180,7 @@ const goatServer = http.createServer(async (req, res) => {
       return send(res, 200, { items: mine.slice(-200).reverse(), day: tot(864e5), week: tot(7 * 864e5), month: tot(30 * 864e5) });
     }
     if ((r = p.match(/^\/api\/qb\/(\w+)\/match$/))) {
-      const s = svcOf(r[1], 'qbittorrent'); if (!s) return send(res, 404, { error: 'Not found' });
+      const s = tcOf(r[1]); if (!s) return send(res, 404, { error: 'Not found' });
       const out = {};
       await Promise.all(db.services.filter(x => arr(x)).map(async x => { try {
         const q = await call(x, '/api/v3/queue?page=1&pageSize=200&' + (x.type === 'sonarr' ? 'includeSeries=true' : 'includeMovie=true'));

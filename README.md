@@ -101,6 +101,17 @@ Under **Trackers** (admins, web page and app):
 
 The site's pages run in a sandbox, apart from GoatMediaStackarr, so a site's own scripts cannot act as you. Sites that check you with a puzzle (Cloudflare and similar) may not open this way; for those, Prowlarr with FlareSolverr still searches them.
 
+## ruTorrent and Deluge you already run
+
+GoatMediaStackarr can use a ruTorrent (rTorrent) or Deluge you already have, in its own container or on a seedbox, next to the built-in qBittorrent. Add it under **Settings → Apps**:
+
+- **ruTorrent**: the address you open ruTorrent with (like `http://192.168.1.10:8080`), and its username and password if it asks for one. GoatMediaStackarr talks to rTorrent the way Sonarr does, through ruTorrent's *httprpc* plugin (on by default); an rTorrent `RPC2` address works too. Categories are ruTorrent's labels. Removing with files uses ruTorrent's *erasedata* plugin.
+- **Deluge**: the address of its Web UI (port 8112 unless changed) and the Web UI password. If the Web UI isn't connected to a Deluge daemon, GoatMediaStackarr connects it to the first one. Categories are Deluge's labels and need its *Label* plugin.
+
+Both then appear in **Downloads** on the web page and in the app: the list, filters, pause and resume, remove, labels, details (files, trackers, peers), and adding magnet links or .torrent files. Finished downloads go into the history and the alerts. Speed-limit schedules, RSS and category paths stay qBittorrent features; use the client's own page for those.
+
+**Use in Sonarr/Radarr** (next to it under Settings → Apps) adds it to your Sonarr, Radarr and Lidarr as a download client, using each app's own template; each app tests the connection before saving. Sonarr and Radarr need to see its finished files: if the client saves them somewhere they don't see at the same path, add a *Remote Path Mapping* in their Settings → Download Clients.
+
 ## Using it from outside your home
 
 GoatMediaStackarr's own page (port 2806) is the way in to everything except Jellyfin, Seerr and Plex: Sonarr, Radarr, Lidarr, Prowlarr, Bazarr, qBittorrent, SABnzbd and Tautulli open at `/engines/<app>/` on the same address, signed in through GoatMediaStackarr (admins only).
