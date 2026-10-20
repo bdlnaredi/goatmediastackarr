@@ -27,6 +27,8 @@ function fakeArr(base, key, ver, kind) {
     if (p === `/api/${ver}/system/status`) return json(res, 200, { version: '9' });
     if (p === `/api/${ver}/qualityprofile`) return json(res, 200, [{ id: 4, name: 'HD-1080p' }]);
     if (p === `/api/${ver}/metadataprofile`) return json(res, 200, [{ id: 1, name: 'Standard' }]);
+    const pm = p.match(new RegExp(`^/api/${ver}/(downloadclient|applications)/(\\d+)$`));
+    if (pm && req.method === 'PUT') { const b = await body(req); st.puts = (st.puts || 0) + 1; st.putQuery = u.search; const i = st[pm[1]].findIndex(x => x.id === +pm[2]); st[pm[1]][i] = b; return json(res, 202, b); }
     const m = p.match(new RegExp(`^/api/${ver}/(rootfolder|downloadclient|applications)(/schema)?$`));
     if (!m) return json(res, 404, {});
     if (m[2]) return json(res, 200, JSON.parse(JSON.stringify(schema[m[1]])));
@@ -152,11 +154,17 @@ test('wire connects every engine and running it again changes nothing', async ()
     assert.equal(jf.st.libs.length, 2);
     assert.equal(jf.st.keys.length, 1);
     assert.equal(seerr.st.puts, undefined, 'nothing to change in Seerr when the keys still match');
+    assert.equal(prowlarr.st.puts, undefined, 'Prowlarr is left alone while the keys match');
+    // Radarr restored from an old backup brings back another API key: Prowlarr gets the current one.
+    const papp = prowlarr.st.applications.find(x => x.implementation === 'Radarr');
+    papp.fields.find(x => x.name === 'apiKey').value = 'an-old-key';
     // Radarr got a new API key after Seerr was set up: the next start gives Seerr the new one.
     seerr.st.dvr.radarr.apiKey = 'an-old-key';
     const s3 = await wire.run();
     assert.ok(s3.steps.seerr.ok, s3.steps.seerr.error);
     assert.equal(seerr.st.dvr.radarr.apiKey, a.keys.radarr); assert.equal(seerr.st.puts, 1);
+    assert.equal(s3.steps.prowlarr.ok, true); assert.equal(prowlarr.st.puts, 1); assert.equal(prowlarr.st.putQuery, '?forceSave=true');
+    assert.equal(field(prowlarr.st.applications.find(x => x.implementation === 'Radarr'), 'apiKey'), a.keys.radarr);
     assert.equal(seerr.st.dvr.radarr.activeDirectory, path.join(root, 'media/movies'), 'the rest of its settings are kept');
     // Keys found by the second run survive a restart of init.
     const again = init.run(process.env);

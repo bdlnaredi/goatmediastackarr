@@ -62,6 +62,7 @@ function arr(key, apiKey) {
     },
     get: p => http('GET', `${base}/api/${ver}/${p}`, { headers: h }).then(r => r.data),
     post: (p, b) => http('POST', `${base}/api/${ver}/${p}`, { headers: h, body: b }).then(r => r.data),
+    put: (p, b) => http('PUT', `${base}/api/${ver}/${p}`, { headers: h, body: b }).then(r => r.data),
     get ver() { return ver; },
   };
   return api;
@@ -110,6 +111,17 @@ async function wireProwlarr(keys, s, on) {
   for (const k of ['sonarr', 'radarr', 'lidarr'].filter(x => on.includes(x))) {
     out[k] = await addFromSchema(api, 'applications', E.ENGINES[k].name, E.ENGINES[k].name,
       { prowlarrUrl: E.url('prowlarr'), baseUrl: E.url(k), apiKey: keys[k] }, { syncLevel: 'fullSync' });
+    // Already there: it must still have the app's current API key and address. Restoring Sonarr or Radarr from a
+    // backup brings back their old key, and Prowlarr would then fail to send them indexers without saying why.
+    if (out[k] === 'already there') {
+      const app = (await api.get('applications')).find(x => x.name === E.ENGINES[k].name);
+      const f = n => ((app && app.fields) || []).find(x => x.name === n);
+      if (app && f('apiKey') && (f('apiKey').value !== keys[k] || (f('baseUrl') && f('baseUrl').value !== E.url(k)))) {
+        f('apiKey').value = keys[k]; if (f('baseUrl')) f('baseUrl').value = E.url(k);
+        await api.put(`applications/${app.id}?forceSave=true`, app);
+        out[k] = 'key updated';
+      }
+    }
   }
   if (on.includes('qbittorrent')) out.qbittorrent = await addFromSchema(api, 'downloadclient', 'QBittorrent', 'qBittorrent', qbitValues(s, 'prowlarr'), { protocol: 'torrent', priority: 1 });
   return out;
