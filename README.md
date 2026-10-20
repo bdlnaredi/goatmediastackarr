@@ -51,7 +51,7 @@ The engines listen only inside the container. The only ways in are GoatMediaStac
 
 ## Updates and platforms
 
-- **Weekly rebuild**: every Monday, GitHub rebuilds the image with the newest release of every engine and runs every check. Only if all of them pass is it published as `latest` (also `weekly` and `weekly-YYYYMMDD`). Unraid then offers it as an update. Version tags such as `0.2.0` don't change.
+- **Weekly rebuild**: every Monday, GitHub rebuilds the image with the newest release of every engine and runs every check. Only if all of them pass is it published as `latest` (also `weekly` and `weekly-YYYYMMDD`). Unraid then offers it as an update. Version tags such as `0.2.0` don't change. After you update, the Stack page lists each app's version and what changed ("Sonarr 4.0.15 → 4.0.16"); admins also get it in the bell, and any alert channel with *Apps inside the container are updated* ticked.
 - **Intel/AMD and ARM**: the same image name works on x86 servers and on 64-bit ARM (Raspberry Pi 4/5 with a 64-bit OS, ARM NAS boxes, Apple-silicon hosts). FlareSolverr is the only part that's x86-only.
 
 ## Android app

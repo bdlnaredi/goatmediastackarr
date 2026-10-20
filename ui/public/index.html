@@ -2264,7 +2264,7 @@ function chanDialog(c,done){
     try{if(c){await api('/api/alerts/channels/'+c.id,'PUT',b)}else await api('/api/alerts/channels','POST',b);o.close();toast('Saved','ok');done()}
     catch(x){o.querySelector('#ce').textContent=x.message}};
 }
-const ALERT_NAMES={finished:'A download finishes',grabbed:'Something is added from Trackers',requests:'Someone makes a request',available:'A request is ready to watch',reports:'Someone reports a problem',offline:'An app goes offline or comes back',vpn:'The VPN stops working',disk:'The array is almost full',streamLimit:'Someone reaches their streaming limit',update:'A new version is out',weekly:'The weekly newsletter'};
+const ALERT_NAMES={finished:'A download finishes',grabbed:'Something is added from Trackers',requests:'Someone makes a request',available:'A request is ready to watch',reports:'Someone reports a problem',offline:'An app goes offline or comes back',vpn:'The VPN stops working',disk:'The array is almost full',streamLimit:'Someone reaches their streaming limit',update:'A new version is out',appUpdates:'Apps inside the container are updated (weekly)',weekly:'The weekly newsletter'};
 async function alView(){
   let a={};try{a=await api('/api/alerts')}catch(x){$('#m').innerHTML=`<div class="err">${esc(x.message)}</div>`;return}
   if(tab!=='set'||stSub!=='alerts')return;
@@ -2478,10 +2478,11 @@ async function goatView(){
   </div>
   <h2 class="sec">Apps</h2>
   <div class="panel">${st.engines.map(e=>`<div class="row" style="gap:10px;padding:6px 0;border-bottom:1px solid var(--line)">
-      <span class="pill ${e.stopped?'':e.ok===true?'ok':e.ok===false?'bad':''}" style="min-width:12px"></span><b>${esc(e.name)}</b>${e.stopped?'<span class="pill">Stopped</span>':''}<span class="grow"></span>
+      <span class="pill ${e.stopped?'':e.ok===true?'ok':e.ok===false?'bad':''}" style="min-width:12px"></span><b>${esc(e.name)}</b>${e.version?`<span class="mute" style="font-size:13px">${esc(e.version)}</span>`:''}${e.stopped?'<span class="pill">Stopped</span>':''}<span class="grow"></span>
       ${goatOpen(e.key)&&!e.stopped?`<a class="btn" href="${goatOpen(e.key)}" target="_blank" rel="noopener">${ic('ext')}Open</a>`:''}
       ${e.stopped?`<button class="primary" data-gs="${esc(e.key)}">${ic('play')}Start</button>`:`<button data-gr="${esc(e.key)}">${ic('refresh')}Restart</button><button data-gx="${esc(e.key)}">${ic('stop')}Stop</button>`}</div>`).join('')}
-    <div class="mute" style="margin-top:8px">Each app's own page opens signed in through GoatMediaStackarr. Seerr is used through <a href="#" data-go="rq">Requests</a>.</div></div>
+    <div class="mute" style="margin-top:8px">Each app's own page opens signed in through GoatMediaStackarr. Seerr is used through <a href="#" data-go="rq">Requests</a>.</div>
+    ${(st.appUpdates||[]).length?`<h3 style="margin:16px 0 6px">Recent updates</h3>${st.appUpdates.map(u=>`<div style="margin:6px 0"><b>${esc(new Date(u.at).toLocaleDateString())}</b> <span class="mute">${u.changes.map(c=>`${esc(c.name)} ${esc(c.from)} → ${esc(c.to)}`).join(' · ')}</span></div>`).join('')}`:`<div class="mute" style="margin-top:8px;font-size:13px">The image is rebuilt every Monday with the newest version of each app. Update the container in Unraid's Docker tab to get it; what changed is listed here afterwards.</div>`}</div>
   <h2 class="sec">From outside your home</h2>
   <div class="panel"><p class="mute" style="margin-top:0">Sonarr, Radarr and the other apps open through this page's own address, so they work wherever this page works (a Cloudflare tunnel or Tailscale). Phone apps for them (nzb360, LunaSea and similar) use this address plus <code>/engines/sonarr</code> (or radarr, prowlarr…) and that app's API key.</p>
     <p class="mute">Jellyfin, Seerr and Plex use their own ports. With Tailscale those work as they are. With a Cloudflare tunnel, give each one its own hostname in the tunnel (for example jellyfin.example.com to http://<i>Unraid's address</i>:8096) and enter it here, so the Open buttons use it when you are away.</p>

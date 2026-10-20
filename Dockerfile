@@ -5,40 +5,50 @@ ARG NODE_VERSION=22
 
 # ---------- Seerr is built from source on glibc so it runs on the Ubuntu base below ----------
 FROM node:${NODE_VERSION}-bookworm AS seerr
-ARG SEERR_VERSION=v3.5.0
+# "latest" takes the newest Seerr release each time the image is built (the weekly rebuild too); a tag pins one.
+ARG SEERR_VERSION=latest
+# VERSION changes on every build, so this stage is built again instead of reused from the cache (else "latest" would stick).
+ARG VERSION=dev
+ENV CYPRESS_INSTALL_BINARY=0 CI=true
+WORKDIR /app
 # COMMIT_TAG has to be set while building: Seerr bakes it into its page and compares it with committag.json (the
 # server's copy). If they differ, the page shows "Seerr Updated, please reload" on every visit.
-ENV CYPRESS_INSTALL_BINARY=0 CI=true COMMIT_TAG=${SEERR_VERSION}
-RUN corepack enable && \
-    git clone --depth 1 --branch "${SEERR_VERSION}" https://github.com/seerr-team/seerr /app
-WORKDIR /app
-RUN pnpm install --frozen-lockfile && \
+RUN --mount=type=secret,id=GITHUB_TOKEN,env=GITHUB_TOKEN \
+    tag="${SEERR_VERSION}"; \
+    if [ "$tag" = latest ]; then tag=$(curl -fsSL --retry 4 ${GITHUB_TOKEN:+-H "Authorization: Bearer $GITHUB_TOKEN"} https://api.github.com/repos/seerr-team/seerr/releases/latest | node -pe 'JSON.parse(require("fs").readFileSync(0, "utf8")).tag_name'); fi; \
+    echo "Seerr $tag" && \
+    corepack enable && \
+    git clone --depth 1 --branch "$tag" https://github.com/seerr-team/seerr /app && \
+    export COMMIT_TAG="$tag" && \
+    pnpm install --frozen-lockfile && \
     pnpm build && \
     rm -rf .next/cache && \
     pnpm prune --prod && \
     # Source maps, tests and docs are not needed to run it.
     find . -name '*.map' -not -path './.git/*' -delete && rm -rf .git cypress docs && \
-    echo "{\"commitTag\": \"${SEERR_VERSION}\"}" > committag.json && \
+    echo "{\"commitTag\": \"$tag\"}" > committag.json && \
     # Stop the build if the page and the server would disagree about the version.
-    grep -rqsF "${SEERR_VERSION}" .next/static .next/required-server-files.json || { echo "Seerr version tag missing from its page build"; exit 1; }
+    grep -rqsF "$tag" .next/static .next/required-server-files.json || { echo "Seerr version tag missing from its page build"; exit 1; }
 
 # ---------- Bazarr and SABnzbd with their Python packages, built with compilers the final image never carries ----------
 FROM ubuntu:24.04 AS python
 ARG TARGETARCH
 ARG BAZARR_VERSION=latest
 ARG SABNZBD_VERSION=latest
+# Changes on every build, so Bazarr and SABnzbd are fetched again instead of reused from the cache.
+ARG VERSION=dev
 ENV DEBIAN_FRONTEND=noninteractive
 COPY goat/fetch-release.sh /usr/local/bin/fetch-release
 RUN chmod +x /usr/local/bin/fetch-release && apt-get update && \
     apt-get install -y --no-install-recommends ca-certificates curl jq unzip python3 python3-venv python3-dev build-essential libxml2-dev libxslt1-dev
 RUN --mount=type=secret,id=GITHUB_TOKEN,env=GITHUB_TOKEN \
-    fetch-release morpheus65535/bazarr "${BAZARR_VERSION}" '^bazarr\.zip$' /tmp/bazarr.zip && \
-    mkdir -p /opt/bazarr && unzip -q /tmp/bazarr.zip -d /opt/bazarr && rm /tmp/bazarr.zip && \
+    fetch-release morpheus65535/bazarr "${BAZARR_VERSION}" '^bazarr\.zip$' /tmp/bazarr.zip /tmp/v-bazarr && \
+    mkdir -p /opt/bazarr && unzip -q /tmp/bazarr.zip -d /opt/bazarr && rm /tmp/bazarr.zip && mv /tmp/v-bazarr /opt/bazarr/.goat-version && \
     python3 -m venv /opt/bazarr/venv && \
     /opt/bazarr/venv/bin/pip install --no-cache-dir -r /opt/bazarr/requirements.txt
 RUN --mount=type=secret,id=GITHUB_TOKEN,env=GITHUB_TOKEN \
-    fetch-release sabnzbd/sabnzbd "${SABNZBD_VERSION}" '^SABnzbd-.*-(src|source)\.tar\.gz$' /tmp/sab.tar.gz && \
-    mkdir -p /opt/sabnzbd && tar -xzf /tmp/sab.tar.gz -C /opt/sabnzbd --strip-components=1 && rm /tmp/sab.tar.gz && \
+    fetch-release sabnzbd/sabnzbd "${SABNZBD_VERSION}" '^SABnzbd-.*-(src|source)\.tar\.gz$' /tmp/sab.tar.gz /tmp/v-sab && \
+    mkdir -p /opt/sabnzbd && tar -xzf /tmp/sab.tar.gz -C /opt/sabnzbd --strip-components=1 && rm /tmp/sab.tar.gz && mv /tmp/v-sab /opt/sabnzbd/.goat-version && \
     python3 -m venv /opt/sabnzbd/venv && \
     /opt/sabnzbd/venv/bin/pip install --no-cache-dir -r /opt/sabnzbd/requirements.txt && \
     (cd /opt/sabnzbd && /opt/sabnzbd/venv/bin/python tools/make_mo.py >/dev/null 2>&1 || true)
@@ -133,7 +143,7 @@ RUN --mount=type=secret,id=GITHUB_TOKEN,env=GITHUB_TOKEN \
     set -e; a=$([ "$TARGETARCH" = arm64 ] && echo arm64 || echo x64); \
     for app in "Sonarr ${SONARR_VERSION}" "Radarr ${RADARR_VERSION}" "Lidarr ${LIDARR_VERSION}" "Prowlarr ${PROWLARR_VERSION}"; do \
       set -- $app; name=$1; tag=$2; low=$(echo "$name" | tr 'A-Z' 'a-z'); \
-      fetch-release "$name/$name" "$tag" "^${name}\..*linux(-core)?-${a}\.tar\.gz$" "/tmp/$low.tar.gz"; \
+      fetch-release "$name/$name" "$tag" "^${name}\..*linux(-core)?-${a}\.tar\.gz$" "/tmp/$low.tar.gz" "/opt/goat/versions/$low"; \
       mkdir -p "/opt/$low" && tar -xzf "/tmp/$low.tar.gz" -C "/opt/$low" --strip-components=1 && rm "/tmp/$low.tar.gz"; \
       rm -rf "/opt/$low/${name}.Update"; \
       test -x "/opt/$low/$name"; \
@@ -143,7 +153,7 @@ RUN --mount=type=secret,id=GITHUB_TOKEN,env=GITHUB_TOKEN \
 # qBittorrent (static qbittorrent-nox build, no GUI).
 RUN --mount=type=secret,id=GITHUB_TOKEN,env=GITHUB_TOKEN \
     a=$([ "$TARGETARCH" = arm64 ] && echo aarch64 || echo x86_64) && \
-    fetch-release userdocs/qbittorrent-nox-static "${QBITTORRENT_TAG}" "^${a}-qbittorrent-nox$" /usr/local/bin/qbittorrent-nox && \
+    fetch-release userdocs/qbittorrent-nox-static "${QBITTORRENT_TAG}" "^${a}-qbittorrent-nox$" /usr/local/bin/qbittorrent-nox /opt/goat/versions/qbittorrent && \
     chmod +x /usr/local/bin/qbittorrent-nox
 
 # Bazarr and SABnzbd, built in the python stage above.
@@ -154,7 +164,7 @@ COPY --from=python /opt/sabnzbd /opt/sabnzbd
 RUN --mount=type=secret,id=GITHUB_TOKEN,env=GITHUB_TOKEN \
     mkdir -p /opt/tautulli && \
     tag="${TAUTULLI_VERSION}"; [ "$tag" = latest ] && tag=$(curl -fsSL ${GITHUB_TOKEN:+-H "Authorization: Bearer $GITHUB_TOKEN"} https://api.github.com/repos/Tautulli/Tautulli/releases/latest | jq -r .tag_name); \
-    echo "Tautulli $tag" && \
+    echo "Tautulli $tag" && mkdir -p /opt/goat/versions && echo "$tag" > /opt/goat/versions/tautulli && \
     curl -fsSL "https://github.com/Tautulli/Tautulli/archive/refs/tags/${tag}.tar.gz" | tar -xz -C /opt/tautulli --strip-components=1
 
 # Node.js for the UI, the wiring script and Seerr.
@@ -167,7 +177,16 @@ COPY goat /opt/goat/bin
 COPY rootfs /
 RUN chmod +x /opt/goat/bin/*.sh /opt/goat/bin/*.js && \
     find /etc/s6-overlay/s6-rc.d \( -name run -o -name finish \) -exec chmod +x {} + && \
-    echo "${VERSION}" > /opt/goat/VERSION
+    echo "${VERSION}" > /opt/goat/VERSION && \
+    # Which version of each app this image carries. GoatMediaStackarr compares it with the last one it ran, to say
+    # what an update changed.
+    v=/opt/goat/versions && cp /opt/bazarr/.goat-version $v/bazarr && cp /opt/sabnzbd/.goat-version $v/sabnzbd && \
+    jq -r .commitTag /opt/seerr/committag.json > $v/seerr && \
+    dpkg-query -W -f='${Version}' jellyfin-server | sed 's/[+-].*//' > $v/jellyfin && \
+    (cd $v && for f in *; do printf '%s\t%s\n' "$f" "$(tr -d '\r\n' < "$f")"; done) | \
+      jq -R -s --arg built "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg goat "${VERSION}" \
+        '{built: $built, goat: $goat, apps: (split("\n") | map(select(length > 0) | split("\t") | {(.[0]): (.[1] | sub("^(v|release-)"; "") | sub("_v[0-9.]+$"; ""))}) | add)}' > /opt/goat/versions.json && \
+    cat /opt/goat/versions.json
 
 # /media and /downloads are not declared as volumes, so mapping one shared folder instead leaves no stray volumes behind.
 VOLUME ["/config"]

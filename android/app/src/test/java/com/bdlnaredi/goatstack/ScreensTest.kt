@@ -244,6 +244,14 @@ class ScreensTest {
         tap("Download"); waitFor("Sent to downloader")
         assertTrue("the grab reached the server", fake.calls.any { it.startsWith("POST /api/grab") })
         back(); back()
+        // RSS: tick several articles and download them in one go.
+        openFromMore("RSS"); waitFor("Ubuntu 26.04")
+        tap("Select"); waitFor("0 selected")
+        compose.onAllNodesWithText("Ubuntu 26.04 LTS desktop amd64").onFirst().performClick()
+        compose.onAllNodesWithText("Fedora 45 Workstation x86_64").onFirst().performClick()
+        waitFor("2 selected"); waitFor("Download 2"); shot("54-rss-select")
+        tap("Download 2"); compose.waitUntil(10_000) { fake.calls.any { it.startsWith("POST /api/rss/download") } }
+        back()
         // Admins link their Plex account here before they can sign in with Plex.
         openFromMore("Settings"); waitFor("Appearance"); scrollTo("Sign in with Plex"); waitFor("Linked to ann.plex"); shot("53-settings-plex")
         assertTrue("calls the pretend server does not know: ${fake.misses}", fake.misses.isEmpty())

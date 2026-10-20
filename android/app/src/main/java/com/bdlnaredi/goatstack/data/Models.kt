@@ -152,7 +152,7 @@ data class Vpn(
 )
 @Serializable data class Wired(val at: Long = 0, val running: Boolean = false, val steps: Map<String, WireStep> = emptyMap())
 @Serializable data class WireStep(val ok: Boolean = false, val error: String? = null)
-@Serializable data class Engine(val id: String = "", val key: String = "", val name: String = "", val ok: Boolean? = null, val stopped: Boolean = false)
+@Serializable data class Engine(val id: String = "", val key: String = "", val name: String = "", val ok: Boolean? = null, val stopped: Boolean = false, val version: String = "")
 @Serializable data class Counts(val indexers: Int? = null, val newsServers: Int? = null)
 
 // ---------- Live updates (/api/live) ----------

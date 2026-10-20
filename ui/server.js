@@ -235,7 +235,8 @@ const goatVpnFiles = () => { try { return fs.readdirSync(path.join(GOAT_CONFIG, 
 const goatStatus = () => {
   const sec = goatRead(path.join(GOAT_CONFIG, 'goat', 'secrets.json')) || {};
   return { vpn: goatRead(path.join(GOAT_RUN, 'vpn.json')) || { enabled: false, state: 'off' }, wired: GOAT_WIRED ? goatRead(GOAT_WIRED) : null,
-    engines: [...db.services.filter(x => x.managed).map(x => ({ id: x.id, key: x.managed, name: x.name, ok: health[x.id] ? health[x.id].ok : null, stopped: (goatRead(path.join(GOAT_RUN, 'stopped.json')) || []).includes(x.managed) })),
+    versions: appVersions(), appUpdates: (db.appUpdates || []).slice(0, 5),
+    engines: [...db.services.filter(x => x.managed).map(x => ({ id: x.id, key: x.managed, name: x.name, version: appVersions()[x.managed] || '', ok: health[x.id] ? health[x.id].ok : null, stopped: (goatRead(path.join(GOAT_RUN, 'stopped.json')) || []).includes(x.managed) })),
       ...((GOAT_MANAGED && (goatRead(GOAT_MANAGED) || {}).extras) || []).map(x => ({ key: x.key, name: x.name, ok: null, stopped: (goatRead(path.join(GOAT_RUN, 'stopped.json')) || []).includes(x.key) }))],
     settings: goatSettings ? goatSettings.view() : null, vpnFiles: goatVpnFiles(), container: !!GOAT_MANAGED, outside: { ...((db.settings || {}).outside || {}) },
     logins: { jellyfin: sec.jellyfinUser ? { user: sec.jellyfinUser, pass: sec.jellyfinPass } : null, qbittorrent: sec.qbitUser ? { user: sec.qbitUser, pass: sec.qbitPass } : null } };
@@ -284,6 +285,28 @@ const goatOwnPlex = () => {
   goatControl({ cmd: 'rewire' }).then(() => db.services.some(x => x.managed === 'tautulli') && goatControl({ cmd: 'restart', engine: 'tautulli' }));
 };
 goatSync(); goatOwnPlex();
+// Which version of each app the image carries (written while it is built). Compared with the last one this server ran,
+// so an update (the weekly rebuild, say) says what it changed: on the Stack page, in the bell, and to alert channels.
+const GOAT_VERSIONS = process.env.GOAT_VERSIONS || '/opt/goat/versions.json';
+const APP_NAME = { sonarr: 'Sonarr', radarr: 'Radarr', lidarr: 'Lidarr', prowlarr: 'Prowlarr', bazarr: 'Bazarr', qbittorrent: 'qBittorrent', sabnzbd: 'SABnzbd', jellyfin: 'Jellyfin', seerr: 'Seerr', tautulli: 'Tautulli' };
+const appVersions = () => (goatRead(GOAT_VERSIONS) || {}).apps || {};
+function goatVersionCheck() {
+  const now = appVersions(); if (!Object.keys(now).length) return;
+  db.settings = db.settings || {}; const last = db.settings.appVersions;
+  if (last && JSON.stringify(last) === JSON.stringify(now)) return;
+  db.settings.appVersions = now;
+  // The first start only remembers the versions; there is nothing to compare with yet.
+  const changes = last ? Object.entries(now).filter(([k, v]) => last[k] && last[k] !== v).map(([k, v]) => ({ app: k, name: APP_NAME[k] || k, from: last[k], to: v })) : [];
+  if (changes.length) {
+    db.appUpdates = [{ at: Date.now(), changes }, ...(db.appUpdates || [])].slice(0, 20);
+    const text = changes.map(c => `${c.name} ${c.from} → ${c.to}`).join(', ');
+    feed('@admins', 'update', 'Apps updated', text, 'stack');
+    notify('appUpdates', 'GoatMediaStackarr: apps updated', `Updated in this container: ${text}.`).catch(() => {});
+    audit('GoatMediaStackarr', 'Apps updated', text);
+  }
+  save();
+}
+setTimeout(goatVersionCheck, Number(process.env.GOAT_VERSION_CHECK_MS) || 20000).unref();
 if (GOAT_MANAGED) setInterval(() => { goatSync(); goatOwnPlex(); }, Number(process.env.GOAT_SYNC_MS) || 15000).unref();
 // Admins can open each built-in engine's own page at /engines/<name>/ (the "Advanced" pages), signed in through
 // GoatMediaStackarr. The engines themselves listen only inside the container, so this is the only way in.
@@ -750,9 +773,9 @@ const ruleDef = x => ({ enabled: !!x.enabled, mustContain: cut(x.mustContain, 50
   ...(x.torrentContentLayout ? { torrentContentLayout: cut(x.torrentContentLayout, 40) } : {}), ...(x.lastMatch ? { lastMatch: cut(x.lastMatch, 60) } : {}),
   ...(Array.isArray(x.previouslyMatchedEpisodes) ? { previouslyMatchedEpisodes: x.previouslyMatchedEpisodes.slice(0, 2000).map(e => cut(e, 60)) } : {}) });
 // What an alert channel can be told about. Each channel has its own list (like Tautulli's notification agents).
-const ALERT_EVENTS = ['finished', 'grabbed', 'requests', 'available', 'reports', 'offline', 'vpn', 'disk', 'streamLimit', 'update', 'weekly'];
+const ALERT_EVENTS = ['finished', 'grabbed', 'requests', 'available', 'reports', 'offline', 'vpn', 'disk', 'streamLimit', 'update', 'appUpdates', 'weekly'];
 // A channel saved before channels had their own list gets what the old shared switches said.
-const chanEvents = c => Array.isArray(c.events) ? c.events : (a => ALERT_EVENTS.filter(k => k === 'reports' || k === 'streamLimit' ? a[k] !== false : k === 'weekly' || k === 'update' ? true : !!a[k]))(db.alerts || {});
+const chanEvents = c => Array.isArray(c.events) ? c.events : (a => ALERT_EVENTS.filter(k => k === 'reports' || k === 'streamLimit' ? a[k] !== false : k === 'weekly' || k === 'update' || k === 'appUpdates' ? true : !!a[k]))(db.alerts || {});
 async function notify(kind, title, body, html) {
   const list = ((db.alerts || {}).channels || []).filter(c => !channels.problem(c) && chanEvents(c).includes(kind));
   if (!list.length) return false;
@@ -1705,6 +1728,20 @@ const goatServer = http.createServer(async (req, res) => {
     if (p === '/api/rss/download' && m === 'POST') {
       if (deny('add', 'add downloads')) return;
       const b = await readBody(req), s = rssOf(b.sid); if (!s) return send(res, 404, { error: 'Not found' });
+      // Several at once (ticked in the list): one look at the feeds, then each article; says which ones failed.
+      if (Array.isArray(b.items)) {
+        const feeds = await rssItems(s), failed = []; let added = 0;
+        for (const it of b.items.slice(0, 200)) {
+          const f = feeds.find(x => x.path === it.feed), a = f && f.articles.find(x => x.id === it.id), url = a && (a.torrentURL || a.link);
+          if (!url || !/^(magnet:\?|https?:\/\/)/i.test(url)) { failed.push((a && a.title) || String(it.id || '')); continue; }
+          try {
+            if (String(await qb(s, '/api/v2/torrents/add', { urls: url, ...addOpts(b) })).trim() === 'Fails.') { failed.push(a.title); continue; }
+            added++; qb(s, '/api/v2/rss/markAsRead', { itemPath: f.path, articleId: a.id }).catch(() => {});
+          } catch { failed.push(a.title); }
+        }
+        if (added) feed('@admins', 'download', 'Added to downloads', `${added} RSS article${added === 1 ? '' : 's'}${me.role === 'admin' ? '' : ' by ' + me.name}`, 'downloads');
+        return send(res, 200, { added, failed });
+      }
       const f = (await rssItems(s)).find(x => x.path === b.feed), a = f && f.articles.find(x => x.id === b.id), url = a && (a.torrentURL || a.link);
       if (!url || !/^(magnet:\?|https?:\/\/)/i.test(url)) return send(res, 400, { error: 'This article has no download link' });
       const out = await qb(s, '/api/v2/torrents/add', { urls: url, ...addOpts(b) });

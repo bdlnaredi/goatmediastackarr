@@ -153,7 +153,7 @@ fun StackScreen() {
                                 Spacer(Modifier.width(12.dp))
                                 Column(Modifier.weight(1f)) {
                                     Text(e.name, style = MaterialTheme.typography.titleSmall, color = g.text)
-                                    Text(if (e.stopped) "Stopped. Tap Start to run it again; a container restart also starts it." else ENGINE_NOTES[e.key] ?: e.key,
+                                    Text(if (e.stopped) "Stopped. Tap Start to run it again; a container restart also starts it." else listOf(ENGINE_NOTES[e.key] ?: e.key, e.version).filter { it.isNotEmpty() }.joinToString(" · "),
                                         style = MaterialTheme.typography.labelSmall, color = if (e.stopped) g.warn else g.muted)
                                 }
                                 if (busy == e.key) CircularProgressIndicator(Modifier.size(20.dp), color = g.primary, strokeWidth = 2.dp)

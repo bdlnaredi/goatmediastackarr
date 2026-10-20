@@ -1,5 +1,8 @@
 package com.bdlnaredi.goatstack.ui.screens
 
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -51,6 +54,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.bdlnaredi.goatstack.data.QbMeta
 import com.bdlnaredi.goatstack.data.RssArticle
+import com.bdlnaredi.goatstack.data.RssBatch
 import com.bdlnaredi.goatstack.data.RssFeed
 import com.bdlnaredi.goatstack.ui.Badge
 import com.bdlnaredi.goatstack.ui.ChoiceRow
@@ -123,6 +127,7 @@ fun RssScreen() {
     if (adding && cur != null) AddFeed(cur.id) { ok -> adding = false; if (ok) toast("Feed added. Its articles arrive in a moment.") }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun Articles(sid: String, feeds: List<RssFeed>) {
     val ctx = LocalCtx.current
@@ -135,6 +140,15 @@ private fun Articles(sid: String, feeds: List<RssFeed>) {
     val data = rememberLoad(sid, feed) { ctx.api.get<List<RssArticle>>("/api/rss/$sid/articles" + if (feed.isNotEmpty()) "?feed=${com.bdlnaredi.goatstack.data.Api.enc(feed)}" else "") }
     val readNow = remember { androidx.compose.runtime.mutableStateMapOf<String, Boolean>() }
     val names = feeds.associate { it.path to it.name }
+    // Selecting several: "Select" (or a long press on an article) shows a tick box on each one.
+    var selecting by rememberSaveable { mutableStateOf(false) }
+    val picked = remember { androidx.compose.runtime.mutableStateMapOf<String, RssArticle>() }
+    var cat by rememberSaveable { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    val meta = rememberLoad(sid, selecting) { if (selecting) ctx.api.get<QbMeta>("/api/qb/$sid/meta") else null }
+    fun keyOf(a: RssArticle) = a.feed + "/" + a.id
+    fun toggle(a: RssArticle) { val k = keyOf(a); if (picked.containsKey(k)) picked.remove(k) else picked[k] = a }
+    fun done() { selecting = false; picked.clear() }
 
     if (feeds.isEmpty()) {
         EmptyState(Icons.Rounded.RssFeed, "No feeds yet", if (ctx.user.admin) "Add a feed with + above. Its newest articles show here, ready to download." else "An admin has not added any RSS feeds yet.")
@@ -151,20 +165,75 @@ private fun Articles(sid: String, feeds: List<RssFeed>) {
                 } catch (e: Exception) { toast(e.message ?: "That did not work") }
             }
         }) { Icon(Icons.Rounded.DoneAll, null, tint = g.primary, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("All read", color = g.primary) }
+        TextButton(onClick = { if (selecting) done() else selecting = true }) { Text(if (selecting) "Cancel" else "Select", color = g.primary) }
     }
     LoadView(data) { all ->
         val list = all.filter { !unreadOnly || !(it.read || readNow[it.id] == true) }
+        if (selecting) GoatCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), padding = 12.dp) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("${picked.size} selected", style = MaterialTheme.typography.titleSmall, color = g.text, modifier = Modifier.weight(1f))
+                TextButton(onClick = { if (picked.size == list.size) picked.clear() else list.forEach { picked[keyOf(it)] = it } }) {
+                    Text(if (picked.size == list.size && list.isNotEmpty()) "Select none" else "Select all", color = g.primary)
+                }
+            }
+            val cats = meta.value?.categories.orEmpty()
+            if (cats.isNotEmpty() && ctx.user.can("add")) FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                (listOf("" to "No category") + cats.map { it.name to it.name }).forEach { (v, label) ->
+                    FilterChip(selected = cat == v, onClick = { cat = v }, label = { Text(label) },
+                        colors = FilterChipDefaults.filterChipColors(selectedContainerColor = g.primary, selectedLabelColor = g.onPrimary))
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (ctx.user.can("add")) com.bdlnaredi.goatstack.ui.PrimaryButton(if (busy) "Adding…" else "Download ${picked.size}", {
+                    busy = true
+                    scope.launch {
+                        try {
+                            val chosen = picked.values.toList()
+                            val r = ctx.api.post<RssBatch>("/api/rss/download", buildJsonObject {
+                                put("sid", sid); if (cat.isNotEmpty()) put("category", cat)
+                                put("items", kotlinx.serialization.json.JsonArray(chosen.map { a -> buildJsonObject { put("feed", a.feed); put("id", a.id) } }))
+                            })
+                            chosen.forEach { readNow[it.id] = true }
+                            toast(if (r.failed.isEmpty()) "Added ${r.added} to downloads" else "Added ${r.added}; ${r.failed.size} had no download link")
+                            done()
+                        } catch (e: Exception) { toast(e.message ?: "Could not add them") }
+                        busy = false
+                    }
+                }, Modifier.weight(1f), enabled = picked.isNotEmpty() && !busy, icon = Icons.Rounded.Download)
+                com.bdlnaredi.goatstack.ui.GhostButton("Mark read", {
+                    busy = true
+                    scope.launch {
+                        try {
+                            picked.values.forEach { a -> ctx.api.send("POST", "/api/rss/$sid/read", buildJsonObject { put("path", a.feed); put("id", a.id) }); readNow[a.id] = true }
+                            toast("Marked as read"); done()
+                        } catch (e: Exception) { toast(e.message ?: "That did not work") }
+                        busy = false
+                    }
+                }, enabled = picked.isNotEmpty() && !busy, icon = Icons.Rounded.DoneAll)
+            }
+        }
         if (list.isEmpty()) EmptyState(Icons.Rounded.RssFeed, "Nothing new", if (unreadOnly) "Every article has been read." else "These feeds have no articles yet.")
         else LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(list, key = { it.feed + "/" + it.id }) { a ->
                 val read = a.read || readNow[a.id] == true
-                GoatCard(Modifier.fillMaxWidth(), padding = 12.dp, onClick = { open = a }) {
-                    Text(a.title, style = MaterialTheme.typography.bodyMedium, color = if (read) g.muted else g.text, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                    Spacer(Modifier.height(6.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        if (!read) Badge("New", g.primary)
-                        Text(listOf(names[a.feed] ?: a.feed, Format.ago(Format.parseMillis(a.date))).filter { it.isNotEmpty() }.joinToString(" · "),
-                            style = MaterialTheme.typography.labelSmall, color = g.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                val on = picked.containsKey(keyOf(a))
+                GoatCard(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).combinedClickable(
+                    onClick = { if (selecting) toggle(a) else open = a },
+                    onLongClick = { if (!selecting) selecting = true; toggle(a) },
+                ), padding = 12.dp) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (selecting) androidx.compose.material3.Checkbox(on, { toggle(a) },
+                            colors = androidx.compose.material3.CheckboxDefaults.colors(checkedColor = g.primary, checkmarkColor = g.onPrimary))
+                        Column(Modifier.weight(1f)) {
+                            Text(a.title, style = MaterialTheme.typography.bodyMedium, color = if (read) g.muted else g.text, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                            Spacer(Modifier.height(6.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                if (!read) Badge("New", g.primary)
+                                Text(listOf(names[a.feed] ?: a.feed, Format.ago(Format.parseMillis(a.date))).filter { it.isNotEmpty() }.joinToString(" · "),
+                                    style = MaterialTheme.typography.labelSmall, color = g.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
                     }
                 }
             }

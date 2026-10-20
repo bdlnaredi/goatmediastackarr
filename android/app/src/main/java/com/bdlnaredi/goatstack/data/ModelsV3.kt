@@ -89,3 +89,6 @@ object Versions {
     val indexer: String = "", val quality: String = "", val age: Int = 0, val rejected: Boolean = false, val why: String = "",
     val langs: List<String> = emptyList(), val link: String = "", val protocol: String = "", val group: String = "",
 )
+
+/** The answer to downloading several RSS articles at once: how many were added, and the titles that had no link. */
+@Serializable data class RssBatch(val added: Int = 0, val failed: List<String> = emptyList())

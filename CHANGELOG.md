@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- App updates are visible: the Stack page (web page and app) shows each app's version, and after an update lists what changed ("Sonarr 4.0.15 → 4.0.16"). Admins see it in the bell, and alert channels can be told (Alerts: "Apps inside the container are updated").
+- The weekly rebuild now really updates Seerr, Bazarr and SABnzbd too. Seerr was fixed at 3.5.0, and Bazarr and SABnzbd could be reused from an earlier build.
+- RSS in the app: tick several articles (Select, or press and hold one), then download them all at once into a category, or mark them read. Select all, too.
 - Private Internet Access (PIA) built in: choose PIA on the Stack page, enter your PIA username and password and pick a region (or the fastest), and the VPN connects over WireGuard with no file to download. PIA's port forwarding is supported too: the port is renewed every 15 minutes and given to qBittorrent.
 - Alerts: every channel (ntfy, Discord, Telegram, email…) has its own list of what it is told about — finished and grabbed downloads, new requests, a request ready to watch, problem reports, an app offline, the VPN, a full array, streaming limits, new versions and the weekly newsletter — and an optional name. Channels you already had keep sending what they sent before.
 - Interactive search in the app: "Choose a release" on a movie, on each episode of a show and on every Wanted item lists what your indexers have (quality, size, seeders, language, why Sonarr or Radarr would skip it), and Download sends the one you pick.

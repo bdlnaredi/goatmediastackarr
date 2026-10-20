@@ -257,3 +257,20 @@ test('demo mode: ready-made sign-in, pretend apps, nothing saved, risky settings
   const real = await boot();
   try { const t = await (await fetch(real.base + '/__demo/sonarr/api/v3/series')).text(); assert.equal(t.includes('Harbor Lights'), false, 'the pretend apps are not served outside demo mode'); } finally { await real.stop(); }
 });
+
+test('RSS: several articles downloaded at once, with the ones that have no link named', async () => {
+  const w = await world();
+  try {
+    const { a, ids } = w;
+    w.fake.state.rssItems = { 'Linux ISOs': { uid: '1', url: 'https://example.org/rss', articles: [
+      { id: 'a1', title: 'Ubuntu 26.04', torrentURL: 'magnet:?xt=urn:btih:1111111111111111111111111111111111111111' },
+      { id: 'a2', title: 'Fedora 45', link: 'https://example.org/f45.torrent' },
+      { id: 'a3', title: 'Just a news post' }] } };
+    const r = await a.post('/api/rss/download', { sid: ids.qbittorrent, category: 'software', items: [{ feed: 'Linux ISOs', id: 'a1' }, { feed: 'Linux ISOs', id: 'a2' }, { feed: 'Linux ISOs', id: 'a3' }, { feed: 'Gone', id: 'x' }] });
+    assert.equal(r.status, 200, JSON.stringify(r.data)); assert.equal(r.data.added, 2); assert.deepEqual(r.data.failed, ['Just a news post', 'x']);
+    const adds = w.fake.state.calls.filter(c => /torrents\/add/.test(c));
+    assert.ok(adds.some(c => /btih:1111/.test(c) && /software/.test(c)) && adds.some(c => /f45\.torrent/.test(c)), JSON.stringify(adds));
+    for (let i = 0; i < 20 && w.fake.state.calls.filter(c => /rss read/.test(c)).length < 2; i++) await new Promise(r => setTimeout(r, 50));
+    assert.equal(w.fake.state.calls.filter(c => /rss read/.test(c)).length, 2, 'the added ones are marked read');
+  } finally { await w.stop(); }
+});

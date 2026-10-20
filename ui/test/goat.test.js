@@ -285,3 +285,30 @@ test('the checklist counts Prowlarr indexers and SABnzbd news servers', async ()
     assert.deepEqual((await c.get('/api/goat/status')).data.counts, { indexers: 2, newsServers: 1 });
   } finally { await s.stop(); eng.close(); }
 });
+
+test('app versions: the first start remembers them, an update says what changed', async () => {
+  const dir = tmp(), run = tmp(), mf = path.join(dir, 'managed.json'), vf = path.join(dir, 'versions.json');
+  fs.writeFileSync(mf, JSON.stringify({ version: 1, services: [{ key: 'sonarr', type: 'sonarr', name: 'Sonarr', url: 'http://127.0.0.1:1/engines/sonarr', apiKey: 'k1' }] }));
+  const env = { GOAT_MANAGED: mf, GOAT_RUN: run, GOAT_VERSIONS: vf, GOAT_VERSION_CHECK_MS: '150' };
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  fs.writeFileSync(vf, JSON.stringify({ built: 'x', apps: { sonarr: '4.0.15', seerr: '3.5.0', jellyfin: '10.11.2' } }));
+  let s = await boot(env, dir);
+  try {
+    const c = client(s.base); await setup(c); await wait(600);
+    const st = (await c.get('/api/goat/status')).data;
+    assert.equal(st.engines.find(e => e.key === 'sonarr').version, '4.0.15');
+    assert.deepEqual(st.appUpdates, [], 'nothing to compare with on the first start');
+  } finally { await s.stop(); }
+  // The weekly image brought a newer Sonarr and Seerr.
+  fs.writeFileSync(vf, JSON.stringify({ built: 'y', apps: { sonarr: '4.0.16', seerr: '3.6.0', jellyfin: '10.11.2' } }));
+  s = await boot(env, dir);
+  try {
+    const c = client(s.base); await c.post('/api/login', { name: 'admin', password: 'correct-horse' }); await wait(600);
+    const st = (await c.get('/api/goat/status')).data;
+    assert.equal(st.appUpdates.length, 1);
+    assert.deepEqual(st.appUpdates[0].changes.map(x => `${x.name} ${x.from}→${x.to}`), ['Sonarr 4.0.15→4.0.16', 'Seerr 3.5.0→3.6.0']);
+    const feed = (await c.get('/api/notifications')).data;
+    assert.ok(JSON.stringify(feed).includes('Sonarr 4.0.15 → 4.0.16'), 'admins see it in the bell');
+    assert.ok((await c.get('/api/alerts')).data.events.includes('appUpdates'), 'alert channels can be told');
+  } finally { await s.stop(); }
+});
