@@ -52,9 +52,12 @@ expect "VPN app has no internet before the tunnel" "$(get "${AS_VPN[@]}")" ""
 echo "WireGuard tunnel up (a provider file, prepared the way vpn.sh does it):"
 mkdir -p /run/goat
 printf '[Interface]\nPrivateKey = %s\nAddress = 10.2.0.2/32\nDNS = 10.2.0.1\n\n[Peer]\nPublicKey = %s\nAllowedIPs = 0.0.0.0/0, ::/0\nEndpoint = 10.0.0.1:51820\nPersistentKeepalive = 25\n' "$CK" "$SP" > /tmp/goat-wg-src.conf
-"${BOX[@]}" sh "$HERE/goat/wg-prepare.sh" /tmp/goat-wg-src.conf > /run/goat/goatvpn.conf; chmod 600 /run/goat/goatvpn.conf
-sed 's/^/  | /' /run/goat/goatvpn.conf | grep -v PrivateKey
-up=$("${BOX[@]}" wg-quick up /run/goat/goatvpn.conf 2>&1); echo "$up" | sed 's/^/  | /'
+# Newer Ubuntu (the test machines) only lets wg-quick read its files from /etc/wireguard; the container itself has no
+# such limit, so the file is prepared exactly as vpn.sh does and only kept in that folder here.
+WGC=/etc/wireguard/goatvpn.conf; mkdir -p /etc/wireguard
+"${BOX[@]}" sh "$HERE/goat/wg-prepare.sh" /tmp/goat-wg-src.conf > "$WGC"; chmod 600 "$WGC"
+sed 's/^/  | /' "$WGC" | grep -v PrivateKey
+up=$("${BOX[@]}" wg-quick up "$WGC" 2>&1); echo "$up" | sed 's/^/  | /'
 [ -n "${GITHUB_ACTIONS:-}" ] && echo "::notice title=wg-quick up::$(echo "$up" | tr '\n' ';')"
 [ -n "${GITHUB_ACTIONS:-}" ] && echo "::notice title=Runner::$(. /etc/os-release; echo "$PRETTY_NAME") kernel $(uname -r); iptables $(iptables -V)"
 "${BOX[@]}" ip rule add pref 95 from 10.2.0.2 lookup 5157
@@ -76,7 +79,7 @@ note() { [ -n "${GITHUB_ACTIONS:-}" ] && echo "::notice title=$1::$(tr '\n' ';' 
 "${BOX[@]}" wg show goatvpn | tee >(note "wg show") | sed 's/^/  | /'
 
 echo "Tunnel down:"
-"${BOX[@]}" wg-quick down /run/goat/goatvpn.conf >/dev/null 2>&1
+"${BOX[@]}" wg-quick down "$WGC" >/dev/null 2>&1; rm -f "$WGC"
 expect "VPN app loses internet instead of leaking" "$(get "${AS_VPN[@]}")" ""
 expect "normal app unaffected" "$(get "${AS_APP[@]}")" "10.0.0.2"
 
