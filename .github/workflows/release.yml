@@ -1,0 +1,41 @@
+name: Release notes
+# When a version is tagged: the GitHub release gets that version's part of CHANGELOG.md as its notes, and the
+# changelog's "Unreleased" part is named after the version (dated) on main, with a new empty "Unreleased" above it.
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+concurrency:
+  group: release-notes
+  cancel-in-progress: false
+jobs:
+  notes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Notes for this version
+        run: |
+          set -e
+          node scripts/release-notes.js "$GITHUB_REF_NAME" notes.md
+          if grep -q '^- Small fixes and updates.$' notes.md; then
+            prev=$(git describe --tags --abbrev=0 "$GITHUB_REF_NAME^" 2>/dev/null || true)
+            git log --no-merges --format='- %s' ${prev:+$prev..}"$GITHUB_REF_NAME" | grep -v -i -E 'readme screenshots|^- ci:|^- test' > notes.md || true
+            [ -s notes.md ] || echo '- Small fixes and updates.' > notes.md
+          fi
+          cat notes.md
+      - uses: softprops/action-gh-release@v2
+        with:
+          body_path: notes.md
+          name: ${{ github.ref_name }}
+      - name: Name the Unreleased part after this version on main
+        run: |
+          set -e
+          git fetch -q origin main && git checkout -q -B main origin/main
+          node scripts/release-notes.js "$GITHUB_REF_NAME" /tmp/n.md --roll
+          git diff --quiet CHANGELOG.md && { echo "Changelog already has $GITHUB_REF_NAME"; exit 0; }
+          git -c user.name="github-actions[bot]" -c user.email="41898283+github-actions[bot]@users.noreply.github.com" commit -qam "Changelog: $GITHUB_REF_NAME"
+          for i in 1 2 3; do git push -q origin main && exit 0; git pull -q --rebase origin main; done
+          exit 1

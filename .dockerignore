@@ -6,6 +6,7 @@ ui/scripts
 unraid
 docs
 *.md
+!CHANGELOG.md
 .gitignore
 .dockerignore
 config

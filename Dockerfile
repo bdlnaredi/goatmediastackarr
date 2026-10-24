@@ -226,6 +226,8 @@ COPY --from=seerr /app /opt/seerr
 
 # GoatMediaStackarr itself: the UI (built from MediaHub), the setup scripts and the service definitions.
 COPY ui /opt/goat/ui
+# What changed in each version, for the "What's new" page.
+COPY CHANGELOG.md /opt/goat/CHANGELOG.md
 COPY goat /opt/goat/bin
 COPY rootfs /
 RUN chmod +x /opt/goat/bin/*.sh /opt/goat/bin/*.js && \

@@ -265,6 +265,7 @@ const goatControl = msg => new Promise(resolve => {
 });
 // Importing from an existing stack: one job at a time, run in the background, polled by the Stack page.
 const importer = require('./lib/importer');
+const changelog = require('./lib/changelog');
 let goatImport = null;
 const goatTarget2 = kind => { const t = db.services.find(x => x.managed === kind); return t ? { url: t.url, apiKey: t.apiKey } : null; };
 // This server's own public address, to compare with the VPN's for the leak test.
@@ -1350,6 +1351,8 @@ const goatServer = http.createServer(async (req, res) => {
     if (me && Date.now() - sess.seen > 60000) sess.seen = Date.now();
     const setup = !db.users.length;
     if (p === '/api/health') return send(res, 200, { ok: true, version: VERSION });
+    // What changed in each version, for the "What's new" page.
+    if (p === '/api/changelog' && m === 'GET') return send(res, 200, { current: VERSION, versions: changelog.read(VERSION) });
     if (p === '/api/wallpapers' && m === 'GET') { if (!DEMO && wpMode() === 'library' && !wpList().some(f => LIBWP.test(f)) && !wpBusy) wpKick(); return send(res, 200, wpMode() === 'scenes' ? [] : DEMO ? demo.fanarts() : wpList()); }
     if (p === '/api/me') return send(res, 200, { setup, setupCode: setup && !!SETUP_TOKEN, version: VERSION, demo: DEMO, goat: !!GOAT_MANAGED, plexLogin: plexCfg().on, iconBase: String(process.env.ICON_BASE == null ? 'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/' : process.env.ICON_BASE).replace(/[^\w:/.@-]/g, ''), recovery: !DEMO && !!(mailer() && baseUrl()), user: me ? pubUser(me) : null });
 
