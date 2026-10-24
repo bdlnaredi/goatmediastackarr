@@ -104,7 +104,7 @@ case "$name" in
     fs_libs() {
       echo "[goat] Adding the libraries FlareSolverr's browser needs (first start only)..."
       if apt-get update -qq && apt-get install -y -qq --no-install-recommends libnss3 libnspr4 libatk-bridge2.0-0t64 libatk1.0-0t64 \
-           libatspi2.0-0t64 libgbm1 libdrm2 libxkbcommon0 libasound2t64 libcups2t64 libdbus-1-3 libxcomposite1 libxdamage1 libxrandr2 \
+           libatspi2.0-0t64 libgbm1 libdrm2 libwayland-server0 libwayland-client0 libxkbcommon0 libasound2t64 libcups2t64 libdbus-1-3 libxcomposite1 libxdamage1 libxrandr2 \
            libxfixes3 libxi6 libxext6 libxrender1 libxss1 libpango-1.0-0 libcairo2 libgtk-3-0t64 libglib2.0-0t64 fontconfig \
            fonts-liberation xvfb xauth >/dev/null; then
         mkdir -p /var/lib/goat && touch /var/lib/goat/flaresolverr-libs; rm -rf /var/lib/apt/lists/*
