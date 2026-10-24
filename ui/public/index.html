@@ -1126,7 +1126,7 @@ function appDialog(existing,done){
 function svcView(){
   $('#m').innerHTML=`<div class="row" style="margin-bottom:14px"><span class="mute grow">The apps GoatMediaStackarr talks to. Most pages only appear once the matching app is added.</span><button class="primary" id="aa">${ic('rq')}Add an app</button></div><div class="panel" style="padding:4px 18px" id="al3"></div>`;
   const draw=()=>{$('#al3').innerHTML=services.map(s=>`<div class="srow" style="grid-template-columns:40px 1fr auto auto">${svcIcon(s.type,s.id)}<div style="min-width:0"><b>${esc(s.name)}</b> <span class="mute">${esc(TYPES[s.type]||s.type)}</span><div class="mute" style="word-break:break-all">${esc(s.url)}</div></div>
-      <span class="mute" id="t${s.id}">Checking</span><span class="row">${['rutorrent','deluge'].includes(s.type)&&services.some(x=>['sonarr','radarr','lidarr'].includes(x.type))?`<button data-ua="${s.id}" title="Add it to Sonarr, Radarr and Lidarr as a download client">Use in Sonarr/Radarr</button>`:''}<button data-e="${s.id}">Edit</button><button class="danger" data-x="${s.id}">Remove</button></span></div>`).join('')||empty('No apps yet','Add Sonarr, Radarr, qBittorrent or any other app to get started.');
+      <span class="mute" id="t${s.id}">Checking</span><span class="row">${['rutorrent','deluge'].includes(s.type)&&!s.managed&&services.some(x=>['sonarr','radarr','lidarr'].includes(x.type))?`<button data-ua="${s.id}" title="Add it to Sonarr, Radarr and Lidarr as a download client">Use in Sonarr/Radarr</button>`:''}<button data-e="${s.id}">Edit</button><button class="danger" data-x="${s.id}">Remove</button></span></div>`).join('')||empty('No apps yet','Add Sonarr, Radarr, qBittorrent or any other app to get started.');
     services.forEach(async s=>{let ok=false;try{ok=(await api('/api/status/'+s.id)).ok}catch{}const d=$('#d'+s.id);if(!d)return;d.className='dot '+(ok?'ok':'bad');$('#t'+s.id).textContent=ok?'Online':'Not reachable'})};
   draw();
   $('#aa').onclick=()=>appDialog(null,render);
@@ -2422,12 +2422,12 @@ async function subView(){
 
 // ---------- Stack: the apps inside the GoatMediaStackarr container
 const GOAT_PAGES={sonarr:1,radarr:1,lidarr:1,prowlarr:1,bazarr:1,qbittorrent:1,sabnzbd:1,tautulli:1};
-const GOAT_VPNAPPS=[['qbittorrent','qBittorrent'],['sabnzbd','SABnzbd'],['prowlarr','Prowlarr (and FlareSolverr)']];
+const GOAT_VPNAPPS=[['qbittorrent','qBittorrent (and ruTorrent, Deluge)'],['sabnzbd','SABnzbd'],['prowlarr','Prowlarr (and FlareSolverr)']];
 // Jellyfin, Seerr and Plex have their own ports. Opened through a domain name (a Cloudflare tunnel, say) those ports
 // are not reachable, so the address from outside the home is used when one is set.
 let GOAT_OUT={};
 const viaDomain=()=>!/^(localhost|\d+\.\d+\.\d+\.\d+|\[.*\]|.*\.local|.*\.lan|.*\.home|.*\.ts\.net)$/i.test(location.hostname);
-const goatOpen=k=>GOAT_PAGES[k]?`/engines/${k}/`:GOAT_OUT[k]&&viaDomain()?GOAT_OUT[k]+(k==='plex'&&!/\/web\b/.test(GOAT_OUT[k])?'/web/':'/'):k==='jellyfin'?`${location.protocol}//${location.hostname}:8096/`:k==='plex'?`${location.protocol}//${location.hostname}:32400/web/`:k==='seerr'?`${location.protocol}//${location.hostname}:5055/`:'';
+const goatOpen=k=>GOAT_PAGES[k]?`/engines/${k}/`:GOAT_OUT[k]&&viaDomain()?GOAT_OUT[k]+(k==='plex'&&!/\/web\b/.test(GOAT_OUT[k])?'/web/':'/'):k==='jellyfin'?`${location.protocol}//${location.hostname}:8096/`:k==='plex'?`${location.protocol}//${location.hostname}:32400/web/`:k==='seerr'?`${location.protocol}//${location.hostname}:5055/`:k==='rutorrent'?`${location.protocol}//${location.hostname}:8090/`:k==='deluge'?`${location.protocol}//${location.hostname}:8112/`:'';
 let goatPoll=0,goatQuiet=false;
 async function goatView(){
   clearTimeout(goatPoll);
@@ -2490,9 +2490,9 @@ async function goatView(){
   <h2 class="sec">From outside your home</h2>
   <div class="panel"><p class="mute" style="margin-top:0">Sonarr, Radarr and the other apps open through this page's own address, so they work wherever this page works (a Cloudflare tunnel or Tailscale). Phone apps for them (nzb360, LunaSea and similar) use this address plus <code>/engines/sonarr</code> (or radarr, prowlarr…) and that app's API key.</p>
     <p class="mute">Jellyfin, Seerr and Plex use their own ports. With Tailscale those work as they are. With a Cloudflare tunnel, give each one its own hostname in the tunnel (for example jellyfin.example.com to http://<i>Unraid's address</i>:8096) and enter it here, so the Open buttons use it when you are away.</p>
-    <form id="gof" class="row" style="gap:10px;align-items:flex-end">${[['jellyfin','Jellyfin','https://jellyfin.example.com'],['seerr','Seerr','https://requests.example.com'],['plex','Plex','https://app.plex.tv']].map(([k,n,ph])=>`<label class="mute">${n}<input name="${k}" value="${esc(GOAT_OUT[k]||'')}" placeholder="${ph}" style="min-width:220px"></label>`).join('')}<button class="primary">Save</button></form><div class="err" id="goe"></div></div>
+    <form id="gof" class="row" style="gap:10px;align-items:flex-end">${[['jellyfin','Jellyfin','https://jellyfin.example.com'],['seerr','Seerr','https://requests.example.com'],['plex','Plex','https://app.plex.tv'],...st.engines.filter(e=>['rutorrent','deluge'].includes(e.key)).map(e=>[e.key,e.name,`https://${e.key}.example.com`])].map(([k,n,ph])=>`<label class="mute">${n}<input name="${k}" value="${esc(GOAT_OUT[k]||'')}" placeholder="${ph}" style="min-width:220px"></label>`).join('')}<button class="primary">Save</button></form><div class="err" id="goe"></div></div>
   <h2 class="sec">Logins made for you</h2>
-  <div class="panel">${[['Jellyfin admin','jellyfin'],['qBittorrent','qbittorrent']].filter(([,k])=>st.logins[k]).map(([n,k])=>`<div class="row" style="gap:10px;margin:6px 0"><b style="min-width:130px">${n}</b><code>${esc(st.logins[k].user)}</code><code class="gpw" data-pw="${esc(st.logins[k].pass)}">••••••••</code><button data-show>${ic('eye')}Show</button></div>`).join('')||'<div class="mute">None yet.</div>'}
+  <div class="panel">${[['Jellyfin admin','jellyfin'],['qBittorrent','qbittorrent'],['ruTorrent','rutorrent'],['Deluge (Web UI)','deluge']].filter(([,k])=>st.logins[k]).map(([n,k])=>`<div class="row" style="gap:10px;margin:6px 0"><b style="min-width:130px">${n}</b><code>${esc(st.logins[k].user)}</code><code class="gpw" data-pw="${esc(st.logins[k].pass)}">••••••••</code><button data-show>${ic('eye')}Show</button></div>`).join('')||'<div class="mute">None yet.</div>'}
     <div class="mute">Use the Jellyfin login in the Jellyfin apps on your TV and phone. You can change it in Jellyfin.</div></div>
   ${hasPlex?`<h2 class="sec">Plex</h2><div class="panel">${plexOk?'<span class="pill ok">Linked to your Plex account</span>':`<div>Get a code from <a href="https://plex.tv/claim" target="_blank" rel="noopener">plex.tv/claim</a> while signed in to Plex, paste it here and press Link within 4 minutes.</div>
     <div class="row" style="margin-top:8px"><input id="gpc" placeholder="claim-xxxxxxxxxxxx" aria-label="Plex claim code"><button class="primary" id="gpl">Link</button></div><div class="err" id="gpe"></div>`}</div>`:''}

@@ -240,7 +240,9 @@ const goatStatus = () => {
     engines: [...db.services.filter(x => x.managed).map(x => ({ id: x.id, key: x.managed, name: x.name, version: appVersions()[x.managed] || '', ok: health[x.id] ? health[x.id].ok : null, stopped: (goatRead(path.join(GOAT_RUN, 'stopped.json')) || []).includes(x.managed) })),
       ...((GOAT_MANAGED && (goatRead(GOAT_MANAGED) || {}).extras) || []).map(x => ({ key: x.key, name: x.name, ok: null, stopped: (goatRead(path.join(GOAT_RUN, 'stopped.json')) || []).includes(x.key) }))],
     settings: goatSettings ? goatSettings.view() : null, vpnFiles: goatVpnFiles(), container: !!GOAT_MANAGED, outside: { ...((db.settings || {}).outside || {}) },
-    logins: { jellyfin: sec.jellyfinUser ? { user: sec.jellyfinUser, pass: sec.jellyfinPass } : null, qbittorrent: sec.qbitUser ? { user: sec.qbitUser, pass: sec.qbitPass } : null } };
+    logins: { jellyfin: sec.jellyfinUser ? { user: sec.jellyfinUser, pass: sec.jellyfinPass } : null, qbittorrent: sec.qbitUser ? { user: sec.qbitUser, pass: sec.qbitPass } : null,
+      rutorrent: sec.rutorrentPass && db.services.some(x => x.managed === 'rutorrent') ? { user: sec.rutorrentUser, pass: sec.rutorrentPass } : null,
+      deluge: sec.delugePass && db.services.some(x => x.managed === 'deluge') ? { user: '(password only)', pass: sec.delugePass } : null } };
 };
 // For the setup checklist: how many indexers the built-in Prowlarr has and how many news servers SABnzbd has.
 // null when that app is off or not answering.
@@ -289,7 +291,7 @@ goatSync(); goatOwnPlex();
 // Which version of each app the image carries (written while it is built). Compared with the last one this server ran,
 // so an update (the weekly rebuild, say) says what it changed: on the Stack page, in the bell, and to alert channels.
 const GOAT_VERSIONS = process.env.GOAT_VERSIONS || '/opt/goat/versions.json';
-const APP_NAME = { sonarr: 'Sonarr', radarr: 'Radarr', lidarr: 'Lidarr', prowlarr: 'Prowlarr', bazarr: 'Bazarr', qbittorrent: 'qBittorrent', sabnzbd: 'SABnzbd', jellyfin: 'Jellyfin', seerr: 'Seerr', tautulli: 'Tautulli' };
+const APP_NAME = { sonarr: 'Sonarr', radarr: 'Radarr', lidarr: 'Lidarr', prowlarr: 'Prowlarr', bazarr: 'Bazarr', qbittorrent: 'qBittorrent', sabnzbd: 'SABnzbd', jellyfin: 'Jellyfin', seerr: 'Seerr', tautulli: 'Tautulli', rutorrent: 'ruTorrent', rtorrent: 'rTorrent', deluge: 'Deluge' };
 const appVersions = () => (goatRead(GOAT_VERSIONS) || {}).apps || {};
 function goatVersionCheck() {
   const now = appVersions(); if (!Object.keys(now).length) return;
@@ -1604,7 +1606,7 @@ const goatServer = http.createServer(async (req, res) => {
       // The addresses Jellyfin, Seerr and Plex have from outside the home (a Cloudflare hostname, say), for the Open buttons.
       if (p === '/api/goat/outside') {
         const b = await readBody(req), o = {};
-        for (const k of ['jellyfin', 'seerr', 'plex']) { const v = String(b[k] || '').trim().replace(/\/+$/, ''); if (v && !/^https?:\/\/[^\s/]+(\/[^\s]*)?$/i.test(v)) return send(res, 400, { error: `The ${k} address must start with https:// (or http://)` }); if (v) o[k] = v.slice(0, 300); }
+        for (const k of ['jellyfin', 'seerr', 'plex', 'rutorrent', 'deluge']) { const v = String(b[k] || '').trim().replace(/\/+$/, ''); if (v && !/^https?:\/\/[^\s/]+(\/[^\s]*)?$/i.test(v)) return send(res, 400, { error: `The ${k} address must start with https:// (or http://)` }); if (v) o[k] = v.slice(0, 300); }
         db.settings.outside = o; save(); return send(res, 200, o);
       }
       if (p === '/api/goat/settings') {

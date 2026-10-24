@@ -26,7 +26,7 @@ test('restart only accepts known apps', async () => {
 test('applying the VPN rewrites settings, rebuilds the kill switch, then restarts the tunnel and its apps', async () => {
   const x = fake();
   assert.equal((await handle({ cmd: 'apply-vpn' }, x)).ok, true);
-  assert.deepEqual(x.calls, [['run', 'init.js'], ['run', 'vpn-init.sh'], ['restart', 'goat-vpn'], ['restart', 'qbittorrent'], ['restart', 'sabnzbd'], ['restart', 'prowlarr'], ['restart', 'flaresolverr'], ['restart', 'sitefetch']]);
+  assert.deepEqual(x.calls, [['run', 'init.js'], ['run', 'vpn-init.sh'], ['restart', 'goat-vpn'], ['restart', 'qbittorrent'], ['restart', 'rutorrent'], ['restart', 'rutorrent-web'], ['restart', 'deluge'], ['restart', 'deluge-web'], ['restart', 'sabnzbd'], ['restart', 'prowlarr'], ['restart', 'flaresolverr'], ['restart', 'sitefetch']]);
   const bad = { ...fake(), run: async (f, a) => ({ ok: !a[0].endsWith('vpn-init.sh'), err: 'no NET_ADMIN' }) };
   const r = await handle({ cmd: 'apply-vpn' }, bad);
   assert.equal(r.ok, false); assert.match(r.error, /kill switch/);
@@ -52,6 +52,13 @@ test('interface settings take priority over the template, and bad values are ref
   settings.update({ plex: { claim: null } });
   assert.equal(settings.effectiveEnv({}).PLEX_CLAIM, undefined);
   assert.equal((fs.statSync(settings.FILE()).mode & 0o777).toString(8), '600');
+});
+
+test('ruTorrent and Deluge are restarted, stopped and started with their web pages', async () => {
+  const x = fake();
+  assert.deepEqual(await handle({ cmd: 'stop', engine: 'deluge' }, x), { ok: true });
+  assert.deepEqual(await handle({ cmd: 'restart', engine: 'rutorrent' }, x), { ok: true });
+  assert.deepEqual(x.calls, [['stop', 'deluge'], ['stop', 'deluge-web'], ['mark', 'deluge', true], ['restart', 'rutorrent'], ['restart', 'rutorrent-web'], ['mark', 'rutorrent', false]]);
 });
 
 test('stop and start only accept known apps, and remember what was stopped', async () => {

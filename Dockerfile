@@ -52,8 +52,37 @@ RUN --mount=type=secret,id=GITHUB_TOKEN,env=GITHUB_TOKEN \
     python3 -m venv /opt/sabnzbd/venv && \
     /opt/sabnzbd/venv/bin/pip install --no-cache-dir -r /opt/sabnzbd/requirements.txt && \
     (cd /opt/sabnzbd && /opt/sabnzbd/venv/bin/python tools/make_mo.py >/dev/null 2>&1 || true)
+# Deluge, the official release from PyPI (published by the Deluge team). It uses Ubuntu's libtorrent bindings
+# (python3-libtorrent, installed in the final image), so its environment can see the system's Python packages.
+ARG DELUGE_VERSION=latest
+RUN python3 -m venv --system-site-packages /opt/deluge && \
+    /opt/deluge/bin/pip install --no-cache-dir "deluge$([ "$DELUGE_VERSION" = latest ] || echo "==${DELUGE_VERSION#deluge-}")" && \
+    /opt/deluge/bin/pip show deluge | sed -n 's/^Version: //p' > /opt/deluge/.goat-version && cat /opt/deluge/.goat-version
 # Compiled caches are rebuilt when needed.
-RUN find /opt/bazarr /opt/sabnzbd -name __pycache__ -prune -exec rm -rf {} +
+RUN find /opt/bazarr /opt/sabnzbd /opt/deluge -name __pycache__ -prune -exec rm -rf {} +
+
+# ---------- rTorrent (the downloader behind ruTorrent), built from its own source: github.com/rakshasa ----------
+FROM ubuntu:24.04 AS rtorrent
+ARG RTORRENT_VERSION=latest
+# Changes on every build, so "latest" is looked up again instead of reused from the cache.
+ARG VERSION=dev
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl jq git build-essential autoconf autoconf-archive automake libtool pkg-config \
+      libcurl4-openssl-dev libssl-dev zlib1g-dev libncurses-dev
+RUN --mount=type=secret,id=GITHUB_TOKEN,env=GITHUB_TOKEN \
+    set -e; tag="${RTORRENT_VERSION}"; \
+    [ "$tag" = latest ] && tag=$(curl -fsSL --retry 4 ${GITHUB_TOKEN:+-H "Authorization: Bearer $GITHUB_TOKEN"} https://api.github.com/repos/rakshasa/rtorrent/releases/latest | jq -r .tag_name); \
+    echo "rTorrent $tag"; \
+    git clone -q --depth 1 --branch "$tag" https://github.com/rakshasa/libtorrent /src/libtorrent; \
+    git clone -q --depth 1 --branch "$tag" https://github.com/rakshasa/rtorrent /src/rtorrent; \
+    cd /src/libtorrent && autoreconf -fi && ./configure --prefix=/opt/rtorrent --disable-debug && make -j"$(nproc)" && make install; \
+    cd /src/rtorrent && autoreconf -fi && \
+      PKG_CONFIG_PATH=/opt/rtorrent/lib/pkgconfig LDFLAGS="-Wl,-rpath,/opt/rtorrent/lib" ./configure --prefix=/opt/rtorrent --with-xmlrpc-tinyxml2 --disable-debug && \
+      make -j"$(nproc)" && make install; \
+    rm -rf /opt/rtorrent/include /opt/rtorrent/lib/pkgconfig /opt/rtorrent/lib/*.la /opt/rtorrent/lib/*.a /opt/rtorrent/share; \
+    strip /opt/rtorrent/bin/rtorrent /opt/rtorrent/lib/libtorrent.so.*; \
+    /opt/rtorrent/bin/rtorrent -h >/dev/null 2>&1 || true; \
+    echo "${tag#v}" > /opt/rtorrent/.goat-version
 
 # ---------- Node runtime for the GoatMediaStackarr UI, the wiring script and Seerr ----------
 FROM node:${NODE_VERSION}-bookworm-slim AS node
@@ -113,7 +142,8 @@ RUN chmod +x /usr/local/bin/fetch-release && \
       iproute2 iptables wireguard-tools openvpn natpmpc procps \
       libicu74 libsqlite3-0 sqlite3 mediainfo \
       python3 python3-venv libxml2 libxslt1.1 \
-      par2 7zip unrar && \
+      par2 7zip unrar \
+      php8.3-cli php8.3-mbstring php8.3-xml php8.3-curl python3-libtorrent libncursesw6 && \
     install -d /etc/apt/keyrings && \
     curl -fsSL https://repo.jellyfin.org/jellyfin_team.gpg.key | gpg --dearmor -o /etc/apt/keyrings/jellyfin.gpg && \
     echo "deb [signed-by=/etc/apt/keyrings/jellyfin.gpg] https://repo.jellyfin.org/ubuntu noble main" > /etc/apt/sources.list.d/jellyfin.list && \
@@ -167,6 +197,21 @@ RUN --mount=type=secret,id=GITHUB_TOKEN,env=GITHUB_TOKEN \
     echo "Tautulli $tag" && mkdir -p /opt/goat/versions && echo "$tag" > /opt/goat/versions/tautulli && \
     curl -fsSL "https://github.com/Tautulli/Tautulli/archive/refs/tags/${tag}.tar.gz" | tar -xz -C /opt/tautulli --strip-components=1
 
+# ruTorrent (optional, port 8090): its own release from github.com/Novik/ruTorrent, served by PHP's web server.
+# rTorrent and Deluge (optional, port 8112) come from the build stages above.
+ARG RUTORRENT_VERSION=latest
+COPY --from=rtorrent /opt/rtorrent /opt/rtorrent
+COPY --from=python /opt/deluge /opt/deluge
+RUN --mount=type=secret,id=GITHUB_TOKEN,env=GITHUB_TOKEN \
+    set -e; tag="${RUTORRENT_VERSION}"; \
+    [ "$tag" = latest ] && tag=$(curl -fsSL --retry 4 ${GITHUB_TOKEN:+-H "Authorization: Bearer $GITHUB_TOKEN"} https://api.github.com/repos/Novik/ruTorrent/releases/latest | jq -r .tag_name); \
+    echo "ruTorrent $tag"; mkdir -p /opt/rutorrent /opt/goat/versions; \
+    curl -fsSL --retry 4 "https://github.com/Novik/ruTorrent/archive/refs/tags/${tag}.tar.gz" | tar -xz -C /opt/rutorrent --strip-components=1; \
+    rm -rf /opt/rutorrent/tests /opt/rutorrent/.github; test -f /opt/rutorrent/plugins/httprpc/action.php; \
+    echo "${tag#v}" > /opt/goat/versions/rutorrent; \
+    test -x /opt/rtorrent/bin/rtorrent && /opt/rtorrent/bin/rtorrent -h | head -n 1; \
+    test -x /opt/deluge/bin/deluged && /opt/deluge/bin/python -c 'import libtorrent, deluge; print("Deluge with libtorrent", libtorrent.__version__)'
+
 # Node.js for the UI, the wiring script and Seerr.
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
 COPY --from=seerr /app /opt/seerr
@@ -181,6 +226,7 @@ RUN chmod +x /opt/goat/bin/*.sh /opt/goat/bin/*.js && \
     # Which version of each app this image carries. GoatMediaStackarr compares it with the last one it ran, to say
     # what an update changed.
     v=/opt/goat/versions && cp /opt/bazarr/.goat-version $v/bazarr && cp /opt/sabnzbd/.goat-version $v/sabnzbd && \
+    cp /opt/rtorrent/.goat-version $v/rtorrent && cp /opt/deluge/.goat-version $v/deluge && \
     jq -r .commitTag /opt/seerr/committag.json > $v/seerr && \
     dpkg-query -W -f='${Version}' jellyfin-server | sed 's/[+-].*//' > $v/jellyfin && \
     (cd $v && for f in *; do printf '%s\t%s\n' "$f" "$(tr -d '\r\n' < "$f")"; done) | \
@@ -191,8 +237,9 @@ RUN chmod +x /opt/goat/bin/*.sh /opt/goat/bin/*.js && \
 # /media and /downloads are not declared as volumes, so mapping one shared folder instead leaves no stray volumes behind.
 VOLUME ["/config"]
 # 2806 = GoatMediaStackarr, 8096 = Jellyfin, 5055 = Seerr's request page, 32400 = Plex (when turned on), 50413 = torrent port when the VPN is off
-# (not 6881: trackers block 6881-6889; set TORRENT_PORT for another one).
-EXPOSE 2806 8096 5055 32400 50413 50413/udp
+# (not 6881: trackers block 6881-6889; set TORRENT_PORT for another one). When turned on: 8090 = ruTorrent, 8112 = Deluge,
+# with 50414 and 50415 as their torrent ports.
+EXPOSE 2806 8096 5055 32400 50413 50413/udp 8090 8112 50414 50414/udp 50415 50415/udp
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
   CMD curl -fsS http://127.0.0.1:2806/api/health >/dev/null || exit 1

@@ -86,3 +86,37 @@ test('torrent port: 50413 by default, the old blocked 6881 is moved, a port pick
   assert.equal(port(init.qbitConfig(mine, s, '', { TORRENT_PORT: '40000' })), '40000', 'TORRENT_PORT wins');
   assert.equal(port(init.qbitConfig('', s, '', { TORRENT_PORT: '80' })), '50413', 'a port below 1024 is not used');
 });
+
+test('ruTorrent and Deluge: settings written when turned on, logins made, and they follow qBittorrent onto the VPN', () => {
+  const cfg = path.join(root, 'config');
+  const env = { PUID: '99', PGID: '100', GOAT_ENGINES: 'sonarr,radarr,qbittorrent,rutorrent,deluge', VPN_ENABLED: 'true', VPN_APPS: 'qbittorrent' };
+  const r = init.run(env);
+  assert.ok(r.secrets.rutorrentPass && r.secrets.delugePass && r.secrets.rutorrentUser === 'goat');
+  assert.deepEqual(r.managed.vpn.apps.sort(), ['deluge', 'qbittorrent', 'rutorrent'], 'they use the VPN whenever qBittorrent does');
+  const ru = r.managed.services.find(x => x.key === 'rutorrent'), de = r.managed.services.find(x => x.key === 'deluge');
+  assert.equal(ru.url, 'http://127.0.0.1:8090'); assert.equal(ru.pass, r.secrets.rutorrentPass); assert.equal(de.url, 'http://127.0.0.1:8112'); assert.equal(de.pass, r.secrets.delugePass);
+
+  const rc = fs.readFileSync(path.join(cfg, 'rutorrent/rtorrent.rc'), 'utf8');
+  assert.match(rc, /^network\.scgi\.open_port = 127\.0\.0\.1:5000$/m, 'XML-RPC only inside the container');
+  assert.match(rc, /^network\.listen\.port\.range\.set = 50414-50414$/m, 'rTorrent 0.16 names');
+  assert.match(rc, /^directory\.default\.set = .*\/torrents\/complete$/m);
+  assert.match(rc, /^try_import = .*rutorrent\/rtorrent\.local\.rc$/m, 'changes of your own are read last');
+  for (const d of ['session', 'share', 'tmp']) assert.ok(fs.existsSync(path.join(cfg, 'rutorrent', d)));
+
+  const core = init.delugeRead(fs.readFileSync(path.join(cfg, 'deluge/core.conf'), 'utf8'));
+  assert.equal(core.allow_remote, false); assert.deepEqual(core.listen_ports, [50415, 50415]); assert.ok(core.enabled_plugins.includes('Label'));
+  assert.match(core.move_completed_path, /torrents\/complete$/);
+  const webText = fs.readFileSync(path.join(cfg, 'deluge/web.conf'), 'utf8'), web = init.delugeRead(webText);
+  assert.match(webText, /^\{\s*"file": 2,\s*"format": 1\s*\}\{/, 'Deluge\'s own file layout: a version header, then the settings');
+  assert.equal(web.port, 8112); assert.equal(web.first_login, false);
+  assert.equal(crypto.createHash('sha1').update(web.pwd_salt + r.secrets.delugePass).digest('hex'), web.pwd_sha1, 'the Web UI takes the password made for you');
+
+  // Your own Deluge settings survive a restart; the password salt stays when the password is unchanged.
+  fs.writeFileSync(path.join(cfg, 'deluge/core.conf'), init.delugeCore(fs.readFileSync(path.join(cfg, 'deluge/core.conf'), 'utf8')).replace('"move_completed": true', '"move_completed": false'));
+  init.run(env);
+  assert.equal(init.delugeRead(fs.readFileSync(path.join(cfg, 'deluge/core.conf'), 'utf8')).move_completed, false);
+  assert.equal(init.delugeRead(fs.readFileSync(path.join(cfg, 'deluge/web.conf'), 'utf8')).pwd_salt, web.pwd_salt);
+
+  assert.deepEqual(init.run({ ...env, VPN_ENABLED: 'false' }).managed.vpn.apps, []);
+  assert.deepEqual(init.run({ ...env, VPN_APPS: 'sabnzbd' }).managed.vpn.apps, ['sabnzbd'], 'not on the VPN when qBittorrent is not');
+});

@@ -27,6 +27,11 @@ const ENGINES = {
   // Off unless added to GOAT_ENGINES: gets past Cloudflare checks on indexer sites. Downloaded on first start
   // (it bundles its own Chromium), so it costs nothing for people who do not use it. x86 servers only.
   flaresolverr: { name: 'FlareSolverr', port: 8191, base: '' },
+  // Off unless added to GOAT_ENGINES: more torrent apps next to qBittorrent. Each has its own web page on its own port.
+  // ruTorrent is the page; rTorrent does the downloading (XML-RPC on 127.0.0.1:5000, only inside the container).
+  rutorrent:   { name: 'ruTorrent',   port: 8090, base: '', rpc: 5000 },
+  // Deluge's Web UI; its daemon (deluged) listens on 127.0.0.1:58846, only inside the container.
+  deluge:      { name: 'Deluge',      port: 8112, base: '', daemon: 58846 },
 };
 
 // Tests run fake engines on spare ports: GOAT_PORT_SONARR=12345 and so on.
@@ -51,6 +56,8 @@ const vpnApps = (env = process.env) => {
   const l = list(env.VPN_APPS, DEFAULT_VPN_APPS);
   // FlareSolverr is the one that actually visits indexer sites for Prowlarr, so it follows Prowlarr onto the VPN.
   if (l.includes('prowlarr') && !l.includes('flaresolverr') && enabled(env).includes('flaresolverr')) l.push('flaresolverr');
+  // ruTorrent and Deluge download torrents too, so they follow qBittorrent onto the VPN.
+  if (l.includes('qbittorrent')) for (const k of ['rutorrent', 'deluge']) if (!l.includes(k) && enabled(env).includes(k)) l.push(k);
   return l;
 };
 // Seerr works with one media server. SEERR_MEDIA_SERVER picks it; otherwise Jellyfin if it runs, else Plex.

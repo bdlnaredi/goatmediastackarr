@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- ruTorrent and Deluge built in, next to qBittorrent (add `rutorrent` or `deluge` to Apps to run). ruTorrent's page is on port 8090 (ruTorrent from its own GitHub releases, with rTorrent built from its own source) and Deluge's Web UI on port 8112 (the Deluge team's release). Logins are made for you, the downloading follows qBittorrent onto the VPN with the kill switch, and Sonarr, Radarr, Lidarr and Prowlarr get them as download clients after qBittorrent. They show in Downloads and on the Stack page.
 - ruTorrent and Deluge: connect the ones you already run (Settings → Apps). They show in Downloads on the web page and in the app like qBittorrent (list, filters, pause, resume, remove, labels, details, adding links and .torrent files), finished downloads count in the history and alerts, and *Use in Sonarr/Radarr* adds them to Sonarr, Radarr and Lidarr as a download client.
 - Android app: messages that come at the end of a network call no longer crash the app when the page was already left.
 - App updates are visible: the Stack page (web page and app) shows each app's version, and after an update lists what changed ("Sonarr 4.0.15 → 4.0.16"). Admins see it in the bell, and alert channels can be told (Alerts: "Apps inside the container are updated").

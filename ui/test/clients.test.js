@@ -25,7 +25,23 @@ function fakeRutorrent() {
   const srv = http.createServer(async (req, res) => {
     if (req.url !== '/plugins/httprpc/action.php') { res.writeHead(404); return res.end('no'); }
     if (req.headers.authorization !== 'Basic ' + Buffer.from('ann:pw').toString('base64')) { res.writeHead(401); return res.end(); }
-    const x = await body(req), method = /<methodName>([^<]+)<\/methodName>/.exec(x)[1];
+    const x = await body(req);
+    // ruTorrent's named actions (form posts), which it runs as trusted: what its own page and GoatMediaStackarr use.
+    if (/^mode=/.test(x)) {
+      const q = new URLSearchParams(x), mode = q.get('mode'), hs = q.getAll('hash'), v = q.get('v');
+      st.calls.push(['form', mode, ...hs, ...(v != null ? [v] : [])]);
+      for (const h of hs) { const t = st.t[h]; if (!t) continue;
+        if (mode === 'stop') t.state = 0; if (mode === 'start') t.state = 1;
+        if (mode === 'setlabel') t.label = v;   // URLSearchParams decoded it once, like PHP's rawurldecode
+        if (mode === 'remove' || mode === 'removewithdata') delete st.t[h]; }
+      res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end('[]');
+    }
+    // Raw XML-RPC through the plugin: newer ruTorrent marks it untrusted, so rTorrent refuses what changes torrents.
+    const method = /<methodName>([^<]+)<\/methodName>/.exec(x)[1];
+    if (/^d\.(start|stop|erase|custom1\.set|custom5\.set|open|close)$/.test(method)) {
+      res.writeHead(200, { 'Content-Type': 'text/xml' });
+      return res.end(`<?xml version="1.0"?><methodResponse><fault><value><struct><member><name>faultCode</name><value><i8>-501</i8></value></member><member><name>faultString</name><value><string>Command "${method}" is not allowed for untrusted connections.</string></value></member></struct></value></fault></methodResponse>`);
+    }
     const params = [...x.matchAll(/<param>([\s\S]*?)<\/param>/g)].map(m => xmlParse(`<methodResponse><params><param>${m[1]}</param></params></methodResponse>`));
     st.calls.push([method, ...params.map(p => Buffer.isBuffer(p) ? 'base64:' + p.length : p)]);
     res.writeHead(200, { 'Content-Type': 'text/xml' });
@@ -110,7 +126,7 @@ test('ruTorrent: list, pause, labels, add, details, remove, and added to Sonarr'
     assert.equal(l.torrents.find(x => x.name === 'Film.2024').state, 'uploading');
 
     assert.equal((await a.post(`/api/qb/${sid}/act`, { action: 'pause', hashes: [H1] })).status, 200);
-    assert.ok(ru.st.calls.some(c => c[0] === 'd.stop' && c[1] === H1.toUpperCase()));
+    assert.ok(ru.st.calls.some(c => c[0] === 'form' && c[1] === 'stop' && c[2] === H1.toUpperCase()), 'through ruTorrent\'s own trusted action');
     const l2 = (await a.get(`/api/qb/${sid}/list`)).data; // the list is cached for under a second
     await new Promise(r => setTimeout(r, 900));
     assert.equal((await a.get(`/api/qb/${sid}/list`)).data.torrents.find(x => x.hash === H1).state, 'pausedDL'); void l2;
@@ -131,7 +147,7 @@ test('ruTorrent: list, pause, labels, add, details, remove, and added to Sonarr'
     assert.deepEqual(info.trackers.map(t => t.url), ['udp://tracker.example:80']); assert.equal(info.peers[0].client, 'qBittorrent 5.0');
 
     await a.post(`/api/qb/${sid}/act`, { action: 'delete', hashes: [H2], files: true });
-    assert.ok(ru.st.calls.some(c => c[0] === 'd.custom5.set' && c[2] === '1'), 'files are removed through ruTorrent\'s erasedata plugin');
+    assert.ok(ru.st.calls.some(c => c[0] === 'form' && c[1] === 'removewithdata' && c[2] === H2.toUpperCase()), 'files are removed through ruTorrent\'s erasedata action');
     assert.equal(ru.st.t[H2.toUpperCase()], undefined);
 
     const r = (await a.post(`/api/clients/${sid}/arr`, {})).data;

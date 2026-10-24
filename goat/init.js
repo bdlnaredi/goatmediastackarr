@@ -60,6 +60,7 @@ function loadSecrets(file) {
     sonarr: key, radarr: key, lidarr: key, prowlarr: key, bazarr: key, tautulli: key,
     sabnzbd: key, sabnzbdNzb: key, qbitUser: () => 'goat', qbitPass: password,
     jellyfinUser: () => 'goat-admin', jellyfinPass: password,
+    rutorrentUser: () => 'goat', rutorrentPass: password, delugePass: password,
   };
   let changed = false;
   for (const [k, make] of Object.entries(want)) if (!s[k]) { s[k] = make(); changed = true; }
@@ -116,6 +117,57 @@ function qbitConfig(existing, s, vpnIface, env = process.env) {
   const cur = (x.match(/^Session\\Port=(\d+)\s*$/m) || [])[1];
   if (first || env.TORRENT_PORT || !cur || cur === OLD_TORRENT_PORT) x = iniSet(x, 'BitTorrent', 'Session\\Port', torrentPort(env));
   return x;
+}
+
+// ---------- rTorrent (for ruTorrent) ----------
+// Written at every start. Changes of your own go in rtorrent.local.rc next to it, which is read last.
+function rtorrentConfig(env = process.env) {
+  const R = `${E.CONFIG}/rutorrent`, port = (() => { const p = parseInt(env.RUTORRENT_TORRENT_PORT, 10); return p >= 1024 && p <= 65535 ? p : 50414; })();
+  return [
+    '# Written by GoatMediaStackarr at every start. Put changes of your own in rtorrent.local.rc (read last).',
+    `session.path.set = ${R}/session`,
+    `directory.default.set = ${E.DIRS.torrents}/complete`,
+    // XML-RPC only inside the container: ruTorrent's page and the other apps reach rTorrent through it.
+    `network.scgi.open_port = 127.0.0.1:${E.ENGINES.rutorrent.rpc}`,
+    `network.listen.port.range.set = ${port}-${port}`,
+    'network.listen.port.random.set = no',
+    'network.xmlrpc.size_limit.set = 16M',
+    'system.daemon.set = true',
+    'system.umask.set = 0002',
+    'dht.mode.set = auto',
+    'protocol.pex.set = yes',
+    'trackers.use_udp.set = yes',
+    'protocol.encryption.set = allow_incoming,try_outgoing,enable_retry',
+    'pieces.hash.on_completion.set = no',
+    `try_import = ${R}/rtorrent.local.rc`,
+    '',
+  ].join('\n');
+}
+
+// ---------- Deluge ----------
+// Deluge's settings files are two JSON objects in a row: a small version header, then the settings.
+const delugeRead = text => { const t = String(text || ''), i = t.indexOf('}{'); try { return JSON.parse(i >= 0 ? t.slice(i + 1) : t); } catch { return {}; } };
+const delugeWrite = (version, cfg) => JSON.stringify(version, null, 2) + JSON.stringify(cfg, null, 2);
+function delugeCore(existing, env = process.env) {
+  const first = !existing, c = delugeRead(existing);
+  const port = (() => { const p = parseInt(env.DELUGE_TORRENT_PORT, 10); return p >= 1024 && p <= 65535 ? p : 50415; })();
+  if (first) Object.assign(c, {
+    download_location: `${E.DIRS.torrents}/incomplete`, move_completed: true, move_completed_path: `${E.DIRS.torrents}/complete`,
+    random_port: false, listen_ports: [port, port], copy_torrent_file: false, new_release_check: false,
+  });
+  // Only inside the container; the Web UI (port 8112) is the way in. Labels are how categories work.
+  c.allow_remote = false; c.daemon_port = E.ENGINES.deluge.daemon;
+  c.enabled_plugins = [...new Set([...(c.enabled_plugins || []), 'Label'])];
+  if (env.DELUGE_TORRENT_PORT) { c.random_port = false; c.listen_ports = [port, port]; }
+  return delugeWrite({ file: 1, format: 1 }, c);
+}
+function delugeWeb(existing, s) {
+  const c = delugeRead(existing);
+  // The Web UI password GoatMediaStackarr made (Stack page, "Logins made for you"); Deluge checks sha1(salt + password).
+  const salt = c.pwd_salt && c.pwd_sha1 && crypto.createHash('sha1').update(c.pwd_salt + s.delugePass).digest('hex') === c.pwd_sha1 ? c.pwd_salt : crypto.randomBytes(20).toString('hex');
+  Object.assign(c, { port: E.ENGINES.deluge.port, interface: '0.0.0.0', https: false, first_login: false, show_session_speed: true, check_new_releases: false,
+    pwd_salt: salt, pwd_sha1: crypto.createHash('sha1').update(salt + s.delugePass).digest('hex') });
+  return delugeWrite({ file: 2, format: 1 }, c);
 }
 
 function sabConfig(existing, s) {
@@ -215,6 +267,16 @@ function run(env = process.env) {
   const bf = `${C}/bazarr/config/config.yaml`;
   if (!fs.existsSync(bf)) writeText(bf, bazarrConfig({ ...s, ...keys }));
 
+  if (on.includes('rutorrent')) {
+    writeText(`${C}/rutorrent/rtorrent.rc`, rtorrentConfig(env));
+    for (const d of ['session', 'share', 'tmp']) fs.mkdirSync(`${C}/rutorrent/${d}`, { recursive: true });
+  }
+  if (on.includes('deluge')) {
+    const dc = `${C}/deluge/core.conf`, dw = `${C}/deluge/web.conf`;
+    writeText(dc, delugeCore(readText(dc), env));
+    writeText(dw, delugeWeb(readText(dw), s));
+  }
+
   const tf = `${C}/tautulli/config.ini`;
   const plex = on.includes('plex') ? plexPrefs() : null;
   writeText(tf, tautulliConfig(readText(tf), s, plex));
@@ -231,6 +293,8 @@ function run(env = process.env) {
     prowlarr: svc('prowlarr', { apiKey: keys.prowlarr }),
     bazarr: svc('bazarr', { apiKey: s.bazarr }),
     qbittorrent: svc('qbittorrent', { user: s.qbitUser, pass: s.qbitPass }),
+    rutorrent: svc('rutorrent', { user: s.rutorrentUser, pass: s.rutorrentPass }),
+    deluge: svc('deluge', { pass: s.delugePass }),
     sabnzbd: svc('sabnzbd', { apiKey: s.sabnzbd }),
     tautulli: svc('tautulli', { apiKey: s.tautulli }),
     jellyfin: svc('jellyfin', { apiKey: (managed.services || []).find(x => x.key === 'jellyfin')?.apiKey || '' }),
@@ -305,4 +369,4 @@ if (require.main === module && process.argv[2] === 'tautulli') {
   }
 }
 
-module.exports = { run, plexPrefs, iniSet, xmlSet, xmlGet, qbitHash, arrConfig, qbitConfig, sabConfig, bazarrConfig, tautulliConfig, tautulliStart, iniGet, torrentPort, loadSecrets };
+module.exports = { run, rtorrentConfig, delugeCore, delugeWeb, delugeRead, plexPrefs, iniSet, xmlSet, xmlGet, qbitHash, arrConfig, qbitConfig, sabConfig, bazarrConfig, tautulliConfig, tautulliStart, iniGet, torrentPort, loadSecrets };

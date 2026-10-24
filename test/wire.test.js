@@ -13,9 +13,13 @@ function fakeArr(base, key, ver, kind) {
   const f = names => names.map(n => ({ name: n, value: '' }));
   const schema = {
     downloadclient: kind === 'prowlarr'
-      ? [{ implementation: 'QBittorrent', fields: f(['host', 'port', 'username', 'password', 'category']) }]
+      ? [{ implementation: 'QBittorrent', fields: f(['host', 'port', 'username', 'password', 'category']) },
+         { implementation: 'RTorrent', fields: f(['host', 'port', 'useSsl', 'urlBase', 'username', 'password', 'category']) },
+         { implementation: 'Deluge', fields: f(['host', 'port', 'useSsl', 'urlBase', 'password', 'category']) }]
       : [{ implementation: 'QBittorrent', fields: f(['host', 'port', 'useSsl', 'urlBase', 'username', 'password', kind === 'radarr' ? 'movieCategory' : 'tvCategory']) },
-         { implementation: 'Sabnzbd', fields: f(['host', 'port', 'apiKey', 'urlBase', kind === 'radarr' ? 'movieCategory' : 'tvCategory']) }],
+         { implementation: 'Sabnzbd', fields: f(['host', 'port', 'apiKey', 'urlBase', kind === 'radarr' ? 'movieCategory' : 'tvCategory']) },
+         { implementation: 'RTorrent', fields: f(['host', 'port', 'useSsl', 'urlBase', 'username', 'password', kind === 'radarr' ? 'movieCategory' : 'tvCategory']) },
+         { implementation: 'Deluge', fields: f(['host', 'port', 'useSsl', 'urlBase', 'password', kind === 'radarr' ? 'movieCategory' : 'tvCategory']) }],
     applications: ['Sonarr', 'Radarr', 'Lidarr'].map(n => ({ implementation: n, fields: f(['prowlarrUrl', 'baseUrl', 'apiKey', 'syncCategories']) })),
   };
   const srv = http.createServer(async (req, res) => {
@@ -99,11 +103,11 @@ function fakeSeerr(settingsFile) {
 test('wire connects every engine and running it again changes nothing', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'goat-wire-'));
   const ports = {};
-  for (const k of ['sonarr', 'radarr', 'prowlarr', 'jellyfin', 'seerr']) { ports[k] = await free(); process.env[`GOAT_PORT_${k.toUpperCase()}`] = String(ports[k]); }
+  for (const k of ['sonarr', 'radarr', 'prowlarr', 'jellyfin', 'seerr', 'rutorrent', 'deluge']) { ports[k] = await free(); process.env[`GOAT_PORT_${k.toUpperCase()}`] = String(ports[k]); }
   process.env.GOAT_CONFIG_DIR = path.join(root, 'config');
   process.env.MEDIA_DIR = path.join(root, 'media');
   process.env.DOWNLOADS_DIR = path.join(root, 'downloads');
-  process.env.GOAT_ENGINES = 'sonarr,radarr,prowlarr,qbittorrent,sabnzbd,jellyfin,seerr';
+  process.env.GOAT_ENGINES = 'sonarr,radarr,prowlarr,qbittorrent,rutorrent,deluge,sabnzbd,jellyfin,seerr';
   process.env.GOAT_WIRE_PAUSE = '10';
   const init = require('../goat/init');
   const a = init.run(process.env);
@@ -114,7 +118,11 @@ test('wire connects every engine and running it again changes nothing', async ()
   const prowlarr = fakeArr('/engines/prowlarr', a.keys.prowlarr, 'v1', 'prowlarr');
   const jf = fakeJellyfin(a.secrets.jellyfinUser, a.secrets.jellyfinPass, { drops: 3 });
   const seerr = fakeSeerr(path.join(root, 'config/seerr/settings.json'));
-  const all = [[sonarr, 'sonarr'], [radarr, 'radarr'], [prowlarr, 'prowlarr'], [jf, 'jellyfin'], [seerr, 'seerr']];
+  // Pretend ruTorrent (rTorrent through /RPC2, with the login made for you) and Deluge's Web UI, so wiring waits for them.
+  const ru = { srv: http.createServer((req, res) => { const ok = req.url === '/RPC2' && req.headers.authorization === 'Basic ' + Buffer.from(`goat:${a.secrets.rutorrentPass}`).toString('base64');
+    res.writeHead(ok ? 200 : 401, { 'Content-Type': 'text/xml' }); res.end(ok ? '<?xml version="1.0"?><methodResponse><params><param><value><string>0.16.26</string></value></param></params></methodResponse>' : ''); }) };
+  const de = { srv: http.createServer((req, res) => { res.writeHead(200, { 'Content-Type': 'text/html' }); res.end('<title>Deluge</title>'); }) };
+  const all = [[sonarr, 'sonarr'], [radarr, 'radarr'], [prowlarr, 'prowlarr'], [jf, 'jellyfin'], [seerr, 'seerr'], [ru, 'rutorrent'], [de, 'deluge']];
   await Promise.all(all.map(([f, k]) => new Promise(r => f.srv.listen(ports[k], '127.0.0.1', r))));
   try {
     const wire = require('../goat/wire');
@@ -126,6 +134,12 @@ test('wire connects every engine and running it again changes nothing', async ()
     const field = (x, n) => x.fields.find(f => f.name === n).value;
     assert.equal(field(q, 'tvCategory'), 'tv');
     assert.equal(field(q, 'password'), a.secrets.qbitPass);
+    // ruTorrent and Deluge come after qBittorrent: used only when the one before them is not available.
+    const rt = sonarr.st.downloadclient.find(x => x.implementation === 'RTorrent'), dl = sonarr.st.downloadclient.find(x => x.implementation === 'Deluge');
+    assert.deepEqual([q.priority, rt.priority, dl.priority], [1, 2, 3]);
+    assert.deepEqual([field(rt, 'port'), field(rt, 'urlBase'), field(rt, 'username'), field(rt, 'password'), field(rt, 'tvCategory')], [ports.rutorrent, 'RPC2', 'goat', a.secrets.rutorrentPass, 'tv']);
+    assert.deepEqual([field(dl, 'port'), field(dl, 'password'), field(dl, 'tvCategory')], [ports.deluge, a.secrets.delugePass, 'tv']);
+    assert.ok(prowlarr.st.downloadclient.some(x => x.implementation === 'RTorrent') && prowlarr.st.downloadclient.some(x => x.implementation === 'Deluge'));
     assert.equal(field(radarr.st.downloadclient.find(x => x.implementation === 'Sabnzbd'), 'movieCategory'), 'movies');
     assert.equal(field(radarr.st.downloadclient.find(x => x.implementation === 'Sabnzbd'), 'apiKey'), a.secrets.sabnzbd);
     assert.deepEqual(prowlarr.st.applications.map(x => x.implementation).sort(), ['Radarr', 'Sonarr']);

@@ -101,7 +101,29 @@ Under **Trackers** (admins, web page and app):
 
 The site's pages run in a sandbox, apart from GoatMediaStackarr, so a site's own scripts cannot act as you. Sites that check you with a puzzle (Cloudflare and similar) may not open this way; for those, Prowlarr with FlareSolverr still searches them.
 
-## ruTorrent and Deluge you already run
+## ruTorrent and Deluge
+
+### Built in
+
+Both can run inside the container next to qBittorrent. Add `rutorrent` and/or `deluge` to **Apps to run** (`GOAT_ENGINES`) and restart the container.
+
+| | ruTorrent | Deluge |
+|---|---|---|
+| Its page | `http://<server>:8090` | `http://<server>:8112` (Web UI) |
+| Sign-in | user `goat` and a password made for you | a password made for you |
+| Where the login is | Stack page, *Logins made for you* | Stack page, *Logins made for you* |
+| Comes from | ruTorrent from github.com/Novik/ruTorrent, rTorrent built from github.com/rakshasa | the Deluge team's release (PyPI), with Ubuntu's libtorrent |
+| Torrent port | 50414 | 50415 |
+| Settings kept in | `appdata/goatmediastackarr/rutorrent` (`rtorrent.local.rc` for your own rTorrent settings) | `appdata/goatmediastackarr/deluge` |
+
+- **VPN**: when qBittorrent uses the VPN, so do rTorrent and Deluge's daemon (with the same kill switch). Their web pages always stay on your normal network, so you can open them.
+- **Sonarr, Radarr, Lidarr and Prowlarr** get them as download clients automatically, after qBittorrent: they use ruTorrent only when qBittorrent isn't available, and Deluge after that. To make one of them the main one, change the priorities in Sonarr's and Radarr's *Settings → Download Clients* (lower is used first).
+- They talk to rTorrent through `/RPC2` on port 8090, which only answers inside the container. Newer ruTorrent versions mark commands passed through their own plugin as untrusted, and rTorrent 0.16 then refuses to start or remove torrents; `/RPC2` sends them to rTorrent directly, like a web server's SCGI mount.
+- They show in **Downloads** and in the app like the ruTorrent and Deluge you add yourself (below), and on the Stack page with Restart, Stop and Start, each app's version and an Open button.
+- Finished files land in `downloads/torrents/complete` for both, next to qBittorrent's.
+
+### Ones you already run
+
 
 GoatMediaStackarr can use a ruTorrent (rTorrent) or Deluge you already have, in its own container or on a seedbox, next to the built-in qBittorrent. Add it under **Settings → Apps**:
 

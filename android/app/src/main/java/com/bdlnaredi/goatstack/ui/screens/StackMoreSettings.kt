@@ -89,7 +89,7 @@ import kotlinx.serialization.json.put
 
 private val ENGINE_NOTES = mapOf(
     "sonarr" to "Shows", "radarr" to "Movies", "lidarr" to "Music", "prowlarr" to "Indexers", "bazarr" to "Subtitles",
-    "qbittorrent" to "Torrents", "sabnzbd" to "Usenet", "jellyfin" to "Media server", "plex" to "Media server",
+    "qbittorrent" to "Torrents", "rutorrent" to "Torrents · page on port 8090", "deluge" to "Torrents · page on port 8112", "sabnzbd" to "Usenet", "jellyfin" to "Media server", "plex" to "Media server",
     "seerr" to "Requests", "tautulli" to "Plex statistics", "flaresolverr" to "Cloudflare helper",
 )
 

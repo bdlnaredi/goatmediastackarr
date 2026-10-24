@@ -8,7 +8,9 @@ name="$1"
 PUID="${PUID:-99}"; PGID="${PGID:-100}"; GID="${GOAT_VPN_GID:-9000}"
 in_list() { [[ ",${2// /}," == *",$1,"* ]]; }
 
-if [[ "$name" != ui && "$name" != wire && "$name" != sitefetch ]] && ! in_list "$name" "${GOAT_ENGINES,,}"; then
+# ruTorrent and Deluge each have a second service for their web page; it is on when the app is.
+app="${name%-web}"
+if [[ "$name" != ui && "$name" != wire && "$name" != sitefetch ]] && ! in_list "$app" "${GOAT_ENGINES,,}"; then
   echo "[goat] $name is turned off (GOAT_ENGINES)."
   exec sleep infinity
 fi
@@ -17,6 +19,9 @@ groups="$PGID"
 vpn_list="${VPN_APPS,,}"
 # FlareSolverr visits indexer sites on Prowlarr's behalf, so it uses the VPN whenever Prowlarr does.
 in_list prowlarr "$vpn_list" && vpn_list="$vpn_list,flaresolverr"
+# ruTorrent's rTorrent and Deluge's daemon download torrents, so they follow qBittorrent onto the VPN. Their web pages
+# (rutorrent-web, deluge-web) never use the VPN: they must answer on your network.
+in_list qbittorrent "$vpn_list" && vpn_list="$vpn_list,rutorrent,deluge"
 # The site browser's helper always uses the VPN when the VPN is on (sites added "without the VPN" do not use it at all).
 vpn_list="$vpn_list,sitefetch"
 if [[ "${VPN_ENABLED,,}" == "true" ]] && in_list "$name" "$vpn_list"; then
@@ -27,7 +32,7 @@ if [[ "${VPN_ENABLED,,}" == "true" ]] && in_list "$name" "$vpn_list"; then
   groups="$PGID,$GID"
 fi
 
-export HOME="/config/$name"
+export HOME="/config/$app"
 umask "${UMASK:-002}"
 case "$name" in
   sonarr|radarr|lidarr|prowlarr)
@@ -44,6 +49,28 @@ case "$name" in
     cmd=(/opt/bazarr/venv/bin/python -u /opt/bazarr/bazarr/main.py --no-update --config /config/bazarr) ;;
   qbittorrent)
     cmd=(/usr/local/bin/qbittorrent-nox --profile=/config/qbittorrent --webui-port=8080) ;;
+  rutorrent)
+    # rTorrent, the downloader behind ruTorrent. -D keeps the older command names ruTorrent still uses.
+    export TERM=xterm
+    # A lock left behind when the container stopped would keep it from starting.
+    rm -f /config/rutorrent/session/rtorrent.lock
+    cmd=(/opt/rtorrent/bin/rtorrent -n -D -o import=/config/rutorrent/rtorrent.rc) ;;
+  rutorrent-web)
+    # ruTorrent's page on port 8090, served by PHP's own web server behind a small gatekeeper that asks for the login
+    # made for you (rutorrent-router.php). It reads its settings from these RU_ variables.
+    sec=/config/goat/secrets.json
+    export RU_USER="$(jq -r '.rutorrentUser // "goat"' "$sec")" RU_PASS="$(jq -r '.rutorrentPass // ""' "$sec")"
+    export RU_SCGI_HOST=127.0.0.1 RU_SCGI_PORT=5000 RU_TOP_DIR=/ RU_PROFILE_PATH=/config/rutorrent/share
+    export RU_TEMP_DIRECTORY=/config/rutorrent/tmp RU_LOG_FILE=/config/rutorrent/errors.log PHP_CLI_SERVER_WORKERS=8
+    # Open ruTorrent once in the background, so its plugins (RSS, scheduler, ratio rules) run without anyone opening it.
+    ( sleep 15; curl -fsS -o /dev/null -u "$RU_USER:$RU_PASS" http://127.0.0.1:8090/php/getplugins.php || true ) &
+    cmd=(/usr/bin/php -d variables_order=EGPCS -d memory_limit=256M -d upload_max_filesize=32M -d post_max_size=40M -d max_execution_time=300
+         -S 0.0.0.0:8090 -t /opt/rutorrent /opt/goat/bin/rutorrent-router.php) ;;
+  deluge)
+    # Deluge's daemon. Only reachable inside the container; its Web UI (deluge-web) is the way in.
+    cmd=(/opt/deluge/bin/deluged -d -c /config/deluge -L info) ;;
+  deluge-web)
+    cmd=(/opt/deluge/bin/deluge-web -d -c /config/deluge -p 8112 -i 0.0.0.0 -L info) ;;
   sabnzbd)
     cmd=(/opt/sabnzbd/venv/bin/python /opt/sabnzbd/SABnzbd.py --config-file /config/sabnzbd/sabnzbd.ini --browser 0) ;;
   jellyfin)

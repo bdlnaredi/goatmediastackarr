@@ -41,7 +41,13 @@ function xmlParse(text) {
     if (!tk.startsWith('<')) { out = unxml(tk); i++; skipWs(); expect('</value>'); return out; }
     const m = /^<([a-z0-9.]+)\s*(\/)?>$/i.exec(tk); i++;
     const type = m[1], empty = !!m[2];
-    if (type === 'array') { expect('<data>'); out = []; skipWs(); while (toks[i] === '<value>') { out.push(value()); skipWs(); } expect('</data>'); expect('</array>'); }
+    if (type === 'array' && empty) out = [];
+    else if (type === 'array') {
+      out = []; skipWs();
+      if (toks[i] === '<data/>') i++;   // an empty list, as rTorrent writes it
+      else { expect('<data>'); skipWs(); while (toks[i] === '<value>') { out.push(value()); skipWs(); } expect('</data>'); }
+      expect('</array>');
+    }
     else if (type === 'struct') { out = {}; skipWs(); while (toks[i] === '<member>') { i++; expect('<name>'); const n = toks[i] && !toks[i].startsWith('<') ? unxml(toks[i++]) : ''; expect('</name>'); out[n] = value(); expect('</member>'); skipWs(); } expect('</struct>'); }
     else {
       let raw = '';
@@ -62,13 +68,14 @@ function rutorrent(s) {
   const candidates = () => {
     const b = base(s);
     if (/\/(RPC2|action\.php|rpc\.php)$/i.test(b)) return [b];
-    return [b + '/plugins/httprpc/action.php', b + '/RPC2', b + '/plugins/rpc/rpc.php'];
+    // /RPC2 goes to rTorrent directly (trusted); the httprpc plugin is there on every ruTorrent.
+    return [b + '/RPC2', b + '/plugins/httprpc/action.php', b + '/plugins/rpc/rpc.php'];
   };
   async function post(url, method, params) {
     let r;
     try { r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/xml', ...auth(s) }, body: xmlCall(method, params), signal: AbortSignal.timeout(20000) }); }
     catch (e) { throw plain(`Could not reach ruTorrent at ${base(s)} (${why(e)}).`); }
-    if (r.status === 401 || r.status === 403) throw plain('ruTorrent refused the username or password.');
+    if (r.status === 401) throw plain('ruTorrent refused the username or password.');
     if (!r.ok) throw Object.assign(new Error(`ruTorrent answered ${r.status}`), { status: r.status });
     return xmlParse(await r.text());
   }
@@ -81,6 +88,18 @@ function rutorrent(s) {
     }
     throw plain(`ruTorrent did not answer at ${base(s)}. Use the address you open ruTorrent with (like http://192.168.1.10:8080); its httprpc plugin must be on, or give rTorrent's RPC2 address.` + (last && last.status ? ` (It answered ${last.status}.)` : ''));
   }
+  // ruTorrent 5.3+ passes raw commands through its httprpc plugin as "untrusted", and rTorrent 0.16 then refuses
+  // the ones that change torrents (d.start, d.erase…). ruTorrent's own page uses the plugin's named actions, which
+  // it runs as trusted; do the same there. Through /RPC2 (straight to rTorrent) raw commands are used.
+  const viaHttprpc = () => /\/plugins\/httprpc\/action\.php$/i.test(endpoint || '');
+  async function form(mode, hashes, v) {
+    const body = ['mode=' + encodeURIComponent(mode), ...hashes.map(h => 'hash=' + H(h)), ...(v != null ? ['v=' + encodeURIComponent(v)] : [])].join('&');
+    let r;
+    try { r = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...auth(s) }, body, signal: AbortSignal.timeout(20000) }); }
+    catch (e) { throw plain(`Could not reach ruTorrent at ${base(s)} (${why(e)}).`); }
+    if (r.status === 401) throw plain('ruTorrent refused the username or password.');
+    if (!r.ok) throw plain(`ruTorrent answered ${r.status} to "${mode}".`);
+  }
   // rTorrent 0.9+ calls it d.multicall2; older ones d.multicall.
   async function multi(view, fields) {
     try { return await call('d.multicall2', '', view, ...fields); }
@@ -92,7 +111,9 @@ function rutorrent(s) {
   const stateOf = x => {
     if (+x.hashing > 0) return 'checkingDL';
     const done = +x.complete === 1;
-    if (+x.state === 0 || +x.active === 0) return x.message && +x.state === 0 && !done ? 'error' : done ? 'pausedUP' : 'pausedDL';
+    // rTorrent's message is mostly tracker news ("Tracker: [Timeout]"); only a storage problem is an error.
+    if (x.message && /storage|no such file|permission|denied|no space|read-only|i\/o/i.test(x.message) && !/^tracker/i.test(x.message)) return 'error';
+    if (+x.state === 0 || +x.active === 0) return done ? 'pausedUP' : 'pausedDL';
     return done ? (+x.up > 0 ? 'uploading' : 'stalledUP') : (+x.down > 0 ? 'downloading' : 'stalledDL');
   };
   async function rows() {
@@ -114,6 +135,15 @@ function rutorrent(s) {
     },
     async act(action, hashes, o = {}) {
       const all = hashes === 'all' ? (await rows()).map(x => x.hash) : hashes;
+      if (!endpoint) await call('system.client_version');
+      if (viaHttprpc()) {
+        const m = { pause: 'stop', resume: 'start', force: 'start', recheck: 'recheck', reannounce: 'updatetracker' }[action];
+        if (m) return form(m, all);
+        // ruTorrent keeps labels URL-encoded; the plugin decodes what it is sent once.
+        if (action === 'category') return form('setlabel', all, encodeURIComponent(cut(o.value, 100)));
+        if (action === 'delete') return form(o.files ? 'removewithdata' : 'remove', all);
+        throw plain('ruTorrent cannot do that.');
+      }
       const each = async (...cmds) => { for (const h of all) for (const c of cmds) await call(c, H(h)); };
       if (action === 'pause') return each('d.stop', 'd.close');
       if (action === 'resume' || action === 'force') return each('d.open', 'd.start');

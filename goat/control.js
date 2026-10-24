@@ -28,19 +28,26 @@ const STOPPED = process.env.GOAT_STOPPED || '/run/goat/stopped.json';
 const stoppedList = () => { try { return JSON.parse(fs.readFileSync(STOPPED, 'utf8')); } catch { return []; } };
 const markStopped = (name, on) => { const l = new Set(stoppedList()); on ? l.add(name) : l.delete(name); try { fs.writeFileSync(STOPPED, JSON.stringify([...l])); fs.chmodSync(STOPPED, 0o644); } catch {} };
 
+// ruTorrent and Deluge are two services each: the downloader and its web page. They are restarted, stopped and
+// started together.
+const WITH_WEB = ['rutorrent', 'deluge'];
+const parts = name => WITH_WEB.includes(name) ? [name, name + '-web'] : [name];
+
 // Each command is a fixed list of steps; nothing from the request reaches a shell.
 async function handle(msg, exec = { run, restart, svc, markStopped }) {
   const cmd = msg && msg.cmd;
   if (cmd === 'ping') return { ok: true };
   if (cmd === 'restart') {
     if (!ENGINES.includes(msg.engine)) return { ok: false, error: 'Unknown app' };
-    const r = await exec.restart(msg.engine);
+    let r = { ok: true };
+    for (const n of parts(msg.engine)) { const x = await exec.restart(n); if (!x.ok) r = x; }
     if (r.ok && exec.markStopped) exec.markStopped(msg.engine, false);
     return r.ok ? { ok: true } : { ok: false, error: r.err || 'Could not restart' };
   }
   if (cmd === 'stop' || cmd === 'start') {
     if (!ENGINES.includes(msg.engine)) return { ok: false, error: 'Unknown app' };
-    const r = await exec.svc(msg.engine, cmd === 'start');
+    let r = { ok: true };
+    for (const n of parts(msg.engine)) { const x = await exec.svc(n, cmd === 'start'); if (!x.ok) r = x; }
     if (r.ok && exec.markStopped) exec.markStopped(msg.engine, cmd === 'stop');
     return r.ok ? { ok: true } : { ok: false, error: r.err || 'Could not ' + cmd + ' it' };
   }
@@ -58,9 +65,9 @@ async function handle(msg, exec = { run, restart, svc, markStopped }) {
     if (!i.ok) return { ok: false, error: 'Writing the app settings failed: ' + i.err };
     const k = await exec.run('/bin/bash', [`${BIN}/vpn-init.sh`]);
     if (!k.ok) return { ok: false, error: 'Setting up the kill switch failed: ' + k.err };
-    const steps = ['goat-vpn', 'qbittorrent', 'sabnzbd', 'prowlarr', 'flaresolverr', 'sitefetch'];
+    const steps = ['goat-vpn', 'qbittorrent', 'rutorrent', 'deluge', 'sabnzbd', 'prowlarr', 'flaresolverr', 'sitefetch'];
     const failed = [];
-    for (const s of steps) { const r = await exec.restart(s); if (!r.ok) failed.push(s); }
+    for (const s of steps.flatMap(parts)) { const r = await exec.restart(s); if (!r.ok) failed.push(s); }
     return failed.length ? { ok: false, error: 'Could not restart ' + failed.join(', '), output: k.out } : { ok: true, output: k.out };
   }
   return { ok: false, error: 'Unknown command' };

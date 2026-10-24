@@ -88,6 +88,21 @@ async function addFromSchema(api, resource, impl, name, values, extra = {}) {
 }
 
 const qbitValues = (s, cat) => ({ host: '127.0.0.1', port: E.ENGINES.qbittorrent.port, useSsl: false, urlBase: '', username: s.qbitUser, password: s.qbitPass, '/^(tv|movie|music)Category$/': cat, category: cat });
+// ruTorrent: Sonarr and the others talk to rTorrent through /RPC2 on ruTorrent's port, which is only answered inside the
+// container and sends their commands to rTorrent as trusted (ruTorrent's own plugin would mark them untrusted).
+const rutorrentValues = (s, cat) => ({ host: '127.0.0.1', port: E.ENGINES.rutorrent.port, useSsl: false, urlBase: 'RPC2', username: s.rutorrentUser, password: s.rutorrentPass, '/^(tv|movie|music)Category$/': cat, category: cat });
+// Deluge: its Web UI and password. The category is a Deluge label (its Label plugin is turned on).
+const delugeValues = (s, cat) => ({ host: '127.0.0.1', port: E.ENGINES.deluge.port, useSsl: false, urlBase: '', password: s.delugePass, '/^(tv|movie|music)Category$/': cat, category: cat });
+// Each app checks a download client when it is added, so wait until the new torrent apps answer first.
+const rutorrentUp = s => waitFor('ruTorrent', async () => { const r = await fetch(`${E.url('rutorrent')}/RPC2`, { method: 'POST', headers: { Authorization: 'Basic ' + Buffer.from(`${s.rutorrentUser}:${s.rutorrentPass}`).toString('base64'), 'Content-Type': 'text/xml' },
+  body: '<?xml version="1.0"?><methodCall><methodName>system.client_version</methodName><params></params></methodCall>', signal: AbortSignal.timeout(8000) }); if (!r.ok || !/<string>/.test(await r.text())) throw new Error('rTorrent not answering yet'); });
+const delugeUp = () => waitFor('Deluge', async () => { const r = await fetch(`${E.url('deluge')}/`, { signal: AbortSignal.timeout(8000) }); if (!r.ok) throw new Error('Deluge Web UI not answering yet'); });
+// Torrent apps in order of preference: Sonarr and the others use the next one only when the one before it is not available.
+async function addTorrentClients(api, s, on, cat, out) {
+  if (on.includes('qbittorrent')) out.qbittorrent = await addFromSchema(api, 'downloadclient', 'QBittorrent', 'qBittorrent', qbitValues(s, cat), { protocol: 'torrent', priority: 1 });
+  if (on.includes('rutorrent')) { await rutorrentUp(s); out.rutorrent = await addFromSchema(api, 'downloadclient', 'RTorrent', 'ruTorrent', rutorrentValues(s, cat), { protocol: 'torrent', priority: 2 }); }
+  if (on.includes('deluge')) { await delugeUp(); out.deluge = await addFromSchema(api, 'downloadclient', 'Deluge', 'Deluge', delugeValues(s, cat), { protocol: 'torrent', priority: 3 }); }
+}
 const sabValues = (s, cat) => ({ host: '127.0.0.1', port: E.ENGINES.sabnzbd.port, useSsl: false, urlBase: E.ENGINES.sabnzbd.base, apiKey: s.sabnzbd, '/^(tv|movie|music)Category$/': cat, category: cat });
 
 async function wireArr(key, keys, s, on, folder, cat) {
@@ -100,7 +115,7 @@ async function wireArr(key, keys, s, on, folder, cat) {
     await api.post('rootfolder', { name: 'Music', path: folder, defaultQualityProfileId: qp && qp.id, defaultMetadataProfileId: mp && mp.id, defaultMonitorOption: 'all', defaultNewItemMonitorOption: 'all', defaultTags: [] });
     out.folder = 'added';
   } else { await api.post('rootfolder', { path: folder }); out.folder = 'added'; }
-  if (on.includes('qbittorrent')) out.qbittorrent = await addFromSchema(api, 'downloadclient', 'QBittorrent', 'qBittorrent', qbitValues(s, cat), { protocol: 'torrent', priority: 1 });
+  await addTorrentClients(api, s, on, cat, out);
   if (on.includes('sabnzbd')) out.sabnzbd = await addFromSchema(api, 'downloadclient', 'Sabnzbd', 'SABnzbd', sabValues(s, cat), { protocol: 'usenet', priority: 1 });
   return out;
 }
@@ -123,7 +138,7 @@ async function wireProwlarr(keys, s, on) {
       }
     }
   }
-  if (on.includes('qbittorrent')) out.qbittorrent = await addFromSchema(api, 'downloadclient', 'QBittorrent', 'qBittorrent', qbitValues(s, 'prowlarr'), { protocol: 'torrent', priority: 1 });
+  await addTorrentClients(api, s, on, 'prowlarr', out);
   return out;
 }
 

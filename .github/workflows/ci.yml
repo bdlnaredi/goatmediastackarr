@@ -76,14 +76,14 @@ jobs:
           mkdir -p /tmp/goat/config /tmp/goat/media /tmp/goat/downloads
           docker run -d --name goat -p 2806:2806 -p 8096:8096 \
             -e PUID=1001 -e PGID=121 -e TZ=Asia/Kolkata \
-            -e GOAT_ENGINES=sonarr,radarr,lidarr,prowlarr,bazarr,qbittorrent,sabnzbd,jellyfin,seerr,tautulli \
+            -e GOAT_ENGINES=sonarr,radarr,lidarr,prowlarr,bazarr,qbittorrent,rutorrent,deluge,sabnzbd,jellyfin,seerr,tautulli \
             -v /tmp/goat/config:/config -v /tmp/goat/media:/media -v /tmp/goat/downloads:/downloads \
             --cap-add=NET_ADMIN --device=/dev/net/tun \
             --sysctl net.ipv4.conf.all.src_valid_mark=1 --sysctl net.ipv4.conf.all.rp_filter=2 \
             goat:ci
       - name: Every engine answers
         run: |
-          check() { docker exec goat curl -fsS -o /dev/null --max-time 5 "$2"; }
+          check() { docker exec goat sh -c "curl -fsS -o /dev/null --max-time 5 $2"; }
           declare -A urls=(
             [sonarr]=http://127.0.0.1:8989/engines/sonarr/ping
             [radarr]=http://127.0.0.1:7878/engines/radarr/ping
@@ -95,6 +95,8 @@ jobs:
             [jellyfin]=http://127.0.0.1:8096/health
             [seerr]=http://127.0.0.1:5055/api/v1/status
             [tautulli]=http://127.0.0.1:8181/engines/tautulli/
+            [rutorrent]='-u goat:$(jq -r .rutorrentPass /config/goat/secrets.json) http://127.0.0.1:8090/'
+            [deluge]=http://127.0.0.1:8112/
             [ui]=http://127.0.0.1:2806/api/health )
           for i in $(seq 1 90); do
             missing=""
@@ -116,12 +118,39 @@ jobs:
           docker exec goat jq -r '.steps | to_entries[] | select(.value.ok | not) | "::error::\(.key): \(.value.error)"' /config/goat/wired.json || true
           docker logs goat 2>&1 | grep -E 'goat-wire.*FAILED' | tail -5 | cut -c1-900 | sed 's/^/::error::/'
           exit 1
+      - name: ruTorrent and Deluge work for real
+        run: |
+          # ruTorrent asks for its login; the trusted /RPC2 answers only inside the container.
+          code=$(docker exec goat curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8090/)
+          [ "$code" = 401 ] || { echo "::error::ruTorrent page did not ask for a login ($code)"; exit 1; }
+          code=$(docker exec goat curl -s -o /dev/null -w '%{http_code}' -u "goat:$(docker exec goat jq -r .rutorrentPass /config/goat/secrets.json)" http://127.0.0.1:8090/conf/config.php)
+          [ "$code" = 403 ] || { echo "::error::ruTorrent's settings folder was not private ($code)"; exit 1; }
+          ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' goat)
+          code=$(curl -s -o /dev/null -w '%{http_code}' -u "goat:$(docker exec goat jq -r .rutorrentPass /config/goat/secrets.json)" -d x "http://$ip:8090/RPC2")
+          [ "$code" = 403 ] || { echo "::error::/RPC2 answered from outside the container ($code)"; exit 1; }
+          # Deluge's Web UI takes the password made for you and is connected to its daemon.
+          pw=$(docker exec goat jq -r .delugePass /config/goat/secrets.json)
+          docker exec goat curl -fsS -c /tmp/dck -H 'Content-Type: application/json' -d "{\"method\":\"auth.login\",\"params\":[\"$pw\"],\"id\":1}" http://127.0.0.1:8112/json | jq -e '.result == true'
+          docker exec goat sh -c 'ls /config/deluge/' | tr '\n' ' '
+          echo "::notice::ruTorrent $(docker exec goat cat /opt/goat/versions/rutorrent) with rTorrent $(docker exec goat cat /opt/goat/versions/rtorrent), Deluge $(docker exec goat cat /opt/goat/versions/deluge)"
       - name: Stack page controls work inside the container
         run: |
           B=http://127.0.0.1:2806; J='Content-Type: application/json'
           curl -fsS -c /tmp/ck -H "$J" -d '{"name":"admin","password":"ci-password-123"}' $B/api/setup >/dev/null
           st=$(curl -fsS -b /tmp/ck $B/api/goat/status)
           echo "$st" | jq -e '.container and (.logins.jellyfin.user == "goat-admin") and (.engines | length >= 9)' >/dev/null
+          # GoatMediaStackarr lists ruTorrent's and Deluge's torrents, and adds one to each.
+          for t in rutorrent deluge; do
+            id=$(curl -fsS -b /tmp/ck $B/api/services | jq -r ".[] | select(.type == \"$t\") | .id")
+            [ -n "$id" ] || { echo "::error::$t is not among the apps"; exit 1; }
+            curl -fsS -b /tmp/ck "$B/api/qb/$id/list" | jq -e '.torrents | type == "array"' >/dev/null || { echo "::error::$t list failed: $(curl -sS -b /tmp/ck "$B/api/qb/$id/list")"; exit 1; }
+            curl -fsS -b /tmp/ck -H "$J" -H "Origin: $B" -d "{\"sid\":\"$id\",\"url\":\"magnet:?xt=urn:btih:dd8255ecdc7ca55fb0bbf81323d87062db1f6d1c&dn=Big+Buck+Bunny\",\"paused\":true}" $B/api/torrent/add >/dev/null \
+              || { echo "::error::$t add failed: $(curl -sS -b /tmp/ck -H "$J" -H "Origin: $B" -d "{\"sid\":\"$id\",\"url\":\"magnet:?xt=urn:btih:dd8255ecdc7ca55fb0bbf81323d87062db1f6d1c\",\"paused\":true}" $B/api/torrent/add)"; exit 1; }
+            sleep 3
+            n=$(curl -fsS -b /tmp/ck "$B/api/qb/$id/list" | jq '.torrents | length')
+            [ "$n" -ge 1 ] || { echo "::error::$t did not show the added torrent"; exit 1; }
+            echo "::notice::$t: added a torrent through GoatMediaStackarr, now lists $n"
+          done
           before=$(docker exec goat sh -c 'pgrep -f "bazarr.py" | head -1')
           curl -fsS -b /tmp/ck -H "$J" -H "Origin: $B" -d '{"engine":"bazarr"}' $B/api/goat/restart
           sleep 15
@@ -176,4 +205,6 @@ jobs:
           docker logs "$c" 2>&1 | grep -iE 'jellyfin|seerr|goat|fatal|exception|crit' | note "Container log (filtered)" 80
           docker exec "$c" sh -c 'ls -t /config/jellyfin/log/*.log 2>/dev/null | head -1 | xargs -r tail -n 120' | grep -iE 'ERR|FTL|exception|fatal|warn|Kestrel|listening|started' | note "Jellyfin log" 60
           docker exec "$c" sh -c 'tail -n 40 /config/seerr/logs/seerr-*.log 2>/dev/null' | note "Seerr log" 40
+          docker logs "$c" 2>&1 | grep -iE 'rtorrent|rutorrent|deluge|php' | note "ruTorrent and Deluge log" 60
+          docker exec "$c" sh -c 'tail -n 30 /config/rutorrent/errors.log 2>/dev/null' | note "ruTorrent errors.log" 30
           docker exec "$c" sh -c 'curl -sS -m 5 http://127.0.0.1:8096/System/Info/Public; echo; curl -sS -m 5 -o /dev/null -w "%{http_code}" http://127.0.0.1:8096/health' 2>&1 | note "Jellyfin answers" 10
