@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.Logout
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Dns
@@ -226,13 +227,72 @@ private fun MenuRow(icon: ImageVector, title: String, text: String, onClick: () 
     }
 }
 
+/** One page in the More grid: an icon, its name and a line about it. */
+private data class Dest(val icon: ImageVector, val title: String, val text: String, val go: () -> Unit)
+
+@Composable
+private fun DestTile(d: Dest, modifier: Modifier) {
+    val g = LocalGoat.current
+    val st = com.bdlnaredi.goatstack.ui.theme.LocalStyle.current
+    val shape = RoundedCornerShape(st.corner)
+    Column(
+        modifier.clip(shape).background(g.card.copy(alpha = st.cardAlpha))
+            .then(if (st.border) Modifier.border(1.dp, g.line.copy(alpha = 0.7f), shape) else Modifier)
+            .clickable(onClick = d.go).padding((12 * st.density).dp),
+    ) {
+        Box(Modifier.size(if (st.density < 0.9f) 32.dp else 40.dp).clip(RoundedCornerShape(st.buttonCorner)).background(g.primary.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
+            Icon(d.icon, null, tint = g.primary, modifier = Modifier.size(if (st.density < 0.9f) 18.dp else 22.dp))
+        }
+        Spacer(Modifier.height((8 * st.density).dp))
+        Text(d.title, style = MaterialTheme.typography.titleSmall, color = g.text, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(d.text, style = MaterialTheme.typography.labelSmall, color = g.muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/**
+ * Every other page, grouped the same way as the web page's menu: Watch, Requests, Downloads, Server, and You.
+ * The bottom bar keeps Home, Discover, Library and Downloads one tap away.
+ */
 @Composable
 fun MoreScreen() {
     val ctx = LocalCtx.current
     val g = LocalGoat.current
     val svcs = services()
+    val has = { t: String -> svcs.any { it.type == t } }
+    val admin = ctx.user.admin
+    val groups = listOf(
+        "Watch" to listOfNotNull(
+            Dest(Icons.Rounded.Search, "Search", "Find a show or movie") { ctx.go("search") },
+            Dest(Icons.Rounded.CalendarMonth, "Upcoming", "New episodes and releases") { ctx.go("upcoming") },
+            if (has("lidarr")) Dest(Icons.Rounded.LibraryMusic, "Music", "Your artists, from Lidarr") { ctx.go("music") } else null,
+            if (has("tautulli")) Dest(Icons.Rounded.Insights, "Stats", "What gets watched") { ctx.go("stats") } else null,
+        ),
+        "Requests" to listOfNotNull(
+            Dest(Icons.Rounded.Inbox, "Requests", if (admin) "Approve what people asked for" else "What you asked for") { ctx.go("requests") },
+            if (has("sonarr") || has("radarr")) Dest(Icons.Rounded.Search, "Wanted", "Still being looked for") { ctx.go("wanted") } else null,
+        ),
+        "Downloads" to listOfNotNull(
+            if (has("qbittorrent")) Dest(Icons.Rounded.RssFeed, "RSS", "Feeds and auto-download rules") { ctx.go("rss") } else null,
+            if (admin && has("qbittorrent")) Dest(Icons.Rounded.Language, "Trackers", "Search or browse trackers") { ctx.go("trackers") } else null,
+            if (admin && has("prowlarr")) Dest(Icons.Rounded.TravelExplore, "Indexers", "The sites Prowlarr searches") { ctx.go("indexers") } else null,
+            if (admin && has("sabnzbd")) Dest(Icons.Rounded.Dns, "Usenet servers", "Your news servers") { ctx.go("newsservers") } else null,
+            if (has("bazarr")) Dest(Icons.Rounded.Subtitles, "Subtitles", "Missing subtitles") { ctx.go("subtitles") } else null,
+        ),
+        "Server" to if (!admin) emptyList() else listOfNotNull(
+            if (ctx.me.goat) Dest(Icons.Rounded.Shield, "Stack", "VPN, apps and logins") { ctx.go("stack") } else null,
+            Dest(Icons.Rounded.HealthAndSafety, "Health", "Problems and disk space") { ctx.go("health") },
+            if (has("unraid")) Dest(Icons.Rounded.Storage, "Unraid", "Array, disks, containers") { ctx.go("unraid") } else null,
+            Dest(Icons.Rounded.Group, "Users", "Who can sign in") { ctx.go("users") },
+            if (ctx.me.goat) Dest(Icons.Rounded.MoveDown, "Bring in your setup", "From the apps you use now") { ctx.go("import") } else null,
+        ),
+        "You" to listOf(
+            Dest(Icons.Rounded.Person, "Profile", "Picture, space and watch time") { ctx.profile() },
+            Dest(Icons.Rounded.Settings, "Settings", "Style, theme, account, devices") { ctx.go("settings") },
+            Dest(Icons.Rounded.AutoAwesome, "What's new", "Changes in each version") { ctx.go("whatsnew") },
+        ),
+    ).filter { it.second.isNotEmpty() }
     LazyColumn(Modifier.fillMaxSize().statusBarsPadding(), contentPadding = PaddingValues(bottom = 24.dp)) {
-        item { PageTitle("More") }
+        item { PageTitle("More", "Go to any page") }
         item {
             GoatCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp), onClick = { ctx.profile() }) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -240,48 +300,21 @@ fun MoreScreen() {
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
                         Text(ctx.user.name, style = MaterialTheme.typography.titleMedium, color = g.text)
-                        Text((if (ctx.user.admin) "Admin" else "Member") + (ctx.user.plex?.let { " · Plex: ${it.name}" } ?: ""), style = MaterialTheme.typography.bodySmall, color = g.muted)
-                        Text("Your profile and what you use", style = MaterialTheme.typography.labelSmall, color = g.primary)
+                        Text((if (admin) "Admin" else "Member") + (ctx.user.plex?.let { " · Plex: ${it.name}" } ?: ""), style = MaterialTheme.typography.bodySmall, color = g.muted)
                     }
                     Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = g.muted)
                 }
             }
         }
-        val has = { t: String -> svcs.any { it.type == t } }
-        val admin = ctx.user.admin
-        item { SectionTitle("Go to", Modifier.padding(top = 8.dp)) }
-        item {
-            Column(Modifier.padding(horizontal = 8.dp)) {
-                MenuRow(Icons.Rounded.Search, "Search", "Find a show or movie to request or add") { ctx.go("search") }
-                MenuRow(Icons.Rounded.Inbox, "Requests", if (admin) "Approve what people asked for" else "See what you asked for") { ctx.go("requests") }
-                MenuRow(Icons.Rounded.CalendarMonth, "Upcoming", "New episodes and releases") { ctx.go("upcoming") }
-                if (has("sonarr") || has("radarr")) MenuRow(Icons.Rounded.Search, "Wanted", "What is still being looked for") { ctx.go("wanted") }
-                if (has("lidarr")) MenuRow(Icons.Rounded.LibraryMusic, "Music", "Your artists, from Lidarr") { ctx.go("music") }
-                if (has("bazarr")) MenuRow(Icons.Rounded.Subtitles, "Subtitles", "Missing subtitles, from Bazarr") { ctx.go("subtitles") }
-                if (has("tautulli")) MenuRow(Icons.Rounded.Insights, "Stats", "What gets watched, and by whom") { ctx.go("stats") }
-                if (has("qbittorrent")) MenuRow(Icons.Rounded.RssFeed, "RSS", "Feeds and auto-download rules") { ctx.go("rss") }
-            }
-        }
-        if (admin) {
-            item { SectionTitle("Server", Modifier.padding(top = 8.dp)) }
-            item {
-                Column(Modifier.padding(horizontal = 8.dp)) {
-                    if (ctx.me.goat) MenuRow(Icons.Rounded.Shield, "Stack", "VPN, apps and connections") { ctx.go("stack") }
-                    MenuRow(Icons.Rounded.HealthAndSafety, "Health", "Problems the apps report, disk space") { ctx.go("health") }
-                    if (has("prowlarr")) MenuRow(Icons.Rounded.TravelExplore, "Indexers", "The sites Prowlarr searches") { ctx.go("indexers") }
-                    if (has("qbittorrent")) MenuRow(Icons.Rounded.Language, "Trackers", "Search them, or browse their websites") { ctx.go("trackers") }
-                    if (has("sabnzbd")) MenuRow(Icons.Rounded.Dns, "Usenet servers", "Your provider's news servers") { ctx.go("newsservers") }
-                    if (has("unraid")) MenuRow(Icons.Rounded.Storage, "Unraid", "Array, disks and containers") { ctx.go("unraid") }
-                    MenuRow(Icons.Rounded.Group, "Users", "Who can sign in") { ctx.go("users") }
-                    if (ctx.me.goat) MenuRow(Icons.Rounded.MoveDown, "Bring in your setup", "From the apps you use now") { ctx.go("import") }
+        groups.forEach { (name, list) ->
+            item(key = "h$name") { SectionTitle(name, Modifier.padding(top = 8.dp)) }
+            list.chunked(3).forEachIndexed { i, row ->
+                item(key = "r$name$i") {
+                    Row(Modifier.padding(horizontal = 16.dp, vertical = 5.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        row.forEach { d -> DestTile(d, Modifier.weight(1f).height(124.dp)) }
+                        repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                    }
                 }
-            }
-        }
-        item { SectionTitle("App", Modifier.padding(top = 8.dp)) }
-        item {
-            Column(Modifier.padding(horizontal = 8.dp)) {
-                MenuRow(Icons.Rounded.Person, "Profile", "Your picture, space used and watch time") { ctx.profile() }
-                MenuRow(Icons.Rounded.Settings, "Settings", "Look, account, devices and server") { ctx.go("settings") }
             }
         }
     }

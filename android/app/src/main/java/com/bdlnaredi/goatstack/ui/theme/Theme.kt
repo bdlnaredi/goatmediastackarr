@@ -80,12 +80,16 @@ val LocalGoat = staticCompositionLocalOf { Themes.all.first() }
 /** The display face: a serif for big titles gives the app its "hall of fame" feel; everything else stays plain. */
 private val Display = FontFamily.Serif
 
-private fun typography(): Typography {
+private fun typography(st: GoatStyle = Styles.byId("glass")): Typography {
     val base = Typography()
+    val f = st.display
+    val w = st.displayWeight
+    val k = st.titleScale
+    val tight = if (st.display == Display) 0f else -0.6f
     return base.copy(
-        displaySmall = TextStyle(fontFamily = Display, fontWeight = FontWeight.Bold, fontSize = 34.sp, lineHeight = 40.sp, letterSpacing = (-0.5).sp),
-        headlineMedium = TextStyle(fontFamily = Display, fontWeight = FontWeight.Bold, fontSize = 28.sp, lineHeight = 34.sp),
-        headlineSmall = TextStyle(fontFamily = Display, fontWeight = FontWeight.Bold, fontSize = 23.sp, lineHeight = 29.sp),
+        displaySmall = TextStyle(fontFamily = f, fontWeight = w, fontSize = (34 * k).sp, lineHeight = (40 * k).sp, letterSpacing = (-0.5f + tight).sp),
+        headlineMedium = TextStyle(fontFamily = f, fontWeight = w, fontSize = (28 * k).sp, lineHeight = (34 * k).sp, letterSpacing = tight.sp),
+        headlineSmall = TextStyle(fontFamily = f, fontWeight = w, fontSize = (23 * k).sp, lineHeight = (29 * k).sp, letterSpacing = (tight / 2).sp),
         titleLarge = base.titleLarge.copy(fontWeight = FontWeight.Bold),
         titleMedium = base.titleMedium.copy(fontWeight = FontWeight.SemiBold),
         labelLarge = base.labelLarge.copy(fontWeight = FontWeight.SemiBold, letterSpacing = 0.2.sp),
@@ -111,8 +115,9 @@ private fun schemeOf(p: GoatPalette): ColorScheme =
     )
 
 @Composable
-fun GoatTheme(themeId: String, content: @Composable () -> Unit) {
-    var palette = Themes.byId(themeId)
+fun GoatTheme(themeId: String, styleId: String = "cinema", content: @Composable () -> Unit) {
+    val style = Styles.byId(styleId)
+    var palette = Themes.byId(themeId).styled(style)
     var scheme = schemeOf(palette)
     if (palette.dynamic) {
         val ctx = LocalContext.current
@@ -125,10 +130,10 @@ fun GoatTheme(themeId: String, content: @Composable () -> Unit) {
                 text = d.onSurface, muted = d.onSurfaceVariant, primary = d.primary, onPrimary = d.onPrimary, accent = d.tertiary,
             )
         } else {
-            palette = Themes.all.first(); scheme = schemeOf(palette)
+            palette = Themes.all.first().styled(style); scheme = schemeOf(palette)
         }
     }
-    CompositionLocalProvider(LocalGoat provides palette) {
-        MaterialTheme(colorScheme = scheme, typography = typography(), content = content)
+    CompositionLocalProvider(LocalGoat provides palette, LocalStyle provides style) {
+        MaterialTheme(colorScheme = scheme, typography = typography(style), content = content)
     }
 }

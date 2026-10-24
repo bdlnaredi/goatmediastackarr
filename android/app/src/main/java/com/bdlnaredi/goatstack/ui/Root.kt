@@ -5,6 +5,19 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -112,6 +125,47 @@ private val TABS = listOf(
     Tab("more", "More", Icons.Rounded.MoreHoriz),
 )
 
+/** The bar of main pages at the bottom, drawn the way the style wants: a floating pill (Glass), a dark strip (Cinema), or flat. */
+@Composable
+private fun GoatBar(route: String, onTab: (Tab) -> Unit) {
+    val g = LocalGoat.current
+    val st = com.bdlnaredi.goatstack.ui.theme.LocalStyle.current
+    val floating = st.floatingBar
+    val shape = androidx.compose.foundation.shape.RoundedCornerShape(if (floating) 28.dp else 0.dp)
+    val bg = when (st.id) {
+        "cinema" -> if (g.dark) androidx.compose.ui.graphics.Color(0xF4050506) else g.surface.copy(alpha = 0.97f)
+        "glass" -> g.card.copy(alpha = 0.88f)
+        else -> g.surface
+    }
+    val h = if (st.density < 0.9f) 58.dp else 66.dp
+    Box(Modifier.fillMaxWidth().then(if (floating) Modifier.navigationBarsPadding().padding(horizontal = 14.dp, vertical = 10.dp) else Modifier)) {
+        Column(Modifier.fillMaxWidth().clip(shape).background(bg)
+            .then(if (floating) Modifier.border(1.dp, androidx.compose.ui.graphics.Color.White.copy(alpha = if (g.dark) 0.12f else 0.6f), shape) else Modifier)) {
+            if (!floating) Box(Modifier.fillMaxWidth().height(1.dp).background(g.line.copy(alpha = if (st.id == "cinema") 0.4f else 0.9f)))
+            Row(Modifier.fillMaxWidth().then(if (floating) Modifier else Modifier.navigationBarsPadding()).height(h).padding(horizontal = 6.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                TABS.forEach { t ->
+                    val on = route == t.route
+                    Column(
+                        Modifier.weight(1f).fillMaxHeight().padding(vertical = 4.dp)
+                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(if (floating) 22.dp else st.buttonCorner))
+                            .clickable { onTab(t) },
+                        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+                    ) {
+                        val pill = on && st.id != "cinema"
+                        Box(Modifier.clip(androidx.compose.foundation.shape.RoundedCornerShape(50)).background(if (pill) g.primary.copy(alpha = 0.2f) else androidx.compose.ui.graphics.Color.Transparent)
+                            .padding(horizontal = 16.dp, vertical = 3.dp)) {
+                            Icon(t.icon, contentDescription = null, tint = if (on) g.primary else g.muted, modifier = Modifier.size(if (st.density < 0.9f) 21.dp else 24.dp))
+                        }
+                        Text(t.label, style = MaterialTheme.typography.labelSmall, color = if (on) g.text else g.muted, maxLines = 1,
+                            fontWeight = if (on) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Medium)
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun MainShell(state: AppState, me: Me, user: User) {
     val nav = rememberNavController()
@@ -133,6 +187,14 @@ private fun MainShell(state: AppState, me: Me, user: User) {
             kotlinx.coroutines.delay(30_000)
         }
     }
+    // After the server is updated, its "What's new" opens once. The first time only remembers the version.
+    androidx.compose.runtime.LaunchedEffect(me.version) {
+        val p = state.prefs.value
+        if (me.version.isNotBlank() && p.seenVersion != me.version) {
+            state.setPrefs(p.copy(seenVersion = me.version))
+            if (p.seenVersion.isNotBlank()) runCatching { nav.navigate("whatsnew") }
+        }
+    }
     // Android 13 and newer ask once whether the app may show notifications.
     val ask = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { }
     androidx.compose.runtime.LaunchedEffect(Unit) {
@@ -145,23 +207,10 @@ private fun MainShell(state: AppState, me: Me, user: User) {
         Scaffold(
             containerColor = g.bg,
             bottomBar = {
-                if (showBar) NavigationBar(containerColor = g.surface, tonalElevation = androidx.compose.ui.unit.Dp(0f)) {
-                    TABS.forEach { t ->
-                        NavigationBarItem(
-                            selected = route == t.route,
-                            onClick = {
-                                nav.navigate(t.route) {
-                                    popUpTo(nav.graph.findStartDestination().id) { saveState = true }
-                                    launchSingleTop = true; restoreState = true
-                                }
-                            },
-                            icon = { Icon(t.icon, contentDescription = t.label) },
-                            label = { Text(t.label) },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = g.onPrimary, indicatorColor = g.primary, selectedTextColor = g.primary,
-                                unselectedIconColor = g.muted, unselectedTextColor = g.muted,
-                            ),
-                        )
+                if (showBar) GoatBar(route) { t ->
+                    nav.navigate(t.route) {
+                        popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+                        launchSingleTop = true; restoreState = true
                     }
                 }
             },
@@ -200,6 +249,7 @@ private fun MainShell(state: AppState, me: Me, user: User) {
                     "title/{type}/{id}",
                     arguments = listOf(navArgument("type") { type = NavType.StringType }, navArgument("id") { type = NavType.LongType }),
                 ) { e -> com.bdlnaredi.goatstack.ui.screens.TitleScreen(e.arguments?.getString("type").orEmpty(), e.arguments?.getLong("id") ?: 0) }
+                composable("whatsnew") { com.bdlnaredi.goatstack.ui.screens.WhatsNewScreen() }
                 composable("person/{id}", arguments = listOf(navArgument("id") { type = NavType.LongType })) { e ->
                     com.bdlnaredi.goatstack.ui.screens.PersonScreen(e.arguments?.getLong("id") ?: 0)
                 }

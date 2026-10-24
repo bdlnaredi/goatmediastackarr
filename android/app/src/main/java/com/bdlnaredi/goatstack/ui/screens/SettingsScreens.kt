@@ -115,6 +115,44 @@ private fun ThemeCard(p: GoatPalette, selected: Boolean, modifier: Modifier, onC
     }
 }
 
+/** A small drawing of a style, in the current theme's colours: how its cards, posters and corners look. */
+@Composable
+private fun StyleCard(st: com.bdlnaredi.goatstack.ui.theme.GoatStyle, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    val g = LocalGoat.current
+    val shape = RoundedCornerShape(20.dp)
+    val c = st.corner / 3
+    Column(modifier.clip(shape).border(if (selected) 2.dp else 1.dp, if (selected) g.primary else g.line, shape).clickable(onClick = onClick)) {
+        Box(Modifier.fillMaxWidth().height(96.dp).background(g.styledBg(st)).padding((10 * st.density).dp)) {
+            when (st.id) {
+                "cinema" -> Column {
+                    Box(Modifier.width(60.dp).height(9.dp).clip(RoundedCornerShape(3.dp)).background(g.text))
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { repeat(3) { i -> Box(Modifier.width(30.dp).height(44.dp).clip(RoundedCornerShape(4.dp)).background(if (i == 0) g.primary else g.accent.copy(alpha = 0.6f - i * 0.15f))) } }
+                }
+                "dash" -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { repeat(3) { Box(Modifier.width(34.dp).height(26.dp).clip(RoundedCornerShape(3.dp)).background(g.card).border(1.dp, g.line, RoundedCornerShape(3.dp))) } }
+                    Box(Modifier.fillMaxWidth().height(30.dp).clip(RoundedCornerShape(3.dp)).background(g.card).border(1.dp, g.line, RoundedCornerShape(3.dp)))
+                }
+                "glass" -> Box(Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)).background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(g.primary.copy(alpha = 0.55f), g.accent.copy(alpha = 0.45f))))) {
+                    Box(Modifier.padding(8.dp).width(54.dp).height(40.dp).clip(RoundedCornerShape(12.dp)).background(androidx.compose.ui.graphics.Color.White.copy(alpha = 0.22f)).border(1.dp, androidx.compose.ui.graphics.Color.White.copy(alpha = 0.4f), RoundedCornerShape(12.dp)))
+                }
+                else -> Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Box(Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(c)).background(g.primary))
+                    repeat(4) { Box(Modifier.fillMaxWidth(if (it == 3) 0.6f else 1f).height(8.dp).clip(RoundedCornerShape(c)).background(g.card)) }
+                }
+            }
+            if (selected) Box(Modifier.align(Alignment.TopEnd).size(22.dp).clip(CircleShape).background(g.primary), contentAlignment = Alignment.Center) {
+                Icon(Icons.Rounded.Check, null, tint = g.onPrimary, modifier = Modifier.size(15.dp))
+            }
+        }
+        Column(Modifier.fillMaxWidth().background(g.card).padding(10.dp)) {
+            Text(st.name, style = MaterialTheme.typography.titleSmall, color = g.text, maxLines = 1)
+            Text(st.blurb, style = MaterialTheme.typography.labelSmall, color = g.muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+private fun GoatPalette.styledBg(st: com.bdlnaredi.goatstack.ui.theme.GoatStyle) = if (st.id == "cinema" && dark) androidx.compose.ui.graphics.Color(0xFF050506) else bg
+
 /** A row in a settings card: an icon, a title with a line under it, and something on the right (or an arrow when it opens something). */
 @Composable
 private fun SettingRow(icon: ImageVector, title: String, text: String? = null, onClick: (() -> Unit)? = null, trailing: (@Composable () -> Unit)? = null) {
@@ -175,6 +213,14 @@ fun SettingsScreen() {
             }
         }
 
+        item { SectionTitle("Style", Modifier.padding(top = 10.dp)) }
+        com.bdlnaredi.goatstack.ui.theme.Styles.all.chunked(2).forEach { pair ->
+            item(key = "s" + pair.first().id) {
+                Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    pair.forEach { st -> StyleCard(st, st.id == prefs.style, Modifier.weight(1f)) { set(prefs.copy(style = st.id)) } }
+                }
+            }
+        }
         item { SectionTitle("Appearance", Modifier.padding(top = 10.dp), trailing = { Icon(Icons.Rounded.Palette, null, tint = g.primary, modifier = Modifier.size(18.dp)) }) }
         themes.chunked(2).forEach { pair ->
             item(key = "t" + pair.first().id) {

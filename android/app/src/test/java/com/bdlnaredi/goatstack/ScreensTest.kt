@@ -65,7 +65,8 @@ class ScreensTest {
     private fun show() {
         compose.setContent {
             val t by state.theme.collectAsStateWithLifecycle()
-            GoatTheme(t) { GoatRoot(state) }
+            val p by state.prefs.collectAsStateWithLifecycle()
+            GoatTheme(t, p.style) { GoatRoot(state) }
         }
     }
 
@@ -227,6 +228,22 @@ class ScreensTest {
         compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("new notifications", substring = true)).onFirst().performClick()
         waitFor("VPN not active"); shot("47-notifications")
         tap("Ready to watch"); waitFor("Some signals"); back()
+        assertTrue("calls the pretend server does not know: ${fake.misses}", fake.misses.isEmpty())
+    }
+
+    /** The four styles, each photographed on Home and More, and the What's new page. */
+    @Test fun styles() {
+        connect()
+        show()
+        waitFor("Playing now")
+        for (st in listOf("cinema", "dash", "glass", "compact")) {
+            compose.runOnUiThread { state.setPrefs(state.prefs.value.copy(style = st)) }
+            compose.waitForIdle(); waitFor("Playing now"); shot("60-home-$st")
+            tap("More"); waitFor("Go to"); shot("61-more-$st")
+            tap("Home"); waitFor("Playing now")
+        }
+        tap("More"); waitFor("Go to"); openFromMore("What's new"); waitFor("A new design in four styles"); waitFor("Your version"); shot("62-whats-new"); back()
+        openFromMore("Settings"); waitFor("Style"); waitFor("Dashboard"); shot("63-settings-style")
         assertTrue("calls the pretend server does not know: ${fake.misses}", fake.misses.isEmpty())
     }
 

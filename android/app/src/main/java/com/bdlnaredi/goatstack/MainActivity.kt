@@ -20,7 +20,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             val theme by state.theme.collectAsStateWithLifecycle()
-            GoatTheme(theme) { GoatRoot(state) }
+            val prefs by state.prefs.collectAsStateWithLifecycle()
+            GoatTheme(theme, prefs.style) { GoatRoot(state) }
         }
     }
 

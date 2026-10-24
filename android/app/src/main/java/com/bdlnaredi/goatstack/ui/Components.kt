@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.SubcomposeAsyncImage
 import com.bdlnaredi.goatstack.ui.theme.LocalGoat
+import com.bdlnaredi.goatstack.ui.theme.LocalStyle
 
 // ---------- Loading data ----------
 
@@ -97,14 +98,15 @@ fun <T> LoadView(l: Loader<T>, modifier: Modifier = Modifier, loading: @Composab
 @Composable
 fun GoatCard(modifier: Modifier = Modifier, onClick: (() -> Unit)? = null, padding: Dp = 16.dp, content: @Composable ColumnScope.() -> Unit) {
     val g = LocalGoat.current
-    val shape = RoundedCornerShape(22.dp)
+    val st = LocalStyle.current
+    val shape = RoundedCornerShape(st.corner)
     Column(
         modifier
             .clip(shape)
-            .background(g.card)
-            .border(1.dp, g.line.copy(alpha = 0.7f), shape)
+            .background(g.card.copy(alpha = g.card.alpha * st.cardAlpha))
+            .then(if (st.border) Modifier.border(1.dp, if (st.cardAlpha < 1f) Color.White.copy(alpha = if (g.dark) 0.12f else 0.5f) else g.line.copy(alpha = 0.7f), shape) else Modifier)
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .padding(padding),
+            .padding(padding * st.density),
         content = content,
     )
 }
@@ -123,8 +125,10 @@ fun PageTitle(title: String, subtitle: String? = null, modifier: Modifier = Modi
 
 @Composable
 fun SectionTitle(title: String, modifier: Modifier = Modifier, trailing: @Composable () -> Unit = {}) {
-    Row(modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(title.uppercase(), style = MaterialTheme.typography.labelSmall, color = LocalGoat.current.primary, modifier = Modifier.weight(1f))
+    val st = LocalStyle.current
+    Row(modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = (10 * st.density).dp), verticalAlignment = Alignment.CenterVertically) {
+        if (st.capsSections) Text(title.uppercase(), style = MaterialTheme.typography.labelSmall, color = LocalGoat.current.primary, modifier = Modifier.weight(1f))
+        else Text(title, style = MaterialTheme.typography.titleLarge.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold), color = LocalGoat.current.text, modifier = Modifier.weight(1f))
         trailing()
     }
 }
@@ -153,7 +157,9 @@ fun Bar(fraction: Float, modifier: Modifier = Modifier, color: Color = LocalGoat
 @Composable
 fun Poster(url: String?, title: String, modifier: Modifier = Modifier, corner: Dp = 16.dp, ratio: Float = 2f / 3f) {
     val g = LocalGoat.current
-    val shape = RoundedCornerShape(corner)
+    val st = LocalStyle.current
+    // Round pictures (ratio 1, such as the cast) stay round; posters follow the style's corners.
+    val shape = RoundedCornerShape(if (ratio == 1f) corner else minOf(corner, st.posterCorner))
     Box(modifier.aspectRatio(ratio).clip(shape).background(Brush.linearGradient(listOf(g.card, g.line)))) {
         val ph: @Composable () -> Unit = {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -170,7 +176,7 @@ fun Poster(url: String?, title: String, modifier: Modifier = Modifier, corner: D
 @Composable
 fun Backdrop(url: String?, modifier: Modifier = Modifier, height: Dp = 260.dp, overPicture: Boolean = false, content: @Composable BoxScope.() -> Unit = {}) {
     val g = LocalGoat.current
-    Box(modifier.fillMaxWidth().height(height)) {
+    Box(modifier.fillMaxWidth().height(height * LocalStyle.current.heroScale)) {
         if (!url.isNullOrBlank()) SubcomposeAsyncImage(model = url, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
         else Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(g.primary.copy(alpha = 0.35f), g.accent.copy(alpha = 0.18f), g.bg))))
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, g.bg.copy(alpha = 0.45f), if (overPicture) g.bg.copy(alpha = 0.55f) else g.bg))))
@@ -242,7 +248,8 @@ fun StatTile(label: String, value: String, modifier: Modifier = Modifier, icon: 
 
 @Composable
 fun PrimaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, icon: ImageVector? = null) {
-    Button(onClick = onClick, enabled = enabled, modifier = modifier.height(52.dp), shape = RoundedCornerShape(16.dp),
+    val st = LocalStyle.current
+    Button(onClick = onClick, enabled = enabled, modifier = modifier.height(if (st.density < 0.9f) 44.dp else 52.dp), shape = RoundedCornerShape(st.buttonCorner),
         contentPadding = PaddingValues(horizontal = 20.dp)) {
         if (icon != null) { Icon(icon, null, modifier = Modifier.size(20.dp)); Spacer(Modifier.width(8.dp)) }
         Text(text, style = MaterialTheme.typography.labelLarge)
@@ -251,7 +258,8 @@ fun PrimaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifi
 
 @Composable
 fun GhostButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, icon: ImageVector? = null, color: Color = LocalGoat.current.text, enabled: Boolean = true) {
-    OutlinedButton(onClick = onClick, enabled = enabled, modifier = modifier.height(48.dp), shape = RoundedCornerShape(16.dp),
+    val st = LocalStyle.current
+    OutlinedButton(onClick = onClick, enabled = enabled, modifier = modifier.height(if (st.density < 0.9f) 40.dp else 48.dp), shape = RoundedCornerShape(st.buttonCorner),
         colors = ButtonDefaults.outlinedButtonColors(contentColor = color)) {
         if (icon != null) { Icon(icon, null, modifier = Modifier.size(19.dp)); Spacer(Modifier.width(8.dp)) }
         Text(text, style = MaterialTheme.typography.labelLarge)
@@ -296,7 +304,10 @@ fun PageBackground(url: String?) {
     val g = LocalGoat.current
     if (url.isNullOrBlank()) return
     Box(Modifier.fillMaxSize()) {
-        SubcomposeAsyncImage(model = url, contentDescription = null, contentScale = ContentScale.Crop, alpha = 0.3f, modifier = Modifier.fillMaxSize())
+        val st = LocalStyle.current
+        // Glass shows more of the picture through its see-through cards; Dashboard and Compact keep pages calm.
+        val a = when (st.id) { "glass" -> 0.5f; "cinema" -> 0.36f; "compact" -> 0.14f; else -> 0.2f }
+        SubcomposeAsyncImage(model = url, contentDescription = null, contentScale = ContentScale.Crop, alpha = a, modifier = Modifier.fillMaxSize())
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to g.bg.copy(alpha = 0.25f), 0.45f to g.bg.copy(alpha = 0.7f), 1f to g.bg.copy(alpha = 0.95f))))
     }
 }

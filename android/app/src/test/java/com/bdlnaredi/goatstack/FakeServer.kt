@@ -64,6 +64,7 @@ class FakeServer(private val server: MockWebServer) : Dispatcher() {
             p == "/api/unraid/u1" -> json(UNRAID)
             p == "/api/users" -> json("""[{"id":"u1","name":"Ann","role":"admin","twofa":true},{"id":"u2","name":"Ravi","role":"user","plex":{"name":"ravi"},"dataLimit":500,"avatar":"/img/p7.png"},{"id":"u3","name":"Mira","role":"user","plex":{"name":"mira"}},{"id":"u4","name":"Leo","role":"user"}]""")
             p == "/api/person" -> json(person())
+            p == "/api/changelog" -> json("""{"current":"0.8.0","versions":[{"version":"0.8.0","date":"2026-10-25","current":true,"items":["A new design in four styles: **Cinema**, **Dashboard**, **Glass** and **Compact**.","*What's new* shows every version's changes."]},{"version":"0.7.0","date":"2026-10-24","items":["The logins made for you can be given your own password."]}]}""")
             p == "/api/title" -> json(title(request.requestUrl?.queryParameter("type") == "tv"))
             p == "/api/usage" -> json(usage("u1", "Ann", 0))
             p == "/api/notifications" -> json(feed())

@@ -105,3 +105,9 @@ object Versions {
 
 /** The answer to downloading several RSS articles at once: how many were added, and the titles that had no link. */
 @Serializable data class RssBatch(val added: Int = 0, val failed: List<String> = emptyList())
+
+// ---------- What's new (/api/changelog) ----------
+@Serializable
+data class Changelog(val current: String = "", val versions: List<ChangeVersion> = emptyList())
+@Serializable
+data class ChangeVersion(val version: String = "", val date: String = "", val items: List<String> = emptyList(), val current: Boolean = false, val next: Boolean = false)
