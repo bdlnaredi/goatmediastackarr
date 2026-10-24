@@ -1,375 +1,283 @@
-<p align="center"><img src="docs/logo/logo.svg" alt="GoatMediaStackarr logo" width="160"></p>
+<p align="center"><img src="docs/logo/logo.svg" alt="GoatMediaStackarr logo" width="150"></p>
 
 <h1 align="center">GoatMediaStackarr</h1>
 
-<p align="center">A whole self-hosted media stack in <b>one container</b>, behind <b>one interface</b> and <b>one login</b>, with a <b>built-in VPN</b> for the download apps.</p>
+<p align="center"><b>Your whole media server in one container.</b><br>
+Sonarr, Radarr, Lidarr, Prowlarr, Bazarr, qBittorrent, SABnzbd, Jellyfin and Seerr, already set up and talking to each other,<br>
+behind one web page, one Android app and one login, with a VPN and kill switch for the download apps.</p>
 
-<p align="center"><img src="docs/screenshots/dashboard.png" alt="GoatMediaStackarr dashboard" width="900"></p>
+<p align="center"><img src="docs/screenshots/style-cinema.png" alt="The dashboard in the Cinema style" width="920"></p>
+
+<p align="center">
+<a href="#install-on-unraid">Install</a> ·
+<a href="#four-styles">Four styles</a> ·
+<a href="#the-web-page">Web page</a> ·
+<a href="#the-android-app">Android app</a> ·
+<a href="#the-vpn">VPN</a> ·
+<a href="#whats-new-and-updates">What's new</a> ·
+<a href="#troubleshooting">Troubleshooting</a>
+</p>
 
 ---
 
-Install one container and you get Sonarr, Radarr, Lidarr, Prowlarr, Bazarr, qBittorrent, SABnzbd, Jellyfin and Seerr, already set up and connected to each other, plus optional Plex, Tautulli, FlareSolverr, ruTorrent and Deluge. You don't install, configure or link the separate apps. A web page and an Android app run all of it.
+## What you get
 
-> **Status: 0.5.x, still early.** Everything below works and is tested on every change (including in the real image, on Intel/AMD and ARM), but test it before you trust it with a library you can't replace. The interface is built from [MediaHub](https://github.com/bdlnaredi/mediahub).
+You install **one** container. On its first start it gives every app its own keys and passwords, connects them all to each other, and opens a web page where you sign in once and run everything: watch what's new, ask for shows and movies, follow downloads, and look after the server. The same things are in a native Android app.
 
-**Contents:** [What happens when you install it](#what-happens-when-you-install-it) · [The web page](#the-web-page) · [Android app](#android-app) · [Trackers](#trackers-search-them-browse-their-websites) · [ruTorrent and Deluge](#rutorrent-and-deluge) · [From outside your home](#using-it-from-outside-your-home) · [Install on Unraid](#install-on-unraid) · [The VPN](#the-vpn) · [The Stack page](#the-stack-page) · [Moving from your current setup](#moving-from-your-current-setup) · [Choosing apps](#choosing-apps) · [Troubleshooting](#troubleshooting)
+| Built in, on by default | Built in, turn on when you want it | Bring your own |
+|---|---|---|
+| Sonarr (TV) · Radarr (movies) · Lidarr (music) · Prowlarr (indexers) · Bazarr (subtitles) · qBittorrent · SABnzbd (usenet) · Jellyfin · Seerr (requests) | Plex · Tautulli · FlareSolverr · ruTorrent (with rTorrent) · Deluge | Any of the above you already run, plus Readarr, Jackett, Unraid itself, and an existing Plex |
 
-## Screenshots
+- **Already connected**: library folders and download clients in Sonarr, Radarr and Lidarr; Prowlarr sends its indexers to all three; Bazarr works with Sonarr and Radarr; Jellyfin gets Movies, TV Shows and Music; Seerr signs in through Jellyfin or Plex and sends requests to Sonarr and Radarr.
+- **Kept connected**: every start checks the connections again, so a restored backup with an old API key just works.
+- **Private by default**: the apps listen only inside the container. You reach them through GoatMediaStackarr, signed in.
+- **Intel/AMD and ARM**: one image name for both, rebuilt every week with the newest release of every app, and published only when every check passes.
+
+> **Status: 0.7.x.** Everything here is tested on every change, inside the real image on both kinds of processor. It is still young: try it before you trust it with a library you can't replace. The web page grew out of [MediaHub](https://github.com/bdlnaredi/mediahub).
+
+## Four styles
+
+Pick the look under **Appearance → Style** on the web page, or **Settings → Style** in the app. Each style is a whole design (shapes, spacing, surfaces, how much artwork shows, and on a computer even where the menu is), and each works in light and dark with every accent colour.
 
 | | |
 |---|---|
-| ![Dashboard](docs/screenshots/dashboard.png) | ![Discover](docs/screenshots/discover.png) |
-| **Dashboard**: every app's status, what's downloading and what's new | **Discover**: trending and popular titles to request |
-| ![Library](docs/screenshots/library.png) | ![Downloads](docs/screenshots/downloads.png) |
-| **Library**: your shows, movies and music | **Downloads**: torrents and usenet in one list |
-| ![Requests](docs/screenshots/requests.png) | ![Upcoming](docs/screenshots/upcoming.png) |
-| **Requests**: approve what others ask for | **Upcoming**: release calendar |
-| ![Indexers](docs/screenshots/indexers.png) | ![Health](docs/screenshots/health.png) |
-| **Indexers**: add and test Prowlarr sites | **Health**: problems that need attention |
-| ![Stats](docs/screenshots/stats.png) | ![Sign in](docs/screenshots/login.png) |
-| **Stats**: what's been watched and downloaded | **Sign in** |
-| ![Usenet](docs/screenshots/usenet.png) | ![Settings](docs/screenshots/settings-apps.png) |
-| **Usenet**: queue, history and your provider's news servers | **Settings**: apps, users, alerts, backups |
-| ![Stack](docs/screenshots/stack.png) | ![First start](docs/screenshots/stack-setup.png) |
-| **Stack**: VPN, every app's health and its own page, logins, connections | **First start**: the setup checklist |
+| ![Cinema](docs/screenshots/style-cinema.png) | ![Dashboard](docs/screenshots/style-dash.png) |
+| **Cinema** (the default): dark and poster-first like a streaming app, with the menu as a bar across the top | **Dashboard**: clean cards and clear lists, information first |
+| ![Glass](docs/screenshots/style-glass.png) | ![Compact](docs/screenshots/style-compact.png) |
+| **Glass**: frosted panels floating over your artwork | **Compact**: flat and tight, more on every screen, light on older devices |
 
-<p align="center"><img src="docs/screenshots/phone-dashboard.png" alt="On a phone" width="300"></p>
-
-Screenshots are taken in demo mode with pretend apps. To refresh them after interface changes, run **Update screenshots** from the repository's Actions tab.
-
-## What happens when you install it
-
-1. **One container** appears on your Unraid Docker page.
-2. **First start**: every engine gets its own API key and is connected to the others:
-   - Sonarr (TV), Radarr (movies) and Lidarr (music) get their library folders, plus qBittorrent and SABnzbd as download clients (and ruTorrent and Deluge when they're turned on)
-   - Prowlarr sends its indexers to Sonarr, Radarr and Lidarr
-   - Bazarr fetches subtitles for Sonarr and Radarr
-   - Jellyfin is set up with Movies, TV Shows and Music libraries
-   - Seerr signs in through Jellyfin, or through your Plex (add it under Settings → Apps), and sends requests to Sonarr and Radarr
-3. **Open `http://YOUR-SERVER:2806`** and create your admin account. All the built-in apps are already listed.
-4. **Add indexers** in Prowlarr (from the indexer screen, or Advanced → Prowlarr), and your usenet server in SABnzbd if you use usenet.
-
-The engines listen only inside the container. The only ways in are GoatMediaStackarr (port 2806), Jellyfin (port 8096, for TV and phone apps), Seerr's request page (port 5055, with its own sign-in through Jellyfin or Plex), and, when turned on, ruTorrent (port 8090) and Deluge (port 8112), each with its own login.
-
-Every start checks the connections again: if an app's API key changed (say you restored Sonarr from a backup), Seerr and Prowlarr are given the new one.
-
-## Updates and platforms
-
-- **Weekly rebuild**: every Monday (about 08:47 in India), GitHub rebuilds the image with the newest release of every engine, Seerr, ruTorrent, rTorrent and Deluge included, and runs every check. Only if all of them pass is it published as `latest` (also `weekly` and `weekly-YYYYMMDD`). Unraid then offers it as an update. Version tags such as `0.2.0` don't change. After you update, the Stack page lists each app's version and what changed ("Sonarr 4.0.15 → 4.0.16"); admins also get it in the bell, and any alert channel with *Apps inside the container are updated* ticked.
-- **Your container updates when you update it**: Unraid's Docker tab shows *update ready*; click **Update**, or let the Auto Update Applications plugin (or the Appdata Backup plugin, after its backup) do it. Back up App data before updating: a newer app can change its database so an older one can't read it.
-- **Intel/AMD and ARM**: the same image name works on x86 servers and on 64-bit ARM (Raspberry Pi 4/5 with a 64-bit OS, ARM NAS boxes, Apple-silicon hosts). FlareSolverr is the only part that's x86-only.
-
-## The web page
-
-Open `http://YOUR-SERVER:2806`. Every page has its own address (`/downloads`, `/library`, `/settings/alerts`…), works on a phone, and in light or dark.
-
-- **Dashboard**: what's playing, downloading and new, and whether every app and the VPN are fine. A big poster ticker of your library, the featured titles, *Recently added to Plex* (ready to watch) and *Recently added to Radarr and Sonarr* (may still be downloading) as separate rows. The featured banner and the rows have back and forward buttons.
-- **Discover** and **Search**: TMDB, Trakt and TheTVDB lists; every movie and show opens its own page (story, cast, seasons, trailer, a faded picture of it behind), to request or add straight to Sonarr or Radarr.
-- **Cast and More like this**: movies and shows in the Library, Discover and title pages show their cast and similar titles. Tap an actor for their page with everything they were in (movies, shows, or just what is in your library); tap any title to open it and request it.
-- **Requests**: each one shows where it really is: *Requested* (waiting for an admin), *Approved*, *Looking for a download*, *Downloading* (how far, time left), *Copying to the library*, *In the library* (waiting for Plex) and *Available*. Per-person request limits and automatic approval.
-- **Library**, **Wanted** and **Upcoming**: your shows, movies and music; what's missing; a release calendar. **Choose a release** (interactive search) lists what your indexers have for a movie or an episode, so you pick one.
-- **Downloads**: qBittorrent, ruTorrent, Deluge and SABnzbd in one list; pause, resume, remove, categories and tags, files, trackers and peers; speed limits and schedules (qBittorrent). **RSS**: qBittorrent's feeds and auto-download rules.
-- **Trackers**, **Indexers**, **Usenet**, **Subtitles**, **Music & books**, **Health**, **Unraid**, **Stats**: each from the app it belongs to.
-- **Settings**, in tabs across the top: *Account* (password, two-step sign-in, Sign in with Plex, devices), *Appearance*, *Apps*, *Discover lists*, *Users* (what each profile can do, Sign in with Plex), *Limits* (streaming per month and disk space per person, with who is using what), *Status pages*, *Alerts*, *Download rules*, *Backup*, *Activity*.
-- **Alerts**: email, ntfy, Discord, Telegram, Pushover, Gotify or any webhook. **Each channel has its own list** of what it is told about: finished or grabbed downloads, new requests, a request ready to watch, problem reports, an app offline, the VPN, a full array, streaming limits, new versions, app updates inside the container, and the weekly newsletter.
-
-## Android app
-
-A real Android app (not a web page in a frame), with its own design and eight themes to choose from under **Settings → Appearance**: G.O.A.T. Gold, Midnight (true black for OLED), Ember, Aurora, Forest, Paper, Glacier and Material You (colours from your wallpaper, Android 12+).
-
-<p>
-<img src="docs/android/03-home.png" width="19%" alt="Home">
-<img src="docs/android/04-discover.png" width="19%" alt="Discover">
-<img src="docs/android/06-show.png" width="19%" alt="A show">
-<img src="docs/android/07-downloads.png" width="19%" alt="Downloads">
-<img src="docs/android/12-settings.png" width="19%" alt="Themes">
+<p align="center">
+<img src="docs/screenshots/phone-cinema.png" width="23%" alt="Cinema on a phone">
+<img src="docs/screenshots/phone-dash.png" width="23%" alt="Dashboard on a phone">
+<img src="docs/screenshots/phone-glass.png" width="23%" alt="Glass on a phone">
+<img src="docs/screenshots/phone-compact.png" width="23%" alt="Compact on a phone">
 </p>
-<p>
-<img src="docs/android/31-title.png" width="19%" alt="A movie's page">
-<img src="docs/android/33-episodes.png" width="19%" alt="Episodes with their stories">
-<img src="docs/android/35-rss.png" width="19%" alt="RSS">
-<img src="docs/android/37-profile.png" width="19%" alt="Profile">
-<img src="docs/android/40-settings-phone.png" width="19%" alt="Settings">
-</p>
-<p>
-<img src="docs/android/50-upcoming-calendar.png" width="19%" alt="Upcoming as a calendar">
-<img src="docs/android/52-releases.png" width="19%" alt="Choose a release">
-<img src="docs/android/54-rss-select.png" width="19%" alt="RSS: several at once">
-<img src="docs/android/51-stack-stopped.png" width="19%" alt="Stack: stop and start apps">
-<img src="docs/android/48-tracker-search.png" width="19%" alt="Tracker search">
-</p>
-
-- **Home**: download and upload speed, what is playing, what is downloading, what is coming up, the latest requests, and whether every app and the VPN are fine.
-- **Discover** (TMDB, Trakt, TheTVDB lists) and **Search**: every movie and show opens its own page (story, cast, seasons, trailer, whether it is already in the library), with Request through Seerr (whole show or chosen seasons); or add straight to Sonarr or Radarr with a quality profile and folder.
-- **Cast and More like this**: title and Library pages show the cast and similar titles; tap an actor for their filmography, and any title there to open and request it.
-- **Library**: your shows and movies, with what is missing; each one has a page with its seasons and episodes (with each episode's story; tap one to read all of it or search for it), monitoring, Search now, **Choose a release** (for a movie, and for each episode) and (for admins) Remove.
-- **Wanted**: what Sonarr and Radarr are still looking for, each with **Choose a release**: every release your indexers have, with language, quality, size, seeders and why Sonarr or Radarr would skip it; Download sends the one you pick.
-- **Upcoming**: the next two weeks as a list, or a **Calendar**: a month with a dot for each episode or movie; tap a day to see them.
-- **Downloads**: qBittorrent, ruTorrent, Deluge and SABnzbd, with pause, resume, force start, check and remove; add magnet links, filter by category, move a download to another category, and (admins, qBittorrent) add or remove categories and tags.
-- **RSS**: qBittorrent's feeds, newest articles first; **Select** (or press and hold one) to tick several and download them all into a category, or mark them read; feeds and auto-download rules (admins add, switch on or off, and remove them).
-- **Profile**: your picture (pick one from the phone), how much you streamed this month against your limit (with the last six months), the disk space your requests take, your requests and your watch time (from Tautulli). Admins open anyone's profile from Users to set their limits.
-- **Streaming limits**: everyone may stream **100 GB a month** from Plex and Jellyfin by default (admins are never limited). GoatMediaStackarr adds up each stream's bitrate every 30 seconds; at 80% the person gets a phone message (if they set one up), and at the limit their streams are stopped with a message saying when it starts again (the 1st of the next month). Change the default, count only streams from outside the home, or give someone their own limit (0 = none) in the app (Users, or their profile) or on the web page under Settings → Limits. A Plex or Jellyfin account is matched to a profile by its Plex name, or else by the profile name; accounts that match no profile are counted but not limited. Stopping Plex streams needs Plex Pass on the server's account (Jellyfin always can).
-- **Space limits**: an admin can also limit the disk space someone's requests take; at the limit, new requests are refused until it is raised or something is removed.
-- **Settings**: themes; the page the app opens on, poster size, how often downloads update, hiding episode stories until tapped, asking before removing; password, recovery email, phone messages, signed-in devices (sign out the ones you do not use); the server and a link to the newest app.
-- **Requests** (admins approve or decline, and each shows its stage, as on the web), and for admins the **Stack** page: VPN, each app's version, Restart, Stop and Start any app, connect the apps again.
-- Under **More**: Wanted, Music (Lidarr), Subtitles (Bazarr) and Stats (Tautulli); and for admins Health, Indexers, Usenet servers, Trackers, Unraid, Users and Bring in your setup.
-- **Sign in** with your GoatMediaStackarr name and password (two-step codes work), or with **Sign in with Plex**, which opens Plex's own page and comes back signed in. Plex sign-in has to be turned on on the web page first (Settings → Users → Sign in with Plex), and Plex users see only what their profile allows, as on the web. An admin links their own Plex account first (Settings → Account → Sign in with Plex); until then Plex sign-in refuses admin profiles.
-
-**Notifications:** the app notifies you when something you asked for is ready, when a request is approved or declined, and about your streaming limit; admins also hear about new requests, problem reports and server problems (an app down, the VPN dropped, the array nearly full). It works with the app closed, without Google services. Choose which ones under Settings → Notifications. The bell on Home shows how many are new, and lists them all.
-
-**Updates:** the app tells you on Home when a newer version is out, with a button that downloads it; admins are also reminded to update the container.
-
-**Install:** download `goatmediastackarr.apk` from the [latest release](https://github.com/bdlnaredi/goatmediastackarr/releases/latest) on your phone and open it (Android asks once to allow installing from your browser). Newer versions install over older ones. Open the app and enter the same address you use in the browser, for example `192.168.1.10:2806` at home. Android 8 or newer.
-
-## Trackers: search them, browse their websites
-
-Under **Trackers** (admins, web page and app):
-
-- **Search** every tracker you added to Prowlarr (IPTorrents, TorrentLeech, TorrentDay…) at once, most seeders first. **Download** sends a result to qBittorrent (into the category you pick); **Page** opens the tracker's own page for it.
-- **Tracker websites**: add a site's address and choose **through the VPN** (the site sees the VPN's address, like qBittorrent; if the VPN is down the site does not open) or **without the VPN**. Open it and you browse the real site, with its pictures and descriptions, in a new tab (in the app: your phone's browser). Sign in once; GoatMediaStackarr keeps the sign-in on the server. Clicking a download or magnet button on the site adds it to qBittorrent, into the site's category.
-
-The site's pages run in a sandbox, apart from GoatMediaStackarr, so a site's own scripts cannot act as you. Sites that check you with a puzzle (Cloudflare and similar) may not open this way; for those, Prowlarr with FlareSolverr still searches them.
-
-## ruTorrent and Deluge
-
-### Built in
-
-Both can run inside the container next to qBittorrent. Add `rutorrent` and/or `deluge` to **Apps to run** (`GOAT_ENGINES`) and restart the container.
-
-| | ruTorrent | Deluge |
-|---|---|---|
-| Its page | `http://<server>:8090` | `http://<server>:8112` (Web UI) |
-| Sign-in | user `goat` and a password made for you | a password made for you |
-| Where the login is | Stack page, *Logins made for you* | Stack page, *Logins made for you* |
-| Comes from | ruTorrent from github.com/Novik/ruTorrent, rTorrent built from github.com/rakshasa | the Deluge team's release (PyPI), with Ubuntu's libtorrent |
-| Torrent port | 50414 | 50415 |
-| Settings kept in | `appdata/goatmediastackarr/rutorrent` (`rtorrent.local.rc` for your own rTorrent settings) | `appdata/goatmediastackarr/deluge` |
-
-- **VPN**: when qBittorrent uses the VPN, so do rTorrent and Deluge's daemon (with the same kill switch). Their web pages always stay on your normal network, so you can open them.
-- **Sonarr, Radarr, Lidarr and Prowlarr** get them as download clients automatically, after qBittorrent: they use ruTorrent only when qBittorrent isn't available, and Deluge after that. To make one of them the main one, change the priorities in Sonarr's and Radarr's *Settings → Download Clients* (lower is used first).
-- They talk to rTorrent through `/RPC2` on port 8090, which only answers inside the container. Newer ruTorrent versions mark commands passed through their own plugin as untrusted, and rTorrent 0.16 then refuses to start or remove torrents; `/RPC2` sends them to rTorrent directly, like a web server's SCGI mount.
-- They show in **Downloads** and in the app like the ruTorrent and Deluge you add yourself (below), and on the Stack page with Restart, Stop and Start, each app's version and an Open button.
-- Finished files land in `downloads/torrents/complete` for both, next to qBittorrent's.
-
-### Ones you already run
-
-
-GoatMediaStackarr can use a ruTorrent (rTorrent) or Deluge you already have, in its own container or on a seedbox, next to the built-in qBittorrent. Add it under **Settings → Apps**:
-
-- **ruTorrent**: the address you open ruTorrent with (like `http://192.168.1.10:8080`), and its username and password if it asks for one. GoatMediaStackarr talks to rTorrent the way Sonarr does, through ruTorrent's *httprpc* plugin (on by default); an rTorrent `RPC2` address works too. Categories are ruTorrent's labels. Removing with files uses ruTorrent's *erasedata* plugin.
-- **Deluge**: the address of its Web UI (port 8112 unless changed) and the Web UI password. If the Web UI isn't connected to a Deluge daemon, GoatMediaStackarr connects it to the first one. Categories are Deluge's labels and need its *Label* plugin.
-
-Both then appear in **Downloads** on the web page and in the app: the list, filters, pause and resume, remove, labels, details (files, trackers, peers), and adding magnet links or .torrent files. Finished downloads go into the history and the alerts. Speed-limit schedules, RSS and category paths stay qBittorrent features; use the client's own page for those.
-
-**Use in Sonarr/Radarr** (next to it under Settings → Apps) adds it to your Sonarr, Radarr and Lidarr as a download client, using each app's own template; each app tests the connection before saving. Sonarr and Radarr need to see its finished files: if the client saves them somewhere they don't see at the same path, add a *Remote Path Mapping* in their Settings → Download Clients.
-
-## Using it from outside your home
-
-GoatMediaStackarr's own page (port 2806) is the way in to everything except Jellyfin, Seerr, Plex, ruTorrent and Deluge: Sonarr, Radarr, Lidarr, Prowlarr, Bazarr, qBittorrent, SABnzbd and Tautulli open at `/engines/<app>/` on the same address, signed in through GoatMediaStackarr (admins only).
-
-- **Tailscale** (the Unraid Tailscale plugin, so Unraid itself is on your tailnet): use `http://<unraid's tailscale name>:2806` in the browser and the app. Jellyfin (`:8096`), Seerr (`:5055`), Plex (`:32400`), ruTorrent (`:8090`) and Deluge (`:8112`) work on their ports as they are.
-- **Cloudflare Tunnel**: add a public hostname such as `goat.example.com` pointing to `http://<unraid's address>:2806`. For Jellyfin and Seerr (and ruTorrent or Deluge, if you use their own pages away from home) add their own hostnames (`jellyfin.example.com` to port 8096, `requests.example.com` to port 5055) and enter them on the Stack page under *From outside your home*, so the Open buttons use them away from home. Plex has its own remote access; use that. Cloudflare's terms do not allow streaming lots of video through a free tunnel, so Tailscale is the better way to watch Jellyfin away from home.
-- **Phone apps** for Sonarr, Radarr and the others (nzb360, LunaSea, Ruddarr…): the address is `https://goat.example.com/engines/sonarr` (or `/engines/radarr`, `/engines/prowlarr`…) with that app's API key, which you find in the app under Settings → General. qBittorrent's phone apps need a sign-in GoatMediaStackarr cannot pass on, so use the Downloads page instead.
 
 ## Install on Unraid
 
-Use the template in [`unraid/goatmediastackarr.xml`](unraid/goatmediastackarr.xml), or add a container with:
+1. **Add the container.** Use the template in [`unraid/goatmediastackarr.xml`](unraid/goatmediastackarr.xml) (the [MediaHub](https://github.com/bdlnaredi/mediahub) repository carries the same one), or add a container by hand:
 
-| Setting | Value |
+   | Setting | Value |
+   |---|---|
+   | Repository | `ghcr.io/bdlnaredi/goatmediastackarr:latest` |
+   | `/config` | `/mnt/user/appdata/goatmediastackarr` (every app's settings: back this up) |
+   | `/media` | `/mnt/user/media` (your library) |
+   | `/downloads` | `/mnt/user/downloads` (torrents and usenet) |
+   | Ports | `2806` GoatMediaStackarr · `8096` Jellyfin · `5055` Seerr · and only if turned on: `32400` Plex, `8090` ruTorrent, `8112` Deluge |
+   | Extra parameters | `--cap-add=NET_ADMIN --device=/dev/net/tun --sysctl net.ipv4.conf.all.src_valid_mark=1 --sysctl net.ipv4.conf.all.rp_filter=2` |
+
+   Not on Unraid? Use [`docker-compose.yml`](docker-compose.yml).
+2. **Start it** and give it a few minutes: the first start sets up and connects every app.
+3. **Open `http://YOUR-SERVER:2806`** and make your admin account. You land on the **Stack** page and its setup checklist.
+4. **Add indexers** (Indexers page, or Prowlarr's own page), and your news server under **Usenet** if you use usenet.
+5. **Turn on the VPN** if you want one (see [The VPN](#the-vpn)).
+
+Keep App data on a cache drive or SSD with room to grow. The image is about 2.5 GB; Jellyfin won't start with less than 2 GB free in App data, and FlareSolverr needs about 1.5 GB when it is turned on.
+
+<p align="center"><img src="docs/screenshots/stack-setup.png" alt="First start: the setup checklist" width="760"></p>
+
+## The web page
+
+Open `http://YOUR-SERVER:2806`. It works on a phone as well as a computer. Every page has its own address (`/downloads`, `/library`, `/settings/alerts`…), so bookmarks, links and the Back button work, and a pop-up counts as a step back. **Ctrl K** (or `/`) opens quick search for pages, downloads, requests and the library.
+
+The menu has four groups. In the Cinema style they are drop-downs on the bar across the top; in the others a side menu; on a phone the bottom bar has Dashboard, Library, Downloads and Requests, and **More** lists the rest by group.
+
+<p align="center"><img src="docs/screenshots/menu-cinema.png" alt="The menu in the Cinema style" width="760"></p>
+
+### Watch
+
+- **Dashboard**: what is playing (and who is watching), the download and upload speed, the server's health, and what needs your attention. A big drifting poster wall of your library, featured titles with back and forward buttons, *Recently added to Plex* (ready to watch), *Recently added to Radarr and Sonarr* (may still be downloading), top rated and coming up. Choose what it shows and in which order with **Customize**.
+- **Discover** and **Search**: what is trending, popular and coming on TMDB, Trakt and TheTVDB, and a search across Sonarr and Radarr.
+- **Library**: your shows and movies, as posters or a list, with filters. A show's page has its seasons and episodes (each with its story), monitoring, search and **Choose a release** (pick a release yourself from what your indexers have).
+- **Every title has its own page**: story, cast, seasons, trailer, whether it is in your library, and **More like this**. Tap an actor for their own page with everything they were in, filterable to movies, shows or what you already have; any title there can be opened and requested.
+- **Upcoming**: the next two weeks, or a month calendar.
+- **Music & books**: Lidarr's artists and Readarr's authors.
+
+| | |
 |---|---|
-| Repository | `ghcr.io/bdlnaredi/goatmediastackarr:latest` |
-| Port 2806 | GoatMediaStackarr |
-| Port 8096 | Jellyfin |
-| Port 5055 | Seerr request page |
-| Port 32400 | Plex, only if turned on |
-| Port 8090 | ruTorrent, only if turned on |
-| Port 8112 | Deluge's Web UI, only if turned on |
-| `/config` | `/mnt/user/appdata/goatmediastackarr` (every app's settings; back this up) |
-| `/media` | `/mnt/user/media` (your library) |
-| `/downloads` | `/mnt/user/downloads` (torrent and usenet downloads) |
-| Extra parameters | `--cap-add=NET_ADMIN --device=/dev/net/tun --sysctl net.ipv4.conf.all.src_valid_mark=1 --sysctl net.ipv4.conf.all.rp_filter=2` |
+| ![Discover](docs/screenshots/discover.png) | ![Library](docs/screenshots/library.png) |
+| ![A title's page with its cast and More like this](docs/screenshots/title.png) | ![An actor's filmography](docs/screenshots/person.png) |
+| ![A show with its seasons](docs/screenshots/library-item.png) | ![Upcoming](docs/screenshots/upcoming.png) |
 
-Other systems: see [`docker-compose.yml`](docker-compose.yml).
+### Requests
 
-### Folders
+- **Requests**: anyone can ask for a show or movie; admins approve or decline (or let a profile approve itself). Each request shows where it really is: *Requested*, *Approved*, *Looking for a download*, *Downloading* (how far, how long), *Copying to the library*, *In the library* and *Available*. Request limits per person.
+- **Wanted**: what Sonarr and Radarr are still looking for, with **Choose a release** on each.
 
-By default the library and the downloads are two separate folders:
+### Downloads
 
-```
-/media/tv               TV shows (Sonarr, Jellyfin "TV Shows")
-/media/movies           Movies (Radarr, Jellyfin "Movies")
-/media/music            Music (Lidarr, Jellyfin "Music")
-/downloads/torrents     qBittorrent, ruTorrent and Deluge (incomplete and complete)
-/downloads/usenet       SABnzbd (incomplete and complete)
-```
+- **Downloads**: qBittorrent, ruTorrent, Deluge and SABnzbd in one list: pause, resume, remove, categories and tags, files, trackers, peers, speed limits and schedules, and adding links or `.torrent` files.
+- **RSS**: qBittorrent's feeds and auto-download rules.
+- **Usenet**: SABnzbd's queue and history, and your provider's news servers (add, test, change, remove).
+- **Trackers** (admins): search all your Prowlarr trackers at once and send a result to qBittorrent; or browse a tracker's own website inside GoatMediaStackarr, through the VPN or not, signed in once, with every download or magnet button going straight to qBittorrent.
+- **Indexers**: search, test and remove the sites in Prowlarr and Jackett. **Subtitles**: what Bazarr is still missing.
 
-**Both inside one folder.** If you prefer one share for everything, map a single folder and point both settings inside it:
-
-| Setting | Value |
+| | |
 |---|---|
-| `/data` | `/mnt/user/data` |
-| `MEDIA_DIR` | `/data/media` |
-| `DOWNLOADS_DIR` | `/data/downloads` |
+| ![Downloads](docs/screenshots/downloads.png) | ![Requests](docs/screenshots/requests.png) |
+| ![Usenet](docs/screenshots/usenet.png) | ![Indexers](docs/screenshots/indexers.png) |
 
-This has one advantage: finished downloads are moved into the library instantly (hardlinked) instead of copied. With two separate mappings they are copied, which is slower and briefly uses double the space, even when both folders are on the same disk.
+### Server
 
-Existing files in your media and downloads folders are never re-owned or moved.
+- **Stack** (admins): everything about the container. The VPN (on or off, PIA with a region list or your provider's file, which apps use it, port forwarding, a leak test); every app's health and version with **Restart**, **Stop**, **Start** and its own page; what changed after an update; **Logins made for you** (Jellyfin, qBittorrent, ruTorrent, Deluge) with **Change** to set your own password, which Sonarr, Radarr, Lidarr and Prowlarr are given too; the outside addresses for the Open buttons; linking Plex; and the connections, with a button to run them again.
+- **Health**: problems the apps report, stuck downloads, and disk space per folder.
+- **Unraid**: the array, disks and containers, if you add your Unraid server. **Stats**: what gets watched, from Tautulli.
+- **Settings**: *Account* (password, two-step sign-in, Sign in with Plex, devices), *Appearance*, *Apps*, *Discover lists*, *Users* (what each profile can see and do), *Limits* (streaming per month and disk space per person), *Status pages*, *Alerts* (email, ntfy, Discord, Telegram, Pushover, Gotify or any webhook, each with its own list of what it hears about), *Download rules*, *Backup* and *Activity*.
 
-**Space.** The image is about 2.5 GB. Keep App data on your cache or another SSD, not the array, with room to grow: Jellyfin's artwork and databases get big in a large library, Jellyfin refuses to start with less than 2 GB free there, and FlareSolverr needs about 1.5 GB when it is turned on.
+| | |
+|---|---|
+| ![Stack](docs/screenshots/stack.png) | ![Health](docs/screenshots/health.png) |
+| ![Settings](docs/screenshots/settings-apps.png) | ![Appearance](docs/screenshots/appearance.png) |
+
+**Limits.** Everyone may stream 100 GB a month from Plex and Jellyfin by default (admins are never limited). At 80% they get a message, and at the limit their streams stop until the 1st. Change the default, count only streams from outside the home, or give someone their own limit under Settings → Limits. Admins can also cap the disk space a person's requests take.
+
+## The Android app
+
+A native app (Kotlin and Jetpack Compose), not a web page in a frame. It has the same four styles and eight colour themes (G.O.A.T. Gold, Midnight for OLED, Ember, Aurora, Forest, Paper, Glacier and Material You).
+
+<p>
+<img src="docs/android/60-home-cinema.png" width="24%" alt="Home, Cinema">
+<img src="docs/android/60-home-dash.png" width="24%" alt="Home, Dashboard">
+<img src="docs/android/60-home-glass.png" width="24%" alt="Home, Glass">
+<img src="docs/android/60-home-compact.png" width="24%" alt="Home, Compact">
+</p>
+<p>
+<img src="docs/android/31-title.png" width="19%" alt="A movie's page">
+<img src="docs/android/56-person.png" width="19%" alt="An actor's filmography">
+<img src="docs/android/07-downloads.png" width="19%" alt="Downloads">
+<img src="docs/android/61-more-cinema.png" width="19%" alt="More, grouped">
+<img src="docs/android/63-settings-style.png" width="19%" alt="Choosing a style">
+</p>
+
+- **Home**: speeds, what is playing and downloading, what is coming, the latest requests, and whether every app and the VPN are fine. A bell with what is new for you.
+- **Discover**, **Search** and **Library**, with each title's page (cast, More like this, seasons, trailer) and actors' filmographies; request through Seerr (the whole show or chosen seasons) or add straight to Sonarr or Radarr.
+- **Downloads** with every client, **RSS** (tick several articles and download them at once), **Upcoming** with a calendar, **Wanted** and **Choose a release**.
+- **More**: every other page in groups like the web page (Watch, Requests, Downloads, Server, You), including **What's new**.
+- **Profile**: your picture, your streaming this month, the space your requests take and your watch time.
+- **Notifications** that work with the app closed and without Google services: something you asked for is ready, a request was approved or declined, your streaming limit; for admins also new requests, problem reports and server problems.
+- **Sign in** with your name and password (two-step codes work) or **Sign in with Plex**.
+
+**Install:** download `goatmediastackarr.apk` from the [latest release](https://github.com/bdlnaredi/goatmediastackarr/releases/latest) on your phone and open it. Then enter the address you use in the browser, for example `192.168.1.10:2806`. Android 8 or newer; newer versions install over older ones, and the app tells you when one is out.
+
+## What's new and updates
+
+<p align="center"><img src="docs/screenshots/whats-new.png" alt="What's new" width="760"></p>
+
+- **What's new** (web page: in the menu; app: More) lists every version's changes. It opens by itself once after an update, and a dot shows until you've seen it. The same list is [CHANGELOG.md](CHANGELOG.md), kept by version with dates, and each [GitHub release](https://github.com/bdlnaredi/goatmediastackarr/releases) carries its version's notes.
+- **Weekly rebuild**: every Monday GitHub rebuilds the image with the newest release of every app, runs every check, and only then publishes it as `latest` (also `weekly` and `weekly-YYYYMMDD`). Version tags such as `0.7.0` never change.
+- **You choose when to update**: Unraid's Docker tab shows *update ready*; click **Update** (or let the Auto Update plugin do it). Back up App data first: a newer app can change its database so an older one can't read it. Afterwards the Stack page lists each app's version and what changed ("Sonarr 4.0.15 → 4.0.16"), and admins hear about it in the bell and on any alert channel that wants it.
 
 ## The VPN
 
-Only the apps that need it use the VPN. By default those are qBittorrent, SABnzbd and Prowlarr. When qBittorrent does, so do ruTorrent's rTorrent and Deluge's daemon (and FlareSolverr follows Prowlarr). Jellyfin streaming, Seerr, Sonarr, Radarr, the web pages and the interface keep using your normal internet.
+Only the apps that need it use the VPN: by default qBittorrent, SABnzbd and Prowlarr. ruTorrent's rTorrent and Deluge follow qBittorrent, and FlareSolverr follows Prowlarr. Jellyfin streaming, Seerr, Sonarr, Radarr and the web pages keep your normal connection.
 
-1. Set **VPN on** (`VPN_ENABLED`) to `true`.
-2. Download a WireGuard `.conf` (or OpenVPN `.ovpn`) file from your VPN provider and put it in `appdata/goatmediastackarr/vpn/`.
-3. For OpenVPN, set **VPN type** to `openvpn`, plus **VPN username** and **VPN password** if your provider uses them.
+- **Kill switch**: the VPN apps are cut off from the internet before they start, and whenever the tunnel is down. They never fall back to your home connection, but can still talk to the other apps, so Sonarr can always reach qBittorrent. Their DNS goes through the tunnel too, which also gets around providers that block indexer sites.
+- **Private Internet Access (PIA)** needs no file: on the Stack page choose PIA, enter your PIA username (`p1234567`) and password, pick a region or *Fastest*, and press **Save and apply**.
+- **Any other provider**: put its WireGuard `.conf` (or OpenVPN `.ovpn`) file in `appdata/goatmediastackarr/vpn/`, or upload it on the Stack page, and turn the VPN on.
+- **Port forwarding**: PIA's own (`VPN_PORT_FORWARD=pia`, in regions that allow it, renewed every 15 minutes) or NAT-PMP for ProtonVPN and similar (`natpmp`). The forwarded port is given to qBittorrent.
+- **Leak test** on the Stack page compares the VPN apps' address with your server's own.
 
-**Private Internet Access (PIA)** needs no file. On the Stack page, under VPN, choose **Private Internet Access (PIA)**, enter your PIA username (it starts with p, like `p1234567`) and password, pick a region or leave it on *Fastest*, and press **Save and apply**. GoatMediaStackarr signs in to PIA, registers a new WireGuard key on the region's server and connects, the same way PIA's own Linux scripts do; it does it again on every reconnect. In the template: `VPN_PROVIDER=pia`, `VPN_USER`, `VPN_PASS` and optionally `VPN_REGION` (a region id like `swiss` or `ca_toronto`).
-
-**Kill switch.** The VPN apps are blocked from the internet before they even start, and they stay blocked whenever the tunnel is down. They never fall back to your home connection. They can still talk to the other apps inside the container, so Sonarr can always tell qBittorrent what to download.
-
-**DNS** for the VPN apps goes through the tunnel too, which also gets around ISP blocks on indexer sites.
-
-**Port forwarding.** For ProtonVPN and other NAT-PMP providers, set `VPN_PORT_FORWARD=natpmp`. For PIA, choose *PIA port forwarding* (`VPN_PORT_FORWARD=pia`); PIA only allows it in some regions (they are marked in the list, and *Fastest* then picks only those), and it is renewed every 15 minutes. Either way the forwarded port is set in qBittorrent automatically.
-
-| Variable | Default | Meaning |
+| Setting | Default | Meaning |
 |---|---|---|
 | `VPN_ENABLED` | `false` | Turn the VPN on |
-| `VPN_PROVIDER` | | `pia` for Private Internet Access (no file needed); empty uses your file |
-| `VPN_REGION` | fastest | PIA region id, like `swiss`, `uk_london` or `ca_toronto` |
+| `VPN_PROVIDER` | | `pia` for Private Internet Access; empty uses your file |
+| `VPN_REGION` | fastest | PIA region id, like `swiss` or `ca_toronto` |
 | `VPN_TYPE` | `wireguard` | `wireguard` or `openvpn` (PIA always uses WireGuard) |
-| `VPN_USER`, `VPN_PASS` | | PIA sign-in, or OpenVPN sign-in if needed |
+| `VPN_USER`, `VPN_PASS` | | PIA sign-in, or OpenVPN sign-in if your provider needs one |
 | `VPN_APPS` | `qbittorrent,sabnzbd,prowlarr` | Which apps use the VPN |
-| `VPN_DNS` | from the VPN file | DNS server used through the tunnel |
-| `VPN_PORT_FORWARD` | `off` | `pia` for PIA, `natpmp` for ProtonVPN-style port forwarding |
+| `VPN_DNS` | from the VPN file | DNS through the tunnel |
+| `VPN_PORT_FORWARD` | `off` | `pia` or `natpmp` |
 | `VPN_PF_GATEWAY` | `10.2.0.1` | NAT-PMP gateway inside the tunnel |
 
-Unraid 7 includes WireGuard. If your server's kernel does not, use an OpenVPN file instead. The kill switch is tested on every change with a real WireGuard tunnel.
+Settings changed on the Stack page are saved in `appdata/goatmediastackarr/goat/settings.json` and win over the template. The kill switch is tested on every change, including with a real WireGuard tunnel.
 
-**Speed.** If tracker websites load slowly through the VPN, pick a VPN server near you, prefer WireGuard over OpenVPN, and for trackers that allow it, add the site *without the VPN*. Pictures, styles and scripts of tracker sites are kept for six hours, so only the first page of a site is slow.
+## Choosing the apps
 
-## The Stack page
+`GOAT_ENGINES` lists the apps to run. Take out any you don't want, and add:
 
-Admins get a **Stack** page (`/stack`) for everything about the container itself:
+- **`plex`** for a built-in Plex server: map port 32400, put a claim code from [plex.tv/claim](https://plex.tv/claim) in `PLEX_CLAIM` and start within 4 minutes. Its libraries are made for you. Plex isn't shipped in the image (it isn't open source); it is downloaded from plex.tv on first start, like the official container. `PLEX_UPDATE=false` keeps the installed version. Already have a Plex server? Add it under Settings → Apps instead; both work alongside Jellyfin.
+- **`tautulli`** for Plex statistics (needs Plex).
+- **`flaresolverr`** when indexer sites show Cloudflare's "checking your browser" page. It is downloaded on first start with its own browser, added to Prowlarr as a proxy with the tag `flaresolverr` (tag the sites that need it), and follows Prowlarr onto the VPN. x86 only.
+- **`rutorrent`** and **`deluge`** for more torrent apps next to qBittorrent (below).
 
-- **Setup checklist** on first start: connections, VPN, indexers, usenet, Plex.
-- **VPN**: on or off, Private Internet Access (PIA) with a region list or upload your provider's file, pick which apps use it, OpenVPN login, port forwarding, **Save and apply**, and a **Leak test** that compares the VPN apps' address with your server's own.
-- **Apps**: each engine's health and version, its own page, and **Restart**, **Stop** and **Start** (a stopped app stays stopped until you start it or the container restarts). After an update, **Recent updates** lists what changed.
-- **Logins made for you**: the Jellyfin admin, qBittorrent, ruTorrent and Deluge passwords. **Change** sets your own (or a random one); the app takes it at once and Sonarr, Radarr, Lidarr and Prowlarr are given it too. Change them here rather than inside the apps, or the others lose their connection.
-- **From outside your home**: the outside addresses of Jellyfin, Seerr, Plex, ruTorrent and Deluge, for the Open buttons.
-- **Plex**: link the built-in Plex with a claim code.
-- **Connections**: what was wired up on start, and a button to run it again.
-- **Bring in your current setup** (see below).
+Seerr works with one media server: Jellyfin when it runs, otherwise Plex. `SEERR_MEDIA_SERVER=plex` picks Plex while both run (decided on Seerr's first setup).
 
-Settings changed here are saved in `appdata/goatmediastackarr/goat/settings.json` and take priority over the Unraid template.
+## ruTorrent and Deluge
+
+**Built in.** Add `rutorrent` and/or `deluge` to `GOAT_ENGINES` and map their ports.
+
+| | ruTorrent | Deluge |
+|---|---|---|
+| Its page | `http://<server>:8090` | `http://<server>:8112` |
+| Sign-in | user `goat` and a password made for you | a password made for you |
+| Torrent port | 50414 | 50415 |
+| Settings | `appdata/goatmediastackarr/rutorrent` (your own rTorrent settings go in `rtorrent.local.rc`) | `appdata/goatmediastackarr/deluge` |
+
+The logins are on the Stack page (*Logins made for you*), where you can change them. Sonarr, Radarr, Lidarr and Prowlarr get both as download clients after qBittorrent (used only when qBittorrent isn't available; change the priorities in their Download Clients settings to make one the main one). Finished files go to `downloads/torrents/complete`. ruTorrent's page waits for rTorrent to answer after a start, and plugins that need programs the image doesn't carry are turned off.
+
+**Ones you already run** (in another container or on a seedbox): add them under Settings → Apps. They appear in Downloads like the built-in ones, and **Use in Sonarr/Radarr** adds them to Sonarr, Radarr and Lidarr as a download client.
+
+## From outside your home
+
+GoatMediaStackarr's own page (port 2806) is the way in to everything except Jellyfin, Seerr, Plex, ruTorrent and Deluge, which have their own ports. The other apps' own pages are at `/engines/<app>/` (Sonarr, Radarr, Lidarr, Prowlarr, Bazarr, qBittorrent, SABnzbd, Tautulli), for admins, signed in through GoatMediaStackarr.
+
+- **Tailscale** (the Unraid plugin): use `http://<unraid's tailscale name>:2806` in the browser and the app; the other ports work as they are. Best for watching Jellyfin away from home.
+- **Cloudflare Tunnel**: point a hostname such as `goat.example.com` at port 2806, and give Jellyfin, Seerr (and ruTorrent or Deluge, if you use their pages) their own hostnames. Enter those on the Stack page under *From outside your home* so the Open buttons use them. Cloudflare's terms don't allow streaming lots of video through a free tunnel.
+- **Phone apps** for Sonarr, Radarr and the others (nzb360, LunaSea, Ruddarr…): use `https://goat.example.com/engines/sonarr` (or `/engines/radarr`…) with that app's API key from its Settings → General.
 
 ## Moving from your current setup
 
-On the Stack page, under **Bring in your current setup**, pick Sonarr, Radarr, Lidarr or Prowlarr, then enter your current app's address and API key (found in that app under Settings → General). **Check** shows how many shows, movies, artists or indexers there are, and how many are already here.
+On the Stack page, **Bring in your current setup** copies shows, movies, artists and Prowlarr indexers from the Sonarr, Radarr, Lidarr or Prowlarr you use now. Enter its address and API key, press **Check**, say where each old folder is inside GoatMediaStackarr (for example `/tv` → `/media/tv`), then **Bring in**.
 
-Then say where each old folder is inside GoatMediaStackarr. For example, if your old Sonarr saw your shows at `/tv` and GoatMediaStackarr sees the same share at `/media/tv`, map `/tv` → `/media/tv`. **Bring in** copies everything that's missing. It keeps each item's monitored state, seasons and quality profile, and doesn't search or download anything.
+- It keeps each item's monitored state, seasons, quality profile and tags, and doesn't search or download anything. With *Also bring in your settings* (on by default) your quality profiles, custom formats, delay and release profiles and file naming come first.
+- Your old apps are only read from. Running it again adds only what's new. History and download clients aren't copied; indexers with a password or cookie may need it again.
 
-With **Also bring in your settings** ticked (the default), these are copied first: quality profiles, custom formats, delay profiles, release profiles and file naming. One with the same name here is replaced by yours, and the scores in each profile follow their custom formats by name. Tags are always kept, on shows, movies, artists and Prowlarr indexers. Not copied: download clients (the built-in ones are already set up) and history. The built-in app then rescans the folders and finds your files where they already are.
+## Folders and storage
 
-- Your old apps are only read from, never changed. Running the import again adds only what's new.
-- Download history and episode-by-episode settings aren't copied.
-- Indexers that need a password or cookie may need it entered again. Test them on the Indexers page afterwards.
+```
+/media/tv            TV shows (Sonarr, Jellyfin "TV Shows")
+/media/movies        Movies (Radarr, Jellyfin "Movies")
+/media/music         Music (Lidarr, Jellyfin "Music")
+/downloads/torrents  qBittorrent, ruTorrent and Deluge
+/downloads/usenet    SABnzbd
+```
 
-## Usenet
+**One share for everything** makes finished downloads move into the library instantly (hardlinks) instead of being copied: map `/data` to `/mnt/user/data` and set `MEDIA_DIR=/data/media` and `DOWNLOADS_DIR=/data/downloads`. Existing files are never re-owned or moved.
 
-On the Usenet page, admins can add their provider's news server (address, port, SSL, connections, login), test it, change it or remove it.
+What is kept in `appdata/goatmediastackarr/`: each app's own folder; `goat/secrets.json` (the keys and passwords made on first start); `goat/wired.json` (what was connected on the last start); `ui/` (GoatMediaStackarr's accounts and settings); `vpn/` (your VPN file).
 
-## Addresses
-
-Every page has its own address, such as `/downloads`, `/library`, `/stack` or `/settings/apps`. Shows and movies have one too (`/library/tv/<app>/<id>`), so you can bookmark or share one. Bookmarks, links and the Back button work. A dialog opened over a page counts as a step back, so Back (or a phone's back gesture) closes it.
-
-## Advanced: each app's own page
-
-Admins can open any engine's original page through GoatMediaStackarr, signed in with their GoatMediaStackarr account:
-
-`/engines/sonarr/`, `/engines/radarr/`, `/engines/lidarr/`, `/engines/prowlarr/`, `/engines/bazarr/`, `/engines/qbittorrent/`, `/engines/sabnzbd/`, `/engines/tautulli/`
-
-Jellyfin is at port 8096, ruTorrent at 8090 and Deluge at 8112, each with its own login (Stack page, *Logins made for you*). Jellyfin's admin user is `goat-admin`; its password is also `jellyfinPass` in `appdata/goatmediastackarr/goat/secrets.json`. Change it in Jellyfin if you like.
-
-## Choosing apps
-
-`GOAT_ENGINES` lists the apps to run. Remove any you don't want.
-
-- Add `plex` for a built-in Plex server (see below).
-- Add `tautulli` for Plex statistics. Tautulli only works with Plex.
-- Add `flaresolverr` if some indexer sites show Cloudflare's "checking your browser" page. See below.
-- Add `rutorrent` and/or `deluge` for more torrent apps next to qBittorrent. See [ruTorrent and Deluge](#rutorrent-and-deluge).
-
-## FlareSolverr
-
-Some torrent sites sit behind Cloudflare, which blocks Prowlarr with a "checking your browser" page. FlareSolverr opens those sites in a real browser to get past it.
-
-1. Add `flaresolverr` to `GOAT_ENGINES`. On first start it downloads FlareSolverr (it brings its own Chromium browser) and adds the libraries that browser needs. Nothing is added to the image for people who don't use it.
-2. GoatMediaStackarr adds it to Prowlarr as a proxy with the tag `flaresolverr`.
-3. In Prowlarr (Indexers page, or Stack → Prowlarr → Open), give the sites that need it the `flaresolverr` tag.
-
-When Prowlarr uses the VPN, FlareSolverr does too, since it's the one visiting the sites. FlareSolverr only offers a ready-made build for x86 servers, so it isn't available on ARM. It needs about 1.5 GB free in App data to download; a copy that is missing its browser is downloaded again by itself.
-
-## Plex
-
-There are two ways to use Plex. You can also use both Plex and Jellyfin together on the same media folders.
-
-**Your existing Plex server.** Add it in Settings → Apps with its address and token, as with any other app. Nothing else changes.
-
-**Built-in Plex** (off by default):
-
-1. Add `plex` to `GOAT_ENGINES` and map port 32400.
-2. Get a claim code from [plex.tv/claim](https://plex.tv/claim), put it in `PLEX_CLAIM`, and start the container within 4 minutes. This links the new server to your Plex account. It's only needed once.
-3. GoatMediaStackarr then creates Movies, TV Shows and Music libraries on your media folders. If Tautulli is turned on, it is connected to Plex automatically.
-
-Plex is free to use but not open source. So it isn't shipped inside this image. It is downloaded from plex.tv on first start, the same way the official Plex container does it. `PLEX_UPDATE=false` keeps the installed version. Hardware transcoding needs Plex Pass, as usual.
-
-**Seerr** works with one media server. It uses Jellyfin when Jellyfin runs, otherwise Plex. Set `SEERR_MEDIA_SERVER=plex` to use Plex while both run. This choice is made on Seerr's first setup.
-
-## Other settings
-
-| Variable | Default | Meaning |
+| Setting | Default | Meaning |
 |---|---|---|
 | `PUID` / `PGID` | `99` / `100` | User and group that own the files (Unraid's nobody/users) |
 | `TZ` | `Etc/UTC` | Time zone |
 | `UMASK` | `002` | New files are group-writable |
-
-## Where things are kept
-
-`appdata/goatmediastackarr/`:
-
-- `<app>/`: each engine's own settings and database (`rutorrent/rtorrent.local.rc` for rTorrent settings of your own)
-- `goat/secrets.json`: the keys and passwords made on first start
-- `goat/wired.json`: what was connected on the last start, and any errors
-- `ui/`: GoatMediaStackarr accounts and settings
-- `vpn/`: your VPN file
-
-If a connection fails on first start (for example an engine was slow), it is retried at the next container start. Settings you change inside an engine are kept; only the addresses and keys GoatMediaStackarr manages are rewritten.
+| `TORRENT_PORT` | `50413` | qBittorrent's incoming port (6881 is blocked by many trackers) |
 
 ## Troubleshooting
 
-- **Seerr's page shows "Seerr Updated, please reload" every time** — fixed in 0.5.6; update the container.
-- **Seerr: "needs a media server"** — turn on Jellyfin, or add your Plex under Settings → Apps; Seerr is then set up with it within a minute.
-- **Seerr or Discover show no posters, and the log says `[TMDB] … ECONNRESET`** — some Indian internet providers block TMDB. Add `--dns 1.1.1.1 --dns 8.8.8.8` to the container's *Extra Parameters* (Unraid, Advanced view), or set those DNS servers for the whole server under Settings → Network Settings.
-- **"Unable to get queue from Radarr/Sonarr" in Seerr after restoring a backup** — the restored app has its old API key; the next container start gives Seerr and Prowlarr the right one.
-- **OpenVPN: "Cannot ioctl TUNSETIFF goatvpn: Device or resource busy"** — fixed in 0.5.6 (a tunnel left over from a restart); update the container.
-- **WireGuard connects but nothing loads** (`wg show` in the container's console shows a lot sent and almost nothing received) — fixed in 0.5.6; update the container.
-- **FlareSolverr: "Chrome / Chromium web browser not installed"** — fixed after 0.5.6: the download was incomplete (often a full App data disk); it is downloaded again by itself once there is about 1.5 GB free.
-- **A connection failed on first start** — the Stack page's *Connections* says which and why; *Connect the apps again* is safe to run any time.
+- **A connection failed on first start**: the Stack page's *Connections* says which and why. *Connect the apps again* is safe any time; failed ones are also retried at the next start.
+- **Seerr: "needs a media server"**: turn on Jellyfin, or add your Plex under Settings → Apps.
+- **No posters in Seerr or Discover, and `[TMDB] … ECONNRESET` in the log**: some internet providers block TMDB. Add `--dns 1.1.1.1 --dns 8.8.8.8` to the container's Extra Parameters, or set those DNS servers for the whole server.
+- **"Unable to get queue from Radarr/Sonarr" after restoring a backup**: the restored app has its old API key; the next container start fixes it.
+- **Tracker websites are slow through the VPN**: pick a VPN server near you, prefer WireGuard, and add sites that allow it *without the VPN*.
+- **Older problems** (Seerr saying "Seerr Updated" on every visit, OpenVPN "TUNSETIFF … busy", WireGuard sending but not receiving, FlareSolverr without its browser or "version not detected", ruTorrent timing out right after a start): all fixed; update the container. [What's new](CHANGELOG.md) says in which version.
 
-## Bundled software and licenses
+Still stuck? [Open an issue](https://github.com/bdlnaredi/goatmediastackarr/issues) with the container's log.
 
-GoatMediaStackarr is GPL-3.0-or-later. It runs the official releases of each engine unchanged. They keep their own licenses: see [THIRD_PARTY.md](THIRD_PARTY.md). The names Sonarr, Radarr, Jellyfin and the others belong to their projects. GoatMediaStackarr is not affiliated with or endorsed by them.
+## Licenses
+
+GoatMediaStackarr is GPL-3.0-or-later. It runs each app's official release unchanged, under that app's own license (see [THIRD_PARTY.md](THIRD_PARTY.md)). Sonarr, Radarr, Jellyfin and the other names belong to their projects; GoatMediaStackarr isn't affiliated with or endorsed by them.
 
 ## Development
 
 ```
-npm test                         # settings, wiring (against fake engines) and the interface
-sudo bash test/vpn-killswitch.sh # the kill switch for real, in Linux network namespaces
-sudo bash test/vpn-wireguard.sh  # the kill switch with a real WireGuard tunnel
+cd ui && npm test                 # the web page and its server, against pretend apps
+node --test test/*.test.js        # settings, wiring and the control service
+sudo bash test/vpn-killswitch.sh  # the kill switch, in real network namespaces
+sudo bash test/vpn-wireguard.sh   # the kill switch with a real WireGuard tunnel
+node scripts/screenshots.js       # these screenshots, in demo mode (also the "Update screenshots" workflow)
 ```
 
-CI also builds the image for Intel/AMD and ARM, starts it, and checks that every engine answers and is connected, that ruTorrent and Deluge take a torrent through GoatMediaStackarr, and that the VPN apps stay offline without a VPN. The Android app is built and its screens photographed on every change.
+Every change is also built for Intel/AMD and ARM and started for real: every app must answer and be connected, ruTorrent and Deluge must take a torrent, FlareSolverr must open a page, the login passwords must change, and the VPN apps must stay offline without a VPN. The Android app is built and every screen photographed in each style. Tagging a version (`v0.7.1`) publishes the image and the app, and the GitHub release gets that version's part of the changelog.
 
-The logo is drawn by `docs/logo/make_logo.py`, which also writes the app icons in `ui/public`.
+The logo is drawn by `docs/logo/make_logo.py`, which also writes the app icons.

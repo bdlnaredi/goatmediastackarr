@@ -9,6 +9,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 - *What's new*: every version's changes, on the web page and in the app. It opens by itself once after an update, and a dot shows until you have seen it.
 - Android app: the same four styles (Settings → Style), each with its own shapes, density, bottom bar and amount of artwork, and working with every theme. *More* is a grid of pages grouped like the web page's menu, and *What's new* is there too (it opens by itself once after the server is updated).
 - The changelog is kept by version, with dates, and each GitHub release now carries its version's notes.
+- A new README, with new screenshots of every style on a computer, a phone and the app.
+- Phones: the Stack page no longer gets wider than the screen (a long VPN provider name in its list), which pushed the bottom bar out of view; the setup checklist lines up its ticks with their text. Pictures that cannot load leave an empty space instead of a broken-image sign.
 ## v0.7.0 — 2026-10-24
 
 - Stack page: the logins made for you (qBittorrent, ruTorrent, Deluge, Jellyfin) each have a *Change* button to set your own password (or make a random one). The app takes it straight away, and Sonarr, Radarr, Lidarr, Prowlarr and GoatMediaStackarr itself are given the new one, so nothing loses its connection.
