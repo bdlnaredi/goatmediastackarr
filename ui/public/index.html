@@ -2502,6 +2502,18 @@ let GOAT_OUT={};
 const viaDomain=()=>!/^(localhost|\d+\.\d+\.\d+\.\d+|\[.*\]|.*\.local|.*\.lan|.*\.home|.*\.ts\.net)$/i.test(location.hostname);
 const goatOpen=k=>GOAT_PAGES[k]?`/engines/${k}/`:GOAT_OUT[k]&&viaDomain()?GOAT_OUT[k]+(k==='plex'&&!/\/web\b/.test(GOAT_OUT[k])?'/web/':'/'):k==='jellyfin'?`${location.protocol}//${location.hostname}:8096/`:k==='plex'?`${location.protocol}//${location.hostname}:32400/web/`:k==='seerr'?`${location.protocol}//${location.hostname}:5055/`:k==='rutorrent'?`${location.protocol}//${location.hostname}:8090/`:k==='deluge'?`${location.protocol}//${location.hostname}:8112/`:'';
 let goatPoll=0,goatQuiet=false;
+// A new password for one of the logins made for you (qBittorrent, ruTorrent, Deluge, Jellyfin).
+function goatPassword(app,name){
+  const gen=()=>{const c='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789',a=new Uint32Array(16);crypto.getRandomValues(a);return [...a].map(v=>c[v%c.length]).join('')};
+  const o=modal(`<h2 style="margin-top:0">${T('New password for')} ${esc(name)}</h2><p class="mute">${T('8 to 128 characters: letters, numbers and symbols, no spaces.')} ${app==='jellyfin'?T('Sign in again in the Jellyfin apps afterwards.'):T('Sonarr, Radarr and Prowlarr are given it too.')}</p>
+    <form id="cpf"><div class="row"><input id="cpw" type="text" autocomplete="new-password" spellcheck="false" minlength="8" maxlength="128" aria-label="${T('New password')}" style="flex:1;min-width:200px;font-family:ui-monospace,monospace"><button type="button" id="cpg">${T('Make one')}</button></div>
+    <div class="err" id="cpe"></div><div class="row" style="margin-top:12px"><button class="primary" id="cps">${T('Save')}</button><button type="button" data-x>${T('Cancel')}</button></div></form>`);
+  const i=o.querySelector('#cpw');i.focus();o.querySelector('[data-x]').onclick=o.close;o.querySelector('#cpg').onclick=()=>{i.value=gen();i.focus()};
+  o.querySelector('#cpf').onsubmit=async e=>{e.preventDefault();const v=i.value,er=o.querySelector('#cpe');
+    if(v.length<8||v.length>128||!/^[\x21-\x7e]+$/.test(v)){er.textContent=T('8 to 128 characters: letters, numbers and symbols, no spaces.');return}
+    const b=o.querySelector('#cps');b.disabled=true;b.textContent=T('Saving…');
+    try{await api('/api/goat/login','POST',{app,password:v});o.close();toast(T('Password changed'),'ok');render()}catch(x){er.textContent=x.message;b.disabled=false;b.textContent=T('Save')}};
+}
 async function goatView(){
   clearTimeout(goatPoll);
   if(!goatQuiet)$('#m').innerHTML=skel(4);goatQuiet=false;
@@ -2565,8 +2577,8 @@ async function goatView(){
     <p class="mute">Jellyfin, Seerr and Plex use their own ports. With Tailscale those work as they are. With a Cloudflare tunnel, give each one its own hostname in the tunnel (for example jellyfin.example.com to http://<i>Unraid's address</i>:8096) and enter it here, so the Open buttons use it when you are away.</p>
     <form id="gof" class="row" style="gap:10px;align-items:flex-end">${[['jellyfin','Jellyfin','https://jellyfin.example.com'],['seerr','Seerr','https://requests.example.com'],['plex','Plex','https://app.plex.tv'],...st.engines.filter(e=>['rutorrent','deluge'].includes(e.key)).map(e=>[e.key,e.name,`https://${e.key}.example.com`])].map(([k,n,ph])=>`<label class="mute">${n}<input name="${k}" value="${esc(GOAT_OUT[k]||'')}" placeholder="${ph}" style="min-width:220px"></label>`).join('')}<button class="primary">Save</button></form><div class="err" id="goe"></div></div>
   <h2 class="sec">Logins made for you</h2>
-  <div class="panel">${[['Jellyfin admin','jellyfin'],['qBittorrent','qbittorrent'],['ruTorrent','rutorrent'],['Deluge (Web UI)','deluge']].filter(([,k])=>st.logins[k]).map(([n,k])=>`<div class="row" style="gap:10px;margin:6px 0"><b style="min-width:130px">${n}</b><code>${esc(st.logins[k].user)}</code><code class="gpw" data-pw="${esc(st.logins[k].pass)}">••••••••</code><button data-show>${ic('eye')}Show</button></div>`).join('')||'<div class="mute">None yet.</div>'}
-    <div class="mute">Use the Jellyfin login in the Jellyfin apps on your TV and phone. You can change it in Jellyfin.</div></div>
+  <div class="panel">${[['Jellyfin admin','jellyfin'],['qBittorrent','qbittorrent'],['ruTorrent','rutorrent'],['Deluge (Web UI)','deluge']].filter(([,k])=>st.logins[k]).map(([n,k])=>`<div class="row" style="gap:10px;margin:6px 0"><b style="min-width:130px">${n}</b><code>${esc(st.logins[k].user)}</code><code class="gpw" data-pw="${esc(st.logins[k].pass)}">••••••••</code><button data-show>${ic('eye')}Show</button><button data-chpw="${k}" data-n="${esc(n)}">${ic('set')}Change</button></div>`).join('')||'<div class="mute">None yet.</div>'}
+    <div class="mute">Use the Jellyfin login in the Jellyfin apps on your TV and phone. Change these passwords here, not in the apps themselves: Sonarr, Radarr, Prowlarr and this page are given the new one too.</div></div>
   ${hasPlex?`<h2 class="sec">Plex</h2><div class="panel">${plexOk?'<span class="pill ok">Linked to your Plex account</span>':`<div>Get a code from <a href="https://plex.tv/claim" target="_blank" rel="noopener">plex.tv/claim</a> while signed in to Plex, paste it here and press Link within 4 minutes.</div>
     <div class="row" style="margin-top:8px"><input id="gpc" placeholder="claim-xxxxxxxxxxxx" aria-label="Plex claim code"><button class="primary" id="gpl">Link</button></div><div class="err" id="gpe"></div>`}</div>`:''}
   <h2 class="sec">Connections</h2>
@@ -2642,6 +2654,7 @@ async function goatView(){
   $('#grw').onclick=async e=>{const b=e.currentTarget;busy(b,'Starting…');try{await api('/api/goat/rewire','POST',{});toast('Connecting the apps again. This page updates when it finishes.','ok');goatPoll=setTimeout(()=>{if(tab==='goat'){goatQuiet=true;goatView()}},3000)}catch(x){toast(x.message,'bad')}idle(b)};
   if($('#gof'))$('#gof').onsubmit=async e=>{e.preventDefault();$('#goe').textContent='';try{GOAT_OUT=await api('/api/goat/outside','POST',Object.fromEntries(new FormData(e.target)));toast('Saved','ok');goatView()}catch(x){$('#goe').textContent=x.message}};
   $('#m').onclick=async e=>{
+    const cp=e.target.closest('[data-chpw]');if(cp){goatPassword(cp.dataset.chpw,cp.dataset.n);return}
     const sh=e.target.closest('[data-show]');if(sh){const c=sh.previousElementSibling;const on=c.textContent!=='••••••••';c.textContent=on?'••••••••':c.dataset.pw;sh.lastChild.textContent=on?'Show':'Hide';return}
     const gx=e.target.closest('[data-gx],[data-gs]');if(gx){const k=gx.dataset.gx||gx.dataset.gs,stop=!!gx.dataset.gx;
       if(stop&&!confirm(`Stop ${k}? It stays stopped until you start it again or the container restarts.`))return;

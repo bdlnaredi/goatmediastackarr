@@ -68,3 +68,46 @@ test('stop and start only accept known apps, and remember what was stopped', asy
   assert.equal((await handle({ cmd: 'stop', engine: 'goat-vpn' }, x)).ok, false, 'the VPN and the interface cannot be stopped from here');
   assert.deepEqual(x.calls, [['stop', 'radarr'], ['mark', 'radarr', true], ['start', 'radarr'], ['mark', 'radarr', false]]);
 });
+
+test('changing a login password: checked, given to the running app, saved, then written and wired', async () => {
+  const sec = path.join(root, 'secrets.json'), conf = path.join(root, 'qBittorrent.conf');
+  process.env.GOAT_SECRETS = sec; process.env.GOAT_QBIT_CONF = conf;
+  process.env.GOAT_ENGINES = 'sonarr,qbittorrent,rutorrent,jellyfin';
+  fs.writeFileSync(sec, JSON.stringify({ qbitUser: 'goat', qbitPass: 'old-qbit-pass', rutorrentPass: 'old-ru-pass', delugePass: 'old-de-pass', jellyfinUser: 'goat-admin', jellyfinPass: 'old-jf-pass' }));
+  const x = fake(), hits = [];
+  x.fetch = async (u, o) => { hits.push([u.replace(/^http:\/\/127\.0\.0\.1:\d+/, ''), o.body]);
+    if (u.endsWith('/AuthenticateByName')) return { ok: JSON.parse(o.body).Pw === 'old-jf-pass', status: 401, json: async () => ({ AccessToken: 'tok', User: { Id: 'u1' } }) };
+    return { ok: true, status: 204 }; };
+  assert.equal((await handle({ cmd: 'set-login', app: 'sonarr', password: 'abcdefgh1' }, x)).error, 'Unknown login');
+  assert.match((await handle({ cmd: 'set-login', app: 'qbittorrent', password: 'short' }, x)).error, /8 to 128/);
+  assert.match((await handle({ cmd: 'set-login', app: 'qbittorrent', password: 'has a space' }, x)).error, /no spaces/);
+  assert.deepEqual(x.calls, [], 'nothing happens for a bad request');
+
+  assert.deepEqual(await handle({ cmd: 'set-login', app: 'qbittorrent', password: 'New-Qbit-9' }, x), { ok: true });
+  assert.equal(hits[0][0], '/api/v2/app/setPreferences'); assert.match(decodeURIComponent(hits[0][1]), /"web_ui_password":"New-Qbit-9"/);
+  assert.equal(JSON.parse(fs.readFileSync(sec, 'utf8')).qbitPass, 'New-Qbit-9');
+  assert.equal(fs.statSync(sec).mode & 0o777, 0o600);
+  assert.deepEqual(x.calls, [['run', 'init.js'], ['restart', 'goat-wire']]);
+
+  // ruTorrent reads it when its page starts, so that page is restarted.
+  x.calls.length = 0;
+  assert.deepEqual(await handle({ cmd: 'set-login', app: 'rutorrent', password: 'New-Ru-pass' }, x), { ok: true });
+  assert.deepEqual(x.calls, [['run', 'init.js'], ['restart', 'rutorrent-web'], ['restart', 'goat-wire']]);
+
+  // Jellyfin: signs in with the old password, then changes it.
+  hits.length = 0;
+  assert.deepEqual(await handle({ cmd: 'set-login', app: 'jellyfin', password: 'New-Jf-pass' }, x), { ok: true });
+  assert.deepEqual(hits.map(h => h[0]), ['/Users/AuthenticateByName', '/Users/u1/Password']);
+  assert.deepEqual(JSON.parse(hits[1][1]), { CurrentPw: 'old-jf-pass', NewPw: 'New-Jf-pass' });
+  // A wrong stored password is reported and nothing is saved.
+  const s = JSON.parse(fs.readFileSync(sec, 'utf8')); s.jellyfinPass = 'not-it-anymore'; fs.writeFileSync(sec, JSON.stringify(s));
+  assert.match((await handle({ cmd: 'set-login', app: 'jellyfin', password: 'Another-pass' }, x)).error, /current password/);
+  assert.equal(JSON.parse(fs.readFileSync(sec, 'utf8')).jellyfinPass, 'not-it-anymore');
+
+  // qBittorrent not running: its stored password is dropped, so the new one is written before it starts.
+  fs.writeFileSync(conf, '[Preferences]\nWebUI\\Username=goat\nWebUI\\Password_PBKDF2="@ByteArray(x:y)"\nWebUI\\Port=8080\n');
+  x.fetch = async () => { const e = new TypeError('fetch failed'); e.cause = { code: 'ECONNREFUSED' }; throw e; };
+  assert.deepEqual(await handle({ cmd: 'set-login', app: 'qbittorrent', password: 'Offline-pass' }, x), { ok: true });
+  assert.equal(fs.readFileSync(conf, 'utf8'), '[Preferences]\nWebUI\\Username=goat\nWebUI\\Port=8080\n');
+  delete process.env.GOAT_ENGINES;
+});

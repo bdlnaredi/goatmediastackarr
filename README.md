@@ -256,7 +256,7 @@ Admins get a **Stack** page (`/stack`) for everything about the container itself
 - **Setup checklist** on first start: connections, VPN, indexers, usenet, Plex.
 - **VPN**: on or off, Private Internet Access (PIA) with a region list or upload your provider's file, pick which apps use it, OpenVPN login, port forwarding, **Save and apply**, and a **Leak test** that compares the VPN apps' address with your server's own.
 - **Apps**: each engine's health and version, its own page, and **Restart**, **Stop** and **Start** (a stopped app stays stopped until you start it or the container restarts). After an update, **Recent updates** lists what changed.
-- **Logins made for you**: the Jellyfin admin, qBittorrent, ruTorrent and Deluge passwords.
+- **Logins made for you**: the Jellyfin admin, qBittorrent, ruTorrent and Deluge passwords. **Change** sets your own (or a random one); the app takes it at once and Sonarr, Radarr, Lidarr and Prowlarr are given it too. Change them here rather than inside the apps, or the others lose their connection.
 - **From outside your home**: the outside addresses of Jellyfin, Seerr, Plex, ruTorrent and Deluge, for the Open buttons.
 - **Plex**: link the built-in Plex with a claim code.
 - **Connections**: what was wired up on start, and a button to run it again.

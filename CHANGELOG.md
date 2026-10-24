@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Stack page: the logins made for you (qBittorrent, ruTorrent, Deluge, Jellyfin) each have a *Change* button to set your own password (or make a random one). The app takes it straight away, and Sonarr, Radarr, Lidarr, Prowlarr and GoatMediaStackarr itself are given the new one, so nothing loses its connection.
 - ruTorrent: no more "The request to rTorrent has timed out" right after a start (its page waits for rTorrent, and allows 30 seconds instead of 10); the GeoIP, source and unpack plugins now have what they need (PHP's sqlite3 and zip, and unzip), and the plugins that need programs the image does not carry (Cloudflare bypass, dump, spectrogram) are turned off instead of warning at every start.
 - ruTorrent: its log no longer fills with "Failed to poll event" and a line for every page request (harmless messages from PHP's web server); real errors still show.
 - FlareSolverr: fixed "Chrome / Chromium version not detected!". Its browser needed one more system library (libwayland-server0). FlareSolverr now checks its browser starts before it runs, and if it does not, the log says why and the missing libraries are added again.

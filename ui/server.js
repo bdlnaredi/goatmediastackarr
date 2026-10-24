@@ -1632,6 +1632,11 @@ const goatServer = http.createServer(async (req, res) => {
         audit(me.name, 'Uploaded a VPN file', file); return send(res, 200, goatStatus());
       }
       if (p === '/api/goat/apply-vpn') { const r = await goatControl({ cmd: 'apply-vpn' }); audit(me.name, 'Applied VPN settings', r.ok ? '' : r.error); return send(res, r.ok ? 200 : 500, r.ok ? goatStatus() : { error: r.error }); }
+      if (p === '/api/goat/login') {
+        // A new password for one of the logins made for you. The control service checks it and gives it to the app.
+        const b = await readBody(req), app = String(b.app || ''), r = await goatControl({ cmd: 'set-login', app, password: typeof b.password === 'string' ? b.password : '' });
+        audit(me.name, 'Changed a login password', app + (r.ok ? '' : ': ' + r.error)); return send(res, r.ok ? 200 : 400, r.ok ? goatStatus() : { error: r.error });
+      }
       if (p === '/api/goat/rewire') { const r = await goatControl({ cmd: 'rewire' }); return send(res, r.ok ? 200 : 500, r.ok ? {} : { error: r.error }); }
       if (p === '/api/goat/stop' || p === '/api/goat/start') {
         const b = await readBody(req), what = p.endsWith('stop') ? 'stop' : 'start', r = await goatControl({ cmd: what, engine: String(b.engine || '') });

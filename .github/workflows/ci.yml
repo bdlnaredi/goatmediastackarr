@@ -161,6 +161,26 @@ jobs:
           [ "$code" = 500 ] || { echo "::error::Unknown app was not refused ($code)"; exit 1; }
           curl -fsS -b /tmp/ck -H "Origin: $B" -o /dev/null $B/engines/sonarr/
           echo "::notice::Stack page controls work: status, restart, refusal, engine page"
+          # New passwords for the logins made for you: each app takes it, and Sonarr's download clients still work.
+          for a in qbittorrent rutorrent deluge jellyfin; do
+            r=$(curl -sS -b /tmp/ck -H "$J" -H "Origin: $B" -d "{\"app\":\"$a\",\"password\":\"Ci-new-$a-9\"}" $B/api/goat/login)
+            echo "$r" | jq -e ".logins.$a.pass == \"Ci-new-$a-9\"" >/dev/null || { echo "::error::Changing the $a password failed: $(echo "$r" | jq -r '.error // .')"; exit 1; }
+          done
+          code=$(curl -s -o /dev/null -w '%{http_code}' -b /tmp/ck -H "$J" -H "Origin: $B" -d '{"app":"qbittorrent","password":"short"}' $B/api/goat/login)
+          [ "$code" = 400 ] || { echo "::error::A too short password was not refused ($code)"; exit 1; }
+          docker exec goat curl -fsS -d 'username=goat&password=Ci-new-qbittorrent-9' http://127.0.0.1:8080/api/v2/auth/login | grep -q 'Ok' || { echo "::error::qBittorrent did not take its new password"; exit 1; }
+          ok=""; for i in $(seq 1 30); do [ "$(docker exec goat curl -s -o /dev/null -w '%{http_code}' -u goat:Ci-new-rutorrent-9 http://127.0.0.1:8090/)" = 200 ] && { ok=1; break; }; sleep 2; done
+          [ -n "$ok" ] || { echo "::error::ruTorrent did not take its new password"; exit 1; }
+          ok=""; for i in $(seq 1 30); do docker exec goat curl -fsS -H "$J" -d '{"method":"auth.login","params":["Ci-new-deluge-9"],"id":1}' http://127.0.0.1:8112/json 2>/dev/null | jq -e '.result == true' >/dev/null && { ok=1; break; }; sleep 2; done
+          [ -n "$ok" ] || { echo "::error::Deluge did not take its new password"; exit 1; }
+          docker exec goat curl -fsS -H "$J" -H 'Authorization: MediaBrowser Client="ci", Device="ci", DeviceId="ci", Version="1"' -d '{"Username":"goat-admin","Pw":"Ci-new-jellyfin-9"}' http://127.0.0.1:8096/Users/AuthenticateByName | jq -e '.AccessToken' >/dev/null || { echo "::error::Jellyfin did not take its new password"; exit 1; }
+          # The wiring runs again and gives Sonarr the new passwords.
+          for i in $(seq 1 60); do docker exec goat jq -e '.running == false' /config/goat/wired.json >/dev/null 2>&1 && break; sleep 3; done
+          key=$(docker exec goat jq -r '.services[] | select(.key == "sonarr") | .apiKey' /config/goat/managed.json)
+          t=$(docker exec goat curl -fsS -X POST -H "X-Api-Key: $key" -H "$J" -d '{}' http://127.0.0.1:8989/engines/sonarr/api/v3/downloadclient/testall)
+          echo "$t" | jq -c '[.[] | {id, isValid}]'
+          echo "$t" | jq -e 'length >= 3 and all(.isValid)' >/dev/null || { echo "::error::Sonarr's download clients fail after the password change: $t"; exit 1; }
+          echo "::notice::New passwords work in qBittorrent, ruTorrent, Deluge and Jellyfin, and in Sonarr's download clients"
       - name: Files belong to PUID/PGID
         run: |
           test "$(stat -c %u:%g /tmp/goat/config/sonarr/config.xml)" = "1001:121"

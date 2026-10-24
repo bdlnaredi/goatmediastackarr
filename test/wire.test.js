@@ -183,6 +183,17 @@ test('wire connects every engine and running it again changes nothing', async ()
     // Keys found by the second run survive a restart of init.
     const again = init.run(process.env);
     assert.equal(again.managed.services.find(x => x.key === 'seerr').apiKey, 'seerrkey');
+    // A new qBittorrent password (set on the Stack page): Sonarr, Radarr and Prowlarr get it, once.
+    const sf = path.join(root, 'config/goat/secrets.json'), sec = JSON.parse(fs.readFileSync(sf, 'utf8'));
+    sec.qbitPass = 'A-new-qbit-pass'; fs.writeFileSync(sf, JSON.stringify(sec));
+    const puts = [sonarr, radarr, prowlarr].map(f => f.st.puts || 0);
+    const s4 = await wire.run();
+    for (const [k, v] of Object.entries(s4.steps)) assert.ok(v.ok, `${k}: ${v.error}`);
+    assert.deepEqual([sonarr, radarr, prowlarr].map((f, i) => (f.st.puts || 0) - puts[i]), [1, 1, 1]);
+    assert.equal(field(sonarr.st.downloadclient.find(x => x.implementation === 'QBittorrent'), 'password'), 'A-new-qbit-pass');
+    assert.equal(s4.steps.sonarr.result.qbittorrent, 'new password given');
+    await wire.run();
+    assert.deepEqual([sonarr, radarr, prowlarr].map((f, i) => (f.st.puts || 0) - puts[i]), [1, 1, 1], 'not again once they have it');
   } finally {
     await Promise.all(all.map(([f]) => new Promise(r => f.srv.close(r))));
   }

@@ -11,6 +11,7 @@
 // Results go to /config/goat/wired.json so the UI can show what is connected.
 
 const fs = require('fs');
+const crypto = require('crypto');
 const E = require('./engines');
 const { plexPrefs } = require('./init');
 
@@ -102,7 +103,26 @@ async function addTorrentClients(api, s, on, cat, out) {
   if (on.includes('qbittorrent')) out.qbittorrent = await addFromSchema(api, 'downloadclient', 'QBittorrent', 'qBittorrent', qbitValues(s, cat), { protocol: 'torrent', priority: 1 });
   if (on.includes('rutorrent')) { await rutorrentUp(s); out.rutorrent = await addFromSchema(api, 'downloadclient', 'RTorrent', 'ruTorrent', rutorrentValues(s, cat), { protocol: 'torrent', priority: 2 }); }
   if (on.includes('deluge')) { await delugeUp(); out.deluge = await addFromSchema(api, 'downloadclient', 'Deluge', 'Deluge', delugeValues(s, cat), { protocol: 'torrent', priority: 3 }); }
+  for (const k of ['qbittorrent', 'rutorrent', 'deluge']) if (out[k] === 'already there' && (s.passChanged || []).includes(k)) out[k] = await newPassword(api, k, s);
 }
+// A login password changed on the Stack page: the download client this container added (the one at its own address)
+// gets the new one. Apps cannot be asked for the old password (they hide it), so this runs only after a change.
+const CLIENT = { qbittorrent: ['QBittorrent', 'qbitUser', 'qbitPass'], rutorrent: ['RTorrent', 'rutorrentUser', 'rutorrentPass'], deluge: ['Deluge', null, 'delugePass'] };
+async function newPassword(api, k, s) {
+  const [impl, user, pass] = CLIENT[k];
+  let n = 0;
+  for (const c of await api.get('downloadclient')) {
+    if (c.implementation !== impl) continue;
+    const f = n => (c.fields || []).find(x => x.name === n);
+    if (!f('host') || f('host').value !== '127.0.0.1' || +(f('port') || {}).value !== +E.ENGINES[k].port) continue;
+    if (user && f('username')) f('username').value = s[user];
+    if (f('password')) f('password').value = s[pass];
+    await api.put(`downloadclient/${c.id}?forceSave=true`, c); n++;
+  }
+  return n ? 'new password given' : 'already there';
+}
+// The passwords Sonarr and the others were last given, as fingerprints (never the passwords themselves).
+const passPrints = s => Object.fromEntries(Object.entries(CLIENT).map(([k, [, u, p]]) => [k, crypto.createHash('sha256').update(`${u ? s[u] : ''}:${s[p]}`).digest('hex').slice(0, 16)]));
 const sabValues = (s, cat) => ({ host: '127.0.0.1', port: E.ENGINES.sabnzbd.port, useSsl: false, urlBase: E.ENGINES.sabnzbd.base, apiKey: s.sabnzbd, '/^(tv|movie|music)Category$/': cat, category: cat });
 
 async function wireArr(key, keys, s, on, folder, cat) {
@@ -327,6 +347,9 @@ async function seerrAddArr(k, keys, headers, isDefault = true) {
 // ---------- main ----------
 async function run() {
   const s = readJSON(`${C}/goat/secrets.json`);
+  // Which download-client passwords changed since the last time every app was given them.
+  const pf = `${C}/goat/client-passwords.json`, prints = passPrints(s), last = readJSON(pf, null);
+  s.passChanged = last ? Object.keys(prints).filter(k => last[k] && last[k] !== prints[k]) : [];
   const mf = `${C}/goat/managed.json`;
   const on = E.enabled();
   const keys = {};
@@ -369,6 +392,8 @@ async function run() {
     if (round > 1) { log(`trying again in ${pause / 1000}s: ${todo.map(([k]) => k).join(', ')}`); await sleep(pause); }
     for (const [k, fn] of todo) await step(k, fn);
   }
+  // Remembered once Sonarr, Radarr, Lidarr and Prowlarr all took them; otherwise tried again next time.
+  if (!last || steps.filter(([k]) => ['sonarr', 'radarr', 'lidarr', 'prowlarr'].includes(k)).every(([k]) => state.steps[k] && state.steps[k].ok)) writeJSON(pf, prints);
   state.running = false; state.finished = Date.now();
   writeJSON(`${C}/goat/wired.json`, state);
   const bad = Object.entries(state.steps).filter(([, v]) => !v.ok).map(([k]) => k);

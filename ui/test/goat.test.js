@@ -157,6 +157,11 @@ test('container settings, VPN file upload, control commands and the leak test', 
     assert.equal((await c.post('/api/goat/stop', { engine: 'radarr' })).status, 200);
     assert.equal((await c.post('/api/goat/start', { engine: 'radarr' })).status, 200);
     assert.deepEqual(got.map(g => g.cmd + (g.engine ? ':' + g.engine : '')), ['apply-vpn', 'restart:sonarr', 'restart:nope', 'stop:radarr', 'start:radarr']);
+    // A new login password goes to the control service, which checks it and gives it to the app.
+    r = await c.post('/api/goat/login', { app: 'qbittorrent', password: 'New-Qbit-pass' });
+    assert.equal(r.status, 200); assert.ok(r.data.logins, 'answers with the Stack page status');
+    assert.deepEqual(got[got.length - 1], { cmd: 'set-login', app: 'qbittorrent', password: 'New-Qbit-pass' });
+    got.length = 0;
     fs.writeFileSync(mf, JSON.stringify({ services: [], extras: [{ key: 'sonarr', name: 'Sonarr' }, { key: 'flaresolverr', name: 'FlareSolverr' }] }));
     fs.writeFileSync(path.join(run, 'stopped.json'), JSON.stringify(['sonarr']));
     const eng = (await c.get('/api/goat/status')).data.engines;
@@ -174,6 +179,7 @@ test('container settings, VPN file upload, control commands and the leak test', 
     assert.equal((await v.get('/api/goat/status')).status, 403);
     assert.equal((await v.post('/api/goat/restart', { engine: 'sonarr' })).status, 403);
     assert.equal((await v.post('/api/goat/stop', { engine: 'sonarr' })).status, 403);
+    assert.equal((await v.post('/api/goat/login', { app: 'qbittorrent', password: 'Viewer-wants-it' })).status, 403);
   } finally { await s.stop(); ctl.close(); ipsrv.close(); }
 });
 

@@ -33,8 +33,45 @@ const markStopped = (name, on) => { const l = new Set(stoppedList()); on ? l.add
 const WITH_WEB = ['rutorrent', 'deluge'];
 const parts = name => WITH_WEB.includes(name) ? [name, name + '-web'] : [name];
 
+// Logins made for you that can be changed from the Stack page, and where each password is kept in secrets.json.
+const LOGINS = { qbittorrent: 'qbitPass', rutorrent: 'rutorrentPass', deluge: 'delugePass', jellyfin: 'jellyfinPass' };
+const SECRETS = () => process.env.GOAT_SECRETS || `${E.CONFIG}/goat/secrets.json`;
+const QBIT_CONF = () => process.env.GOAT_QBIT_CONF || `${E.CONFIG}/qbittorrent/qBittorrent/config/qBittorrent.conf`;
+// 8 to 128 visible characters, no spaces: it goes into config files, a web login and Basic auth.
+const goodPassword = p => typeof p === 'string' && p.length >= 8 && p.length <= 128 && /^[\x21-\x7e]+$/.test(p);
+const refused = e => e && (e.cause && /ECONNREFUSED|ECONNRESET|ENOTFOUND/.test(e.cause.code || '') || /ECONNREFUSED|fetch failed/.test(e.message || ''));
+
+// Gives the app its new password while it runs (qBittorrent and Jellyfin keep their own), or leaves it for init.js to
+// write when the app starts (ruTorrent reads it at start, Deluge's web.conf is rewritten by init.js).
+async function applyPassword(app, old, pw, s, fetchFn) {
+  if (app === 'qbittorrent') {
+    try {
+      const r = await fetchFn(`${E.url('qbittorrent')}/api/v2/app/setPreferences`, { method: 'POST', signal: AbortSignal.timeout(15000),
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'json=' + encodeURIComponent(JSON.stringify({ web_ui_password: pw })) });
+      if (!r.ok) throw new Error('qBittorrent refused the change (' + r.status + ')');
+    } catch (e) {
+      if (!refused(e)) throw e;
+      // Not running: drop the stored password so init.js writes the new one before qBittorrent starts.
+      try { const f = QBIT_CONF(); fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace(/^WebUI\\Password_PBKDF2=.*\r?\n?/m, '')); } catch {}
+    }
+  }
+  if (app === 'jellyfin') {
+    const jf = E.url('jellyfin'), auth = t => `MediaBrowser Client="GoatMediaStackarr", Device="goat", DeviceId="goat-control", Version="1"${t ? `, Token="${t}"` : ''}`;
+    let login;
+    try {
+      const r = await fetchFn(`${jf}/Users/AuthenticateByName`, { method: 'POST', signal: AbortSignal.timeout(20000), headers: { 'Content-Type': 'application/json', Authorization: auth() },
+        body: JSON.stringify({ Username: s.jellyfinUser, Pw: old }) });
+      if (!r.ok) throw new Error(r.status === 401 ? 'Jellyfin did not accept the current password (was it changed in Jellyfin?)' : 'Jellyfin sign-in failed (' + r.status + ')');
+      login = await r.json();
+    } catch (e) { throw refused(e) ? new Error('Jellyfin has to be running to change its password') : e; }
+    const r = await fetchFn(`${jf}/Users/${login.User.Id}/Password`, { method: 'POST', signal: AbortSignal.timeout(20000), headers: { 'Content-Type': 'application/json', Authorization: auth(login.AccessToken) },
+      body: JSON.stringify({ CurrentPw: old, NewPw: pw }) });
+    if (!r.ok) throw new Error('Jellyfin refused the new password (' + r.status + ')');
+  }
+}
+
 // Each command is a fixed list of steps; nothing from the request reaches a shell.
-async function handle(msg, exec = { run, restart, svc, markStopped }) {
+async function handle(msg, exec = { run, restart, svc, markStopped, fetch: (...a) => fetch(...a) }) {
   const cmd = msg && msg.cmd;
   if (cmd === 'ping') return { ok: true };
   if (cmd === 'restart') {
@@ -70,6 +107,26 @@ async function handle(msg, exec = { run, restart, svc, markStopped }) {
     for (const s of steps.flatMap(parts)) { const r = await exec.restart(s); if (!r.ok) failed.push(s); }
     return failed.length ? { ok: false, error: 'Could not restart ' + failed.join(', '), output: k.out } : { ok: true, output: k.out };
   }
+  if (cmd === 'set-login') {
+    const key = LOGINS[msg.app];
+    if (!key) return { ok: false, error: 'Unknown login' };
+    if (!goodPassword(msg.password)) return { ok: false, error: 'Use 8 to 128 characters: letters, numbers and symbols, no spaces.' };
+    let s; try { s = JSON.parse(fs.readFileSync(SECRETS(), 'utf8')); } catch { return { ok: false, error: 'The logins file could not be read' }; }
+    const old = s[key];
+    if (old === msg.password) return { ok: true };
+    try { await applyPassword(msg.app, old, msg.password, s, exec.fetch || fetch); } catch (e) { return { ok: false, error: e.message }; }
+    s[key] = msg.password;
+    const tmp = SECRETS() + '.new';
+    fs.writeFileSync(tmp, JSON.stringify(s, null, 1), { mode: 0o600 }); fs.renameSync(tmp, SECRETS());
+    // init.js writes it into the apps' settings (and managed.json for the interface); the web page that reads it at
+    // start is restarted; the wiring gives Sonarr, Radarr, Lidarr and Prowlarr the new password.
+    const i = await exec.run('/usr/local/bin/node', [`${BIN}/init.js`]);
+    if (!i.ok) return { ok: false, error: 'Writing the app settings failed: ' + i.err };
+    const web = { rutorrent: 'rutorrent-web', deluge: 'deluge-web' }[msg.app];
+    if (web && E.enabled().includes(msg.app)) await exec.restart(web);
+    await exec.restart('goat-wire');
+    return { ok: true };
+  }
   return { ok: false, error: 'Unknown command' };
 }
 
@@ -87,7 +144,7 @@ function serve() {
       let msg; try { msg = JSON.parse(buf.slice(0, nl)); } catch { return sock.end(JSON.stringify({ ok: false, error: 'Bad request' }) + '\n'); }
       // One command at a time, so two clicks cannot interleave restarts.
       busy = busy.then(async () => {
-        log('command', msg.cmd, msg.engine || '');
+        log('command', msg.cmd, msg.engine || msg.app || '');
         let r; try { r = await handle(msg); } catch (e) { r = { ok: false, error: e.message }; }
         if (!r.ok) log('failed:', r.error);
         sock.end(JSON.stringify(r) + '\n');
@@ -103,4 +160,4 @@ function serve() {
 }
 
 if (require.main === module) serve();
-module.exports = { handle, SOCK };
+module.exports = { handle, SOCK, goodPassword };
