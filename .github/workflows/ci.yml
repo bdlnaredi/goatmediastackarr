@@ -172,6 +172,24 @@ jobs:
           for i in $(seq 1 60); do curl -fsS http://127.0.0.1:2806/api/health && break; sleep 5; done
           sleep 60
           docker exec goat jq -e '[.steps[] | .ok] | all' /config/goat/wired.json
+      - name: FlareSolverr works for real
+        if: matrix.arch == 'amd64'
+        run: |
+          # Downloaded on first start with its own Chromium; it has to find the browser's version and open a page.
+          mkdir -p /tmp/goatfs
+          docker run -d --name goatfs -e PUID=1001 -e PGID=121 -e GOAT_ENGINES=prowlarr,flaresolverr -v /tmp/goatfs:/config goat:ci
+          ok=""
+          for i in $(seq 1 96); do
+            if docker exec goatfs curl -fsS http://127.0.0.1:8191/health 2>/dev/null | grep -q ok; then ok=1; break; fi
+            sleep 5
+          done
+          docker logs goatfs 2>&1 | grep -iE 'flaresolverr|chrom|browser' | tail -25
+          [ -n "$ok" ] || { docker logs goatfs 2>&1 | grep -iE 'chrome|browser|librar|error' | tail -8 | sed 's/^/::error::/'; exit 1; }
+          r=$(docker exec goatfs curl -sS -m 120 -H 'Content-Type: application/json' -d '{"cmd":"request.get","url":"https://example.com/","maxTimeout":60000}' http://127.0.0.1:8191/v1)
+          echo "$r" | jq -c '{status, message, title: (.solution.response // "" | capture("<title>(?<t>[^<]*)").t?)}'
+          echo "$r" | jq -e '.status == "ok"' >/dev/null || { echo "::error::FlareSolverr could not open a page: $(echo "$r" | jq -r .message)"; exit 1; }
+          echo "::notice::FlareSolverr $(docker logs goatfs 2>&1 | grep -o "FlareSolverr's browser: .*" | tail -1)"
+          docker rm -f goatfs >/dev/null; sudo rm -rf /tmp/goatfs
       - name: VPN on without a VPN file keeps the download apps offline
         run: |
           docker rm -f goat

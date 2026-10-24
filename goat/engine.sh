@@ -101,16 +101,31 @@ case "$name" in
     fi
     # Its bundled Chromium needs some system libraries. They are added the first time it runs in this container,
     # instead of making the image bigger for everyone.
-    if [[ ! -f /var/lib/goat/flaresolverr-libs ]]; then
+    fs_libs() {
       echo "[goat] Adding the libraries FlareSolverr's browser needs (first start only)..."
-      if apt-get update -qq && apt-get install -y -qq --no-install-recommends libnss3 libatk-bridge2.0-0t64 libatk1.0-0t64 libgbm1 \
-           libxkbcommon0 libasound2t64 libcups2t64 libxcomposite1 libxdamage1 libxrandr2 libxfixes3 libpango-1.0-0 libcairo2 \
-           libxss1 libgtk-3-0t64 fonts-liberation xvfb >/dev/null; then
+      if apt-get update -qq && apt-get install -y -qq --no-install-recommends libnss3 libnspr4 libatk-bridge2.0-0t64 libatk1.0-0t64 \
+           libatspi2.0-0t64 libgbm1 libdrm2 libxkbcommon0 libasound2t64 libcups2t64 libdbus-1-3 libxcomposite1 libxdamage1 libxrandr2 \
+           libxfixes3 libxi6 libxext6 libxrender1 libxss1 libpango-1.0-0 libcairo2 libgtk-3-0t64 libglib2.0-0t64 fontconfig \
+           fonts-liberation xvfb xauth >/dev/null; then
         mkdir -p /var/lib/goat && touch /var/lib/goat/flaresolverr-libs; rm -rf /var/lib/apt/lists/*
       else echo "[goat] Could not add them (no internet?). Trying again in a minute."; sleep 60; exit 1; fi
-    fi
+    }
+    [[ -f /var/lib/goat/flaresolverr-libs ]] || fs_libs
     mkdir -p /config/flaresolverr && chown "$PUID:$PGID" /config/flaresolverr
     if ! s6-applyuidgid -u "$PUID" -g "$PGID" -G "$PGID" /opt/goat/bin/flaresolverr-install.sh; then sleep 60; exit 1; fi
+    # FlareSolverr reads the browser's version from "chrome --version" and gives up without it. Ask the browser
+    # ourselves, the same way, so the real reason shows in the log; missing libraries are added again.
+    fs_dir=/config/flaresolverr/app/flaresolverr fs_chrome=/config/flaresolverr/app/flaresolverr/_internal/chrome/chrome
+    fs_ver() { s6-applyuidgid -u "$PUID" -g "$PGID" -G "$PGID" env HOME=/config/flaresolverr LD_LIBRARY_PATH="$fs_dir/_internal" "$fs_chrome" --version 2>&1 | head -c 600; }
+    v=$(fs_ver)
+    if ! grep -Eq '[0-9]+\.[0-9]+\.' <<<"$v"; then
+      echo "[goat] FlareSolverr's browser did not start: ${v:-no answer}"
+      miss=$(LD_LIBRARY_PATH="$fs_dir/_internal" ldd "$fs_chrome" 2>/dev/null | awk '/not found/ {print $1}' | tr '\n' ' ')
+      [[ -n "$miss" ]] && echo "[goat] Libraries it cannot find: $miss"
+      rm -f /var/lib/goat/flaresolverr-libs; fs_libs; v=$(fs_ver)
+      grep -Eq '[0-9]+\.[0-9]+\.' <<<"$v" || { echo "[goat] FlareSolverr's browser still does not start: ${v:-no answer}. Trying again in 5 minutes."; sleep 300; exit 1; }
+    fi
+    echo "[goat] FlareSolverr's browser: $v"
     export HOST=127.0.0.1 PORT=8191 HEADLESS=true LOG_LEVEL="${FLARESOLVERR_LOG_LEVEL:-info}" TZ="${TZ:-UTC}"
     cd /config/flaresolverr/app/flaresolverr || exit 1
     cmd=(./flaresolverr) ;;
