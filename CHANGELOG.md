@@ -31,6 +31,7 @@
 
 ## Fixes
 
+- FlareSolverr no longer starts without its browser ("Chrome / Chromium web browser not installed"). A copy whose built-in Chromium is missing, for example after unpacking stopped on a full disk, is downloaded again; a new download must contain Chromium before it replaces the working one; and it first checks there is about 1.5 GB free in App data.
 - Prowlarr keeps sending indexers to Sonarr, Radarr and Lidarr after their API keys change (for example after restoring one of them from a backup): every start updates the key Prowlarr has for them.
 - Seerr keeps working with Sonarr and Radarr after their API keys change: every start checks the address and key Seerr uses for the built-in Sonarr and Radarr and updates them (or adds them back if they were removed). A stale key showed as "Unable to get queue from Radarr/Sonarr server" in Seerr's download tracker, and requests could fail.
 - WireGuard (PIA and provider files): traffic now really flows. WireGuard's encrypted packets kept the VPN apps' mark, so they were sent back into the tunnel in a loop — the handshake worked but nothing came back, and huge amounts showed as sent. WireGuard now marks its own packets separately. A new test runs a real WireGuard tunnel with the kill switch on every change.
