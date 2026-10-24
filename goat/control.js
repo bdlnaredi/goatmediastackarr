@@ -49,11 +49,12 @@ async function applyPassword(app, old, pw, s, fetchFn) {
       const r = await fetchFn(`${E.url('qbittorrent')}/api/v2/app/setPreferences`, { method: 'POST', signal: AbortSignal.timeout(15000),
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'json=' + encodeURIComponent(JSON.stringify({ web_ui_password: pw })) });
       if (!r.ok) throw new Error('qBittorrent refused the change (' + r.status + ')');
-    } catch (e) {
-      if (!refused(e)) throw e;
-      // Not running: drop the stored password so init.js writes the new one before qBittorrent starts.
-      try { const f = QBIT_CONF(); fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace(/^WebUI\\Password_PBKDF2=.*\r?\n?/m, '')); } catch {}
-    }
+    } catch (e) { if (!refused(e)) throw e; }
+    // Also in its settings file, so the next start (and init.js, which keeps the stored one) has the new password.
+    try {
+      const f = QBIT_CONF(), line = `WebUI\\Password_PBKDF2="${require('./init').qbitHash(pw)}"`, t = fs.readFileSync(f, 'utf8');
+      fs.writeFileSync(f, /^WebUI\\Password_PBKDF2=.*$/m.test(t) ? t.replace(/^WebUI\\Password_PBKDF2=.*$/m, () => line) : t.replace(/^\[Preferences\]\r?\n/m, m => m + line + '\n'));
+    } catch {}
   }
   if (app === 'jellyfin') {
     const jf = E.url('jellyfin'), auth = t => `MediaBrowser Client="GoatMediaStackarr", Device="goat", DeviceId="goat-control", Version="1"${t ? `, Token="${t}"` : ''}`;

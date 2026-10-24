@@ -168,7 +168,9 @@ jobs:
           done
           code=$(curl -s -o /dev/null -w '%{http_code}' -b /tmp/ck -H "$J" -H "Origin: $B" -d '{"app":"qbittorrent","password":"short"}' $B/api/goat/login)
           [ "$code" = 400 ] || { echo "::error::A too short password was not refused ($code)"; exit 1; }
-          docker exec goat curl -fsS -d 'username=goat&password=Ci-new-qbittorrent-9' http://127.0.0.1:8080/api/v2/auth/login | grep -q 'Ok' || { echo "::error::qBittorrent did not take its new password"; exit 1; }
+          # qBittorrent lets every login through from inside the container, so check the password it stored instead.
+          docker exec goat node -e 'const c=require("fs").readFileSync("/config/qbittorrent/qBittorrent/config/qBittorrent.conf","utf8"),m=c.match(/Password_PBKDF2="@ByteArray\(([^:]+):([^)]+)\)"/);process.exit(m&&require("crypto").pbkdf2Sync("Ci-new-qbittorrent-9",Buffer.from(m[1],"base64"),100000,64,"sha512").toString("base64")===m[2]?0:1)' \
+            || { echo "::error::qBittorrent did not take its new password"; exit 1; }
           ok=""; for i in $(seq 1 30); do [ "$(docker exec goat curl -s -o /dev/null -w '%{http_code}' -u goat:Ci-new-rutorrent-9 http://127.0.0.1:8090/)" = 200 ] && { ok=1; break; }; sleep 2; done
           [ -n "$ok" ] || { echo "::error::ruTorrent did not take its new password"; exit 1; }
           ok=""; for i in $(seq 1 30); do docker exec goat curl -fsS -H "$J" -d '{"method":"auth.login","params":["Ci-new-deluge-9"],"id":1}' http://127.0.0.1:8112/json 2>/dev/null | jq -e '.result == true' >/dev/null && { ok=1; break; }; sleep 2; done

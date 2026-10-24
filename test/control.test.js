@@ -108,6 +108,8 @@ test('changing a login password: checked, given to the running app, saved, then 
   fs.writeFileSync(conf, '[Preferences]\nWebUI\\Username=goat\nWebUI\\Password_PBKDF2="@ByteArray(x:y)"\nWebUI\\Port=8080\n');
   x.fetch = async () => { const e = new TypeError('fetch failed'); e.cause = { code: 'ECONNREFUSED' }; throw e; };
   assert.deepEqual(await handle({ cmd: 'set-login', app: 'qbittorrent', password: 'Offline-pass' }, x), { ok: true });
-  assert.equal(fs.readFileSync(conf, 'utf8'), '[Preferences]\nWebUI\\Username=goat\nWebUI\\Port=8080\n');
+  const saved = fs.readFileSync(conf, 'utf8'), m = saved.match(/^WebUI\\Password_PBKDF2="@ByteArray\(([^:]+):([^)]+)\)"$/m);
+  assert.ok(m, 'the new password is stored'); assert.match(saved, /WebUI\\Port=8080/);
+  assert.equal(require('node:crypto').pbkdf2Sync('Offline-pass', Buffer.from(m[1], 'base64'), 100000, 64, 'sha512').toString('base64'), m[2]);
   delete process.env.GOAT_ENGINES;
 });
