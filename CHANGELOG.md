@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+## v0.7.5 — 2026-10-24
+
 - A new design for the web page, in four styles to choose from under Appearance → Style: **Cinema** (dark and poster-first like a streaming app, with the menu as a bar across the top), **Dashboard** (clean cards and clear lists, information first), **Glass** (frosted panels over your artwork) and **Compact** (flat and tight, more on every screen). Each works in light and dark and with every accent colour.
 - The menu is grouped: *Watch* (Dashboard, Discover, Search, Library, Upcoming, Music & books), *Requests* (Requests, Wanted), *Downloads* (Downloads, RSS, Usenet, Trackers, Indexers, Subtitles) and *Server* (Stack, Health, Unraid, Stats, Settings). On a phone the bottom bar has Dashboard, Library, Downloads and Requests, and *More* lists the rest by group.
 - *What's new*: every version's changes, on the web page and in the app. It opens by itself once after an update, and a dot shows until you have seen it.
