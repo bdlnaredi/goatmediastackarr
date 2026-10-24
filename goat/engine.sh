@@ -155,4 +155,9 @@ case "$name" in
   *) echo "[goat] unknown engine $name"; exec sleep infinity ;;
 esac
 
+# PHP's built-in server writes a line for every request, and with several workers "Failed to poll event" whenever a
+# worker's wait is interrupted (harmless: it just waits again). Keep those out of the log; real errors still show.
+if [[ "$name" == rutorrent-web ]]; then
+  exec > >(grep --line-buffered -Ev 'Failed to poll event|:[0-9]+ (Accepted|Closing)$|\]: (GET|POST|HEAD|OPTIONS) ') 2>&1
+fi
 exec s6-applyuidgid -u "$PUID" -g "$PGID" -G "$groups" "${cmd[@]}"

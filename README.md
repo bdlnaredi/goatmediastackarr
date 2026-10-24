@@ -63,7 +63,7 @@ Every start checks the connections again: if an app's API key changed (say you r
 
 Open `http://YOUR-SERVER:2806`. Every page has its own address (`/downloads`, `/library`, `/settings/alerts`…), works on a phone, and in light or dark.
 
-- **Dashboard**: what's playing, downloading and new, and whether every app and the VPN are fine. A big poster ticker of your library, the featured titles, *Recently added to Plex* (ready to watch) and *Recently added to Radarr and Sonarr* (may still be downloading) as separate rows, each with back and forward buttons.
+- **Dashboard**: what's playing, downloading and new, and whether every app and the VPN are fine. A big poster ticker of your library, the featured titles, *Recently added to Plex* (ready to watch) and *Recently added to Radarr and Sonarr* (may still be downloading) as separate rows. The featured banner and the rows have back and forward buttons.
 - **Discover** and **Search**: TMDB, Trakt and TheTVDB lists; every movie and show opens its own page (story, cast, seasons, trailer, a faded picture of it behind), to request or add straight to Sonarr or Radarr.
 - **Cast and More like this**: movies and shows in the Library, Discover and title pages show their cast and similar titles. Tap an actor for their page with everything they were in (movies, shows, or just what is in your library); tap any title to open it and request it.
 - **Requests**: each one shows where it really is: *Requested* (waiting for an admin), *Approved*, *Looking for a download*, *Downloading* (how far, time left), *Copying to the library*, *In the library* (waiting for Plex) and *Available*. Per-person request limits and automatic approval.

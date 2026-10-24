@@ -75,29 +75,25 @@
     C.reveal(el);
   };
 
-  // A slow row of big posters across the top, with counters and back and forward buttons.
+  // A slow row of big posters across the top, with counters. It can also be scrolled by hand (swipe or trackpad).
   C.ticker = (el, art, onPick, label) => {
     const all = (art.wall || []).filter(x => x.poster);
     if (all.length < 3) { el.innerHTML = ''; return; }
     let f = all.slice(); while (f.length < 16) f = f.concat(all);
     const tile = (x, k) => `<button type="button" class="cn-tt" data-i="${x.sid}:${x.id}" tabindex="${k < f.length ? 0 : -1}" aria-label="${esc(x.title)}${x.year ? ', ' + x.year : ''}" title="${esc(x.title)}"><img src="${esc(x.poster)}" alt="" loading="lazy"><span class="cn-ttn">${esc(x.title)}</span></button>`;
     el.innerHTML = `<section class="cn-tk" aria-label="${esc(label || 'Your library')}"><div class="cn-tkh"><span class="cn-n" data-n="${art.shows}">0</span><span>series</span><span class="cn-n" data-n="${art.movies}">0</span><span>movies</span>${label ? `<small>${esc(label)}</small>` : ''}</div>
-      <button type="button" class="cn-tka" data-s="-1" aria-label="Back">‹</button><div class="cn-tkw"><div class="cn-tkr">${f.concat(f).map(tile).join('')}</div></div><button type="button" class="cn-tka" data-s="1" aria-label="Forward">›</button></section>`;
+      <div class="cn-tkw"><div class="cn-tkr">${f.concat(f).map(tile).join('')}</div></div></section>`;
     const by = Object.fromEntries(all.map(x => [x.sid + ':' + x.id, x])), w = el.querySelector('.cn-tkw'), root = el.firstElementChild;
     w.onclick = e => { const b = e.target.closest('[data-i]'); if (b && onPick) onPick(by[b.dataset.i]); };
     el.querySelectorAll('[data-n]').forEach(n => { const to = +n.dataset.n, t0 = performance.now(); if (reduce()) { n.textContent = to; return; } const g = t => { const p = Math.min(1, (t - t0) / 1100); n.textContent = Math.round(to * (1 - Math.pow(1 - p, 3))); if (p < 1) requestAnimationFrame(g); }; requestAnimationFrame(g); });
-    // It drifts by itself; hovering stops it, and the buttons move it a page at a time, then it carries on.
+    // It drifts by itself; hovering or touching stops it, and after a swipe it carries on from there.
     let pos = 0, last = 0, hover = false, holdTill = 0;
     const half = () => w.scrollWidth / 2;
     const wrap = () => { const h = half(); if (h > 0) { while (pos >= h) pos -= h; while (pos < 0) pos += h; } };
     w.addEventListener('pointerenter', () => { hover = true; }); w.addEventListener('pointerleave', () => { hover = false; pos = w.scrollLeft; });
     w.addEventListener('focusin', () => { hover = true; }); w.addEventListener('focusout', () => { hover = false; pos = w.scrollLeft; });
-    w.addEventListener('scroll', () => { if (hover || Date.now() < holdTill) pos = w.scrollLeft; }, { passive: true });
-    root.querySelectorAll('.cn-tka').forEach(b => b.onclick = () => {
-      const d = +b.dataset.s, step = w.clientWidth * .8;
-      pos = w.scrollLeft; if (d < 0 && pos < step) { pos += half(); w.scrollLeft = pos; } else if (d > 0 && pos + step > half()) { pos -= half(); w.scrollLeft = pos; }
-      holdTill = Date.now() + 5000; w.scrollBy({ left: d * step, behavior: reduce() ? 'auto' : 'smooth' });
-    });
+    w.addEventListener('touchstart', () => { holdTill = Date.now() + 4000; }, { passive: true });
+    w.addEventListener('scroll', () => { if (hover || Date.now() < holdTill) { pos = w.scrollLeft; if (Date.now() < holdTill) holdTill = Date.now() + 2500; } }, { passive: true });
     const run = t => {
       if (!document.body.contains(root)) return;
       const dt = last ? Math.min(100, t - last) : 0; last = t;
