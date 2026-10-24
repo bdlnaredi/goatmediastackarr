@@ -54,7 +54,9 @@ mkdir -p /run/goat
 printf '[Interface]\nPrivateKey = %s\nAddress = 10.2.0.2/32\nDNS = 10.2.0.1\n\n[Peer]\nPublicKey = %s\nAllowedIPs = 0.0.0.0/0, ::/0\nEndpoint = 10.0.0.1:51820\nPersistentKeepalive = 25\n' "$CK" "$SP" > /tmp/goat-wg-src.conf
 "${BOX[@]}" sh "$HERE/goat/wg-prepare.sh" /tmp/goat-wg-src.conf > /run/goat/goatvpn.conf; chmod 600 /run/goat/goatvpn.conf
 sed 's/^/  | /' /run/goat/goatvpn.conf | grep -v PrivateKey
-"${BOX[@]}" wg-quick up /run/goat/goatvpn.conf 2>&1 | sed 's/^/  | /'
+up=$("${BOX[@]}" wg-quick up /run/goat/goatvpn.conf 2>&1); echo "$up" | sed 's/^/  | /'
+[ -n "${GITHUB_ACTIONS:-}" ] && echo "::notice title=wg-quick up::$(echo "$up" | tr '\n' ';')"
+[ -n "${GITHUB_ACTIONS:-}" ] && echo "::notice title=Runner::$(. /etc/os-release; echo "$PRETTY_NAME") kernel $(uname -r); iptables $(iptables -V)"
 "${BOX[@]}" ip rule add pref 95 from 10.2.0.2 lookup 5157
 
 expect "VPN app goes through the tunnel" "$(get "${AS_VPN[@]}")" "10.2.0.2"
