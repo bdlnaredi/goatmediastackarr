@@ -63,6 +63,7 @@ class FakeServer(private val server: MockWebServer) : Dispatcher() {
             p == "/api/tautulli/t1/img" -> png("p${(path.length % 12) + 1}.png")
             p == "/api/unraid/u1" -> json(UNRAID)
             p == "/api/users" -> json("""[{"id":"u1","name":"Ann","role":"admin","twofa":true},{"id":"u2","name":"Ravi","role":"user","plex":{"name":"ravi"},"dataLimit":500,"avatar":"/img/p7.png"},{"id":"u3","name":"Mira","role":"user","plex":{"name":"mira"}},{"id":"u4","name":"Leo","role":"user"}]""")
+            p == "/api/person" -> json(person())
             p == "/api/title" -> json(title(request.requestUrl?.queryParameter("type") == "tv"))
             p == "/api/usage" -> json(usage("u1", "Ann", 0))
             p == "/api/notifications" -> json(feed())
@@ -128,13 +129,20 @@ class FakeServer(private val server: MockWebServer) : Dispatcher() {
         return """{"id":1,"title":"Northwind","monitored":true,"seasons":[{"n":0,"monitored":false},{"n":1,"monitored":true},{"n":2,"monitored":true},{"n":3,"monitored":true}],"episodes":[$eps]}"""
     }
 
+    private fun person(): String {
+        val credits = listOf("Quiet Orbit" to "Mara Quinn", "Paper Kites" to "Iris", "Northwind" to "The Keeper", "Low Orbit" to "Pilot", "Velvet Static" to "Director").withIndex()
+            .joinToString(",") { (i, c) -> """{"type":"${if (i == 2) "tv" else "movie"}","id":${304 + i},"title":"${c.first}","year":"${2025 - i * 2}","poster":"${img(i + 3)}","role":"${c.second}","rating":7.${i + 2},"available":${if (i == 1) 5 else 0},"inLib":${i < 2},"crew":${i == 4}}""" }
+        return """{"id":9001,"name":"Ana Reyes","photo":"${img(2)}","bio":"Ana Reyes is an invented actor for these pictures. She started on the stage in Lisbon and moved to film in her twenties.","born":"1984-06-02","died":"","place":"Lisbon, Portugal","known":"Acting","seerr":"e1","credits":[$credits]}"""
+    }
+
     private fun title(tv: Boolean): String {
         val cast = listOf("Ana Reyes" to "Mara Quinn", "Tom Okafor" to "Elias", "Lin Park" to "Dr. Hale", "Sam Varga" to "The Keeper", "Ivy Moss" to "June").withIndex()
-            .joinToString(",") { (i, c) -> """{"name":"${c.first}","role":"${c.second}","photo":"${img(i + 2)}"}""" }
+            .joinToString(",") { (i, c) -> """{"id":${9001 + i},"name":"${c.first}","role":"${c.second}","photo":"${img(i + 2)}"}""" }
+        val similar = listOf("Paper Kites", "Low Orbit", "Hollow Pines").withIndex().joinToString(",") { (i, n) -> """{"type":"movie","id":${400 + i},"title":"$n","year":"${2019 + i}","poster":"${img(i + 6)}","rating":7.${i + 1},"available":${if (i == 0) 5 else 0},"inLib":${i == 0}}""" }
         val seasons = if (tv) (1..3).joinToString(",") { """{"n":$it,"episodes":${6 + it * 2},"name":"Season $it","date":"${2021 + it}-03-0$it"}""" } else ""
         return """{"type":"${if (tv) "tv" else "movie"}","id":304,"title":"Quiet Orbit","year":"2025","date":"2025-04-11","tagline":"Some signals should stay unanswered.","overview":"A lone engineer on a dying space station picks up a voice that should not exist, and has three days to decide whether to answer before the station falls out of orbit.",
             "poster":"${img(5)}","backdrop":"${server.url("/img/fanart.png")}","rating":7.9,"runtime":${if (tv) 48 else 121},"genres":["Sci-Fi","Thriller","Drama"],"status":"Released","studio":"Northlight Pictures",
-            "cast":[$cast],"seasons":[$seasons],"trailer":"dQw4w9WgXcQ","seerr":"e1","available":0,"library":null,"request":null}""".replace("\n", "")
+            "cast":[$cast],"similar":[$similar],"seasons":[$seasons],"trailer":"dQw4w9WgXcQ","seerr":"e1","available":0,"library":null,"request":null}""".replace("\n", "")
     }
 
     private fun feed(): String {

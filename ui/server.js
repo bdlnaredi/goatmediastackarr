@@ -1983,14 +1983,47 @@ const goatServer = http.createServer(async (req, res) => {
       const d = await call(sv, '/api/v1/tv/' + +q.get('id'));
       return send(res, 200, { seasons: ((d && d.seasons) || []).filter(x => x.seasonNumber > 0).map(x => ({ n: x.seasonNumber, episodes: x.episodeCount || 0 })) });
     }
+    // Small cards for "More like this" and a person's filmography. Seerr uses camelCase, TMDB snake_case.
+    const tmdbImg = (x, w) => !x ? '' : /^https?:\/\//.test(x) ? String(x).slice(0, 600) : /^\/[\w./-]+$/.test(x) ? 'https://image.tmdb.org/t/p/' + w + x : '';
+    const mediaCard = (x, idx, kind) => {
+      const pk = (a, b) => x[a] != null ? x[a] : x[b], type = kind || x.mediaType || x.media_type, id = Math.round(+x.id);
+      if (!['movie', 'tv'].includes(type) || !(id > 0) || !(x.title || x.name)) return null;
+      const date = String(pk('releaseDate', 'release_date') || pk('firstAirDate', 'first_air_date') || ''), inLib = idx && idx[type].get(id);
+      return { type, id, title: cut(x.title || x.name, 200), year: date.slice(0, 4), date: date.slice(0, 10), poster: tmdbImg(pk('posterPath', 'poster_path'), 'w342'),
+        rating: Math.round((+pk('voteAverage', 'vote_average') || 0) * 10) / 10, votes: +pk('voteCount', 'vote_count') || 0,
+        available: +((x.mediaInfo || {}).status) || 0, inLib: !!inLib };
+    };
+    // One person and all they were in, newest first. From Seerr, or from TMDB when there is no Seerr.
+    if (p === '/api/person' && m === 'GET') {
+      const id = Math.round(+new URL(req.url, 'http://x').searchParams.get('id'));
+      if (!(id > 0)) return send(res, 400, { error: 'Bad request' });
+      const sv = db.services.filter(allowed).find(x => x.type === 'seerr');
+      let d = null, cr = null;
+      if (sv) [d, cr] = await Promise.all([call(sv, `/api/v1/person/${id}`).catch(() => null), call(sv, `/api/v1/person/${id}/combined_credits`).catch(() => null)]);
+      if ((!d || !d.name) && listKeys().tmdb) { d = await lists.person(id).catch(() => null); cr = d && d.combined_credits; }
+      if (!d || !d.name) return send(res, 404, { error: sv ? 'Seerr does not know this person.' : 'This page needs Seerr, or a TMDB key under Settings → Discover lists.' });
+      const pk = (a, b) => d[a] != null ? d[a] : d[b], idx = await libIndex().catch(() => null), seen = new Map();
+      for (const [list, crew] of [[(cr && cr.cast) || [], false], [(cr && cr.crew) || [], true]]) for (const x of Array.isArray(list) ? list : []) {
+        const c = mediaCard(x, idx); if (!c) continue;
+        const role = cut(crew ? x.job : x.character, 120), k = c.type + ':' + c.id, e = seen.get(k);
+        if (e) { if (role && !e.role.includes(role) && e.role.length < 160) e.role += (e.role ? ', ' : '') + role; continue; }
+        seen.set(k, { ...c, role, crew });
+      }
+      const credits = [...seen.values()].sort((a, b) => (b.date || '9999').localeCompare(a.date || '9999') || b.votes - a.votes).slice(0, 400).map(({ votes, ...x }) => x);
+      return send(res, 200, { id, name: cut(d.name, 120), photo: tmdbImg(pk('profilePath', 'profile_path'), 'h632'), bio: cut(d.biography, 6000),
+        born: String(d.birthday || '').slice(0, 10), died: String(d.deathday || '').slice(0, 10), place: cut(pk('placeOfBirth', 'place_of_birth'), 160),
+        known: cut(pk('knownForDepartment', 'known_for_department'), 60), seerr: sv ? sv.id : '', credits });
+    }
     // One movie or show, in full: for the title page in the phone app. From Seerr, or from TMDB when there is no Seerr.
     if (p === '/api/title' && m === 'GET') {
       const q = new URL(req.url, 'http://x').searchParams, type = q.get('type') === 'tv' ? 'tv' : 'movie', id = Math.round(+q.get('id'));
       if (!(id > 0)) return send(res, 400, { error: 'Bad request' });
       const sv = db.services.filter(allowed).find(x => x.type === 'seerr');
       let d = null;
-      if (sv) d = await call(sv, `/api/v1/${type}/${id}`).catch(() => null);
-      if (!d && listKeys().tmdb) d = await lists.details(type, id).catch(() => null);
+      let rec = null;
+      if (sv) [d, rec] = await Promise.all([call(sv, `/api/v1/${type}/${id}`).catch(() => null), call(sv, `/api/v1/${type}/${id}/recommendations`).catch(() => null)]);
+      if (!d && listKeys().tmdb) { d = await lists.details(type, id).catch(() => null); rec = d && d.recommendations; }
+      if (sv && d && !((rec && rec.results) || []).length) rec = await call(sv, `/api/v1/${type}/${id}/similar`).catch(() => null);
       if (!d || !(d.title || d.name)) return send(res, 404, { error: sv ? 'Seerr does not know this title.' : 'This page needs Seerr, or a TMDB key under Settings → Discover lists.' });
       const pk = (o, a, b) => o[a] != null ? o[a] : o[b], v = (a, b) => pk(d, a, b), img = (x, w) => !x ? '' : /^https?:\/\//.test(x) ? String(x).slice(0, 600) : /^\/[\w./-]+$/.test(x) ? 'https://image.tmdb.org/t/p/' + w + x : '';
       const credits = d.credits || {}, vids = (d.relatedVideos || ((d.videos || {}).results || []).map(x => ({ type: x.type, site: x.site, key: x.key, name: x.name })));
@@ -2003,7 +2036,8 @@ const goatServer = http.createServer(async (req, res) => {
         poster: img(v('posterPath', 'poster_path'), 'w342'), backdrop: img(v('backdropPath', 'backdrop_path'), 'w780'), rating: Math.round((+v('voteAverage', 'vote_average') || 0) * 10) / 10, runtime: rt,
         genres: (d.genres || []).map(g => cut(g.name, 40)).filter(Boolean).slice(0, 6), status: cut(d.status, 40),
         studio: cut(((type === 'tv' ? d.networks : d.productionCompanies || d.production_companies) || [])[0] && ((type === 'tv' ? d.networks : d.productionCompanies || d.production_companies)[0].name), 80),
-        cast: (credits.cast || []).slice(0, 15).map(c => ({ name: cut(c.name, 80), role: cut(c.character, 80), photo: img(pk(c, 'profilePath', 'profile_path'), 'w185') })),
+        cast: (credits.cast || []).slice(0, 20).map(c => ({ id: Math.round(+c.id) || 0, name: cut(c.name, 80), role: cut(c.character, 80), photo: img(pk(c, 'profilePath', 'profile_path'), 'w185') })),
+        similar: (((rec && rec.results) || [])).map(x => mediaCard(x, idx, x.mediaType || x.media_type || type)).filter(Boolean).slice(0, 20).map(({ votes, date, ...x }) => x),
         seasons: type === 'tv' ? (d.seasons || []).filter(x => +pk(x, 'seasonNumber', 'season_number') > 0).map(x => ({ n: +pk(x, 'seasonNumber', 'season_number'), episodes: +pk(x, 'episodeCount', 'episode_count') || 0, name: cut(x.name, 80), date: String(pk(x, 'airDate', 'air_date') || '').slice(0, 10) })) : [],
         trailer: trailer ? trailer.key : '', seerr: sv ? sv.id : '', available: +((d.mediaInfo || {}).status) || 0,
         library: libSvc ? { sid: libSvc.id, id: inLib.id, kind: type } : null, request: reqs.length ? { status: reqs[reqs.length - 1].status, stage: reqs[reqs.length - 1].stage || reqs[reqs.length - 1].status } : null });
@@ -2032,7 +2066,7 @@ const goatServer = http.createServer(async (req, res) => {
       return send(res, 200, d.map(x => {
         const st = x.statistics || {}, img = (x.images || []).find(i => i.coverType === 'poster') || {}, tv = s.type === 'sonarr', rt = x.ratings || {};
         const rating = tv ? +rt.value || 0 : +((rt.imdb || {}).value || (rt.tmdb || {}).value || rt.value) || 0;
-        return { id: x.id, title: x.title, year: x.year, poster: img.remoteUrl || x.remotePoster, fanart: mediaUrl(s, x, 'fanart').url, overview: (x.overview || '').slice(0, 600),
+        return { id: x.id, tmdb: +x.tmdbId > 0 ? +x.tmdbId : 0, title: x.title, year: x.year, poster: img.remoteUrl || x.remotePoster, fanart: mediaUrl(s, x, 'fanart').url, overview: (x.overview || '').slice(0, 600),
           size: tv ? st.sizeOnDisk || 0 : x.sizeOnDisk || 0, missing: tv ? Math.max(0, (st.episodeCount || 0) - (st.episodeFileCount || 0)) : (x.monitored && !x.hasFile ? 1 : 0),
           monitored: !!x.monitored, status: x.status || '', genres: (x.genres || []).slice(0, 6), maker: (tv ? x.network : x.studio) || '', profile: prof[x.qualityProfileId] || '',
           added: x.added || '', rating, runtime: x.runtime || 0, cert: x.certification || '',

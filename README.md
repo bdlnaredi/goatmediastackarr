@@ -63,8 +63,9 @@ Every start checks the connections again: if an app's API key changed (say you r
 
 Open `http://YOUR-SERVER:2806`. Every page has its own address (`/downloads`, `/library`, `/settings/alerts`…), works on a phone, and in light or dark.
 
-- **Dashboard**: what's playing, downloading and new, and whether every app and the VPN are fine.
+- **Dashboard**: what's playing, downloading and new, and whether every app and the VPN are fine. A big poster ticker of your library, the featured titles, *Recently added to Plex* (ready to watch) and *Recently added to Radarr and Sonarr* (may still be downloading) as separate rows, each with back and forward buttons.
 - **Discover** and **Search**: TMDB, Trakt and TheTVDB lists; every movie and show opens its own page (story, cast, seasons, trailer, a faded picture of it behind), to request or add straight to Sonarr or Radarr.
+- **Cast and More like this**: movies and shows in the Library, Discover and title pages show their cast and similar titles. Tap an actor for their page with everything they were in (movies, shows, or just what is in your library); tap any title to open it and request it.
 - **Requests**: each one shows where it really is: *Requested* (waiting for an admin), *Approved*, *Looking for a download*, *Downloading* (how far, time left), *Copying to the library*, *In the library* (waiting for Plex) and *Available*. Per-person request limits and automatic approval.
 - **Library**, **Wanted** and **Upcoming**: your shows, movies and music; what's missing; a release calendar. **Choose a release** (interactive search) lists what your indexers have for a movie or an episode, so you pick one.
 - **Downloads**: qBittorrent, ruTorrent, Deluge and SABnzbd in one list; pause, resume, remove, categories and tags, files, trackers and peers; speed limits and schedules (qBittorrent). **RSS**: qBittorrent's feeds and auto-download rules.
@@ -100,6 +101,7 @@ A real Android app (not a web page in a frame), with its own design and eight th
 
 - **Home**: download and upload speed, what is playing, what is downloading, what is coming up, the latest requests, and whether every app and the VPN are fine.
 - **Discover** (TMDB, Trakt, TheTVDB lists) and **Search**: every movie and show opens its own page (story, cast, seasons, trailer, whether it is already in the library), with Request through Seerr (whole show or chosen seasons); or add straight to Sonarr or Radarr with a quality profile and folder.
+- **Cast and More like this**: title and Library pages show the cast and similar titles; tap an actor for their filmography, and any title there to open and request it.
 - **Library**: your shows and movies, with what is missing; each one has a page with its seasons and episodes (with each episode's story; tap one to read all of it or search for it), monitoring, Search now, **Choose a release** (for a movie, and for each episode) and (for admins) Remove.
 - **Wanted**: what Sonarr and Radarr are still looking for, each with **Choose a release**: every release your indexers have, with language, quality, size, seeders and why Sonarr or Radarr would skip it; Download sends the one you pick.
 - **Upcoming**: the next two weeks as a list, or a **Calendar**: a month with a dot for each episode or movie; tap a day to see them.

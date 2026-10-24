@@ -88,6 +88,28 @@ test('title page: details from Seerr, with cast, trailer, seasons and where it i
     assert.deepEqual(t.seasons.map(x => x.n), [1, 2, 3], 'specials are left out');
     assert.equal(t.runtime, 44); assert.deepEqual(t.library, { sid: ids.sonarr, id: 2, kind: 'tv' });
     assert.equal((await k.get('/api/title?type=movie&id=0')).status, 400);
+    // Cast members carry their TMDB number, and "More like this" says what is already in the library.
+    assert.deepEqual(m.cast.map(c => c.id), [9001, 9002, 9003]);
+    assert.deepEqual(m.similar.map(x => [x.type, x.id, x.inLib, x.available]), [['movie', 5002, true, 0], ['movie', 6100, false, 2]]);
+    assert.equal(m.similar[0].poster, 'https://image.tmdb.org/t/p/w342/salt.jpg'); assert.equal(m.similar[0].year, '2023');
+    assert.deepEqual(t.similar.map(x => [x.type, x.id]), [['tv', 7001]]);
+  } finally { await w.stop(); }
+});
+
+test('person page: who they are and everything they were in, newest first, with roles merged', async () => {
+  const w = await world();
+  try {
+    const { k } = w;
+    const p = (await k.get('/api/person?id=9001')).data;
+    assert.equal(p.name, 'Ana Reyes'); assert.equal(p.born, '1984-06-02'); assert.equal(p.place, 'Lisbon, Portugal'); assert.equal(p.known, 'Acting');
+    assert.equal(p.photo, 'https://image.tmdb.org/t/p/h632/ana.jpg'); assert.ok(p.seerr);
+    assert.deepEqual(p.credits.map(x => [x.type, x.id]), [['movie', 6200], ['movie', 5001], ['tv', 7002]], 'not dated yet first, then newest; people are left out');
+    const mv = p.credits.find(x => x.id === 5001);
+    assert.equal(mv.role, 'Captain, Producer'); assert.equal(mv.inLib, true); assert.equal(p.credits.find(x => x.id === 6200).inLib, false);
+    assert.equal((await k.get('/api/person?id=9999')).status, 404);
+    assert.equal((await k.get('/api/person?id=abc')).status, 400);
+    // Library items carry their TMDB number, so their page can show the cast.
+    assert.ok((await k.get('/api/library?sid=' + w.ids.radarr)).data.every(x => x.tmdb > 0));
   } finally { await w.stop(); }
 });
 

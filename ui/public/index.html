@@ -788,7 +788,10 @@ function quick(){
 }
 document.addEventListener('keydown',e=>{if(!me)return;const t=(e.target&&e.target.tagName)||'';
   if((e.key==='k'&&(e.ctrlKey||e.metaKey))||(e.key==='/'&&!/^(INPUT|TEXTAREA|SELECT)$/.test(t)&&!document.querySelector('.ov'))){e.preventDefault();quick()}});
-const DSEC=[['plexnew','Recently added to Plex'],['ticker','Poster ticker'],['hero','Featured'],['attn','Needs attention'],['tiles','Live tiles'],['rails','Poster rows'],['plex','Who is watching'],['dl','Downloading now'],['sab','Usenet'],['apps','Apps'],['up','Coming up']];
+// A section title with back and forward buttons that scroll the row under it.
+const rowHead=(t,sub)=>`<div class="cn-rh"><h2 class="sec">${T(t)}${sub?`<small class="cn-sub">${esc(sub)}</small>`:''}</h2><span class="cn-arrows" data-row><button type="button" data-s="-1" aria-label="Back" title="Back">‹</button><button type="button" data-s="1" aria-label="Forward" title="Forward">›</button></span></div>`;
+document.addEventListener('click',e=>{const b=e.target.closest('[data-row] [data-s]');if(!b)return;const h=b.closest('.cn-rh'),sc=h&&h.nextElementSibling;if(sc)sc.scrollBy({left:+b.dataset.s*sc.clientWidth*.8,behavior:reduceMotion()?'auto':'smooth'})});
+const DSEC=[['plexnew','Recently added to Plex'],['ticker','Poster ticker (Radarr and Sonarr)'],['hero','Featured'],['attn','Needs attention'],['tiles','Live tiles'],['rails','Recently added to Radarr and Sonarr, and top rated'],['plex','Who is watching'],['dl','Downloading now'],['sab','Usenet'],['apps','Apps'],['up','Coming up']];
 const dashLayout=()=>{const d=me.dash||{},o=(d.order||[]).filter(k=>DSEC.some(s=>s[0]===k)),keys=DSEC.map(s=>s[0]);keys.forEach((k,i)=>{if(o.includes(k))return;const prev=keys.slice(0,i).reverse().find(x=>o.includes(x));o.splice(prev?o.indexOf(prev)+1:0,0,k)});return{order:o,hidden:d.hidden||[]}};
 function dashCustomize(){
   const L=dashLayout();let order=[...L.order];const hidden=new Set(L.hidden);
@@ -828,7 +831,7 @@ function upBars(u){
 }
 function dashView(){
   const hr=new Date().getHours(),g=T(hr<12?'Good morning':hr<18?'Good afternoon':'Good evening');
-  const q=first('qbittorrent'),u=first('unraid'),sb=first('sabnzbd'),plx=services.filter(x=>x.type==='plex'||x.type==='jellyfin'),sk=first('seerr'),arrOn=services.some(s=>s.type==='sonarr'||s.type==='radarr');
+  const q=first('qbittorrent'),u=first('unraid'),sb=first('sabnzbd'),plx=services.filter(x=>x.type==='plex'||x.type==='jellyfin'),sk=first('seerr'),arrOn=services.some(s=>s.type==='sonarr'||s.type==='radarr'),arrNames=['radarr','sonarr'].filter(t=>services.some(s=>s.type===t)).map(t=>TYPES[t]||t).join(' '+T('and')+' ');
   dlH.length=ulH.length=cpuH.length=0;
   const fd=s=>new Date(s).toLocaleDateString(undefined,{weekday:'short',day:'numeric',month:'short'});
   const L=dashLayout(),set=(i,v)=>{const e=$(i);if(e)e.textContent=v};
@@ -851,7 +854,7 @@ function dashView(){
     sab:sb?'<div id="sab"></div>':'',
     apps:services.length?`<h2 class="sec">Apps</h2><div class="panel" style="padding:4px 18px">${services.map(s=>`<div class="srow">${svcIcon(s.type,s.id)}<b>${esc(s.name)}</b>
       <span class="mute">${esc(TYPES[s.type]||s.type)}</span><span class="mute" id="t${s.id}">Checking</span><span id="ub${s.id}" class="ubw"></span><a href="${esc(s.url)}" target="_blank" rel="noopener" aria-label="Open ${esc(s.name)}">Open</a></div>`).join('')}</div>`:'',
-    up:arrOn?`<h2 class="sec">Coming up</h2><div class="strip" id="up"><span class="mute">Loading</span></div>`:'',
+    up:arrOn?`${rowHead('Coming up')}<div class="strip" id="up"><span class="mute">Loading</span></div>`:'',
     hero:arrOn?'<div id="hero"><div class="cn-hero" style="min-height:420px"><div class="sk" style="position:absolute;inset:0;height:auto;border-radius:0"></div></div></div>':'',
     rails:arrOn?'<div id="rails"></div>':'',
     ticker:arrOn?'<div id="ticker"></div>':''};
@@ -866,8 +869,8 @@ function dashView(){
     const det=x=>{const sv=services.find(z=>z.id===x.sid);if(!sv)return;if(sv.type==='sonarr')return openLibItem(sv,x,{});
       showDetail({title:x.title,sub:String(x.year||''),poster:x.poster,fanart:x.fanart,overview:x.overview,meta:[x.have?'Downloaded':'File missing',LSTAT[x.status]||x.status,(x.genres||[]).join(', '),x.maker,x.rating?'rating '+x.rating.toFixed(1):''].filter(Boolean).join(', '),sid:sv.id,id:x.id,scope:'',del:me.role==='admin'})};
     if($('#hero'))Cinema.hero($('#hero'),art.hero,{onDetails:det,onOpen:lib});
-    if($('#rails')){const r=$('#rails');r.innerHTML='<div id="r1"></div><div id="r2"></div>';Cinema.rail($('#r1'),'Recently added',art.recent,det);Cinema.rail($('#r2'),'Top rated',art.top,det)}
-    if($('#ticker'))Cinema.ticker($('#ticker'),art,det);
+    if($('#rails')){const r=$('#rails');r.innerHTML='<div id="r1"></div><div id="r2"></div>';Cinema.rail($('#r1'),T('Recently added to')+' '+arrNames,art.recent,det,T('Added to your library by')+' '+arrNames+'. '+T('It may still be downloading, so it can be missing from Plex for now.'));Cinema.rail($('#r2'),T('Top rated in')+' '+arrNames,art.top,det)}
+    if($('#ticker'))Cinema.ticker($('#ticker'),art,det,T('Everything in')+' '+arrNames);
   });
   const go=$('#go');if(go)go.onclick=()=>goto('st:apps');
   document.querySelectorAll('.tile[data-go]').forEach(t=>{const f=()=>goto(t.dataset.go);t.onclick=f;t.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();f()}}});
@@ -1710,8 +1713,9 @@ function openLibItem(s,x,cb){
 }
 async function seriesDialog(s,x,cb){
   const admin=me.role==='admin',canAdd=can('add'),z2=n=>String(n).padStart(2,'0');
-  const o=modal(`<button class="pgback" data-x>${ic('back')}Back</button><h2 style="margin:4px 0 0;word-break:break-word">${esc(x.title)}</h2><div id="sd" style="margin-top:12px">${skel(4)}</div>`,true);pageBg(o,x.fanart||x.poster);o.querySelector('[data-x]').onclick=o.close;
+  const o=modal(`<button class="pgback" data-x>${ic('back')}Back</button><h2 style="margin:4px 0 0;word-break:break-word">${esc(x.title)}</h2><div id="sd" style="margin-top:12px">${skel(4)}</div><div id="cx" style="margin-top:8px"></div>`,true);pageBg(o,x.fanart||x.poster);o.querySelector('[data-x]').onclick=o.close;
   let d;try{d=await api(`/api/series/${s.id}/${x.id}`)}catch(e){o.querySelector('#sd').innerHTML=`<div class="err">${esc(e.message)}</div>`;return}
+  if(d.ids&&d.ids.tmdb)loadExtras(o.querySelector('#cx'),'tv',d.ids.tmdb);
   const nums=[...new Set([...d.seasons.map(q=>q.n),...d.episodes.map(q=>q.season)])].sort((a,b)=>(a===0)-(b===0)||b-a);
   const open=new Set(nums.filter(n=>n>0).slice(0,1));
   const seas=n=>d.seasons.find(q=>q.n===n)||{n,monitored:false};
@@ -1774,14 +1778,14 @@ function showDetail(x){
     ${x.sid&&x.id&&x.scope!=='series'?'<div id="fs" class="chips" style="margin:8px 0" role="status"></div>':''}
     <p>${esc(x.overview||'No description available yet.')}</p>${x.mon?`<label class="tgl" style="margin:4px 0 10px"><input type="checkbox" id="mon" ${x.mon.monitored?'checked':''} ${can('add')?'':'disabled'}><span>Monitored</span></label>`:''}${x.about?`<h3>About the series</h3><p class="mute">${esc(x.about)}</p>`:''}
     <div class="row">${x.sid&&x.id&&can('add')?`<button id="au">${x.scope==='series'?'Search missing episodes':'Auto search'}</button>${x.scope==='series'?'':'<button id="in">Interactive search</button>'}`:''}${x.del?'<button id="rm">Remove</button>':''}<button class="primary" id="cl">Close</button></div>
-    <div class="mute" id="st" role="status" style="margin-top:8px"></div></div><div id="rl" style="flex-basis:100%"></div></div>`;
+    <div class="mute" id="st" role="status" style="margin-top:8px"></div></div><div id="rl" style="flex-basis:100%"></div><div id="cx" style="flex-basis:100%;min-width:0"></div></div>`;
   const k=e=>{if(e.key==='Escape')close()},close=()=>{o.remove();document.removeEventListener('keydown',k)};
   document.addEventListener('keydown',k);
   document.body.append(o);const q=s=>o.querySelector(s),st=q('#st');q('#cl').onclick=close;q('#bk').onclick=close;q('#bk').focus();
   pageBg(o,x.fanart||x.poster);
   if(q('#fs'))api(`/api/filestatus?sid=${encodeURIComponent(x.sid)}&id=${x.id}`).then(f=>{const b=q('#fs');if(!b)return;
     if(f.have){const fl=f.file||{};b.innerHTML=`<span class="pill ok">File available</span>${fl.quality?`<span class="pill">${esc(fl.quality)}</span>`:''}${fl.codec?`<span class="pill">${esc(fl.codec)}</span>`:''}${(fl.langs||[]).length?`<span class="pill">${esc(fl.langs.join(', '))}</span>`:''}${fl.size?`<span class="pill">${fmt(fl.size)}</span>`:''}${fl.name?`<div class="mute" style="flex-basis:100%;overflow-wrap:anywhere;font-size:12.5px">${esc(fl.name)}</div>`:''}`}
-    else b.innerHTML=!f.released?'<span class="pill">Not released yet</span>':`<span class="pill bad">No file yet</span><span class="mute">${f.monitored?'Monitored, waiting for a download.':'Not monitored, so nothing will be downloaded.'}</span>`;if(f.ids)b.insertAdjacentHTML('afterend',idChips(f.ids))}).catch(()=>{const b=q('#fs');if(b)b.remove()});
+    else b.innerHTML=!f.released?'<span class="pill">Not released yet</span>':`<span class="pill bad">No file yet</span><span class="mute">${f.monitored?'Monitored, waiting for a download.':'Not monitored, so nothing will be downloaded.'}</span>`;if(f.ids){b.insertAdjacentHTML('afterend',idChips(f.ids));if(f.ids.tmdb)loadExtras(q('#cx'),f.ids.type,f.ids.tmdb)}}).catch(()=>{const b=q('#fs');if(b)b.remove()});
   if(q('#mon'))q('#mon').onchange=async e=>{const t=e.target,v=t.checked;t.disabled=true;
     try{await api('/api/monitor','POST',{sid:x.mon.sid,kind:x.mon.kind,id:x.mon.id,monitored:v});x.mon.monitored=v;if(x.mon.onChange)x.mon.onChange(v);toast(v?'Now monitored':'No longer monitored','ok')}
     catch(ex){t.checked=!v;st.textContent=ex.message}t.disabled=!can('add')};
@@ -2047,7 +2051,7 @@ async function vpnPill(s,sel){
 async function loadPlex(s){
   try{const d=await api(`/api/${s.type}/${s.id}/now`),el=$('#plx');if(!el||tab!=='dash')return;
     const img=t=>t?`/api/${s.type}/${s.id}/img?p=${encodeURIComponent(t)}`:'';
-    el.innerHTML=d.recent.length?`<h2 class="sec">${s.type==='plex'?'Recently added to Plex':'Recently added to Jellyfin'}</h2><div class="strip">${d.recent.map(x=>`<div class="pc" style="cursor:default"><div class="pw">${x.thumb?`<img src="${img(x.thumb)}" alt="" loading="lazy">`:''}</div><b>${esc(x.title)}</b><div class="mute">${esc(x.sub)}</div></div>`).join('')}</div>`:'';
+    el.innerHTML=d.recent.length?`${rowHead(s.type==='plex'?'Recently added to Plex':'Recently added to Jellyfin',T('Ready to watch now'))}<div class="strip">${d.recent.map(x=>`<div class="pc" style="cursor:default"><div class="pw">${x.thumb?`<img src="${img(x.thumb)}" alt="" loading="lazy">`:''}</div><b>${esc(x.title)}</b><div class="mute">${esc(x.sub)}</div></div>`).join('')}</div>`:'';
   }catch{}
 }
 const DS={src:'',kind:'movie',list:'trending'};let dsTok=0;
@@ -2068,9 +2072,78 @@ function discView(){
     document.querySelectorAll('#dg .card').forEach(c=>{const go=()=>discOpen(l[c.dataset.v]);c.onclick=go;c.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();go()}}});
   }).catch(e=>{if(my===dsTok&&$('#dg')){$('#dg').innerHTML='';$('#e').textContent=e.message}});
 }
+// ---------- Cast, "More like this", a person's filmography and the full page for any title (by its TMDB number)
+const castRow=c=>c&&c.length?`${rowHead('Cast')}<div class="cn-rs cstr">${c.map((p,i)=>`<button type="button" class="cst" data-p="${i}" ${p.id?'':'disabled'} aria-label="${esc(p.name)}${p.role?', '+esc(p.role):''}">${p.photo?`<img src="${esc(p.photo)}" alt="" loading="lazy">`:`<span class="cph">${esc((p.name||'?').split(/\s+/).map(w=>w[0]).slice(0,2).join(''))}</span>`}<b>${esc(p.name)}</b>${p.role?`<small>${esc(p.role)}</small>`:''}</button>`).join('')}</div>`:'';
+const mediaBadge=x=>x.available===5||x.inLib?`<span class="cn-have">${x.available===5?T('Available'):T('In library')}</span>`:x.available>=2?`<span class="cn-have rq">${T('Requested')}</span>`:'';
+const posterRow=(title,l,sub)=>l&&l.length?`${rowHead(title,sub)}<div class="cn-rs">${l.map((x,i)=>`<button type="button" class="cn-card" data-t="${i}" aria-label="${esc(x.title)}${x.year?', '+x.year:''}"><span class="cn-pw">${x.poster?`<img src="${esc(x.poster)}" alt="" loading="lazy">`:`<span class="cph sq">${esc(x.title)}</span>`}${x.rating?`<span class="cn-badge">★ ${x.rating.toFixed(1)}</span>`:''}${mediaBadge(x)}</span><span class="cn-t">${esc(x.title)}</span><small class="mute cn-y">${esc([x.year,x.type==='tv'?T('Show'):T('Movie'),x.role].filter(Boolean).join(' · '))}</small></button>`).join('')}</div>`:'';
+// Draws the cast and the "More like this" row into el, and makes them open the person and title pages.
+function titleExtras(el,t){
+  if(!el||!t)return;
+  el.innerHTML=castRow(t.cast)+posterRow('More like this',t.similar);
+  el.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>{const p=t.cast[b.dataset.p];if(p&&p.id)personPage(p.id,p)});
+  el.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{const x=t.similar[b.dataset.t];titlePage(x.type,x.id,x)});
+}
+// Fetches the title by its TMDB number, then fills el with its cast and similar titles.
+function loadExtras(el,type,tmdb){if(!el||!(tmdb>0))return;el.innerHTML='';api(`/api/title?type=${type==='tv'?'tv':'movie'}&id=${tmdb}`).then(t=>{if(document.contains(el))titleExtras(el,t)}).catch(()=>{})}
+// Opens a movie or show from your Sonarr or Radarr library.
+async function openInLibrary(l){
+  const sv=services.find(z=>z.id===l.sid);if(!sv)return toast('That library is not available to you','bad');
+  try{const list=await api('/api/library?sid='+encodeURIComponent(sv.id)),x=list.find(y=>y.id===l.id);if(!x)throw new Error('It is no longer in '+sv.name);openLibItem(sv,x,{})}catch(e){toast(e.message,'bad')}
+}
+function titlePage(type,id,seed){
+  seed=seed||{};type=type==='tv'?'tv':'movie';
+  const o=modal(`<button class="pgback" data-x>${ic('back')}Back</button><h2 style="margin:4px 0 0">${esc(seed.title||'')}</h2><div id="tpb" style="margin-top:12px">${skel(3)}</div>`,true);
+  if(seed.poster)pageBg(o,seed.poster);o.querySelector('[data-x]').onclick=o.close;
+  api(`/api/title?type=${type}&id=${id}`).then(t=>{
+    if(!document.contains(o))return;
+    if(t.backdrop){o.querySelectorAll('.pgbg').forEach(e=>e.remove());pageBg(o,t.backdrop)}
+    const h=o.querySelector('h2');h.innerHTML=`${esc(t.title)} <span class="mute">${esc(t.year)}</span>`;
+    const tv=t.type==='tv',rt=t.runtime?(t.runtime>=60?Math.floor(t.runtime/60)+'h '+(t.runtime%60)+'m':t.runtime+' min'):'';
+    const st=t.available===5?['Available to watch','ok']:t.available===4?['Partly available','warn']:t.request||t.available>=2?[t.request&&t.request.stage==='pending'?'Waiting for approval':t.request&&t.request.stage==='declined'?'Request declined':'Requested','']:t.library?['In your library','ok']:null;
+    const canAsk=t.seerr&&!t.library&&can('request')&&t.available!==5&&(!t.request||t.request.stage==='declined')&&!(t.available>=2&&t.available<5);
+    o.querySelector('#tpb').innerHTML=`<div class="row" style="align-items:flex-start;gap:18px;flex-wrap:wrap">${t.poster?`<img src="${esc(t.poster)}" alt="" style="width:160px;border-radius:12px;aspect-ratio:2/3;object-fit:cover">`:''}
+      <div class="grow" style="min-width:240px"><div class="mute">${esc([tv?T('Show'):T('Movie'),rt,t.studio,t.status].filter(Boolean).join(' · '))}${t.rating?` · <b style="color:#ffd166">★ ${t.rating.toFixed(1)}</b>`:''}</div>
+      <div class="chips" style="margin:8px 0">${st?`<span class="pill ${st[1]}">${T(st[0])}</span>`:''}${t.genres.map(g=>`<span class="pill">${esc(g)}</span>`).join('')}</div>
+      ${t.tagline?`<p style="margin:6px 0;font-style:italic;color:var(--link)">${esc(t.tagline)}</p>`:''}<p>${esc(t.overview||T('No description available yet.'))}</p>
+      ${t.date?`<div class="mute">${tv?T('First aired'):T('Released')} ${esc(new Date(t.date).toLocaleDateString(undefined,{day:'numeric',month:'long',year:'numeric'}))}${tv&&t.seasons.length?' · '+t.seasons.length+' '+(t.seasons.length===1?T('season'):T('seasons')):''}</div>`:''}
+      <div class="row" style="margin-top:14px;flex-wrap:wrap">${canAsk?`<button class="primary" id="tq">${t.request?T('Ask again'):T('Request')}</button>`:''}${t.library?`<button id="tl">${ic('film')}${T('Open in library')}</button>`:''}${t.trailer?`<a class="btn" href="https://www.youtube.com/watch?v=${esc(t.trailer)}" target="_blank" rel="noopener noreferrer">${T('Trailer')} ${ic('ext')}</a>`:''}</div>
+      ${!t.seerr&&!t.library?`<p class="mute">${T('Requests need Seerr, and it is not set up on this server.')}</p>`:''}<div class="err" id="tqe"></div></div></div><div id="tpx" style="margin-top:10px"></div>`;
+    titleExtras(o.querySelector('#tpx'),t);
+    const tl=o.querySelector('#tl');if(tl)tl.onclick=()=>openInLibrary(t.library);
+    const tq=o.querySelector('#tq');if(tq)tq.onclick=async()=>{tq.disabled=true;tq.textContent=T('Sending…');
+      try{const r=await api('/api/requests','POST',{sid:t.seerr,mediaType:t.type,mediaId:t.id,title:t.title,year:t.year,poster:t.poster,seasons:[]});tq.outerHTML=`<span class="pill ok">${r.status==='approved'?T('Requested'):T('Sent for approval')}</span>${tv?` <span class="mute">${T('All seasons')}</span>`:''}`}
+      catch(e){tq.disabled=false;tq.textContent=T('Request');o.querySelector('#tqe').textContent=e.message}};
+  }).catch(e=>{const b=o.querySelector('#tpb');if(b)b.innerHTML=`<div class="err">${esc(e.message)}</div>`});
+  return o;
+}
+function personPage(id,seed){
+  seed=seed||{};let show='all';
+  const o=modal(`<button class="pgback" data-x>${ic('back')}Back</button><div id="ppb">${skel(3)}</div>`,true);o.querySelector('[data-x]').onclick=o.close;
+  api('/api/person?id='+encodeURIComponent(id)).then(p=>{
+    if(!document.contains(o))return;
+    const age=(a,b)=>{const x=new Date(a),y=b?new Date(b):new Date();return Math.floor((y-x)/31557600000)};
+    const life=[p.known,p.born?`${T('Born')} ${new Date(p.born).toLocaleDateString(undefined,{day:'numeric',month:'long',year:'numeric'})}${p.died?'':' ('+age(p.born)+')'}`:'',p.died?`${T('Died')} ${new Date(p.died).toLocaleDateString(undefined,{day:'numeric',month:'long',year:'numeric'})} (${age(p.born,p.died)})`:'',p.place].filter(Boolean);
+    const box=o.querySelector('#ppb'),cnt=k=>p.credits.filter(x=>k==='all'||(k==='lib'?x.inLib||x.available===5:x.type===k)).length;
+    box.innerHTML=`<div class="row" style="align-items:flex-start;gap:20px;flex-wrap:wrap">${p.photo?`<img src="${esc(p.photo)}" alt="" style="width:170px;border-radius:14px;aspect-ratio:2/3;object-fit:cover">`:''}
+      <div class="grow" style="min-width:240px"><h2 style="margin:0">${esc(p.name)}</h2><div class="mute" style="margin-top:4px">${life.map(esc).join(' · ')}</div>
+      ${p.bio?`<p class="pbio" id="pbio">${esc(p.bio)}</p>${p.bio.length>420?`<button class="lnk" id="pmore">${T('Read more')}</button>`:''}`:''}</div></div>
+      <div class="row" style="margin:20px 0 10px;flex-wrap:wrap;gap:10px"><h3 style="margin:0" class="grow">${T('Filmography')} <span class="mute">${p.credits.length}</span></h3>
+      <div class="seg" id="pf" role="group" aria-label="${T('Show')}">${[['all','All'],['movie','Movies'],['tv','Shows'],['lib','In your library']].map(([k,n])=>`<button data-v="${k}" class="${k===show?'on':''}" aria-pressed="${k===show}">${T(n)} <span class="mute">${cnt(k)}</span></button>`).join('')}</div></div>
+      <div id="pg" class="grid pgrid"></div>`;
+    const more=o.querySelector('#pmore');if(more)more.onclick=()=>{o.querySelector('#pbio').classList.toggle('o');more.textContent=o.querySelector('#pbio').classList.contains('o')?T('Show less'):T('Read more')};
+    const draw=()=>{const l=p.credits.filter(x=>show==='all'||(show==='lib'?x.inLib||x.available===5:x.type===show));
+      o.querySelector('#pg').innerHTML=l.map(x=>`<button type="button" class="cn-card" data-k="${x.type}:${x.id}" aria-label="${esc(x.title)}${x.year?', '+x.year:''}"><span class="cn-pw">${x.poster?`<img src="${esc(x.poster)}" alt="" loading="lazy">`:`<span class="cph sq">${esc(x.title)}</span>`}${x.rating?`<span class="cn-badge">★ ${x.rating.toFixed(1)}</span>`:''}${mediaBadge(x)}</span><span class="cn-t">${esc(x.title)}</span><small class="mute cn-y">${esc([x.year||T('Coming'),x.type==='tv'?T('Show'):T('Movie')].join(' · '))}${x.role?'<br>'+esc(x.role):''}</small></button>`).join('')||`<p class="mute">${T('Nothing to show here.')}</p>`;
+      o.querySelector('#pf').querySelectorAll('[data-v]').forEach(b=>{const on=b.dataset.v===show;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on)})};
+    o.querySelector('#pf').onclick=e=>{const b=e.target.closest('[data-v]');if(b){show=b.dataset.v;draw()}};
+    o.querySelector('#pg').onclick=e=>{const b=e.target.closest('[data-k]');if(!b)return;const [type,tid]=b.dataset.k.split(':'),x=p.credits.find(y=>y.type===type&&y.id===+tid);titlePage(type,+tid,x)};
+    draw();
+  }).catch(e=>{const b=o.querySelector('#ppb');if(b)b.innerHTML=`<h2>${esc(seed.name||'')}</h2><div class="err">${esc(e.message)}</div>`});
+  return o;
+}
 function discOpen(x){
   const sk=ofType('seerr')[0],tv=x.mediaType==='tv';
-  const o=modal(`<button class="pgback" data-x>${ic('back')}Back</button><div class="row" style="align-items:flex-start;gap:16px;flex-wrap:wrap">${x.poster?`<img src="${esc(x.poster)}" alt="" style="width:140px;border-radius:10px;aspect-ratio:2/3;object-fit:cover">`:''}<div class="grow" style="min-width:220px"><h2 style="margin:0">${esc(x.title)} <span class="mute">${esc(x.year)}</span></h2><div class="mute">${tv?'TV show':'Movie'}${x.rating?', rated '+x.rating.toFixed(1):''}</div>${x.overview?`<p>${esc(x.overview)}</p>`:''}${idChips({type:x.mediaType,imdb:x.imdb,tmdb:x.tmdb,tvdb:x.tvdb})}<div id="rqs" style="margin-top:12px"></div></div></div><div class="row" style="margin-top:14px"><button data-x>Close</button></div>`,true);
+  const o=modal(`<button class="pgback" data-x>${ic('back')}Back</button><div class="row" style="align-items:flex-start;gap:16px;flex-wrap:wrap">${x.poster?`<img src="${esc(x.poster)}" alt="" style="width:140px;border-radius:10px;aspect-ratio:2/3;object-fit:cover">`:''}<div class="grow" style="min-width:220px"><h2 style="margin:0">${esc(x.title)} <span class="mute">${esc(x.year)}</span></h2><div class="mute">${tv?'TV show':'Movie'}${x.rating?', rated '+x.rating.toFixed(1):''}</div>${x.overview?`<p>${esc(x.overview)}</p>`:''}${idChips({type:x.mediaType,imdb:x.imdb,tmdb:x.tmdb,tvdb:x.tvdb})}<div id="rqs" style="margin-top:12px"></div></div></div><div id="cx" style="margin-top:8px"></div><div class="row" style="margin-top:14px"><button data-x>Close</button></div>`,true);
+  if(x.tmdb)loadExtras(o.querySelector('#cx'),x.mediaType,x.tmdb);
   pageBg(o,x.backdrop||x.poster);if(!x.backdrop&&x.tmdb)api(`/api/title?type=${tv?'tv':'movie'}&id=${x.tmdb}`).then(t=>{if(t.backdrop&&document.contains(o)){o.querySelectorAll('.pgbg').forEach(e=>e.remove());pageBg(o,t.backdrop)}}).catch(()=>{});o.querySelectorAll('[data-x]').forEach(b=>b.onclick=o.close);
   const box=o.querySelector('#rqs');
   if(!sk){box.innerHTML='<span class="mute">Connect Seerr to request things from here.</span>';return}

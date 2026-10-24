@@ -65,6 +65,8 @@ class Ctx(val app: AppState, val me: Me, val user: User, val nav: NavHostControl
     fun releases(sid: String, id: Long, title: String) = go("releases/$sid/$id?t=${android.net.Uri.encode(title)}")
     /** The full page for a movie or show, by its TMDB number. */
     fun title(type: String, id: Long) = go("title/${if (type == "tv") "tv" else "movie"}/$id")
+    /** An actor's page with everything they were in, by their TMDB number. */
+    fun person(id: Long) = go("person/$id")
     fun profile(uid: String? = null) = go(if (uid == null || uid == user.id) "profile" else "profile/$uid")
     val prefs get() = app.prefs.value
     /** Opens what a notification points at. */
@@ -198,6 +200,9 @@ private fun MainShell(state: AppState, me: Me, user: User) {
                     "title/{type}/{id}",
                     arguments = listOf(navArgument("type") { type = NavType.StringType }, navArgument("id") { type = NavType.LongType }),
                 ) { e -> com.bdlnaredi.goatstack.ui.screens.TitleScreen(e.arguments?.getString("type").orEmpty(), e.arguments?.getLong("id") ?: 0) }
+                composable("person/{id}", arguments = listOf(navArgument("id") { type = NavType.LongType })) { e ->
+                    com.bdlnaredi.goatstack.ui.screens.PersonScreen(e.arguments?.getLong("id") ?: 0)
+                }
                 composable(
                     "releases/{sid}/{id}?t={t}",
                     arguments = listOf(navArgument("sid") { type = NavType.StringType }, navArgument("id") { type = NavType.LongType }, navArgument("t") { type = NavType.StringType; defaultValue = "" }),

@@ -89,7 +89,7 @@ data class LibItem(
     val overview: String = "", val size: Long = 0, val missing: Int = 0, val monitored: Boolean = false, val status: String = "",
     val genres: List<String> = emptyList(), val maker: String = "", val profile: String = "", val added: String = "",
     val rating: Double = 0.0, val runtime: Int = 0, val cert: String = "", val seasons: Int = 0, val have: Int = 0,
-    val total: Int = 0, val next: String = "",
+    val total: Int = 0, val next: String = "", val tmdb: Long = 0,
 )
 
 @Serializable

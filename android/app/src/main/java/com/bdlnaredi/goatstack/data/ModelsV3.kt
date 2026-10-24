@@ -12,8 +12,21 @@ data class TitleInfo(
     val runtime: Int = 0, val genres: List<String> = emptyList(), val status: String = "", val studio: String = "",
     val cast: List<CastMember> = emptyList(), val seasons: List<TitleSeason> = emptyList(), val trailer: String = "",
     val seerr: String = "", val available: Int = 0, val library: LibLink? = null, val request: ReqState? = null,
+    val similar: List<MediaCard> = emptyList(),
 )
-@Serializable data class CastMember(val name: String = "", val role: String = "", val photo: String = "")
+@Serializable data class CastMember(val id: Long = 0, val name: String = "", val role: String = "", val photo: String = "")
+/** A small poster card: "More like this" and a person's filmography. [available] is Seerr's status (5 = available). */
+@Serializable
+data class MediaCard(
+    val type: String = "movie", val id: Long = 0, val title: String = "", val year: String = "", val poster: String = "",
+    val rating: Double = 0.0, val available: Int = 0, val inLib: Boolean = false, val role: String = "", val crew: Boolean = false,
+)
+/** One actor or film maker (/api/person), with everything they were in, newest first. */
+@Serializable
+data class PersonInfo(
+    val id: Long = 0, val name: String = "", val photo: String = "", val bio: String = "", val born: String = "", val died: String = "",
+    val place: String = "", val known: String = "", val seerr: String = "", val credits: List<MediaCard> = emptyList(),
+)
 @Serializable data class TitleSeason(val n: Int = 0, val episodes: Int = 0, val name: String = "", val date: String = "")
 @Serializable data class LibLink(val sid: String = "", val id: Long = 0, val kind: String = "movie")
 @Serializable data class ReqState(val status: String = "", val stage: String = "")

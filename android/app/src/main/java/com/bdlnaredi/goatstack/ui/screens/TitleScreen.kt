@@ -108,7 +108,7 @@ private fun TitleBody(t: TitleInfo, requested: Boolean, onAsk: (TitleInfo) -> Un
     val g = LocalGoat.current
     val uri = LocalUriHandler.current
     val state = availability(t, requested)
-    val canAsk = t.seerr.isNotEmpty() && ctx.user.can("request") && t.available != 5 && !requested && t.request?.stage.let { it == null || it == "declined" }
+    val canAsk = t.seerr.isNotEmpty() && t.library == null && ctx.user.can("request") && t.available != 5 && !requested && t.request?.stage.let { it == null || it == "declined" }
 
     Box(Modifier.fillMaxSize()) {
     com.bdlnaredi.goatstack.ui.PageBackground(t.backdrop.ifEmpty { t.poster })
@@ -169,21 +169,8 @@ private fun TitleBody(t: TitleInfo, requested: Boolean, onAsk: (TitleInfo) -> Un
                 }
             }
         }
-        if (t.cast.isNotEmpty()) {
-            item { SectionTitle("Cast", Modifier.offset(y = (-40).dp)) }
-            item {
-                LazyRow(Modifier.offset(y = (-40).dp), contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    items(t.cast) { c ->
-                        Column(Modifier.width(84.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Box(Modifier.size(72.dp).clip(CircleShape)) { Poster(c.photo, c.name, Modifier.fillMaxSize(), corner = 36.dp, ratio = 1f) }
-                            Spacer(Modifier.height(6.dp))
-                            Text(c.name, style = MaterialTheme.typography.labelMedium, color = g.text, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
-                            if (c.role.isNotBlank()) Text(c.role, style = MaterialTheme.typography.labelSmall, color = g.muted, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
-                        }
-                    }
-                }
-            }
-        }
+        if (t.cast.isNotEmpty()) item { CastRow(t.cast, Modifier.offset(y = (-40).dp)) }
+        if (t.similar.isNotEmpty()) item { MoreLikeThis(t.similar, Modifier.offset(y = (-34).dp)) }
         if (t.date.isNotEmpty() || t.status.isNotEmpty()) item {
             Text(listOf(t.status, if (t.date.isNotEmpty()) (if (t.type == "tv") "First aired " else "Released ") + Format.day(t.date) else "").filter { it.isNotBlank() }.joinToString(" · "),
                 style = MaterialTheme.typography.labelSmall, color = g.muted, modifier = Modifier.padding(horizontal = 20.dp).offset(y = (-30).dp))

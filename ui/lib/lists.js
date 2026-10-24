@@ -102,11 +102,16 @@ function create(o) {
 
   // The full record of one title (with its cast and trailers), for the title page when there is no Seerr.
   async function details(kind, id) {
-    const [url, opt] = tmdbAuth(`/${kind === 'tv' ? 'tv' : 'movie'}/${posInt(id)}`, { append_to_response: 'credits,videos' });
+    const [url, opt] = tmdbAuth(`/${kind === 'tv' ? 'tv' : 'movie'}/${posInt(id)}`, { append_to_response: 'credits,videos,recommendations' });
+    return get(url, opt, 'TMDB');
+  }
+  // One person, with everything they were in or made.
+  async function person(id) {
+    const [url, opt] = tmdbAuth(`/person/${posInt(id)}`, { append_to_response: 'combined_credits' });
     return get(url, opt, 'TMDB');
   }
 
-  return { list, enabled, details, LISTS, NAMES };
+  return { list, enabled, details, person, LISTS, NAMES };
 }
 
 module.exports = { create, LISTS, NAMES };

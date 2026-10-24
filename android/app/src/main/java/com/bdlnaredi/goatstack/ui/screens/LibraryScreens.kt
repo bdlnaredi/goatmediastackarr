@@ -229,6 +229,8 @@ fun DetailScreen(sid: String, kind: String, id: Long) {
                     }
                 }
             }
+            // Who is in it (tap someone for everything they were in) and similar titles.
+            if (x.tmdb > 0) item(key = "extras") { TitleExtras(if (tv) "tv" else "movie", x.tmdb, Modifier.offset(y = (-64).dp)) }
             val sd = series.value
             if (tv && sd != null) {
                 item { SectionTitle("Seasons", Modifier.offset(y = (-60).dp)) }
