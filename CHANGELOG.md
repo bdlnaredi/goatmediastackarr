@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- ruTorrent: no more "The request to rTorrent has timed out" right after a start (its page waits for rTorrent, and allows 30 seconds instead of 10); the GeoIP, source and unpack plugins now have what they need (PHP's sqlite3 and zip, and unzip), and the plugins that need programs the image does not carry (Cloudflare bypass, dump, spectrogram) are turned off instead of warning at every start.
 - ruTorrent: its log no longer fills with "Failed to poll event" and a line for every page request (harmless messages from PHP's web server); real errors still show.
 - FlareSolverr: fixed "Chrome / Chromium version not detected!". Its browser needed one more system library (libwayland-server0). FlareSolverr now checks its browser starts before it runs, and if it does not, the log says why and the missing libraries are added again.
 - Cast and *More like this* (web page and app): movies and shows in the Library, on Discover and on title pages list their cast and similar titles (marked when already in your library or requested). Tapping an actor opens their own page: picture, birthday, biography and their whole filmography, newest first, filterable to movies, shows or what is in your library. Any title there opens its page, where it can be requested. Comes from Seerr, or from TMDB when there is no Seerr.

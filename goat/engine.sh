@@ -62,6 +62,8 @@ case "$name" in
     export RU_USER="$(jq -r '.rutorrentUser // "goat"' "$sec")" RU_PASS="$(jq -r '.rutorrentPass // ""' "$sec")"
     export RU_SCGI_HOST=127.0.0.1 RU_SCGI_PORT=5000 RU_TOP_DIR=/ RU_PROFILE_PATH=/config/rutorrent/share
     export RU_TEMP_DIRECTORY=/config/rutorrent/tmp RU_LOG_FILE=/config/rutorrent/errors.log PHP_CLI_SERVER_WORKERS=8
+    # Start once rTorrent answers, so the first page does not time out waiting for it (up to a minute).
+    for _ in $(seq 1 60); do (exec 3<>/dev/tcp/127.0.0.1/5000) 2>/dev/null && break; sleep 1; done
     # Open ruTorrent once in the background, so its plugins (RSS, scheduler, ratio rules) run without anyone opening it.
     ( sleep 15; curl -fsS -o /dev/null -u "$RU_USER:$RU_PASS" http://127.0.0.1:8090/php/getplugins.php || true ) &
     cmd=(/usr/bin/php -d variables_order=EGPCS -d memory_limit=256M -d upload_max_filesize=32M -d post_max_size=40M -d max_execution_time=300

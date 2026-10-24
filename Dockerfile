@@ -146,7 +146,7 @@ RUN chmod +x /usr/local/bin/fetch-release && \
       libicu74 libsqlite3-0 sqlite3 mediainfo \
       python3 python3-venv libxml2 libxslt1.1 \
       par2 7zip unrar \
-      php8.3-cli php8.3-mbstring php8.3-xml php8.3-curl python3-libtorrent libncursesw6 && \
+      php8.3-cli php8.3-mbstring php8.3-xml php8.3-curl php8.3-sqlite3 php8.3-zip unzip python3-libtorrent libncursesw6 && \
     install -d /etc/apt/keyrings && \
     curl -fsSL https://repo.jellyfin.org/jellyfin_team.gpg.key | gpg --dearmor -o /etc/apt/keyrings/jellyfin.gpg && \
     echo "deb [signed-by=/etc/apt/keyrings/jellyfin.gpg] https://repo.jellyfin.org/ubuntu noble main" > /etc/apt/sources.list.d/jellyfin.list && \
@@ -211,6 +211,11 @@ RUN --mount=type=secret,id=GITHUB_TOKEN,env=GITHUB_TOKEN \
     echo "ruTorrent $tag"; mkdir -p /opt/rutorrent /opt/goat/versions; \
     curl -fsSL --retry 4 "https://github.com/Novik/ruTorrent/archive/refs/tags/${tag}.tar.gz" | tar -xz -C /opt/rutorrent --strip-components=1; \
     rm -rf /opt/rutorrent/tests /opt/rutorrent/.github; test -f /opt/rutorrent/plugins/httprpc/action.php; \
+    # Plugins that need programs this image does not carry (Cloudflare bypass in Python, dumptorrent, sox) are
+    # turned off, so ruTorrent does not warn about them at every start.
+    printf '\n[_cloudflare]\nenabled = no\n\n[dump]\nenabled = no\n\n[spectrogram]\nenabled = no\n' >> /opt/rutorrent/conf/plugins.ini; \
+    # Wait up to 30 seconds (not 10) for rTorrent before saying it timed out: it is slow right after a start.
+    sed -i -E 's/("webui\.reqtimeout":[[:space:]]*)10000/\130000/' /opt/rutorrent/js/webui.js; grep -q '"webui.reqtimeout":[[:space:]]*30000' /opt/rutorrent/js/webui.js; \
     echo "${tag#v}" > /opt/goat/versions/rutorrent; \
     test -x /opt/rtorrent/bin/rtorrent && /opt/rtorrent/bin/rtorrent -h | head -n 1; \
     test -x /opt/deluge/bin/deluged && /opt/deluge/bin/python -c 'import libtorrent, deluge; print("Deluge with libtorrent", libtorrent.__version__)'
