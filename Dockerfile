@@ -56,7 +56,9 @@ RUN --mount=type=secret,id=GITHUB_TOKEN,env=GITHUB_TOKEN \
 # (python3-libtorrent, installed in the final image), so its environment can see the system's Python packages.
 ARG DELUGE_VERSION=latest
 RUN python3 -m venv --system-site-packages /opt/deluge && \
-    /opt/deluge/bin/pip install --no-cache-dir "deluge$([ "$DELUGE_VERSION" = latest ] || echo "==${DELUGE_VERSION#deluge-}")" && \
+    # Deluge still imports pkg_resources, which Python 3.12 environments no longer include; setuptools 81 drops it.
+    /opt/deluge/bin/pip install --no-cache-dir "setuptools<81" "deluge$([ "$DELUGE_VERSION" = latest ] || echo "==${DELUGE_VERSION#deluge-}")" && \
+    /opt/deluge/bin/python -W ignore -c 'import pkg_resources, deluge.pluginmanagerbase' && \
     /opt/deluge/bin/pip show deluge | sed -n 's/^Version: //p' > /opt/deluge/.goat-version && cat /opt/deluge/.goat-version
 # Compiled caches are rebuilt when needed.
 RUN find /opt/bazarr /opt/sabnzbd /opt/deluge -name __pycache__ -prune -exec rm -rf {} +

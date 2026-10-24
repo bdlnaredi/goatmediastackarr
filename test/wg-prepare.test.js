@@ -22,6 +22,7 @@ test('provider WireGuard file is rewritten for split routing', () => {
   assert.match(out, /^PersistentKeepalive = 25$/m);
   // wg-quick itself must accept the result (checked when it is installed, e.g. in CI).
   try { execFileSync('which', ['wg-quick']); } catch { return; }
+  if (process.getuid && process.getuid() !== 0) return;   // wg-quick wants root (it calls sudo otherwise)
   const cfg = path.join(dir, 'goatvpn.conf'); fs.writeFileSync(cfg, out, { mode: 0o600 });
   const stripped = execFileSync('wg-quick', ['strip', cfg], { encoding: 'utf8' });
   assert.match(stripped, /AllowedIPs = 0\.0\.0\.0\/0/); assert.match(stripped, /FwMark = 0x5158/);
