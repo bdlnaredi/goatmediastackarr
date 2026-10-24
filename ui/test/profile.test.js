@@ -102,7 +102,8 @@ test('person page: who they are and everything they were in, newest first, with 
     const { k } = w;
     const p = (await k.get('/api/person?id=9001')).data;
     assert.equal(p.name, 'Ana Reyes'); assert.equal(p.born, '1984-06-02'); assert.equal(p.place, 'Lisbon, Portugal'); assert.equal(p.known, 'Acting');
-    assert.equal(p.photo, 'https://image.tmdb.org/t/p/h632/ana.jpg'); assert.ok(p.seerr);
+    assert.match(p.photo, /^http:\/\/127\.0\.0\.1:\d+\/seerr\/poster\/Ana%20Reyes$/, 'a full address is passed on as it is'); assert.ok(p.seerr);
+    assert.equal(p.credits.find(x => x.id === 6200).poster, 'https://image.tmdb.org/t/p/w342/next.jpg', 'a TMDB path becomes a TMDB address');
     assert.deepEqual(p.credits.map(x => [x.type, x.id]), [['movie', 6200], ['movie', 5001], ['tv', 7002]], 'not dated yet first, then newest; people are left out');
     const mv = p.credits.find(x => x.id === 5001);
     assert.equal(mv.role, 'Captain, Producer'); assert.equal(mv.inLib, true); assert.equal(p.credits.find(x => x.id === 6200).inLib, false);

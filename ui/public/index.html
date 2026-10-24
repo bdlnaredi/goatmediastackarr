@@ -437,6 +437,8 @@ main.sx #m .panel{max-width:760px!important}
 <link rel="stylesheet" href="/statuskit.css"><link rel="stylesheet" href="/cinema.css"><link rel="stylesheet" href="/styles.css"><script src="/statuskit.js"></script><script src="/scenes.js"></script><script src="/cinema.js"></script><script src="/qr.js"></script>
 <script>
 const $=s=>document.querySelector(s);
+// A picture that cannot load (an address that is gone, no internet) leaves an empty space instead of a broken-image sign.
+document.addEventListener('error',e=>{const t=e.target;if(t&&t.tagName==='IMG')t.classList.add('nopic')},true);
 let liveFns=[];
 const tick=(f,ms)=>{liveFns.push(f);return setInterval(()=>{if(!document.hidden)f()},ms)};
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)liveFns.forEach(f=>{try{f()}catch{}})});
@@ -2560,7 +2562,7 @@ async function goatView(){
     :vpn.enabled?`<span class="pill bad">${vpn.state==='waiting'?'Waiting for a VPN file':vpn.state==='connecting'?'Connecting…':'Not connected'}</span>`:'<span class="pill">Off</span>';
   const hasPlex=st.engines.some(e=>e.key==='plex'),plexOk=steps.plex&&steps.plex.ok,N=st.counts||{};
   const done=S.setup&&S.setup.done;
-  const check=(ok,label,hint)=>`<div class="row" style="gap:10px;margin:6px 0"><span class="pill ${ok?'ok':''}" style="min-width:26px;justify-content:center">${ok?ic('check'):'·'}</span><span><b>${label}</b>${hint?`<div class="mute">${hint}</div>`:''}</span></div>`;
+  const check=(ok,label,hint)=>`<div class="row" style="gap:10px;margin:8px 0;flex-wrap:nowrap;align-items:flex-start"><span class="pill ${ok?'ok':''}" style="min-width:30px;display:inline-grid;place-items:center;flex:none;margin-top:1px">${ok?ic('check'):'·'}</span><span class="grow"><b>${label}</b>${hint?`<div class="mute">${hint}</div>`:''}</span></div>`;
   // Linking Plex to an account has its own item below, so it does not hold back this one.
   const wSteps=Object.entries(steps).filter(([k])=>k!=='plex');
   const wiredAll=!wiring&&wSteps.length>0&&wSteps.every(([,x])=>x.ok);

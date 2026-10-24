@@ -290,21 +290,25 @@ function create(opts = {}) {
     }
     if (type === 'seerr') {
       const data = m === 'POST' ? await body(req) : {};
+      // Pictures for the pretend titles and people, from this same server (so the demo shows posters without TMDB).
+      const mount = req.url.slice(0, Math.max(0, req.url.length - String(rest).length)), pic = t => `http://${req.headers.host}${mount}/seerr/poster/${encodeURIComponent(t)}`;
+      if (sub.startsWith('/poster/')) { const t = decodeURIComponent(sub.slice(8)), hue = [...t].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 360, 7);
+        res.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'max-age=3600' }); return res.end(decodeURIComponent(svg(t, hue).split(',')[1])); }
       if (sub === '/api/v1/status') return json(res, { version: '2.0.0.demo' });
       if (sub === '/api/v1/search') return json(res, { results: ['Hidden Valley', 'Hidden Harbor', 'Paper Kingdoms'].filter(t => t.toLowerCase().includes(String(q.get('query') || '').toLowerCase())).map((t, i) => (i === 1 ? { mediaType: 'movie', id: 800 + i, title: t, releaseDate: '2024-03-01', overview: 'Demo result.', posterPath: '' } : { mediaType: 'tv', id: 800 + i, name: t, firstAirDate: '2022-05-01', overview: 'Demo result.', posterPath: '' })) });
       let r = sub.match(/^\/api\/v1\/tv\/(\d+)$/);
-      const cast = [['Ana Reyes', 'Captain'], ['Tom Okafor', 'Doctor'], ['Lin Park', 'Pilot']].map(([name, character], i) => ({ id: 9001 + i, name, character, profilePath: '' }));
+      const cast = [['Ana Reyes', 'Captain'], ['Tom Okafor', 'Doctor'], ['Lin Park', 'Pilot']].map(([name, character], i) => ({ id: 9001 + i, name, character, profilePath: pic(name) }));
       // "More like this": two titles in the library and one that is not.
       const rec = sub.match(/^\/api\/v1\/(movie|tv)\/(\d+)\/(recommendations|similar)$/);
       if (rec) return json(res, { page: 1, results: rec[1] === 'movie'
-        ? [{ id: 5002, mediaType: 'movie', title: 'Salt & Ember', releaseDate: '2023-02-01', posterPath: '/salt.jpg', voteAverage: 6.9 }, { id: 6100, mediaType: 'movie', title: 'Far Lantern', releaseDate: '2021-07-09', posterPath: '', voteAverage: 7.2, mediaInfo: { status: 2 } }]
-        : [{ id: 7001, mediaType: 'tv', name: 'Demo show 7001', firstAirDate: '2020-01-01', posterPath: '', voteAverage: 7.7 }] });
+        ? [{ id: 5002, mediaType: 'movie', title: 'Salt & Ember', releaseDate: '2023-02-01', posterPath: '/salt.jpg', voteAverage: 6.9 }, { id: 6100, mediaType: 'movie', title: 'Far Lantern', releaseDate: '2021-07-09', posterPath: pic('Far Lantern'), voteAverage: 7.2, mediaInfo: { status: 2 } }]
+        : [{ id: 7001, mediaType: 'tv', name: 'Demo show 7001', firstAirDate: '2020-01-01', posterPath: pic('Demo show 7001'), voteAverage: 7.7 }] });
       const pr = sub.match(/^\/api\/v1\/person\/(\d+)(\/combined_credits)?$/);
-      if (pr && !pr[2]) return +pr[1] > 9003 ? json(res, { message: 'Not found' }, 404) : json(res, { id: +pr[1], name: cast[+pr[1] - 9001].name, biography: 'An invented actor for the demo.', birthday: '1984-06-02', placeOfBirth: 'Lisbon, Portugal', profilePath: '/ana.jpg', knownForDepartment: 'Acting' });
+      if (pr && !pr[2]) return +pr[1] > 9003 ? json(res, { message: 'Not found' }, 404) : json(res, { id: +pr[1], name: cast[+pr[1] - 9001].name, biography: 'An invented actor for the demo.', birthday: '1984-06-02', placeOfBirth: 'Lisbon, Portugal', profilePath: pic(cast[+pr[1] - 9001].name), knownForDepartment: 'Acting' });
       if (pr) return json(res, { id: +pr[1],
-        cast: [{ id: 5001, mediaType: 'movie', title: 'Demo movie 5001', releaseDate: '2025-04-11', character: cast[0].character, posterPath: '', voteAverage: 7.6, voteCount: 900 },
-          { id: 7002, mediaType: 'tv', name: 'Demo show', firstAirDate: '2022-05-01', character: 'Herself', posterPath: '', voteAverage: 8.1, voteCount: 400 },
-          { id: 6200, mediaType: 'movie', title: 'Next Year', releaseDate: '', character: 'Lead', posterPath: '', voteCount: 0 }],
+        cast: [{ id: 5001, mediaType: 'movie', title: 'Demo movie 5001', releaseDate: '2025-04-11', character: cast[0].character, posterPath: pic('Demo movie 5001'), voteAverage: 7.6, voteCount: 900 },
+          { id: 7002, mediaType: 'tv', name: 'Demo show', firstAirDate: '2022-05-01', character: 'Herself', posterPath: pic('Demo show'), voteAverage: 8.1, voteCount: 400 },
+          { id: 6200, mediaType: 'movie', title: 'Next Year', releaseDate: '', character: 'Lead', posterPath: '/next.jpg', voteCount: 0 }],
         crew: [{ id: 5001, mediaType: 'movie', title: 'Demo movie 5001', releaseDate: '2025-04-11', job: 'Producer', posterPath: '' }, { id: 1, mediaType: 'person', name: 'skip me' }] });
       const mv = sub.match(/^\/api\/v1\/movie\/(\d+)$/);
       if (mv) return json(res, { id: +mv[1], title: 'Demo movie ' + mv[1], releaseDate: '2025-04-11', overview: 'An invented movie for the demo.', tagline: 'Nothing here is real.', posterPath: '', backdropPath: '', voteAverage: 7.6, runtime: 118,

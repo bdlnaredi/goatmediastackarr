@@ -14,9 +14,11 @@ html[data-rail=min] .ng{padding:4px 0;border-bottom:1px solid var(--line)}
 .phg{display:flex;flex-direction:column}
 .phk{font-size:12px;font-weight:720;letter-spacing:.1em;text-transform:uppercase;color:var(--link);margin-bottom:2px}
 .mg{flex-basis:100%;margin-top:6px}.mg .ngh{padding:8px 2px 6px}
+.row>label,.row>select{min-width:0;max-width:100%}select{max-width:100%;text-overflow:ellipsis}
 .brand .t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .qs span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 @media(max-width:860px){.side .wn,.side .ver{display:none}}
+img.nopic{visibility:hidden}
 /* What's new */
 .wnh{display:flex;gap:14px;align-items:center;margin:6px 0 18px}
 .wni{display:grid;place-items:center;width:48px;height:48px;border-radius:16px;background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--accent);flex:none}.wni .ic{width:26px;height:26px}

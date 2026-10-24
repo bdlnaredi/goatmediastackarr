@@ -133,7 +133,7 @@ class ScreensTest {
         openFromMore("Upcoming"); waitFor("Being downloaded"); shot("10-upcoming"); back()
         openFromMore("Stack"); waitFor("VPN connected"); shot("11-stack"); back()
         openFromMore("Settings"); waitFor("Appearance"); shot("12-settings")
-        tap("Paper"); settle(500); shot("13-settings-paper")
+        scrollTo("Light and warm"); tap("Paper"); settle(500); shot("13-settings-paper")
         back(); tap("Home"); waitFor("Playing now"); shot("14-home-paper")
         for (t in listOf("midnight", "aurora", "ember")) {
             compose.runOnUiThread { state.setTheme(t) }; compose.waitForIdle(); shot("15-home-$t")
