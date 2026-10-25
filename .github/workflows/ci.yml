@@ -191,7 +191,17 @@ jobs:
             echo "$t" | jq -e 'type == "array" and length >= 3 and all(.isValid)' >/dev/null 2>&1 && break; sleep 10
           done
           echo "$t" | jq -c '[.[] | {id, isValid}]'
-          echo "$t" | jq -e 'length >= 3 and all(.isValid)' >/dev/null || { echo "::error::Sonarr's download clients fail after the password change: $t"; exit 1; }
+          if ! echo "$t" | jq -e 'length >= 3 and all(.isValid)' >/dev/null; then
+            # Say why: the rTorrent client as Sonarr keeps it, and a test with the new password given directly.
+            S="http://127.0.0.1:8989/engines/sonarr/api/v3"
+            c=$(docker exec goat curl -sS -H "X-Api-Key: $key" $S/downloadclient | jq -c '.[] | select(.implementation == "RTorrent")')
+            echo "::error::Sonarr's rTorrent client: $(echo "$c" | jq -c '{id, enable, fields: [.fields[] | select(.name != "password") | {name, value}]}')"
+            echo "::error::Sonarr's test results: $(echo "$t" | jq -c '[.[] | {id, isValid, validationFailures: [.validationFailures[]?.errorMessage]}]')"
+            b=$(echo "$c" | jq -c '(.fields[] | select(.name == "password") | .value) = "Ci-new-rutorrent-9"')
+            r=$(docker exec goat curl -sS -X POST -H "X-Api-Key: $key" -H "$J" -d "$b" $S/downloadclient/test || true)
+            echo "::error::Testing it with the new password given directly: ${r:-ok}"
+            exit 1
+          fi
           echo "::notice::New passwords work in qBittorrent, ruTorrent, Deluge and Jellyfin, and in Sonarr's download clients"
       - name: Files belong to PUID/PGID
         run: |
