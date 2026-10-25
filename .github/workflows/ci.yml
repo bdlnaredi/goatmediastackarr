@@ -174,6 +174,9 @@ jobs:
             || { echo "::error::qBittorrent did not take its new password"; exit 1; }
           ok=""; for i in $(seq 1 30); do [ "$(docker exec goat curl -s -o /dev/null -w '%{http_code}' -u goat:Ci-new-rutorrent-9 http://127.0.0.1:8090/)" = 200 ] && { ok=1; break; }; sleep 2; done
           [ -n "$ok" ] || { echo "::error::ruTorrent did not take its new password"; exit 1; }
+          # Every one of its web server's workers must have the new password, not just the first that answers.
+          for i in $(seq 1 16); do c=$(docker exec goat curl -s -o /dev/null -w '%{http_code}' -u goat:Ci-new-rutorrent-9 -X POST -H 'Content-Type: text/xml' --data '<?xml version="1.0"?><methodCall><methodName>system.client_version</methodName></methodCall>' http://127.0.0.1:8090/RPC2)
+            [ "$c" = 200 ] || { echo "::error::ruTorrent's RPC2 answered $c with the new password (try $i)"; docker exec goat ps -eo pid,etime,args | grep '[p]hp' || true; exit 1; }; done
           ok=""; for i in $(seq 1 30); do docker exec goat curl -fsS -H "$J" -d '{"method":"auth.login","params":["Ci-new-deluge-9"],"id":1}' http://127.0.0.1:8112/json 2>/dev/null | jq -e '.result == true' >/dev/null && { ok=1; break; }; sleep 2; done
           [ -n "$ok" ] || { echo "::error::Deluge did not take its new password"; exit 1; }
           docker exec goat curl -fsS -H "$J" -H 'Authorization: MediaBrowser Client="ci", Device="ci", DeviceId="ci", Version="1"' -d '{"Username":"goat-admin","Pw":"Ci-new-jellyfin-9"}' http://127.0.0.1:8096/Users/AuthenticateByName | jq -e '.AccessToken' >/dev/null || { echo "::error::Jellyfin did not take its new password"; exit 1; }

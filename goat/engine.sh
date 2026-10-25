@@ -64,6 +64,9 @@ case "$name" in
     export RU_TEMP_DIRECTORY=/config/rutorrent/tmp RU_LOG_FILE=/config/rutorrent/errors.log PHP_CLI_SERVER_WORKERS=8
     # Start once rTorrent answers, so the first page does not time out waiting for it (up to a minute).
     for _ in $(seq 1 60); do (exec 3<>/dev/tcp/127.0.0.1/5000) 2>/dev/null && break; sleep 1; done
+    # PHP's web server answers with several worker processes. A worker left over from before a restart (after the
+    # login was changed, say) would keep the port and keep asking for the old password, so stop any first.
+    pkill -f -- '-S 0\.0\.0\.0:8090' 2>/dev/null && sleep 1
     # Open ruTorrent once in the background, so its plugins (RSS, scheduler, ratio rules) run without anyone opening it.
     ( sleep 15; curl -fsS -o /dev/null -u "$RU_USER:$RU_PASS" http://127.0.0.1:8090/php/getplugins.php || true ) &
     cmd=(/usr/bin/php -d variables_order=EGPCS -d memory_limit=256M -d upload_max_filesize=32M -d post_max_size=40M -d max_execution_time=300

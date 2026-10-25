@@ -4,6 +4,7 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- ruTorrent: after its password is changed, no leftover web server worker keeps asking for the old one (Sonarr and the others could fail to reach rTorrent).
 - Android app in Hindi, Spanish, German and French (Settings → Language, or the phone's own language), with the same words as the web page.
 - Android home-screen widget: download and upload speeds and what is playing; tap it to open Downloads, or the arrows to refresh.
 - Android app: the update message shows what the new version changes (its release notes), for everyone, not only admins.
