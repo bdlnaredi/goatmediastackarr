@@ -162,8 +162,8 @@ jobs:
           curl -fsS -b /tmp/ck -H "Origin: $B" -o /dev/null $B/engines/sonarr/
           echo "::notice::Stack page controls work: status, restart, refusal, engine page"
           # New passwords for the logins made for you: each app takes it, and Sonarr's download clients still work.
-          w0=$(docker exec goat jq -r '.finished // 0' /config/goat/wired.json)
           for a in qbittorrent rutorrent deluge jellyfin; do
+            t0=$(docker exec goat node -e 'console.log(Date.now())')
             r=$(curl -sS -b /tmp/ck -H "$J" -H "Origin: $B" -d "{\"app\":\"$a\",\"password\":\"Ci-new-$a-9\"}" $B/api/goat/login)
             echo "$r" | jq -e ".logins.$a.pass == \"Ci-new-$a-9\"" >/dev/null || { echo "::error::Changing the $a password failed: $(echo "$r" | jq -r '.error // .')"; exit 1; }
           done
@@ -179,7 +179,8 @@ jobs:
           docker exec goat curl -fsS -H "$J" -H 'Authorization: MediaBrowser Client="ci", Device="ci", DeviceId="ci", Version="1"' -d '{"Username":"goat-admin","Pw":"Ci-new-jellyfin-9"}' http://127.0.0.1:8096/Users/AuthenticateByName | jq -e '.AccessToken' >/dev/null || { echo "::error::Jellyfin did not take its new password"; exit 1; }
           # The wiring runs again and gives Sonarr the new passwords.
           # (wait for the run that started after the changes, not one that finished before them)
-          for i in $(seq 1 100); do docker exec goat jq -e --argjson w0 "$w0" '.running == false and (.finished // 0) > $w0' /config/goat/wired.json >/dev/null 2>&1 && break; sleep 3; done
+          # Each change starts the wiring again, so wait for the run that began with the last one.
+          for i in $(seq 1 100); do docker exec goat jq -e --argjson t0 "$t0" '.running == false and .at >= $t0 and (.finished // 0) > .at' /config/goat/wired.json >/dev/null 2>&1 && break; sleep 3; done
           docker exec goat jq -c '{running, steps: (.steps | map_values(.ok))}' /config/goat/wired.json || true
           key=$(docker exec goat jq -r '.services[] | select(.key == "sonarr") | .apiKey' /config/goat/managed.json)
           t=""; for i in 1 2 3 4 5; do

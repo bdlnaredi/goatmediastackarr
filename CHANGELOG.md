@@ -4,6 +4,7 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- Weekly email for everyone (Settings → Alerts, *Also email everyone their own week*): each person with an email address gets their own week: their requests and watchlist titles that came in, what is new in the library (kids profiles only what suits them) and what is coming up. Each person can turn it off, or preview it, under Account.
 - Kids profiles (Settings → Users, *Kids profile* and an age): a simpler look with only what is already in the library and rated for that age; titles without a rating are left out. No searching, discovering or requesting, and the dashboard keeps to the pictures and suggestions.
 - Invite links (Settings → Users): make a link (or a QR code) that lets people make their own profile, with the apps, rights and kids setting you choose. It can work for a day, a week, a month or until removed, and for one person or more; the list shows who joined with each.
 - Watchlist (web page: Watch → Watchlist): each person keeps a list of what they want to watch, from any title's page. It shows which are in the library, requested or not yet, and the person gets a message when one lands in the library. Admins can have whatever goes on a watchlist requested by itself (request limits and approval still apply).

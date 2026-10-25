@@ -121,7 +121,7 @@ const listKeys = () => { const l = (db.settings || {}).lists || {}; return { tra
 const lists = listsLib.create({ keys: listKeys,
   urls: new Proxy({}, { get: (_, k) => String(process.env[k.toUpperCase() + '_URL'] || (DEMO ? `http://127.0.0.1:${PORT}/__demo/${k}` : { trakt: 'https://api.trakt.tv', tmdb: 'https://api.themoviedb.org/3', tvdb: 'https://api4.thetvdb.com/v4' }[k])).replace(/\/+$/, '') }),
   seerrPoster: async (kind, id) => { const s = db.services.find(x => x.type === 'seerr'); if (!s) return ''; const r = await fetch(`${s.url.replace(/\/+$/, '')}/api/v1/${kind === 'tv' ? 'tv' : 'movie'}/${id}`, { signal: AbortSignal.timeout(8000), headers: { 'X-Api-Key': s.apiKey } }); return r.ok ? ((await r.json()).posterPath || '') : ''; } });
-const pubUser = u => ({ email: u.email || '', twofa: !!(u.totp && u.totp.on), id: u.id, name: u.name, role: u.role, access: u.access, perms: u.perms || null, notify: u.notify || '', dash: u.dash || null, reqLimit: u.reqLimit || null, autoApprove: !!u.autoApprove, plex: u.plex ? { name: u.plex.name } : null, hide: cleanHide(u.hide), restr: u.plexRules ? Object.fromEntries(['contentRating', 'contentRating!', 'label', 'label!'].filter(k => (u.plexRules[k] || []).length).map(k => [k, u.plexRules[k]])) : null, libs: u.plex ? { n: ((u.plexLibs || {}).mine || []).length, of: ((u.plexLibs || {}).all || []).length, limited: libLimited(u) } : null, plexName: u.plexName || '', lists: lists.enabled(), avatar: u.avatar ? `/api/avatar/${u.id}?v=${u.avatar.v}` : '', dataLimit: u.dataLimit || 0, streamLimit: u.streamLimit == null ? null : u.streamLimit, kids: u.kids ? { age: u.kids.age } : null });
+const pubUser = u => ({ email: u.email || '', weekly: !u.noWeekly, twofa: !!(u.totp && u.totp.on), id: u.id, name: u.name, role: u.role, access: u.access, perms: u.perms || null, notify: u.notify || '', dash: u.dash || null, reqLimit: u.reqLimit || null, autoApprove: !!u.autoApprove, plex: u.plex ? { name: u.plex.name } : null, hide: cleanHide(u.hide), restr: u.plexRules ? Object.fromEntries(['contentRating', 'contentRating!', 'label', 'label!'].filter(k => (u.plexRules[k] || []).length).map(k => [k, u.plexRules[k]])) : null, libs: u.plex ? { n: ((u.plexLibs || {}).mine || []).length, of: ((u.plexLibs || {}).all || []).length, limited: libLimited(u) } : null, plexName: u.plexName || '', lists: lists.enabled(), avatar: u.avatar ? `/api/avatar/${u.id}?v=${u.avatar.v}` : '', dataLimit: u.dataLimit || 0, streamLimit: u.streamLimit == null ? null : u.streamLimit, kids: u.kids ? { age: u.kids.age } : null });
 // What the folders the apps report mean, in words (these are the container's own folders).
 const DISK_NAMES = { '/media': 'Media library', '/data': 'Media library', '/downloads': 'Downloads', '/config': 'App data', '/': 'Container (Docker image)' };
 const DISK_ORDER = ['Media library', 'Downloads', '', 'App data', 'Container (Docker image)'];
@@ -978,7 +978,57 @@ ${h('This week in numbers')}<table role="presentation" width="100%" cellpadding=
 ${link ? `<p style="margin:26px 0 0"><a href="${hx(link)}" style="${F};display:inline-block;background:#4f7cff;color:#fff;text-decoration:none;font-size:14px;font-weight:600;padding:10px 18px;border-radius:8px">Open GoatMediaStackarr</a></p>` : ''}
 </td></tr><tr><td style="padding:22px 26px;${F};font-size:11px;color:#889">You get this because the weekly newsletter is on in GoatMediaStackarr, under Settings, Alerts.</td></tr></table></td></tr></table></body></html>`;
 }
-const sendNews = async () => { const n = await newsData(); return notify('weekly', 'GoatMediaStackarr weekly newsletter', newsText(n), newsHtml(n, baseUrl())); };
+const sendNews = async (all = false) => { const n = await newsData(), w = db.settings.weekly || {}; if (w.on || all) await notify('weekly', 'GoatMediaStackarr weekly newsletter', newsText(n), newsHtml(n, baseUrl())); return w.everyone ? sendPersonal(n).catch(e => ({ sent: 0, error: e.message })) : { sent: 0 }; };
+// The weekly email for everyone (when the admin turns it on): what is new for them, their requests that came in,
+// what landed from their watchlist, and what is coming. Each person can turn it off under Account.
+function newsFor(u, n) {
+  const wk = Date.now() - 7 * DAY;
+  const added = n.added.filter(x => kidsOk(u, x.cert));
+  const ready = db.requests.filter(r => r.uid === u.id && r.toldReady >= wk).map(r => ({ title: r.title, year: r.year, poster: r.poster }));
+  const wl = (db.watchlist || []).filter(w => w.uid === u.id && w.told >= wk && !ready.some(r => r.title === w.title)).map(w => ({ title: w.title, year: w.year, poster: w.poster }));
+  const waiting = db.requests.filter(r => r.uid === u.id && r.status === 'pending').length;
+  return { added, ready, wl, soon: u.kids ? [] : n.soon, waiting };
+}
+function personalText(u, p) {
+  const l = [`Hi ${u.name}, here is your week`, ''], t = x => `  ${x.title}${x.year ? ' (' + x.year + ')' : ''}`;
+  if (p.ready.length) { l.push('Your requests that are ready'); p.ready.forEach(x => l.push(t(x))); l.push(''); }
+  if (p.wl.length) { l.push('From your watchlist, now here'); p.wl.forEach(x => l.push(t(x))); l.push(''); }
+  if (p.added.length) { l.push('New in the library'); p.added.forEach(x => l.push(t(x))); l.push(''); }
+  if (p.soon.length) { l.push('Coming up'); p.soon.forEach(x => l.push(`  ${when(x.at)}  ${x.title} ${x.sub}`)); l.push(''); }
+  if (p.waiting) l.push(`${p.waiting} of your request${p.waiting > 1 ? 's are' : ' is'} waiting for approval.`);
+  l.push('', 'To stop these emails, turn off "Weekly email" under Account.');
+  return l.join('\n');
+}
+function personalHtml(u, p, link) {
+  const F = 'font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif', h = t => `<h2 style="${F};font-size:15px;margin:26px 0 10px;color:#111">${hx(t)}</h2>`;
+  const tile = x => { const img = /^https:\/\//.test(x.poster || '') ? `<img src="${hx(x.poster)}" width="104" height="156" alt="" style="display:block;width:104px;height:156px;object-fit:cover;border-radius:6px;background:#ddd">` : `<div style="width:104px;height:156px;border-radius:6px;background:#2b3245"></div>`;
+    return `<td width="112" valign="top" style="padding:0 8px 12px 0">${img}<div style="${F};font-size:12px;font-weight:600;margin-top:6px;color:#111;width:104px">${hx(x.title)}</div><div style="${F};font-size:11px;color:#667">${hx(x.year || '')}</div></td>`; };
+  const grid = l => { let r = ''; for (let i = 0; i < l.length; i += 4) r += '<tr>' + l.slice(i, i + 4).map(tile).join('') + '</tr>'; return `<table role="presentation" cellpadding="0" cellspacing="0">${r}</table>`; };
+  const li = t => `<li style="${F};font-size:13px;color:#222;margin:4px 0">${t}</li>`;
+  return `<!doctype html><html><body style="margin:0;background:#e9ecf2"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:20px 10px">
+<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#fff;border-radius:12px"><tr><td style="padding:26px 26px 8px">
+<div style="${F};font-size:12px;color:#667">${hx(when(Date.now()))}</div><div style="${F};font-size:24px;font-weight:700;color:#111;margin-top:2px">Hi ${hx(u.name)}, here is your week</div>
+${p.ready.length ? h('Your requests that are ready') + grid(p.ready.slice(0, 8)) : ''}${p.wl.length ? h('From your watchlist, now here') + grid(p.wl.slice(0, 8)) : ''}
+${p.added.length ? h('New in the library') + grid(p.added) : ''}
+${p.soon.length ? h('Coming up') + `<ul style="margin:0;padding-left:18px">${p.soon.map(x => li(`<b>${hx(when(x.at))}</b> &nbsp;${hx(x.title)} <span style="color:#667">${hx(x.sub)}</span>`)).join('')}</ul>` : ''}
+${p.waiting ? `<p style="${F};font-size:13px;color:#222">${p.waiting} of your request${p.waiting > 1 ? 's are' : ' is'} waiting for approval.</p>` : ''}
+${link ? `<p style="margin:26px 0 0"><a href="${hx(link)}" style="${F};display:inline-block;background:#4f7cff;color:#fff;text-decoration:none;font-size:14px;font-weight:600;padding:10px 18px;border-radius:8px">Open GoatMediaStackarr</a></p>` : ''}
+</td></tr><tr><td style="padding:22px 26px;${F};font-size:11px;color:#889">To stop these emails, turn off <i>Weekly email</i> under Account${link ? ` (<a href="${hx(link)}/settings" style="color:#889">${hx(link)}/settings</a>)` : ''}.</td></tr></table></td></tr></table></body></html>`;
+}
+const personalFolk = () => db.users.filter(u => u.email && !u.noWeekly);
+async function sendPersonal(n) {
+  if (!((db.settings.weekly || {}).everyone)) return { sent: 0 };
+  const c = mailer(); if (!c) return { sent: 0, error: 'No email channel' };
+  let sent = 0; const errors = [];
+  for (const u of personalFolk()) {
+    const pz = newsFor(u, n); if (!pz.added.length && !pz.ready.length && !pz.wl.length && !pz.soon.length) continue;
+    try { await require('./lib/smtp').sendMail({ host: c.host, port: c.port, secure: c.secure, user: c.user, pass: c.pass, from: c.from, insecure: !!c.insecure, to: u.email,
+      subject: 'Your week on GoatMediaStackarr', text: personalText(u, pz), html: personalHtml(u, pz, baseUrl()) }); sent++; }
+    catch (e) { errors.push(u.name + ': ' + e.message); }
+  }
+  if (errors.length) audit('system', 'Weekly email not sent to some', errors.slice(0, 3).join('; '));
+  return { sent, errors };
+}
 const BK = path.join(DATA, 'backups'), BKRE = /^(auto|pre-restore)-\d{4}-\d{2}-\d{2}-\d{4}\.json$/;
 function backupNow(kind = 'auto') {
   fs.mkdirSync(BK, { recursive: true, mode: 0o700 });
@@ -1233,7 +1283,7 @@ async function monitor() {
       }
     });
     const wk = db.settings.weekly;
-    if (wk && wk.on) await safe(async () => {
+    if (wk && (wk.on || wk.everyone)) await safe(async () => {
       const d = new Date(); d.setHours(wk.hour ?? 9, 0, 0, 0); d.setDate(d.getDate() - ((d.getDay() - (wk.day ?? 0) + 7) % 7)); if (d.getTime() > Date.now()) d.setDate(d.getDate() - 7);
       if ((wk.last || 0) < d.getTime()) { wk.last = Date.now(); save(); await sendNews(); }
     });
@@ -1591,7 +1641,7 @@ const goatServer = http.createServer(async (req, res) => {
     }
     if (p === '/api/logout') { sessions.delete(th(token)); saveSess(); return send(res, 200, {}, { 'Set-Cookie': 'sid=; Path=/; Max-Age=0' }); }
     if (!me) return send(res, 401, { error: 'Sign in first' });
-    if (DEMO && m !== 'GET' && /^\/api\/(users|password|2fa|backups?|stack\/backups|restore|alerts|statuslinks|signin|services|weekly|throttle|me\/notify|me\/email|me\/avatar|plexsettings|listsettings)/.test(p)) return send(res, 403, { error: 'This is turned off in the demo' });
+    if (DEMO && m !== 'GET' && /^\/api\/(users|password|2fa|backups?|stack\/backups|restore|alerts|statuslinks|signin|services|weekly|throttle|me\/notify|me\/email|me\/weekly|me\/avatar|plexsettings|listsettings)/.test(p)) return send(res, 403, { error: 'This is turned off in the demo' });
 
     if (p === '/api/2fa/start' && m === 'POST') {
       if (me.totp && me.totp.on) return send(res, 400, { error: 'Two-step sign-in is already on' });
@@ -1612,6 +1662,11 @@ const goatServer = http.createServer(async (req, res) => {
       const code = String(b.code || '').trim(), ok = totp.verify(me.totp.secret, code, Date.now(), 0) || (me.totp.recovery || []).includes(th(code.toLowerCase()));
       if (!ok) return send(res, 400, { error: 'That code is not right' });
       me.totp = undefined; save(); audit(me.name, 'Turned off two-step sign-in', ''); return send(res, 200, {});
+    }
+    if (p === '/api/me/weekly' && m === 'PUT') { me.noWeekly = !(await readBody(req)).on || undefined; save(); return send(res, 200, { weekly: !me.noWeekly }); }
+    if (p === '/api/me/weekly' && m === 'GET') {
+      const n = await newsData(), pz = newsFor(me, n);
+      return send(res, 200, { on: !me.noWeekly, everyone: !!(db.settings.weekly || {}).everyone, email: me.email || '', text: personalText(me, pz), html: personalHtml(me, pz, baseUrl()) });
     }
     if (p === '/api/me/email' && m === 'PUT') {
       const b = await readBody(req), e = cut(b.email, 120).trim();
@@ -2828,12 +2883,12 @@ const goatServer = http.createServer(async (req, res) => {
     if (me.role !== 'admin') return send(res, 403, { error: 'Admins only' });
     if (p === '/api/throttle' && m === 'GET') { const t = db.settings.throttle || {}; return send(res, 200, { on: !!t.on, active: Object.keys(t.held || {}).length > 0 }); }
     if (p === '/api/throttle' && m === 'PUT') { const b = await readBody(req); db.settings.throttle = { ...(db.settings.throttle || {}), on: !!b.on }; save(); audit(me.name, b.on ? 'Turned on slowing downloads during streams' : 'Turned off slowing downloads during streams', ''); return send(res, 200, {}); }
-    if (p === '/api/weekly' && m === 'GET') { const w = db.settings.weekly || {}; return send(res, 200, { on: !!w.on, day: w.day ?? 0, hour: w.hour ?? 9, last: w.last || 0 }); }
+    if (p === '/api/weekly' && m === 'GET') { const w = db.settings.weekly || {}; return send(res, 200, { on: !!w.on, day: w.day ?? 0, hour: w.hour ?? 9, last: w.last || 0, everyone: !!w.everyone, people: personalFolk().length, mail: !!mailer() }); }
     if (p === '/api/weekly' && m === 'PUT') {
-      const b = await readBody(req), o = db.settings.weekly || {}; db.settings.weekly = { on: !!b.on, day: Math.min(6, Math.max(0, Math.round(+b.day) || 0)), hour: Math.min(23, Math.max(0, Math.round(+b.hour) || 0)), last: o.on || !b.on ? o.last : Date.now() };
+      const b = await readBody(req), o = db.settings.weekly || {}; const ev = 'everyone' in b ? !!b.everyone : !!o.everyone; db.settings.weekly = { on: !!b.on, everyone: ev, day: Math.min(6, Math.max(0, Math.round(+b.day) || 0)), hour: Math.min(23, Math.max(0, Math.round(+b.hour) || 0)), last: (o.on || o.everyone) || !(b.on || ev) ? o.last : Date.now() };
       save(); audit(me.name, 'Changed the weekly newsletter', b.on ? 'on' : 'off'); return send(res, 200, {});
     }
-    if (p === '/api/weekly/send' && m === 'POST') { if (!((db.alerts || {}).channels || []).length) return send(res, 400, { error: 'Add an alert channel first' }); await sendNews(); return send(res, 200, {}); }
+    if (p === '/api/weekly/send' && m === 'POST') { if (!((db.alerts || {}).channels || []).length) return send(res, 400, { error: 'Add an alert channel first' }); return send(res, 200, await sendNews(true)); }
     if (p === '/api/weekly/preview' && m === 'GET') { const n = await newsData(); return send(res, 200, { text: newsText(n), html: newsHtml(n, baseUrl()) }); }
     if ((r = p.match(/^\/api\/reports\/(\w+)\/resolve$/)) && m === 'POST') {
       const x = db.reports.find(y => y.id === r[1]); if (!x) return send(res, 404, { error: 'Not found' }); x.status = 'done'; save(); return send(res, 200, {});

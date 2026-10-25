@@ -1109,7 +1109,9 @@ async function stAcct(){
     <div class="panel" style="max-width:560px;margin-top:16px"><h3 style="margin-top:0">Recovery email</h3>
       <p class="mute">Your own email address. If you ever forget your password, the reset link is sent here. Type your current password to save a change.</p>
       <form id="ef" style="margin:0"><input name="email" type="email" value="${esc(me.email||'')}" placeholder="you@example.com" autocomplete="email"><input name="password" type="password" placeholder="Current password" autocomplete="current-password" required>
-      <div class="row"><button class="primary">Save email</button></div><div class="err" id="ee"></div></form></div>
+      <div class="row"><button class="primary">Save email</button></div><div class="err" id="ee"></div></form>
+      <div id="wkm" style="margin-top:14px" hidden><label class="chk"><input type="checkbox" id="wkon" ${me.weekly!==false?'checked':''}>${T('Weekly email')}</label><button type="button" class="lnk" id="wkp">${T('Preview')}</button>
+        <p class="mute" style="margin:2px 0 0;font-size:13px">${T('Once a week: what is new for you, your requests and watchlist titles that came in, and what is coming up.')}</p><div id="wko" class="nlprev" hidden></div></div></div>
     ${me.role==='admin'&&PLEXLOGIN?`<div class="panel" style="max-width:560px;margin-top:16px"><h3 style="margin-top:0">Sign in with Plex</h3>
       <p class="mute">${me.plex?`Linked to the Plex account <b>${esc(me.plex.name)}</b>. You can sign in with Plex as well as with your password.`:'Link your own Plex account, and you can then use "Sign in with Plex" on the sign-in page as well as your password.'}</p>
       <div class="row">${me.plex?'<button id="plu">Unlink</button>':'<button class="primary" id="pll">Link my Plex account</button>'}</div><div class="mute" id="pls" role="status"></div><div class="err" id="ple"></div></div>`:''}
@@ -1126,6 +1128,9 @@ async function stAcct(){
   $('#nt').onclick=async()=>{try{await api('/api/me/notify/test','POST');toast('Test message sent','ok')}catch(x){toast(x.message,'bad')}};
   $('#ef').onsubmit=async e=>{e.preventDefault();const f=e.target.elements;$('#ee').textContent='';
     try{const r=await api('/api/me/email','PUT',{email:f.email.value.trim(),password:f.password.value});me.email=r.email;f.password.value='';toast(r.email?'Recovery email saved':'Recovery email removed','ok')}catch(x){$('#ee').textContent=x.message}};
+  api('/api/me/weekly').then(w=>{if(!w.everyone||!$('#wkm'))return;$('#wkm').hidden=false;
+    $('#wkon').onchange=async e=>{try{const r=await api('/api/me/weekly','PUT',{on:e.target.checked});me.weekly=r.weekly;toast('Saved','ok')}catch(x){toast(x.message,'bad')}};
+    $('#wkp').onclick=()=>{$('#wko').hidden=!$('#wko').hidden;$('#wko').innerHTML=w.html}}).catch(()=>{});
   if(me.role==='admin')signinPanel();
   tfaPanel();
   if(me.plex){['#pf','#ef','#tf'].forEach(i=>{const e=$(i);if(e)(e.closest('.panel')||e).remove()});
@@ -2567,12 +2572,14 @@ async function alView(){
   $('#m').insertAdjacentHTML('beforeend',`<form id="wf" class="panel" style="max-width:640px;margin-top:16px"><h3 style="margin-top:0">Weekly newsletter</h3>
     <p class="mute" style="margin-top:0">One message a week to every alert channel: what was added to the library (with posters in email), what is coming up, downloads, requests, open problems and any app that is not responding.</p>
     <label class="chk"><input type="checkbox" name="on" ${wk.on?'checked':''}>Send the weekly newsletter</label>
+    <label class="chk"><input type="checkbox" name="everyone" ${wk.everyone?'checked':''}>Also email everyone their own week</label>
+    <p class="mute" style="margin:2px 0 8px;font-size:13px">Each person with an email address gets what is new for them (kids profiles only what suits them), their requests and watchlist titles that came in, and what is coming up. They can turn it off under Account. ${wk.mail?`${wk.people} ${wk.people===1?'person has':'people have'} an email address.`:'<b>Needs an email alert channel</b> to send from.'}</p>
     <div class="row"><label class="mute">On <select name="day">${['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map((d,i)=>`<option value="${i}" ${i===wk.day?'selected':''}>${d}</option>`).join('')}</select></label>
     <label class="mute">at <select name="hour">${Array.from({length:24},(_,h)=>`<option value="${h}" ${h===wk.hour?'selected':''}>${String(h).padStart(2,'0')}:00</option>`).join('')}</select></label></div>
     <div class="row"><button class="primary">Save</button><button type="button" id="wp">Preview</button><button type="button" id="ws">Send one now</button></div><div id="wo" class="nlprev" hidden></div><div class="err" id="we"></div></form>`);
-  $('#wf').onsubmit=async e=>{e.preventDefault();const f=e.target.elements;try{await api('/api/weekly','PUT',{on:f.on.checked,day:+f.day.value,hour:+f.hour.value});toast('Saved','ok')}catch(x){$('#we').textContent=x.message}};
+  $('#wf').onsubmit=async e=>{e.preventDefault();const f=e.target.elements;try{await api('/api/weekly','PUT',{on:f.on.checked,everyone:f.everyone.checked,day:+f.day.value,hour:+f.hour.value});toast('Saved','ok')}catch(x){$('#we').textContent=x.message}};
   $('#wp').onclick=async()=>{$('#we').textContent='';try{const d=await api('/api/weekly/preview');$('#wo').hidden=false;$('#wo').innerHTML=d.html}catch(x){$('#we').textContent=x.message}};
-  $('#ws').onclick=async()=>{$('#we').textContent='';try{await api('/api/weekly/send','POST');toast('Sent','ok')}catch(x){$('#we').textContent=x.message}};
+  $('#ws').onclick=async()=>{$('#we').textContent='';try{const r=await api('/api/weekly/send','POST');toast(r&&r.sent?`Sent (and ${r.sent} personal email${r.sent>1?'s':''})`:'Sent','ok')}catch(x){$('#we').textContent=x.message}};
   $('#ac').onclick=()=>chanDialog(null,alView);
   $('#cl').onclick=async e=>{const row=e.target.closest('[data-c]');if(!row)return;const c=a.channels.find(x=>x.id===row.dataset.c);
     if(e.target.closest('[data-ce]'))chanDialog(c,alView);
