@@ -71,6 +71,25 @@ async function applyPassword(app, old, pw, s, fetchFn) {
   }
 }
 
+// Backups of the whole stack run as a job in the background (they can take minutes); the interface asks how it goes.
+const SB = require('./stackbackup');
+const JOB = () => process.env.GOAT_BACKUP_JOB || '/run/goat/stackbackup.json';
+let job = null;
+const jobWrite = j => { try { fs.writeFileSync(JOB(), JSON.stringify(j)); fs.chmodSync(JOB(), 0o644); } catch {} };
+const owner = () => ({ uid: Number(process.env.PUID || 99), gid: Number(process.env.PGID || 100) });
+// Backups belong to the PUID user, like the rest of App data, so the interface can list and download them.
+const giveBackups = () => { const { uid, gid } = owner(); try { const d = SB.DIR(); fs.chownSync(d, uid, gid); for (const f of fs.readdirSync(d)) if (!f.startsWith('.')) fs.chownSync(require('path').join(d, f), uid, gid); } catch {} };
+function startJob(kind, fn, extra = {}) {
+  if (job && job.running) return { ok: false, error: 'A backup or restore is already running' };
+  job = { kind, ...extra, running: true, started: Date.now(), log: [] };
+  const log = m => { job.log.push(m); if (job.log.length > 60) job.log.shift(); jobWrite(job); };
+  jobWrite(job);
+  Promise.resolve().then(() => fn(log)).then(r => { job = { ...job, running: false, ok: true, result: r, finished: Date.now() }; },
+    e => { job = { ...job, running: false, ok: false, error: e.message, finished: Date.now() }; })
+    .finally(() => { giveBackups(); jobWrite(job); log(job.ok ? 'Finished' : 'Failed: ' + job.error); });
+  return { ok: true, started: true };
+}
+
 // Each command is a fixed list of steps; nothing from the request reaches a shell.
 async function handle(msg, exec = { run, restart, svc, markStopped, fetch: (...a) => fetch(...a) }) {
   const cmd = msg && msg.cmd;
@@ -108,6 +127,35 @@ async function handle(msg, exec = { run, restart, svc, markStopped, fetch: (...a
     for (const s of steps.flatMap(parts)) { const r = await exec.restart(s); if (!r.ok) failed.push(s); }
     return failed.length ? { ok: false, error: 'Could not restart ' + failed.join(', '), output: k.out } : { ok: true, output: k.out };
   }
+  if (cmd === 'stack-backup') {
+    const only = Array.isArray(msg.only) ? msg.only.filter(k => SB.PARTS[k]) : [];
+    return startJob('backup', log => SB.backup({ kind: msg.auto ? 'auto' : 'manual', keep: Math.min(60, Math.max(1, Number(msg.keep) || 7)), only, log }), { auto: !!msg.auto });
+  }
+  if (cmd === 'stack-restore') {
+    if (!SB.NAME_RE.test(String(msg.name || ''))) return { ok: false, error: 'Not a backup' };
+    const only = Array.isArray(msg.only) ? msg.only.filter(k => SB.PARTS[k]) : [];
+    const { uid, gid } = owner(), sv = (n, up) => exec.svc(n, up);
+    return startJob('restore', async log => {
+      const have = await SB.parts(msg.name), want = (only.length ? only : have).filter(k => have.includes(k));
+      const first = want.filter(k => k !== 'ui');
+      let r = { restored: [], services: [] };
+      if (first.length) {
+        r = await SB.restore({ name: msg.name, only: first, svc: sv, uid, gid, log });
+        // Settings files that depend on the keys (init.js), the apps started again, then the wiring.
+        log('Writing the app settings');
+        await exec.run('/usr/local/bin/node', [`${BIN}/init.js`]);
+        for (const s of r.services) await sv(s, true);
+        await exec.restart('goat-wire');
+      }
+      // The interface's own data last: it is stopped while its folder is swapped, then started again.
+      if (want.includes('ui')) { const u = await SB.restore({ name: msg.name, only: ['ui'], svc: sv, uid, gid, log }); r.restored.push('ui'); await sv('goat-ui', true); r.ui = u.before; }
+      return r;
+    });
+  }
+  if (cmd === 'stack-remove') {
+    try { SB.remove(String(msg.name || '')); return { ok: true }; } catch (e) { return { ok: false, error: e.message }; }
+  }
+  if (cmd === 'stack-job') return { ok: true, job: job || null };
   if (cmd === 'set-login') {
     const key = LOGINS[msg.app];
     if (!key) return { ok: false, error: 'Unknown login' };

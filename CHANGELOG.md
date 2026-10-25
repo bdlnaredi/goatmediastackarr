@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- Backups of the whole stack (Settings → Backup): every app's settings and databases in one file, without artwork, caches and logs: Sonarr, Radarr, Lidarr, Prowlarr, Bazarr, qBittorrent, ruTorrent, Deluge, SABnzbd, Jellyfin, Seerr, Tautulli, Plex, the VPN files, and GoatMediaStackarr's keys, logins, profiles and history. Databases are copied with SQLite's own backup, so one in use is still copied whole. Every day or once a week at a time you choose, keeping the last few; or *Back up now*. Download one, or drop one in the backups folder to move to a new server.
+- *Put back* (guided): choose which apps to put back, and only those are stopped, replaced and started again; the apps are then connected to each other again. A copy of how they were just before is made first, so a restore can be undone, and a restore that fails changes nothing. A failed backup or restore is told to admins (the bell, and alert channels that want it).
 ## v0.7.5 — 2026-10-24
 
 - A new design for the web page, in four styles to choose from under Appearance → Style: **Cinema** (dark and poster-first like a streaming app, with the menu as a bar across the top), **Dashboard** (clean cards and clear lists, information first), **Glass** (frosted panels over your artwork) and **Compact** (flat and tight, more on every screen). Each works in light and dark and with every accent colour.

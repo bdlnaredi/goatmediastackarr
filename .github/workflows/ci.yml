@@ -200,6 +200,35 @@ jobs:
           for i in $(seq 1 60); do curl -fsS http://127.0.0.1:2806/api/health && break; sleep 5; done
           sleep 60
           docker exec goat jq -e '[.steps[] | .ok] | all' /config/goat/wired.json
+      - name: Backups of the whole stack work for real
+        run: |
+          B=http://127.0.0.1:2806; J='Content-Type: application/json'
+          curl -fsS -c /tmp/ck2 -H "$J" -d '{"name":"admin","password":"ci-password-123"}' $B/api/login >/dev/null
+          job() { curl -fsS -b /tmp/ck2 $B/api/stack/backups | jq -c '.job'; }
+          wait_job() { for i in $(seq 1 120); do j=$(job); echo "$j" | jq -e '.running == false' >/dev/null && { echo "$j"; return; }; sleep 3; done; echo "$j"; }
+          curl -fsS -b /tmp/ck2 -H "$J" -H "Origin: $B" -d '{}' $B/api/stack/backups/run >/dev/null
+          j=$(wait_job); echo "$j" | jq -c '{ok, error, result}'
+          echo "$j" | jq -e '.ok == true' >/dev/null || { echo "::error::The backup failed: $(echo "$j" | jq -r .error)"; exit 1; }
+          name=$(echo "$j" | jq -r .result.name)
+          l=$(curl -fsS -b /tmp/ck2 $B/api/stack/backups)
+          echo "$l" | jq -e --arg n "$name" '.files | map(.name) | index($n) != null' >/dev/null || { echo "::error::The backup is not listed"; exit 1; }
+          curl -fsS -b /tmp/ck2 -o /tmp/sb.tar.gz "$B/api/stack/backups/$name"
+          tar -tzf /tmp/sb.tar.gz > /tmp/sb.txt
+          for f in ./sonarr/config.xml ./sonarr/sonarr.db ./radarr/radarr.db ./goat/secrets.json ./ui/db.json ./qbittorrent/qBittorrent/config/qBittorrent.conf ./jellyfin/data/jellyfin.db; do
+            grep -qxF "$f" /tmp/sb.txt || { echo "::error::$f is missing from the backup"; exit 1; }
+          done
+          grep -q '^./sonarr/MediaCover/\|^./jellyfin/cache/\|^./jellyfin/data/metadata/' /tmp/sb.txt && { echo "::error::The backup carries artwork or caches"; exit 1; }
+          # The database copy is a whole, working database.
+          tar -xzf /tmp/sb.tar.gz -C /tmp ./sonarr/sonarr.db && docker run --rm --entrypoint sqlite3 -v /tmp/sonarr:/d goat:ci /d/sonarr.db 'pragma integrity_check;' | grep -qx ok \
+            || { echo "::error::The copied Sonarr database is damaged"; exit 1; }
+          # Putting Sonarr back: it is stopped, replaced, started, and answers again with the same key.
+          key=$(docker exec goat jq -r '.services[] | select(.key == "sonarr") | .apiKey' /config/goat/managed.json)
+          curl -fsS -b /tmp/ck2 -H "$J" -H "Origin: $B" -d "{\"name\":\"$name\",\"only\":[\"sonarr\"]}" $B/api/stack/backups/restore >/dev/null
+          j=$(wait_job); echo "$j" | jq -c '{ok, error, result}'
+          echo "$j" | jq -e '.ok == true and (.result.restored == ["sonarr"])' >/dev/null || { echo "::error::Putting Sonarr back failed: $(echo "$j" | jq -r .error)"; exit 1; }
+          ok=""; for i in $(seq 1 60); do docker exec goat curl -fsS -H "X-Api-Key: $key" http://127.0.0.1:8989/engines/sonarr/api/v3/system/status >/dev/null 2>&1 && { ok=1; break; }; sleep 3; done
+          [ -n "$ok" ] || { echo "::error::Sonarr did not come back after the restore"; exit 1; }
+          echo "::notice::Stack backup $(echo "$l" | jq -r --arg n "$name" '.files[] | select(.name == $n) | .size' | numfmt --to=iec) with $(wc -l < /tmp/sb.txt) files; Sonarr put back and answering"
       - name: FlareSolverr works for real
         if: matrix.arch == 'amd64'
         run: |

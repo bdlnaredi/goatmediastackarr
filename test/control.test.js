@@ -113,3 +113,26 @@ test('changing a login password: checked, given to the running app, saved, then 
   assert.equal(require('node:crypto').pbkdf2Sync('Offline-pass', Buffer.from(m[1], 'base64'), 100000, 64, 'sha512').toString('base64'), m[2]);
   delete process.env.GOAT_ENGINES;
 });
+
+test('backups of the stack run as a job in the background, one at a time', async () => {
+  const cfg = process.env.GOAT_CONFIG_DIR;
+  process.env.GOAT_BACKUP_DIR = path.join(root, 'sb'); process.env.GOAT_BACKUP_JOB = path.join(root, 'sbjob.json');
+  fs.mkdirSync(path.join(cfg, 'sonarr'), { recursive: true }); fs.writeFileSync(path.join(cfg, 'sonarr', 'config.xml'), '<Config/>');
+  const x = fake();
+  assert.deepEqual(await handle({ cmd: 'stack-job' }, x), { ok: true, job: null });
+  assert.equal((await handle({ cmd: 'stack-restore', name: '../x' }, x)).error, 'Not a backup');
+  assert.equal((await handle({ cmd: 'stack-remove', name: 'nope.tar.gz' }, x)).ok, false);
+  assert.deepEqual(await handle({ cmd: 'stack-backup', auto: true, keep: 3 }, x), { ok: true, started: true });
+  assert.match((await handle({ cmd: 'stack-backup' }, x)).error, /already running/);
+  let j; for (let i = 0; i < 100; i++) { j = (await handle({ cmd: 'stack-job' }, x)).job; if (!j.running) break; await new Promise(r => setTimeout(r, 100)); }
+  assert.equal(j.ok, true, j.error); assert.equal(j.auto, true); assert.match(j.result.name, /^stack-auto-/);
+  assert.equal(JSON.parse(fs.readFileSync(process.env.GOAT_BACKUP_JOB, 'utf8')).ok, true, 'the interface can read how it went');
+  // Putting it back: the app is stopped, the settings are written, the app starts again, then the wiring.
+  fs.writeFileSync(path.join(cfg, 'sonarr', 'config.xml'), '<Config>changed</Config>');
+  process.env.GOAT_RESTORE_WAIT = '1';
+  assert.equal((await handle({ cmd: 'stack-restore', name: j.result.name, only: ['sonarr'] }, x)).ok, true);
+  for (let i = 0; i < 100; i++) { j = (await handle({ cmd: 'stack-job' }, x)).job; if (!j.running) break; await new Promise(r => setTimeout(r, 100)); }
+  assert.equal(j.ok, true, j.error); assert.deepEqual(j.result.restored, ['sonarr']);
+  assert.equal(fs.readFileSync(path.join(cfg, 'sonarr', 'config.xml'), 'utf8'), '<Config/>');
+  assert.deepEqual(x.calls.filter(c => c[0] !== 'mark'), [['stop', 'sonarr'], ['run', 'init.js'], ['start', 'sonarr'], ['restart', 'goat-wire']]);
+});

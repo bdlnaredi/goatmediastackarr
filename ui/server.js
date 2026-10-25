@@ -230,6 +230,15 @@ const GOAT_CONFIG = process.env.GOAT_CONFIG_DIR || '/config', GOAT_SOCK = proces
 // The PIA helper (the region list for the VPN settings), found the same way as the settings.
 const goatPia = (() => { for (const p of [process.env.GOAT_BIN && path.join(process.env.GOAT_BIN, 'pia.js'), path.join(__dirname, '..', 'bin', 'pia.js'), path.join(__dirname, '..', 'goat', 'pia.js')]) { try { if (p && fs.existsSync(p)) return require(p); } catch {} } return null; })();
 let piaRegions = null;
+// Backups of the whole stack (goat/stackbackup.js): read here for the list and downloads; made and put back by the control service.
+const goatSB = (() => { for (const p of [process.env.GOAT_BIN && path.join(process.env.GOAT_BIN, 'stackbackup.js'), path.join(__dirname, '..', 'bin', 'stackbackup.js'), path.join(__dirname, '..', 'goat', 'stackbackup.js')]) { try { if (p && fs.existsSync(p)) return require(p); } catch {} } return null; })();
+const sbJob = () => goatRead(path.join(GOAT_RUN, 'stackbackup.json'));
+let sbSeen = 0;
+// A backup started by the schedule: when it ends, admins hear how it went (a failure always, a success only in the bell).
+const sbWatch = () => { const j = sbJob(); if (!j || j.running || !j.finished || j.finished <= sbSeen) return; sbSeen = j.finished; if (!db.settings.stackBackup) return;
+  db.settings.stackBackup.lastResult = { ok: !!j.ok, at: j.finished, kind: j.kind, error: j.error || '', name: (j.result && (j.result.name || j.result.before)) || '' }; save();
+  if (!j.ok) { feed('@admins', 'problem', j.kind === 'restore' ? 'Restore failed' : 'Backup failed', j.error || 'unknown problem', 'settings'); notify('backup', j.kind === 'restore' ? 'Restore failed' : 'Backup of the stack failed', j.error || 'unknown problem').catch(() => {}); }
+  else if (j.kind === 'backup' && j.auto) feed('@admins', 'info', 'Backup made', j.result && j.result.name || '', 'settings'); };
 const goatSettings = (() => { for (const p of [process.env.GOAT_BIN && path.join(process.env.GOAT_BIN, 'settings.js'), path.join(__dirname, '..', 'bin', 'settings.js'), path.join(__dirname, '..', 'goat', 'settings.js')]) { try { if (p && fs.existsSync(p)) return require(p); } catch {} } return null; })();
 const goatRead = f => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; } };
 const goatVpnFiles = () => { try { return fs.readdirSync(path.join(GOAT_CONFIG, 'vpn')).filter(f => /\.(conf|ovpn)$/i.test(f) && f !== 'credentials.conf'); } catch { return []; } };
@@ -778,9 +787,9 @@ const ruleDef = x => ({ enabled: !!x.enabled, mustContain: cut(x.mustContain, 50
   ...(x.torrentContentLayout ? { torrentContentLayout: cut(x.torrentContentLayout, 40) } : {}), ...(x.lastMatch ? { lastMatch: cut(x.lastMatch, 60) } : {}),
   ...(Array.isArray(x.previouslyMatchedEpisodes) ? { previouslyMatchedEpisodes: x.previouslyMatchedEpisodes.slice(0, 2000).map(e => cut(e, 60)) } : {}) });
 // What an alert channel can be told about. Each channel has its own list (like Tautulli's notification agents).
-const ALERT_EVENTS = ['finished', 'grabbed', 'requests', 'available', 'reports', 'offline', 'vpn', 'disk', 'streamLimit', 'update', 'appUpdates', 'weekly'];
+const ALERT_EVENTS = ['finished', 'grabbed', 'requests', 'available', 'reports', 'offline', 'vpn', 'disk', 'streamLimit', 'update', 'appUpdates', 'backup', 'healed', 'weekly'];
 // A channel saved before channels had their own list gets what the old shared switches said.
-const chanEvents = c => Array.isArray(c.events) ? c.events : (a => ALERT_EVENTS.filter(k => k === 'reports' || k === 'streamLimit' ? a[k] !== false : k === 'weekly' || k === 'update' || k === 'appUpdates' ? true : !!a[k]))(db.alerts || {});
+const chanEvents = c => Array.isArray(c.events) ? c.events : (a => ALERT_EVENTS.filter(k => k === 'reports' || k === 'streamLimit' ? a[k] !== false : k === 'weekly' || k === 'update' || k === 'appUpdates' || k === 'backup' || k === 'healed' ? true : !!a[k]))(db.alerts || {});
 async function notify(kind, title, body, html) {
   const list = ((db.alerts || {}).channels || []).filter(c => !channels.problem(c) && chanEvents(c).includes(kind));
   if (!list.length) return false;
@@ -1149,6 +1158,14 @@ async function monitor() {
       const d = new Date(); d.setHours(wk.hour ?? 9, 0, 0, 0); d.setDate(d.getDate() - ((d.getDay() - (wk.day ?? 0) + 7) % 7)); if (d.getTime() > Date.now()) d.setDate(d.getDate() - 7);
       if ((wk.last || 0) < d.getTime()) { wk.last = Date.now(); save(); await sendNews(); }
     });
+    const sb = db.settings.stackBackup || {};
+    if (GOAT_MANAGED && !DEMO && sb.on && new Date(sb.last || 0).toDateString() !== new Date().toDateString() && new Date().getHours() >= (sb.hour ?? 4)
+      && (!sb.weekly || new Date().getDay() === (sb.day ?? 0))) await safe(async () => {
+      sb.last = Date.now(); db.settings.stackBackup = sb; save();
+      const r = await goatControl({ cmd: 'stack-backup', auto: true, keep: sb.keep || 7 });
+      if (!r.ok) { feed('@admins', 'problem', 'Backup failed', r.error || '', 'settings'); notify('backup', 'Backup of the stack failed', r.error || '').catch(() => {}); }
+    });
+    if (GOAT_MANAGED) sbWatch();
     const bc = db.settings.backup || {};
     if (bc.on && new Date(bc.last || 0).toDateString() !== new Date().toDateString() && new Date().getHours() >= (bc.hour ?? 3)) await safe(async () => { backupNow(); });
     for (const [k, v] of tickets) if (v.exp < Date.now()) tickets.delete(k);
@@ -1468,7 +1485,7 @@ const goatServer = http.createServer(async (req, res) => {
     }
     if (p === '/api/logout') { sessions.delete(th(token)); saveSess(); return send(res, 200, {}, { 'Set-Cookie': 'sid=; Path=/; Max-Age=0' }); }
     if (!me) return send(res, 401, { error: 'Sign in first' });
-    if (DEMO && m !== 'GET' && /^\/api\/(users|password|2fa|backups?|restore|alerts|statuslinks|signin|services|weekly|throttle|me\/notify|me\/email|me\/avatar|plexsettings|listsettings)/.test(p)) return send(res, 403, { error: 'This is turned off in the demo' });
+    if (DEMO && m !== 'GET' && /^\/api\/(users|password|2fa|backups?|stack\/backups|restore|alerts|statuslinks|signin|services|weekly|throttle|me\/notify|me\/email|me\/avatar|plexsettings|listsettings)/.test(p)) return send(res, 403, { error: 'This is turned off in the demo' });
 
     if (p === '/api/2fa/start' && m === 'POST') {
       if (me.totp && me.totp.on) return send(res, 400, { error: 'Two-step sign-in is already on' });
@@ -2816,6 +2833,41 @@ const goatServer = http.createServer(async (req, res) => {
     if ((r = p.match(/^\/api\/users\/(\w+)\/2fa\/reset$/)) && m === 'POST') {
       const u = userOf(r[1]); if (!u) return send(res, 404, { error: 'Not found' });
       u.totp = undefined; save(); audit(me.name, 'Turned off two-step sign-in for', u.name); return send(res, 200, {});
+    }
+    // ---------- Backups of the whole stack (every app inside the container) ----------
+    if (p.startsWith('/api/stack/backups')) {
+      if (!GOAT_MANAGED || !goatSB) return send(res, 404, { error: 'Only inside GoatMediaStackarr' });
+      const sb = db.settings.stackBackup || {}, cfg = { on: !!sb.on, hour: sb.hour ?? 4, keep: sb.keep || 7, weekly: !!sb.weekly, day: sb.day ?? 0, last: sb.last || 0, lastResult: sb.lastResult || null };
+      if (p === '/api/stack/backups' && m === 'GET') {
+        let free = 0; try { const st = fs.statfsSync(goatSB.DIR()); free = st.bavail * st.bsize; } catch {}
+        return send(res, 200, { cfg, dir: goatSB.DIR(), free, parts: Object.fromEntries(Object.entries(goatSB.PARTS).map(([k, v]) => [k, v.name])), files: goatSB.list(), job: sbJob() });
+      }
+      if (p === '/api/stack/backups/config' && m === 'PUT') {
+        const b = await readBody(req);
+        db.settings.stackBackup = { ...sb, on: !!b.on, hour: Math.min(23, Math.max(0, Math.round(+b.hour) || 0)), keep: Math.min(60, Math.max(1, Math.round(+b.keep) || 7)), weekly: !!b.weekly, day: Math.min(6, Math.max(0, Math.round(+b.day) || 0)) };
+        save(); audit(me.name, 'Changed backups of the stack', db.settings.stackBackup.on ? 'on' : 'off'); return send(res, 200, {});
+      }
+      if (p === '/api/stack/backups/run' && m === 'POST') {
+        const b = await readBody(req), r = await goatControl({ cmd: 'stack-backup', only: Array.isArray(b.only) ? b.only.map(String) : [] });
+        audit(me.name, 'Started a backup of the stack', ''); return send(res, r.ok ? 200 : 400, r.ok ? { job: sbJob() } : { error: r.error });
+      }
+      if (p === '/api/stack/backups/restore' && m === 'POST') {
+        const b = await readBody(req), name = String(b.name || '');
+        if (!goatSB.NAME_RE.test(name)) return send(res, 400, { error: 'Not a backup' });
+        const r = await goatControl({ cmd: 'stack-restore', name, only: Array.isArray(b.only) ? b.only.map(String) : [] });
+        audit(me.name, 'Started putting back a backup of the stack', name + (Array.isArray(b.only) && b.only.length ? ': ' + b.only.join(', ') : '')); return send(res, r.ok ? 200 : 400, r.ok ? { job: sbJob() } : { error: r.error });
+      }
+      if ((r = p.match(/^\/api\/stack\/backups\/([\w.-]+)$/))) {
+        if (!goatSB.NAME_RE.test(r[1]) || !goatSB.list().some(x => x.name === r[1])) return send(res, 404, { error: 'That backup is not there' });
+        if (m === 'DELETE') { const x = await goatControl({ cmd: 'stack-remove', name: r[1] }); audit(me.name, 'Deleted a backup of the stack', r[1]); return send(res, x.ok ? 200 : 400, x.ok ? {} : { error: x.error }); }
+        if (m === 'GET') {
+          const f = path.join(goatSB.DIR(), r[1]), st = fs.statSync(f);
+          audit(me.name, 'Downloaded a backup of the stack', r[1]);
+          res.writeHead(200, { 'Content-Type': 'application/gzip', 'Content-Length': st.size, 'Content-Disposition': `attachment; filename="${r[1]}"`, 'Cache-Control': 'no-store' });
+          return fs.createReadStream(f).pipe(res);
+        }
+      }
+      return send(res, 404, { error: 'Not found' });
     }
     if (p === '/api/backups' && m === 'GET') {
       const files = fs.existsSync(BK) ? fs.readdirSync(BK).filter(f => BKRE.test(f)).sort().reverse().map(f => { const st = fs.statSync(path.join(BK, f)); return { name: f, size: st.size, at: st.mtimeMs }; }) : [];

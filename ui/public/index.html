@@ -1208,12 +1208,12 @@ async function stRules(){
     try{await api('/api/seedrules','PUT',{rules:list});toast('Rules saved. They apply within a minute.','ok')}catch(x){toast(x.message,'bad')}};
 }
 function stBackup(){
-  $('#m').innerHTML=`<div class="panel" style="max-width:560px"><h3 style="margin-top:0">Back up</h3><p class="mute">Saves your apps, profiles, requests, alert settings and history to a file, locked with a passphrase. Keep the passphrase safe. Without it the file cannot be opened.</p>
+  $('#m').innerHTML=`${GOAT?'<div class="panel" style="max-width:760px;margin-bottom:16px" id="sbk"></div>':''}<div class="panel" style="max-width:560px"><h3 style="margin-top:0">${GOAT?'Back up GoatMediaStackarr only':'Back up'}</h3><p class="mute">Saves your apps, profiles, requests, alert settings and history to a file, locked with a passphrase. Keep the passphrase safe. Without it the file cannot be opened.</p>
     <form id="bf" style="margin:0"><input name="pass" type="password" placeholder="Passphrase (8+ characters)" autocomplete="new-password" required><div class="row"><button class="primary">${ic('dl')}Download backup</button></div><div class="err" id="be"></div></form></div>
     <div class="panel" style="max-width:560px;margin-top:16px" id="ab"></div>
     <div class="panel" style="max-width:560px;margin-top:16px"><h3 style="margin-top:0">Restore</h3><p class="mute">Replaces everything in GoatMediaStackarr with what is in the backup, and signs everyone out. Use it to move to a new server or recover.</p>
     <form id="rf2" style="margin:0"><input type="file" name="file" accept=".json,application/json" required><input name="pass" type="password" placeholder="Passphrase of that backup" autocomplete="off" required><div class="row"><button class="danger">Restore from backup</button></div><div class="err" id="re2"></div></form></div>`;
-  autoBackups();
+  autoBackups();if(GOAT)stackBackups();
   $('#bf').onsubmit=async e=>{e.preventDefault();$('#be').textContent='';
     try{const d=await api('/api/backup','POST',{passphrase:e.target.pass.value});const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(d)],{type:'application/json'}));
       a.download='mediahub-backup-'+new Date().toISOString().slice(0,10)+'.json';document.body.append(a);a.click();a.remove();toast('Backup downloaded','ok');e.target.reset()}catch(x){$('#be').textContent=x.message}};
@@ -1223,6 +1223,53 @@ function stBackup(){
       await api('/api/restore','POST',{passphrase:e.target.pass.value,backup:b});toast('Restored. Please sign in again.','ok');me=null;setTimeout(start,600)}catch(x){$('#re2').textContent=x.message}};
 }
 
+// ---------- Backups of the whole stack: every app's settings and databases, on a schedule, and putting them back.
+let sbTimer=null;
+async function stackBackups(){
+  const box=$('#sbk');if(!box)return;clearTimeout(sbTimer);
+  let d;try{d=await api('/api/stack/backups')}catch(x){box.innerHTML=`<div class="err">${esc(x.message)}</div>`;return}
+  if(!$('#sbk'))return;
+  const sz=n=>n>=1e9?(n/1e9).toFixed(1)+' GB':n>=1e6?Math.round(n/1e6)+' MB':Math.max(1,Math.round(n/1e3))+' KB';
+  const KIND={auto:'Automatic',manual:'Made by hand','before-restore':'Before a restore'};
+  const c=d.cfg,j=d.job,busy=j&&j.running,DAYS=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const last=c.lastResult;
+  box.innerHTML=`<div class="row"><h3 style="margin:0" class="grow">Back up the whole stack</h3>${c.on?'<span class="pill ok">On</span>':'<span class="pill">Off</span>'}</div>
+    <p class="mute">Every app's settings and databases in one file: Sonarr, Radarr, Lidarr, Prowlarr, Bazarr, the torrent apps, SABnzbd, Jellyfin, Seerr, Tautulli, Plex, the VPN files, and GoatMediaStackarr's own keys, logins, profiles and history. Artwork, caches and logs are left out (the apps make them again). Kept in <code>${esc(d.dir)}</code>${d.free?`, ${sz(d.free)} free there`:''}. These files hold your passwords and keys, so keep them as private as App data.</p>
+    ${busy?`<div class="box" role="status"><b>${j.kind==='restore'?'Putting a backup back…':'Making a backup…'}</b><div class="mute">${esc((j.log||[]).slice(-1)[0]||'Starting')}</div><progress style="margin-top:8px"></progress></div>`:
+      j&&j.finished&&Date.now()-j.finished<3600e3?`<div class="box"><span class="pill ${j.ok?'ok':'bad'}">${j.ok?(j.kind==='restore'?'Put back':'Backup made'):'Failed'}</span> <span class="mute">${esc(fdt(j.finished))}</span>${j.ok?'':`<div class="err">${esc(j.error||'')}</div>`}${j.ok&&j.kind==='restore'&&j.result?`<div class="mute">${esc((j.result.restored||[]).map(k=>d.parts[k]||k).join(', '))}. A copy of how things were just before is in the list, if you want to undo it.</div>`:''}</div>`:''}
+    <form id="sbf" style="margin:12px 0 0"><label class="chk" style="display:flex"><input type="checkbox" name="on" ${c.on?'checked':''}>Make a backup automatically</label>
+      <div class="row"><select name="weekly" aria-label="How often"><option value="0" ${c.weekly?'':'selected'}>Every day</option><option value="1" ${c.weekly?'selected':''}>Once a week</option></select>
+      <select name="day" aria-label="Day" ${c.weekly?'':'hidden'}>${DAYS.map((n,i)=>`<option value="${i}" ${i===c.day?'selected':''}>on ${n}</option>`).join('')}</select>
+      <label class="mute">at <select name="hour">${Array.from({length:24},(_,h)=>`<option value="${h}" ${h===c.hour?'selected':''}>${String(h).padStart(2,'0')}:00</option>`).join('')}</select></label>
+      <label class="mute">keep the last <input name="keep" type="number" min="1" max="60" value="${c.keep}" style="width:70px"></label></div>
+      <div class="row"><button class="primary">Save</button><button type="button" id="sbr" ${busy?'disabled':''}>${ic('dl')}Back up now</button>${last?`<span class="mute">Last automatic: ${last.ok?'made':'failed'} ${esc(fdt(last.at))}</span>`:''}</div></form>
+    <h3 style="margin:18px 0 6px">Backups</h3>
+    <div id="sbl">${d.files.length?d.files.map(f=>`<div class="srow" style="grid-template-columns:1fr auto" data-n="${esc(f.name)}"><div style="min-width:0"><b>${esc(fdt(f.at))}</b> <span class="pill">${KIND[f.kind]||f.kind}</span> <span class="mute">${sz(f.size)}</span>
+      <div class="mute" style="overflow-wrap:anywhere;font-size:12.5px">${esc(f.parts.map(k=>d.parts[k]||k).join(', '))}</div></div>
+      <span class="row" style="flex-wrap:nowrap"><button data-pb ${busy?'disabled':''}>Put back…</button><a class="btn" href="/api/stack/backups/${encodeURIComponent(f.name)}" download aria-label="Download">${ic('dl')}</a><button class="icon" data-rm aria-label="Delete" title="Delete">${ic('trash')}</button></span></div>`).join(''):'<p class="mute">No backups yet.</p>'}</div>
+    <p class="mute" style="margin-top:10px">Moving to a new server, or one from another copy of GoatMediaStackarr? Put its <code>stack-…tar.gz</code> file in that folder and it shows up here.</p>`;
+  const f=box.querySelector('#sbf');f.weekly.onchange=()=>{f.day.hidden=f.weekly.value!=='1'};
+  f.onsubmit=async e=>{e.preventDefault();try{await api('/api/stack/backups/config','PUT',{on:f.on.checked,weekly:f.weekly.value==='1',day:f.day.value,hour:f.hour.value,keep:f.keep.value});toast('Saved','ok');stackBackups()}catch(x){toast(x.message,'bad')}};
+  box.querySelector('#sbr').onclick=async()=>{try{await api('/api/stack/backups/run','POST',{});toast('Making a backup','ok');stackBackups()}catch(x){toast(x.message,'bad')}};
+  box.querySelector('#sbl').onclick=async e=>{const row=e.target.closest('[data-n]');if(!row)return;const n=row.dataset.n,file=d.files.find(x=>x.name===n);
+    if(e.target.closest('[data-rm]')){if(!confirm('Delete this backup?'))return;try{await api('/api/stack/backups/'+encodeURIComponent(n),'DELETE');stackBackups()}catch(x){toast(x.message,'bad')}}
+    if(e.target.closest('[data-pb]'))stackRestore(file,d.parts)};
+  if(busy)sbTimer=setTimeout(()=>{if($('#sbk'))stackBackups()},2500);
+}
+// The guided restore: pick what to put back, read what will happen, then confirm.
+function stackRestore(f,names){
+  const o=modal(`<h2 style="margin-top:0">Put a backup back</h2><p class="mute">From ${esc(fdt(f.at))}. Choose what to put back; the rest stays as it is now.</p>
+    <div class="tg" id="sbp">${f.parts.map(k=>`<label class="chk"><input type="checkbox" value="${k}" checked>${esc(names[k]||k)}</label>`).join('')}</div>
+    <ol class="mute" style="line-height:1.6;padding-left:18px"><li>A copy of how the chosen apps are now is made first, so you can undo this.</li><li>Those apps stop, their settings and databases are replaced by the ones in the backup, and they start again.</li>
+    <li>The apps are connected to each other again.</li><li>If GoatMediaStackarr's own profiles are put back, everyone is signed out and this page reloads.</li></ol>
+    <p class="mute">Your media and downloads are never touched. It takes a minute or two.</p>
+    <div class="row"><button class="danger" id="sbgo">Put back</button><button data-x>Cancel</button></div><div class="err" id="sbe"></div>`);
+  o.querySelector('[data-x]').onclick=o.close;
+  o.querySelector('#sbgo').onclick=async()=>{const only=[...o.querySelectorAll('#sbp input:checked')].map(x=>x.value);if(!only.length){o.querySelector('#sbe').textContent='Choose at least one.';return}
+    if(!confirm('Put back '+only.map(k=>names[k]||k).join(', ')+'?'))return;
+    try{await api('/api/stack/backups/restore','POST',{name:f.name,only});o.close();toast('Putting it back','ok');
+      if(only.includes('ui')){toast('GoatMediaStackarr restarts in a moment; sign in again then.','ok');setTimeout(()=>location.reload(),45000)}stackBackups()}catch(x){o.querySelector('#sbe').textContent=x.message}};
+}
 async function autoBackups(){
   const box=$('#ab');if(!box)return;
   let d;try{d=await api('/api/backups')}catch(x){box.innerHTML=`<div class="err">${esc(x.message)}</div>`;return}
@@ -2375,7 +2422,7 @@ function chanDialog(c,done){
     try{if(c){await api('/api/alerts/channels/'+c.id,'PUT',b)}else await api('/api/alerts/channels','POST',b);o.close();toast('Saved','ok');done()}
     catch(x){o.querySelector('#ce').textContent=x.message}};
 }
-const ALERT_NAMES={finished:'A download finishes',grabbed:'Something is added from Trackers',requests:'Someone makes a request',available:'A request is ready to watch',reports:'Someone reports a problem',offline:'An app goes offline or comes back',vpn:'The VPN stops working',disk:'The array is almost full',streamLimit:'Someone reaches their streaming limit',update:'A new version is out',appUpdates:'Apps inside the container are updated (weekly)',weekly:'The weekly newsletter'};
+const ALERT_NAMES={finished:'A download finishes',grabbed:'Something is added from Trackers',requests:'Someone makes a request',available:'A request is ready to watch',reports:'Someone reports a problem',offline:'An app goes offline or comes back',vpn:'The VPN stops working',disk:'The array is almost full',streamLimit:'Someone reaches their streaming limit',update:'A new version is out',appUpdates:'Apps inside the container are updated (weekly)',backup:'A backup or restore of the stack fails',healed:'Something was fixed by itself (a stuck download, an app restarted)',weekly:'The weekly newsletter'};
 async function alView(){
   let a={};try{a=await api('/api/alerts')}catch(x){$('#m').innerHTML=`<div class="err">${esc(x.message)}</div>`;return}
   if(tab!=='set'||stSub!=='alerts')return;
