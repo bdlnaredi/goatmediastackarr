@@ -204,7 +204,10 @@ class ScreensTest {
         scrollTo("Ana Reyes"); compose.onAllNodesWithText("Ana Reyes").onFirst().performClick(); waitFor("Filmography (5)"); waitFor("Lisbon, Portugal"); shot("56-person")
         tap("Shows 1"); waitFor("Northwind"); back()
         scrollTo("More like this"); waitFor("Paper Kites"); shot("55-more-like-this")
-        scrollTo("Cast"); shot("32-title-cast"); back()
+        scrollTo("Cast"); shot("32-title-cast")
+        // The collection a movie belongs to opens its own page.
+        scrollTo("The Orbit Saga"); tap("The Orbit Saga"); waitFor("Three films about"); shot("70-collection"); back()
+        back()
         // A show's episodes have their story, and a missing one can be searched for.
         tap("Library"); waitFor("Paper Moon")
         compose.onAllNodesWithText("Paper Moon").onFirst().performClick(); waitFor("Search now")
@@ -244,6 +247,24 @@ class ScreensTest {
         }
         tap("More"); waitFor("Go to"); openFromMore("What's new"); waitFor("A new design in four styles"); waitFor("Your version"); shot("62-whats-new"); back()
         openFromMore("Settings"); waitFor("Style"); waitFor("Dashboard"); shot("63-settings-style")
+        assertTrue("calls the pretend server does not know: ${fake.misses}", fake.misses.isEmpty())
+    }
+
+    /** Watchlist, "Because you watched", self-healing, the update notes and the app in Hindi. */
+    @Test fun version5Pages() {
+        fake.latest = "9.9.0"
+        connect()
+        show()
+        waitFor("Version 9.9.0 is out"); waitFor("Kids profiles"); shot("71-home-update-notes")
+        waitFor("Playing now")
+        scrollTo("Because you watched"); waitFor("Ember Falls"); shot("72-for-you")
+        tap("More"); waitFor("Go to")
+        openFromMore("Watchlist"); waitFor("Waiting for approval"); shot("73-watchlist"); back()
+        openFromMore("Health"); waitFor("to look at"); scrollTo("Fix problems by itself"); waitFor("Glass.City.S02E06"); shot("74-health-healing"); back()
+        compose.runOnUiThread { state.setPrefs(state.prefs.value.copy(lang = "hi")) }
+        compose.waitForIdle(); waitFor("होम"); shot("75-home-hindi")
+        compose.runOnUiThread { state.setPrefs(state.prefs.value.copy(lang = "")) }
+        compose.waitForIdle()
         assertTrue("calls the pretend server does not know: ${fake.misses}", fake.misses.isEmpty())
     }
 

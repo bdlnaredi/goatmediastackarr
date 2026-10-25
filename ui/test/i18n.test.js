@@ -23,3 +23,14 @@ test('every translated text still exists in the page, and every language is offe
   assert.deepEqual(gone, [], 'these texts are no longer in the page, remove them from the language files');
   for (const code of Object.keys(langs)) assert.match(page, new RegExp(`\\b${code}:'[^']+'`), `${code} is not in the language menu`);
 });
+
+test('the phone app has every text the web page has, with the same words', () => {
+  const adir = path.join(__dirname, '..', '..', 'android', 'app', 'src', 'main', 'assets', 'lang');
+  for (const [code, d] of Object.entries(langs)) {
+    const a = JSON.parse(fs.readFileSync(path.join(adir, code + '.json'), 'utf8'));
+    for (const [k, v] of Object.entries(d)) assert.equal(a[k], v, `android ${code}.json: "${k}" differs from the web page (copy ui/public/lang into it)`);
+    for (const [k, v] of Object.entries(a)) assert.ok(typeof v === 'string' && v.trim(), `android ${code}: "${k}" is empty`);
+  }
+  const keys = c => Object.keys(JSON.parse(fs.readFileSync(path.join(adir, c + '.json'), 'utf8'))).sort();
+  for (const code of Object.keys(langs)) assert.deepEqual(keys(code), keys('es'), `android ${code}.json has a different set of texts`);
+});

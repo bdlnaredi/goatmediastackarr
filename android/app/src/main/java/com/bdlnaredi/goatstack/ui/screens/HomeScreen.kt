@@ -25,6 +25,7 @@ import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Inbox
+import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.Layers
 import androidx.compose.material.icons.rounded.PlayCircle
 import androidx.compose.material.icons.rounded.Search
@@ -107,7 +108,7 @@ fun HomeScreen() {
                             }
                         }
                         Spacer(Modifier.width(10.dp))
-                        IconButton(onClick = { ctx.go("search") }, modifier = Modifier.size(48.dp).clip(CircleShape).background(g.card)) {
+                        if (ctx.user.kids == null) IconButton(onClick = { ctx.go("search") }, modifier = Modifier.size(48.dp).clip(CircleShape).background(g.card)) {
                             Icon(Icons.Rounded.Search, "Search", tint = g.text)
                         }
                     }
@@ -150,8 +151,10 @@ fun HomeScreen() {
                 QuickAction("Requests", Icons.Rounded.Inbox, Modifier.weight(1f)) { ctx.go("requests") }
                 QuickAction("Upcoming", Icons.Rounded.CalendarMonth, Modifier.weight(1f)) { ctx.go("upcoming") }
                 if (ctx.user.admin && ctx.me.goat) QuickAction("Stack", Icons.Rounded.Shield, Modifier.weight(1f)) { ctx.go("stack") }
+                else if (ctx.user.kids == null) QuickAction("Watchlist", Icons.Rounded.Bookmark, Modifier.weight(1f)) { ctx.go("watchlist") }
             }
         }
+        item(key = "foryou") { Column { ForYouRows() } }
 
         if (playing.isNotEmpty()) {
             item { SectionTitle("Playing now") }
@@ -185,7 +188,7 @@ fun HomeScreen() {
         val tops = l?.qb?.values?.flatMap { it.top }.orEmpty().take(5)
         val jobs = l?.sab?.values?.flatMap { it.jobs }.orEmpty().take(3)
         if (tops.isNotEmpty() || jobs.isNotEmpty()) {
-            item { SectionTitle("Downloading", trailing = { Text("See all", color = g.primary, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clickable { ctx.go("downloads") }) }) }
+            item { SectionTitle("Downloading", trailing = { Text(com.bdlnaredi.goatstack.data.tr("See all"), color = g.primary, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clickable { ctx.go("downloads") }) }) }
             item {
                 GoatCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                     tops.forEachIndexed { i, t ->
@@ -210,7 +213,7 @@ fun HomeScreen() {
 
         val cal = upcoming.value?.calendar.orEmpty()
         if (cal.isNotEmpty()) {
-            item { SectionTitle("Coming up", trailing = { Text("Calendar", color = g.primary, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clickable { ctx.go("upcoming") }) }) }
+            item { SectionTitle("Coming up", trailing = { Text(com.bdlnaredi.goatstack.data.tr("Calendar"), color = g.primary, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clickable { ctx.go("upcoming") }) }) }
             item {
                 LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     items(cal.take(12)) { c ->
@@ -230,7 +233,7 @@ fun HomeScreen() {
         val waiting = reqs.filter { it.status == "pending" }
         if (reqs.isNotEmpty()) {
             item { SectionTitle(if (ctx.user.admin && waiting.isNotEmpty()) "Requests waiting for you" else "Latest requests",
-                trailing = { Text("All", color = g.primary, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clickable { ctx.go("requests") }) }) }
+                trailing = { Text(com.bdlnaredi.goatstack.data.tr("All"), color = g.primary, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clickable { ctx.go("requests") }) }) }
             item {
                 LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     items((if (ctx.user.admin && waiting.isNotEmpty()) waiting else reqs).take(10)) { r ->
@@ -256,16 +259,16 @@ private fun QuickAction(label: String, icon: ImageVector, modifier: Modifier, on
     ) {
         Icon(icon, null, tint = g.primary, modifier = Modifier.size(22.dp))
         Spacer(Modifier.height(6.dp))
-        Text(label, style = MaterialTheme.typography.labelLarge, color = g.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(com.bdlnaredi.goatstack.data.tr(label), style = MaterialTheme.typography.labelLarge, color = g.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
-private fun greeting(): String = when (LocalTime.now().hour) {
+private fun greeting(): String = com.bdlnaredi.goatstack.data.tr(when (LocalTime.now().hour) {
     in 5..11 -> "Good morning"
     in 12..16 -> "Good afternoon"
     in 17..21 -> "Good evening"
     else -> "Hello, night owl"
-}
+})
 
 /** "A new version is out": get the new app, and (for admins) a reminder to update the container. */
 @Composable
@@ -282,6 +285,21 @@ private fun UpdateCard(u: com.bdlnaredi.goatstack.data.Updates, appOld: Boolean,
                 if (u.serverUpdate) Text("The server has ${u.server}. On Unraid, open the Docker tab and click Update on GoatMediaStackarr.", style = MaterialTheme.typography.bodySmall, color = g.muted)
             }
         }
+        // What the new version changes, from its release notes.
+        val notes = releaseNotes(u.notes)
+        if (notes.isNotEmpty()) {
+            var all by remember { mutableStateOf(false) }
+            Spacer(Modifier.height(10.dp))
+            Text(com.bdlnaredi.goatstack.data.tr("What's new"), style = MaterialTheme.typography.labelLarge, color = g.primary)
+            (if (all) notes else notes.take(3)).forEach { n ->
+                Row(Modifier.padding(top = 4.dp)) {
+                    Text("•", style = MaterialTheme.typography.bodySmall, color = g.primary, modifier = Modifier.width(14.dp))
+                    Text(n, style = MaterialTheme.typography.bodySmall, color = g.text.copy(alpha = 0.85f), maxLines = if (all) 8 else 3, overflow = TextOverflow.Ellipsis)
+                }
+            }
+            if (notes.size > 3) Text(com.bdlnaredi.goatstack.data.tr(if (all) "Show less" else "Show all") + if (all) "" else " (${notes.size})", style = MaterialTheme.typography.labelLarge, color = g.primary,
+                modifier = Modifier.padding(top = 6.dp).clickable { all = !all })
+        }
         Spacer(Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             if (appOld) com.bdlnaredi.goatstack.ui.PrimaryButton("Get the new app", { runCatching { uri.openUri(u.apk) } }, Modifier.weight(1f))
@@ -290,3 +308,8 @@ private fun UpdateCard(u: com.bdlnaredi.goatstack.data.Updates, appOld: Boolean,
         }
     }
 }
+
+/** The points of a release's notes (its "- " lines), without the Markdown marks. */
+fun releaseNotes(md: String): List<String> = md.lines().map { it.trim() }.filter { it.startsWith("- ") || it.startsWith("* ") }
+    .map { it.drop(2).replace(Regex("""\*\*([^*]+)\*\*"""), "$1").replace(Regex("""\*([^*]+)\*"""), "$1").replace(Regex("""`([^`]+)`"""), "$1")
+        .replace(Regex("""\[([^\]]+)]\([^)]*\)"""), "$1").trim() }.filter { it.isNotEmpty() }.take(20)

@@ -2767,7 +2767,7 @@ const goatServer = http.createServer(async (req, res) => {
     if (p === '/api/notifications/test' && m === 'POST') { feed(me.id, 'test', 'Notifications work', 'This is how GoatMediaStackarr tells you things on this phone.', ''); return send(res, 200, {}); }
     if (p === '/api/updates' && m === 'GET') {
       const rel = DEMO ? null : await latestRelease(), dev = !/^\d+\.\d+\.\d+$/.test(VERSION);
-      return send(res, 200, { server: VERSION, latest: rel ? rel.version : '', url: rel ? rel.url : '', apk: rel ? rel.apk : '', published: rel ? rel.published : '', notes: me.role === 'admin' && rel ? rel.notes : '',
+      return send(res, 200, { server: VERSION, latest: rel ? rel.version : '', url: rel ? rel.url : '', apk: rel ? rel.apk : '', published: rel ? rel.published : '', notes: rel ? rel.notes : '',
         serverUpdate: !!rel && !dev && isNewer(rel.version, VERSION) && me.role === 'admin' });
     }
     if (p === '/api/me/dash' && m === 'PUT') {

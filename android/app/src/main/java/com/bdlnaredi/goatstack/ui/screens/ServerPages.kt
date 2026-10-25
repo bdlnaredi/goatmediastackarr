@@ -107,6 +107,7 @@ fun HealthScreen() {
                         }
                     }
                 }
+                item { HealCard() }
                 val disks = apps.flatMap { it.disks }.distinctBy { it.path to it.total }
                 if (disks.isNotEmpty()) {
                     item { SectionTitle("Disk space", Modifier.padding(top = 4.dp)) }

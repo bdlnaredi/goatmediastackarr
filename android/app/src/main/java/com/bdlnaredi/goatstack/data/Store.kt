@@ -65,6 +65,8 @@ data class Prefs(
     val style: String = "cinema",
     /** The server version whose "What's new" was last seen. */
     val seenVersion: String = "",
+    /** The app's language: "" follows the phone, or en, hi, es, de, fr. */
+    val lang: String = "",
 ) {
     fun wants(kind: String) = notify && (kind == "test" || kind in kinds.split(','))
     /** How wide a poster is in the grids. */
@@ -72,7 +74,7 @@ data class Prefs(
     /** How often the downloads list asks again, in milliseconds. */
     val refreshMs get() = when (refresh) { "fast" -> 1500L; "slow" -> 6000L; else -> 2500L }
 
-    fun text() = "start=$start\nposters=$posters\nrefresh=$refresh\nspoilers=$spoilers\nconfirmRemove=$confirmRemove\ndismissedUpdate=$dismissedUpdate\nnotify=$notify\nkinds=$kinds\nevery=$every\naskedNotify=$askedNotify\nstyle=$style\nseenVersion=$seenVersion"
+    fun text() = "start=$start\nposters=$posters\nrefresh=$refresh\nspoilers=$spoilers\nconfirmRemove=$confirmRemove\ndismissedUpdate=$dismissedUpdate\nnotify=$notify\nkinds=$kinds\nevery=$every\naskedNotify=$askedNotify\nstyle=$style\nseenVersion=$seenVersion\nlang=$lang"
 
     companion object {
         val STARTS = listOf("home", "discover", "library", "downloads")
@@ -96,6 +98,7 @@ data class Prefs(
                 askedNotify = m["askedNotify"]?.toBooleanStrictOrNull() ?: d.askedNotify,
                 style = m["style"]?.takeIf { it in STYLES } ?: d.style,
                 seenVersion = m["seenVersion"]?.take(40) ?: "",
+                lang = m["lang"]?.takeIf { it in listOf("en", "hi", "es", "de", "fr") } ?: "",
             )
         }
     }

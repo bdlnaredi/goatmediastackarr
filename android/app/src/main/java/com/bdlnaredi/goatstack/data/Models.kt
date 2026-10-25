@@ -18,6 +18,9 @@ data class Me(
 )
 
 @Serializable
+data class KidsInfo(val age: Int = 7)
+
+@Serializable
 data class User(
     val id: String = "",
     val name: String = "",
@@ -32,6 +35,8 @@ data class User(
     val dataLimit: Int = 0,
     val notify: String = "",
     val streamLimit: Double? = null,
+    /** A kids profile: only what is here and rated for this age; no searching or requesting. */
+    val kids: KidsInfo? = null,
 ) {
     val admin get() = role == "admin"
     // Same rule as the server: an admin can do everything; otherwise only what is not switched off.
@@ -39,7 +44,7 @@ data class User(
         "add" -> perms?.add ?: true
         "control" -> perms?.control ?: true
         "remove" -> perms?.remove ?: true
-        "request" -> perms?.request ?: true
+        "request" -> kids == null && (perms?.request ?: true)
         else -> true
     }
 }

@@ -4,6 +4,10 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- Android app in Hindi, Spanish, German and French (Settings → Language, or the phone's own language), with the same words as the web page.
+- Android home-screen widget: download and upload speeds and what is playing; tap it to open Downloads, or the arrows to refresh.
+- Android app: the update message shows what the new version changes (its release notes), for everyone, not only admins.
+- Android app: Watchlist (on every title page, and its own page under More), the collection a movie belongs to, *Because you watched …* on Home, missing episodes on a show's page to ask for one by one, the self-healing list on Health, and kids profiles get the simpler menu.
 - Ask for a single episode: a show's page lists its missing episodes, and each can be asked for on its own (no Sonarr access needed). Once approved, Sonarr monitors it and searches for it; it follows the usual approval, limits and *Ready to watch* message.
 - Weekly email for everyone (Settings → Alerts, *Also email everyone their own week*): each person with an email address gets their own week: their requests and watchlist titles that came in, what is new in the library (kids profiles only what suits them) and what is coming up. Each person can turn it off, or preview it, under Account.
 - Kids profiles (Settings → Users, *Kids profile* and an age): a simpler look with only what is already in the library and rated for that age; titles without a rating are left out. No searching, discovering or requesting, and the dashboard keeps to the pictures and suggestions.

@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.Logout
@@ -244,8 +245,8 @@ private fun DestTile(d: Dest, modifier: Modifier) {
             Icon(d.icon, null, tint = g.primary, modifier = Modifier.size(if (st.density < 0.9f) 18.dp else 22.dp))
         }
         Spacer(Modifier.height((8 * st.density).dp))
-        Text(d.title, style = MaterialTheme.typography.titleSmall, color = g.text, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        Text(d.text, style = MaterialTheme.typography.labelSmall, color = g.muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(com.bdlnaredi.goatstack.data.tr(d.title), style = MaterialTheme.typography.titleSmall, color = g.text, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(com.bdlnaredi.goatstack.data.tr(d.text), style = MaterialTheme.typography.labelSmall, color = g.muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -262,7 +263,8 @@ fun MoreScreen() {
     val admin = ctx.user.admin
     val groups = listOf(
         "Watch" to listOfNotNull(
-            Dest(Icons.Rounded.Search, "Search", "Find a show or movie") { ctx.go("search") },
+            if (ctx.user.kids == null) Dest(Icons.Rounded.Search, "Search", "Find a show or movie") { ctx.go("search") } else null,
+            if (ctx.user.kids == null) Dest(Icons.Rounded.Bookmark, "Watchlist", "What you want to watch") { ctx.go("watchlist") } else null,
             Dest(Icons.Rounded.CalendarMonth, "Upcoming", "New episodes and releases") { ctx.go("upcoming") },
             if (has("lidarr")) Dest(Icons.Rounded.LibraryMusic, "Music", "Your artists, from Lidarr") { ctx.go("music") } else null,
             if (has("tautulli")) Dest(Icons.Rounded.Insights, "Stats", "What gets watched") { ctx.go("stats") } else null,

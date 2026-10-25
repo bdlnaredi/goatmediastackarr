@@ -1,5 +1,6 @@
 package com.bdlnaredi.goatstack.ui.screens
 
+import com.bdlnaredi.goatstack.data.tr
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -162,8 +163,8 @@ private fun SettingRow(icon: ImageVector, title: String, text: String? = null, o
         Icon(icon, null, tint = g.primary, modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge, color = g.text)
-            if (!text.isNullOrBlank()) Text(text, style = MaterialTheme.typography.bodySmall, color = g.muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(tr(title), style = MaterialTheme.typography.bodyLarge, color = g.text)
+            if (!text.isNullOrBlank()) Text(tr(text), style = MaterialTheme.typography.bodySmall, color = g.muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
         when {
             trailing != null -> trailing()
@@ -180,7 +181,7 @@ private fun Toggle(on: Boolean, onChange: (Boolean) -> Unit) {
 
 @Composable
 private fun Label(text: String) {
-    Text(text, style = MaterialTheme.typography.labelLarge, color = LocalGoat.current.muted, modifier = Modifier.padding(start = 20.dp, top = 6.dp, bottom = 6.dp))
+    Text(tr(text), style = MaterialTheme.typography.labelLarge, color = LocalGoat.current.muted, modifier = Modifier.padding(start = 20.dp, top = 6.dp, bottom = 6.dp))
 }
 
 @Composable
@@ -239,6 +240,8 @@ fun SettingsScreen() {
             ChoiceRow(listOf("small" to "Small", "normal" to "Normal", "large" to "Large"), prefs.posters, { set(prefs.copy(posters = it)) })
             Label("Downloads update")
             ChoiceRow(listOf("fast" to "Fast", "normal" to "Normal", "slow" to "Saves battery"), prefs.refresh, { set(prefs.copy(refresh = it)) })
+            Label("Language")
+            ChoiceRow(com.bdlnaredi.goatstack.data.I18n.LANGS, prefs.lang, { set(prefs.copy(lang = it)) })
             Spacer(Modifier.height(6.dp))
         }
         item {

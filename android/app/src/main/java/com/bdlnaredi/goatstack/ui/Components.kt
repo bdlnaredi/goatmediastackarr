@@ -1,5 +1,6 @@
 package com.bdlnaredi.goatstack.ui
 
+import com.bdlnaredi.goatstack.data.tr
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -116,8 +117,8 @@ fun GoatCard(modifier: Modifier = Modifier, onClick: (() -> Unit)? = null, paddi
 fun PageTitle(title: String, subtitle: String? = null, modifier: Modifier = Modifier, actions: @Composable RowScope.() -> Unit = {}) {
     Row(modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 18.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onBackground)
-            if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = LocalGoat.current.muted)
+            Text(tr(title), style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onBackground)
+            if (subtitle != null) Text(tr(subtitle), style = MaterialTheme.typography.bodyMedium, color = LocalGoat.current.muted)
         }
         actions()
     }
@@ -127,8 +128,8 @@ fun PageTitle(title: String, subtitle: String? = null, modifier: Modifier = Modi
 fun SectionTitle(title: String, modifier: Modifier = Modifier, trailing: @Composable () -> Unit = {}) {
     val st = LocalStyle.current
     Row(modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = (10 * st.density).dp), verticalAlignment = Alignment.CenterVertically) {
-        if (st.capsSections) Text(title.uppercase(), style = MaterialTheme.typography.labelSmall, color = LocalGoat.current.primary, modifier = Modifier.weight(1f))
-        else Text(title, style = MaterialTheme.typography.titleLarge.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold), color = LocalGoat.current.text, modifier = Modifier.weight(1f))
+        if (st.capsSections) Text(tr(title).uppercase(), style = MaterialTheme.typography.labelSmall, color = LocalGoat.current.primary, modifier = Modifier.weight(1f))
+        else Text(tr(title), style = MaterialTheme.typography.titleLarge.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold), color = LocalGoat.current.text, modifier = Modifier.weight(1f))
         trailing()
     }
 }
@@ -138,7 +139,7 @@ fun Badge(text: String, color: Color, modifier: Modifier = Modifier, filled: Boo
     Box(
         modifier.clip(RoundedCornerShape(50)).background(if (filled) color else color.copy(alpha = 0.16f)).padding(horizontal = 10.dp, vertical = 4.dp),
     ) {
-        Text(text, style = MaterialTheme.typography.labelMedium, color = if (filled) Color.Black.copy(alpha = 0.85f) else color, maxLines = 1)
+        Text(tr(text), style = MaterialTheme.typography.labelMedium, color = if (filled) Color.Black.copy(alpha = 0.85f) else color, maxLines = 1)
     }
 }
 
@@ -224,9 +225,9 @@ fun EmptyState(icon: ImageVector, title: String, text: String, modifier: Modifie
             Icon(icon, null, tint = g.primary, modifier = Modifier.size(34.dp))
         }
         Spacer(Modifier.height(14.dp))
-        Text(title, style = MaterialTheme.typography.titleMedium, color = g.text, textAlign = TextAlign.Center)
+        Text(tr(title), style = MaterialTheme.typography.titleMedium, color = g.text, textAlign = TextAlign.Center)
         Spacer(Modifier.height(4.dp))
-        Text(text, style = MaterialTheme.typography.bodyMedium, color = g.muted, textAlign = TextAlign.Center)
+        Text(tr(text), style = MaterialTheme.typography.bodyMedium, color = g.muted, textAlign = TextAlign.Center)
         if (action != null) { Spacer(Modifier.height(14.dp)); action() }
     }
 }
@@ -239,7 +240,7 @@ fun StatTile(label: String, value: String, modifier: Modifier = Modifier, icon: 
     GoatCard(modifier, padding = 14.dp) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (icon != null) { Icon(icon, null, tint = tint, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)) }
-            Text(label, style = MaterialTheme.typography.labelMedium, color = g.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(tr(label), style = MaterialTheme.typography.labelMedium, color = g.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Spacer(Modifier.height(6.dp))
         Text(value, style = MaterialTheme.typography.titleMedium, color = g.text, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Bold)
@@ -252,7 +253,7 @@ fun PrimaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifi
     Button(onClick = onClick, enabled = enabled, modifier = modifier.height(if (st.density < 0.9f) 44.dp else 52.dp), shape = RoundedCornerShape(st.buttonCorner),
         contentPadding = PaddingValues(horizontal = 20.dp)) {
         if (icon != null) { Icon(icon, null, modifier = Modifier.size(20.dp)); Spacer(Modifier.width(8.dp)) }
-        Text(text, style = MaterialTheme.typography.labelLarge)
+        Text(tr(text), style = MaterialTheme.typography.labelLarge)
     }
 }
 
@@ -262,7 +263,7 @@ fun GhostButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier
     OutlinedButton(onClick = onClick, enabled = enabled, modifier = modifier.height(if (st.density < 0.9f) 40.dp else 48.dp), shape = RoundedCornerShape(st.buttonCorner),
         colors = ButtonDefaults.outlinedButtonColors(contentColor = color)) {
         if (icon != null) { Icon(icon, null, modifier = Modifier.size(19.dp)); Spacer(Modifier.width(8.dp)) }
-        Text(text, style = MaterialTheme.typography.labelLarge)
+        Text(tr(text), style = MaterialTheme.typography.labelLarge)
     }
 }
 
@@ -278,7 +279,7 @@ fun <T> ChoiceRow(options: List<Pair<T, String>>, selected: T, onSelect: (T) -> 
                 Modifier.clip(RoundedCornerShape(50)).background(if (on) g.primary else g.card)
                     .border(1.dp, if (on) g.primary else g.line, RoundedCornerShape(50))
                     .clickable { onSelect(v) }.padding(horizontal = 16.dp, vertical = 9.dp),
-            ) { Text(label, style = MaterialTheme.typography.labelLarge, color = if (on) g.onPrimary else g.text) }
+            ) { Text(tr(label), style = MaterialTheme.typography.labelLarge, color = if (on) g.onPrimary else g.text) }
         }
     }
 }

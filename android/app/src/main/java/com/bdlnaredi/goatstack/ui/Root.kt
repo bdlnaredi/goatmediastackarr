@@ -89,6 +89,7 @@ class Ctx(val app: AppState, val me: Me, val user: User, val nav: NavHostControl
             p[0] == "title" && p.size == 3 -> p[2].toLongOrNull()?.let { title(p[1], it) }
             l == "update" -> go("settings")
             l == "profile" -> profile()
+            l == "watchlist" -> go("watchlist")
             l in listOf("requests", "downloads", "health", "stack", "users", "unraid", "notifications") -> go(l)
             else -> go("notifications")
         }
@@ -101,6 +102,11 @@ val LocalCtx = staticCompositionLocalOf<Ctx> { error("No context") }
 fun GoatRoot(state: AppState) {
     val phase by state.phase.collectAsStateWithLifecycle()
     val g = LocalGoat.current
+    // The chosen language: its word list is read before anything is drawn, and everything is drawn again when it changes.
+    val prefs by state.prefs.collectAsStateWithLifecycle()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val lang = androidx.compose.runtime.remember(prefs.lang) { com.bdlnaredi.goatstack.data.I18n.load(context, prefs.lang); com.bdlnaredi.goatstack.data.I18n.lang }
+    androidx.compose.runtime.key(lang) {
     Box(Modifier.fillMaxSize().background(g.bg)) {
         AnimatedContent(targetState = phase, transitionSpec = { fadeIn() togetherWith fadeOut() },
             contentKey = { it::class }, label = "phase") { p ->
@@ -112,6 +118,7 @@ fun GoatRoot(state: AppState) {
                 is Phase.Ready -> MainShell(state, p.me, p.user)
             }
         }
+    }
     }
 }
 
@@ -127,7 +134,7 @@ private val TABS = listOf(
 
 /** The bar of main pages at the bottom, drawn the way the style wants: a floating pill (Glass), a dark strip (Cinema), or flat. */
 @Composable
-private fun GoatBar(route: String, onTab: (Tab) -> Unit) {
+private fun GoatBar(route: String, kidsMode: Boolean = false, onTab: (Tab) -> Unit) {
     val g = LocalGoat.current
     val st = com.bdlnaredi.goatstack.ui.theme.LocalStyle.current
     val floating = st.floatingBar
@@ -144,7 +151,7 @@ private fun GoatBar(route: String, onTab: (Tab) -> Unit) {
             if (!floating) Box(Modifier.fillMaxWidth().height(1.dp).background(g.line.copy(alpha = if (st.id == "cinema") 0.4f else 0.9f)))
             Row(Modifier.fillMaxWidth().then(if (floating) Modifier else Modifier.navigationBarsPadding()).height(h).padding(horizontal = 6.dp),
                 verticalAlignment = Alignment.CenterVertically) {
-                TABS.forEach { t ->
+                TABS.filter { it.route != "discover" || !kidsMode }.forEach { t ->
                     val on = route == t.route
                     Column(
                         Modifier.weight(1f).fillMaxHeight().padding(vertical = 4.dp)
@@ -157,7 +164,7 @@ private fun GoatBar(route: String, onTab: (Tab) -> Unit) {
                             .padding(horizontal = 16.dp, vertical = 3.dp)) {
                             Icon(t.icon, contentDescription = null, tint = if (on) g.primary else g.muted, modifier = Modifier.size(if (st.density < 0.9f) 21.dp else 24.dp))
                         }
-                        Text(t.label, style = MaterialTheme.typography.labelSmall, color = if (on) g.text else g.muted, maxLines = 1,
+                        Text(com.bdlnaredi.goatstack.data.tr(t.label), style = MaterialTheme.typography.labelSmall, color = if (on) g.text else g.muted, maxLines = 1,
                             fontWeight = if (on) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Medium)
                     }
                 }
@@ -207,7 +214,7 @@ private fun MainShell(state: AppState, me: Me, user: User) {
         Scaffold(
             containerColor = g.bg,
             bottomBar = {
-                if (showBar) GoatBar(route) { t ->
+                if (showBar) GoatBar(route, user.kids != null) { t ->
                     nav.navigate(t.route) {
                         popUpTo(nav.graph.findStartDestination().id) { saveState = true }
                         launchSingleTop = true; restoreState = true
@@ -249,6 +256,10 @@ private fun MainShell(state: AppState, me: Me, user: User) {
                     "title/{type}/{id}",
                     arguments = listOf(navArgument("type") { type = NavType.StringType }, navArgument("id") { type = NavType.LongType }),
                 ) { e -> com.bdlnaredi.goatstack.ui.screens.TitleScreen(e.arguments?.getString("type").orEmpty(), e.arguments?.getLong("id") ?: 0) }
+                composable("watchlist") { com.bdlnaredi.goatstack.ui.screens.WatchlistScreen() }
+                composable("collection/{id}", arguments = listOf(navArgument("id") { type = NavType.LongType })) { e ->
+                    com.bdlnaredi.goatstack.ui.screens.CollectionScreen(e.arguments?.getLong("id") ?: 0)
+                }
                 composable("whatsnew") { com.bdlnaredi.goatstack.ui.screens.WhatsNewScreen() }
                 composable("person/{id}", arguments = listOf(navArgument("id") { type = NavType.LongType })) { e ->
                     com.bdlnaredi.goatstack.ui.screens.PersonScreen(e.arguments?.getLong("id") ?: 0)

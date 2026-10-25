@@ -146,11 +146,13 @@ private fun TitleBody(t: TitleInfo, requested: Boolean, onAsk: (TitleInfo) -> Un
                 Spacer(Modifier.height(16.dp))
                 if (canAsk) PrimaryButton(if (t.request?.stage == "declined") "Ask again" else "Request", { onAsk(t) }, Modifier.fillMaxWidth(), icon = Icons.Rounded.Check)
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 10.dp)) {
+                    if (ctx.user.kids == null) WatchButton(t, Modifier.weight(1f))
                     t.library?.let { l -> GhostButton("Open in library", icon = Icons.Rounded.GridView, modifier = Modifier.weight(1f), onClick = { ctx.item(l.sid, l.kind, l.id) }) }
                     if (t.trailer.isNotEmpty()) GhostButton("Trailer", icon = Icons.Rounded.PlayCircle, modifier = Modifier.weight(1f), onClick = {
                         runCatching { uri.openUri("https://www.youtube.com/watch?v=${t.trailer}") }
                     })
                 }
+                if (t.collection != null) CollectionButton(t, Modifier.padding(top = 12.dp))
                 if (t.seerr.isEmpty() && t.library == null) Text("Requests need Seerr, and it is not set up on this server.", style = MaterialTheme.typography.bodySmall, color = g.muted, modifier = Modifier.padding(top = 8.dp))
             }
         }
@@ -169,6 +171,7 @@ private fun TitleBody(t: TitleInfo, requested: Boolean, onAsk: (TitleInfo) -> Un
                 }
             }
         }
+        if (t.type == "tv" && t.library != null || t.type == "tv" && t.available >= 4) item { MissingEpisodes(t, Modifier.offset(y = (-46).dp)) }
         if (t.cast.isNotEmpty()) item { CastRow(t.cast, Modifier.offset(y = (-40).dp)) }
         if (t.similar.isNotEmpty()) item { MoreLikeThis(t.similar, Modifier.offset(y = (-34).dp)) }
         if (t.date.isNotEmpty() || t.status.isNotEmpty()) item {

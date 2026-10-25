@@ -12,8 +12,39 @@ data class TitleInfo(
     val runtime: Int = 0, val genres: List<String> = emptyList(), val status: String = "", val studio: String = "",
     val cast: List<CastMember> = emptyList(), val seasons: List<TitleSeason> = emptyList(), val trailer: String = "",
     val seerr: String = "", val available: Int = 0, val library: LibLink? = null, val request: ReqState? = null,
-    val similar: List<MediaCard> = emptyList(),
+    val similar: List<MediaCard> = emptyList(), val watch: Boolean = false, val collection: CollRef? = null,
 )
+@Serializable data class CollRef(val id: Long = 0, val name: String = "", val poster: String = "")
+
+// ---------- Watchlist, collections, "Because you watched", missing episodes ----------
+@Serializable data class WatchItem(
+    val uid: String = "", val type: String = "movie", val id: Long = 0, val title: String = "", val year: String = "", val poster: String = "",
+    val added: Long = 0, val inLib: Boolean = false, val wanted: Boolean = false, val request: String = "",
+)
+@Serializable data class Watchlist(val auto: Boolean = false, val items: List<WatchItem> = emptyList())
+/** The answer to adding: [requested] is "approved", "pending", an object with an error, or nothing. */
+@Serializable data class WatchAdd(val ok: Boolean = false, val items: List<WatchItem> = emptyList(), val requested: kotlinx.serialization.json.JsonElement? = null)
+@Serializable data class ForYou(val rows: List<ForYouRow> = emptyList())
+@Serializable data class ForYouRow(val because: Because = Because(), val source: String = "", val items: List<MediaCard> = emptyList())
+@Serializable data class Because(val type: String = "movie", val id: Long = 0, val title: String = "")
+@Serializable data class TitleCollection(
+    val id: Long = 0, val name: String = "", val overview: String = "", val poster: String = "", val backdrop: String = "", val seerr: String = "",
+    val parts: List<CollPart> = emptyList(),
+)
+@Serializable data class CollPart(
+    val type: String = "movie", val id: Long = 0, val title: String = "", val year: String = "", val poster: String = "",
+    val rating: Double = 0.0, val available: Int = 0, val inLib: Boolean = false, val requested: Boolean = false,
+)
+@Serializable data class CollAsk(val asked: Int = 0, val approved: Int = 0, val waiting: Int = 0, val errors: List<String> = emptyList())
+@Serializable data class TitleEpisode(
+    val season: Int = 0, val num: Int = 0, val title: String = "", val date: String = "", val aired: Boolean = false,
+    val has: Boolean = false, val monitored: Boolean = false, val asked: Boolean = false,
+)
+/** Self-healing on the Health page: its settings and what it fixed. */
+@Serializable data class Heal(val cfg: HealCfg = HealCfg(), val log: List<HealEntry> = emptyList())
+@Serializable data class HealCfg(val on: Boolean = true, val stuck: Boolean = true, val failed: Boolean = true, val apps: Boolean = true, val hours: Int = 24)
+@Serializable data class HealEntry(val at: Long = 0, val kind: String = "", val app: String = "", val title: String = "", val what: String = "")
+
 @Serializable data class CastMember(val id: Long = 0, val name: String = "", val role: String = "", val photo: String = "")
 /** A small poster card: "More like this" and a person's filmography. [available] is Seerr's status (5 = available). */
 @Serializable
