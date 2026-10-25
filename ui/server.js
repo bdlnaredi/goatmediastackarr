@@ -118,7 +118,7 @@ const ipOf = req => TRUST ? String(req.headers['cf-connecting-ip'] || String(req
 const mkUser = (name, pw, role) => { const salt = uid(); return { id: uid(), name, role, salt, hash: hash(pw, salt), access: [] }; };
 // Trending / popular / anticipated lists. The keys are the admin's own, kept in settings; the sites can be moved with TRAKT_URL, TMDB_URL and TVDB_URL.
 const listKeys = () => { const l = (db.settings || {}).lists || {}; return { trakt: String((l.trakt || {}).id || ''), tmdb: String((l.tmdb || {}).key || ''), tvdb: String((l.tvdb || {}).key || '') }; };
-const lists = listsLib.create({ keys: listKeys,
+const lists = listsLib.create({ keys: listKeys, file: path.join(DATA, 'lists-cache.json'),
   urls: new Proxy({}, { get: (_, k) => String(process.env[k.toUpperCase() + '_URL'] || (DEMO ? `http://127.0.0.1:${PORT}/__demo/${k}` : { trakt: 'https://api.trakt.tv', tmdb: 'https://api.themoviedb.org/3', tvdb: 'https://api4.thetvdb.com/v4' }[k])).replace(/\/+$/, '') }),
   seerrPoster: async (kind, id) => { const s = db.services.find(x => x.type === 'seerr'); if (!s) return ''; const r = await fetch(`${s.url.replace(/\/+$/, '')}/api/v1/${kind === 'tv' ? 'tv' : 'movie'}/${id}`, { signal: AbortSignal.timeout(8000), headers: { 'X-Api-Key': s.apiKey } }); return r.ok ? ((await r.json()).posterPath || '') : ''; } });
 const pubUser = u => ({ email: u.email || '', weekly: !u.noWeekly, twofa: !!(u.totp && u.totp.on), id: u.id, name: u.name, role: u.role, access: u.access, perms: u.perms || null, notify: u.notify || '', dash: u.dash || null, reqLimit: u.reqLimit || null, autoApprove: !!u.autoApprove, plex: u.plex ? { name: u.plex.name } : null, hide: cleanHide(u.hide), restr: u.plexRules ? Object.fromEntries(['contentRating', 'contentRating!', 'label', 'label!'].filter(k => (u.plexRules[k] || []).length).map(k => [k, u.plexRules[k]])) : null, libs: u.plex ? { n: ((u.plexLibs || {}).mine || []).length, of: ((u.plexLibs || {}).all || []).length, limited: libLimited(u) } : null, plexName: u.plexName || '', lists: lists.enabled(), avatar: u.avatar ? `/api/avatar/${u.id}?v=${u.avatar.v}` : '', dataLimit: u.dataLimit || 0, streamLimit: u.streamLimit == null ? null : u.streamLimit, kids: u.kids ? { age: u.kids.age } : null });
@@ -3473,4 +3473,7 @@ for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => { console.log('Go
 setTimeout(() => monitor().catch(() => {}), Math.min(3000, MON_MS));
 setTimeout(() => wpSync(), +process.env.WP_DELAY_MS || 20000).unref();
 setInterval(() => wpSync(), 6 * 3600e3).unref();
+// Discover's lists are fetched ahead of time (soon after starting, then every 3 hours), so opening them never waits on the sites.
+setTimeout(() => lists.warm().catch(() => {}), 90000).unref();
+setInterval(() => lists.warm().catch(() => {}), 3 * 3600e3).unref();
 setInterval(() => { if (!DEMO && wpMode() === 'library' && db.services.some(x => ['sonarr', 'radarr'].includes(x.type)) && !wpList().some(f => LIBWP.test(f)) && Date.now() - wpState.at > 12e4) wpSync(); }, 6e4).unref();   // until the first pictures are saved, try again every couple of minutes

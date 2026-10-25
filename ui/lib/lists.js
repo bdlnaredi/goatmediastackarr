@@ -13,15 +13,36 @@ const img = p => !p ? '' : /^(https?:|data:image\/)/.test(p) ? String(p) : 'http
 
 // o.keys() -> { trakt, tmdb, tvdb } (strings, may be empty); o.urls -> { trakt, tmdb, tvdb } base addresses
 // o.seerrPoster(kind, tmdbId) -> optional fallback that finds a poster through Seerr.
+// o.file -> optional path where lists and posters are kept between restarts.
 function create(o) {
-  const cache = new Map(), posters = new Map();
+  const cache = new Map(), posters = new Map(), busy = new Map();
   let tvdbTok = { t: '', at: 0, k: '' };
+  // Lists and posters are kept on disk too, so after a restart Discover still opens straight away.
+  const fs = require('node:fs'), crypto = require('node:crypto');
+  const hk = k => crypto.createHash('sha256').update(String(k || '')).digest('hex').slice(0, 12);   // never the key itself on disk
+  if (o.file) try {
+    const d = JSON.parse(fs.readFileSync(o.file, 'utf8'));
+    for (const [k, v] of Object.entries(d.lists || {})) if (v && Array.isArray(v.v) && Date.now() - v.at < 7 * DAY) cache.set(k, v);
+    for (const [k, v] of Object.entries(d.posters || {})) if (v && Date.now() - v.at < 30 * DAY) posters.set(k, v);
+  } catch {}
+  let saveT = null;
+  const save = () => { if (!o.file || saveT) return; saveT = setTimeout(() => { saveT = null; try {
+    const tmp = o.file + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify({ lists: Object.fromEntries(cache), posters: Object.fromEntries([...posters].slice(-3000)) }), { mode: 0o600 });
+    fs.renameSync(tmp, o.file);
+  } catch {} }, 2000); if (saveT.unref) saveT.unref(); };
 
   const bad = (msg, status) => Object.assign(new Error(msg), { status });
 
+  // A site that is slow or briefly down is asked once more before giving up.
   async function get(url, opt, who) {
     let r;
-    try { r = await fetch(url, { signal: AbortSignal.timeout(15000), ...opt }); } catch { throw bad(`${who} could not be reached right now.`, 502); }
+    for (let n = 0; ; n++) {
+      try { r = await fetch(url, { signal: AbortSignal.timeout(15000), ...opt }); } catch { r = null; }
+      if (r && (r.ok || r.status < 500)) break;
+      if (n >= 1) { if (!r) throw bad(`${who} could not be reached right now.`, 502); break; }
+      await new Promise(res => setTimeout(res, 1500));
+    }
     if (r.status === 401 || r.status === 403) throw bad(`${who} did not accept the key. Check it in Settings, under Discover lists.`, 401);
     if (!r.ok) throw bad(`${who} answered with an error (${r.status}).`, 502);
     try { return await r.json(); } catch { throw bad(`${who} gave a reply GoatMediaStackarr could not read.`, 502); }
@@ -85,7 +106,7 @@ function create(o) {
     let v = '';
     if (o.keys().tmdb) { try { v = await tmdbPoster(kind, id); } catch {} }
     if (!v && o.seerrPoster) { try { v = img(await o.seerrPoster(kind, id)); } catch {} }
-    posters.set(key, { v, at: Date.now() }); return v;
+    posters.set(key, { v, at: Date.now() }); save(); return v;
   }
 
   const enabled = () => { const k = o.keys(); return { trakt: !!k.trakt, tmdb: !!k.tmdb, tvdb: !!k.tvdb }; };
@@ -93,11 +114,33 @@ function create(o) {
   async function list(src, name, kind) {
     if (!LISTS[src] || !LISTS[src].includes(name) || !['movie', 'tv'].includes(kind)) throw bad('That list does not exist.', 400);
     if (!o.keys()[src]) throw bad(`${NAMES[src]} is not set up yet. An admin can add its key in Settings, under Discover lists.`, 404);
-    const ck = [src, name, kind, o.keys()[src]].join('|'), hit = cache.get(ck);
+    const ck = [src, name, kind, hk(o.keys()[src])].join('|'), hit = cache.get(ck);
     if (hit && Date.now() - hit.at < HALF_HOUR) return hit.v;
-    const items = await ({ trakt, tmdb, tvdb })[src](name, kind);
-    await Promise.all(items.filter(x => !x.poster && x.tmdb).map(async x => { x.poster = await poster(kind, x.tmdb); }));
-    cache.set(ck, { v: items, at: Date.now() }); return items;
+    // An older copy is shown straight away and brought up to date in the background.
+    if (hit) { fetchList(ck, src, name, kind).catch(() => {}); return hit.v; }
+    return fetchList(ck, src, name, kind);
+  }
+  // Fetches one list (once at a time, however many ask), with posters, and keeps it.
+  function fetchList(ck, src, name, kind) {
+    if (busy.has(ck)) return busy.get(ck);
+    const p = (async () => {
+      const items = await ({ trakt, tmdb, tvdb })[src](name, kind);
+      await Promise.all(items.filter(x => !x.poster && x.tmdb).map(async x => { x.poster = await poster(kind, x.tmdb); }));
+      cache.set(ck, { v: items, at: Date.now() }); save(); return items;
+    })().finally(() => busy.delete(ck));
+    busy.set(ck, p); return p;
+  }
+  // Refreshes every list that is set up, one after another, so Discover never waits on the sites.
+  async function warm() {
+    for (const src of Object.keys(LISTS)) {
+      if (!o.keys()[src]) continue;
+      for (const kind of ['movie', 'tv']) for (const name of LISTS[src]) {
+        if (src === 'tvdb' && kind === 'movie' && name !== 'popular') continue;
+        const ck = [src, name, kind, hk(o.keys()[src])].join('|'), hit = cache.get(ck);
+        if (hit && Date.now() - hit.at < HALF_HOUR) continue;
+        try { await fetchList(ck, src, name, kind); } catch {}
+      }
+    }
   }
 
   // The full record of one title (with its cast and trailers), for the title page when there is no Seerr.
@@ -122,7 +165,7 @@ function create(o) {
     return get(url, opt, 'TMDB');
   }
 
-  return { list, enabled, details, person, collection, recommendations, LISTS, NAMES };
+  return { list, warm, enabled, details, person, collection, recommendations, LISTS, NAMES };
 }
 
 module.exports = { create, LISTS, NAMES };
