@@ -1110,11 +1110,25 @@ async function stageOf(x, cache) {
   if (have > 0) return { stage: (await onMediaServer(x)) ? 'partial' : 'library' };
   return { stage: 'searching' };
 }
+// Asks Sonarr for one episode: monitored, then searched for (an episode not out yet is grabbed when it airs).
+async function episodeAdd(sv, x) {
+  await ext(sv, '/api/v3/episode/monitor', { method: 'PUT', body: JSON.stringify({ episodeIds: [x.episode.id], monitored: true }) });
+  await ext(sv, '/api/v3/command', { method: 'POST', body: JSON.stringify({ name: 'EpisodeSearch', episodeIds: [x.episode.id] }) }).catch(() => {});
+}
 async function refreshRequests() {
   const open = db.requests.filter(x => x.status === 'approved' && x.stage !== 'available' && x.stage !== 'declined').slice(-40); let changed = false;
   const cache = {};
   if (open.some(x => x.mediaType === 'tv')) await Promise.all(db.services.filter(y => y.type === 'sonarr').map(async y => { cache[y.id] = await arrGet(y, '/api/v3/series').catch(() => []); }));
   await Promise.all(open.map(async x => { try {
+    if (x.episode) {
+      const sv = db.services.find(y => y.id === x.sid); if (!sv) return;
+      const e = await arrGet(sv, '/api/v3/episode/' + x.episode.id).catch(() => null); if (!e) return;
+      const q = e.hasFile ? null : ((await arrGet(sv, '/api/v3/queue?pageSize=200').catch(() => ({}))).records || []).find(r => r.episodeId === x.episode.id);
+      const stage = e.hasFile ? 'available' : q ? 'downloading' : 'approved', progress = q && q.size ? Math.round((1 - q.sizeleft / q.size) * 100) : undefined;
+      if (stage !== x.stage || progress !== x.progress) { x.stage = stage; x.progress = progress; changed = true; }
+      if (stage === 'available' && !x.toldReady) { x.toldReady = Date.now(); changed = true; await notifyUser(userOf(x.uid), 'Ready to watch', `${x.title} is now available.`, 'ready', `title:tv:${x.mediaId}`).catch(() => {}); }
+      return;
+    }
     // Seerr still has the last word on a declined request.
     const sv = x.seerrId && db.services.find(y => y.id === x.sid);
     if (sv) { const r = await fetch(sv.url.replace(/\/+$/, '') + '/api/v1/request/' + x.seerrId, { signal: AbortSignal.timeout(8000), headers: { 'X-Api-Key': sv.apiKey } }).catch(() => null);
@@ -2149,6 +2163,49 @@ const goatServer = http.createServer(async (req, res) => {
     };
     // Asking for a movie or show, as the person signed in: their request limit and space limit apply, and an admin's
     // approval unless they may approve their own. Used by the Request buttons and by watchlists that request by themselves.
+    const limitHit = async () => {
+      const lim = me.reqLimit;
+      if (me.role !== 'admin' && lim && lim.n > 0) {
+        const used = db.requests.filter(r => r.uid === me.id && r.status !== 'declined' && r.at > Date.now() - lim.days * DAY).length;
+        if (used >= lim.n) return [429, { error: `You have used your ${lim.n} request${lim.n === 1 ? '' : 's'} for the last ${lim.days} day${lim.days === 1 ? '' : 's'}. Ask an admin if you need more.` }];
+      }
+      if (me.role !== 'admin' && me.dataLimit > 0) {
+        const sp = await usedSpace(me).catch(() => null);
+        if (sp && sp.bytes >= me.dataLimit * 1e9) return [429, { error: `What you asked for already takes ${gbText(sp.bytes)} of the ${me.dataLimit} GB an admin gave you. Ask an admin for more space.` }];
+      }
+      return null;
+    };
+    // One episode of a show that is already in Sonarr: it is monitored and searched for. People need no Sonarr access for this.
+    if (p === '/api/requests/episode' && m === 'POST') {
+      if (deny('request', 'make requests')) return;
+      const b = await readBody(req), tmdb = Math.round(+b.tmdb), se = Math.round(+b.season), ep = Math.round(+b.episode);
+      if (!(tmdb > 0) || !(se >= 0) || !(ep > 0)) return send(res, 400, { error: 'Bad request' });
+      const idx = await libIndex(), e = idx.tv.get(tmdb), sv = e && db.services.find(x => x.id === e.sid);
+      if (!sv) return send(res, 404, { error: 'This show is not in Sonarr yet. Ask for the show (or its season) first.' });
+      const eps = await arrGet(sv, `/api/v3/episode?seriesId=${e.id}`).catch(() => null), x0 = (Array.isArray(eps) ? eps : []).find(y => y.seasonNumber === se && y.episodeNumber === ep);
+      if (!x0) return send(res, 404, { error: 'Sonarr does not know that episode.' });
+      if (x0.hasFile) return send(res, 400, { error: 'That episode is already here.' });
+      if (db.requests.some(r => r.episode && r.episode.id === x0.id && r.sid === sv.id && ['pending', 'approved'].includes(r.status) && r.stage !== 'available')) return send(res, 400, { error: 'That episode is already asked for.' });
+      const hit = await limitHit(); if (hit) return send(res, ...hit);
+      const sr = await arrGet(sv, `/api/v3/series/${e.id}`).catch(() => ({})), code = `S${String(se).padStart(2, '0')}E${String(ep).padStart(2, '0')}`;
+      const x = { id: uid(), sid: sv.id, uid: me.id, user: me.name, mediaType: 'tv', mediaId: tmdb, title: cut(`${sr.title || b.title || 'Episode'} ${code}`, 200), year: String(sr.year || '').slice(0, 4),
+        poster: cut(b.poster || (((sr.images || []).find(i => i.coverType === 'poster') || {}).remoteUrl) || '', 300), status: 'pending', at: Date.now(),
+        episode: { series: e.id, id: x0.id, season: se, num: ep, name: cut(x0.title, 120) } };
+      if (me.role === 'admin' || me.autoApprove) { await episodeAdd(sv, x); x.status = 'approved'; x.stage = 'approved'; }
+      else { feed('@admins', 'request', 'New request', `${me.name} asked for ${x.title}`, 'requests'); notify('requests', 'New request', `${me.name} requested ${x.title}`).catch(() => {}); }
+      db.requests.push(x); save(); audit(me.name, x.status === 'approved' && me.role !== 'admin' ? 'Requested (auto-approved)' : 'Requested', x.title);
+      return send(res, 200, x);
+    }
+    // The episodes of a show in the library, for asking for one of them from the title page.
+    if (p === '/api/title/episodes' && m === 'GET') {
+      const tmdb = Math.round(+new URL(req.url, 'http://x').searchParams.get('id')), idx = await libIndex(), e = idx.tv.get(tmdb), sv = e && db.services.find(x => x.id === e.sid);
+      if (!sv) return send(res, 404, { error: 'Not in the library' });
+      const eps = await arrGet(sv, `/api/v3/episode?seriesId=${e.id}`), now = Date.now();
+      const asked = new Set(db.requests.filter(r => r.episode && r.sid === sv.id && r.status !== 'declined' && r.stage !== 'available').map(r => r.episode.id));
+      return send(res, 200, (Array.isArray(eps) ? eps : []).filter(y => y.seasonNumber > 0).map(y => { const dt = y.airDateUtc || y.airDate || '';
+        return { season: y.seasonNumber, num: y.episodeNumber, title: cut(y.title, 120), date: dt, aired: !!dt && Date.parse(dt) <= now, has: !!y.hasFile, monitored: !!y.monitored, asked: asked.has(y.id) }; })
+        .sort((a, b) => a.season - b.season || a.num - b.num));
+    }
     const makeRequest = async b => {
       const s = svcOf(b.sid, 'seerr') || (b.sid ? null : db.services.filter(allowed).find(x => x.type === 'seerr'));
       if (!s || !+b.mediaId || !['movie', 'tv'].includes(b.mediaType)) return [400, { error: 'Bad request' }];
@@ -3011,8 +3068,8 @@ const goatServer = http.createServer(async (req, res) => {
       const x = db.requests.find(y => y.id === r[1]);
       if (!x || x.status !== 'pending') return send(res, 404, { error: 'Request not found' });
       if (r[2] === 'approve') {
-        const s = db.services.find(y => y.id === x.sid); if (!s) return send(res, 400, { error: 'That Seerr service was removed' });
-        const sr = await seerrAdd(s, x); x.seerrId = sr && sr.id; x.status = 'approved'; x.stage = 'approved';
+        const s = db.services.find(y => y.id === x.sid); if (!s) return send(res, 400, { error: x.episode ? 'That Sonarr was removed' : 'That Seerr service was removed' });
+        if (x.episode) await episodeAdd(s, x); else { const sr = await seerrAdd(s, x); x.seerrId = sr && sr.id; } x.status = 'approved'; x.stage = 'approved';
       } else { x.status = 'declined'; x.stage = 'declined'; }
       save(); audit(me.name, r[2] === 'approve' ? 'Approved a request' : 'Declined a request', x.title + ' (' + x.user + ')');
       notifyUser(userOf(x.uid), r[2] === 'approve' ? 'Request approved' : 'Request declined', r[2] === 'approve' ? `${x.title} will be downloaded.` : `${x.title} was declined.`, 'reqstatus', `title:${x.mediaType}:${x.mediaId}`).catch(() => {});
