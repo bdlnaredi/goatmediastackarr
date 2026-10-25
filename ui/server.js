@@ -1067,6 +1067,19 @@ async function refreshRequests() {
   } catch {} }));
   if (changed) save();
 }
+// Watchlists: someone whose movie or show has just come into the library hears about it, once.
+async function watchTick() {
+  const open = (db.watchlist || []).filter(w => !w.told); if (!open.length) return;
+  const idx = await libIndex(); let changed = false;
+  for (const w of open) {
+    const e = idx[w.type].get(w.id); if (!(e && e.size > 0)) continue;
+    w.told = Date.now(); changed = true;
+    // A request for it already says "Ready to watch"; only say it here when there was none.
+    if (db.requests.some(r => r.uid === w.uid && r.mediaType === w.type && +r.mediaId === w.id && r.toldReady)) continue;
+    await notifyUser(userOf(w.uid), 'On your watchlist', `${w.title} is now in the library.`, 'ready', `title:${w.type}:${w.id}`).catch(() => {});
+  }
+  if (changed) save();
+}
 // ---------- Streaming data: how much each person streams from Plex and Jellyfin, per calendar month ----------
 // Every check (MONITOR_MS, 30 seconds) adds bitrate × time for each stream that is playing. A person over their monthly
 // limit has their streams stopped with a message saying why; it starts again on the 1st. Admins are never limited,
@@ -1227,6 +1240,7 @@ async function monitor() {
     await safe(streamTick);
     if (mon.n % 120 === 0 && !DEMO) await safe(latestRelease);
     if (++mon.n % 2 === 0) await safe(refreshRequests);
+    if (mon.n % 10 === 0) await safe(watchTick);
   } finally { mon.busy = false; }
 }
 
@@ -2037,25 +2051,62 @@ const goatServer = http.createServer(async (req, res) => {
       } catch {}
       return '';
     };
-    if (p === '/api/requests' && m === 'POST') {
-      if (deny('request', 'make requests')) return;
-      const b = await readBody(req), s = svcOf(b.sid, 'seerr');
-      if (!s || !+b.mediaId || !['movie', 'tv'].includes(b.mediaType)) return send(res, 400, { error: 'Bad request' });
+    // Asking for a movie or show, as the person signed in: their request limit and space limit apply, and an admin's
+    // approval unless they may approve their own. Used by the Request buttons and by watchlists that request by themselves.
+    const makeRequest = async b => {
+      const s = svcOf(b.sid, 'seerr') || (b.sid ? null : db.services.filter(allowed).find(x => x.type === 'seerr'));
+      if (!s || !+b.mediaId || !['movie', 'tv'].includes(b.mediaType)) return [400, { error: 'Bad request' }];
       const lim = me.reqLimit;
       if (me.role !== 'admin' && lim && lim.n > 0) {
         const used = db.requests.filter(r => r.uid === me.id && r.status !== 'declined' && r.at > Date.now() - lim.days * DAY).length;
-        if (used >= lim.n) return send(res, 429, { error: `You have used your ${lim.n} request${lim.n === 1 ? '' : 's'} for the last ${lim.days} day${lim.days === 1 ? '' : 's'}. Ask an admin if you need more.` });
+        if (used >= lim.n) return [429, { error: `You have used your ${lim.n} request${lim.n === 1 ? '' : 's'} for the last ${lim.days} day${lim.days === 1 ? '' : 's'}. Ask an admin if you need more.` }];
       }
       if (me.role !== 'admin' && me.dataLimit > 0) {
         const sp = await usedSpace(me).catch(() => null);
-        if (sp && sp.bytes >= me.dataLimit * 1e9) return send(res, 429, { error: `What you asked for already takes ${gbText(sp.bytes)} of the ${me.dataLimit} GB an admin gave you. Ask an admin for more space.` });
+        if (sp && sp.bytes >= me.dataLimit * 1e9) return [429, { error: `What you asked for already takes ${gbText(sp.bytes)} of the ${me.dataLimit} GB an admin gave you. Ask an admin for more space.` }];
       }
       const seasons = b.mediaType === 'tv' && Array.isArray(b.seasons) ? [...new Set(b.seasons.map(Number).filter(n => Number.isInteger(n) && n >= 0 && n <= 200))].slice(0, 100) : [];
       const x = { id: uid(), sid: s.id, uid: me.id, user: me.name, mediaType: b.mediaType, mediaId: +b.mediaId, title: String(b.title || '').slice(0, 200),
-        year: String(b.year || '').slice(0, 4), poster: String(b.poster || '').slice(0, 300), status: 'pending', at: Date.now(), ...(seasons.length ? { seasons } : {}) };
+        year: String(b.year || '').slice(0, 4), poster: String(b.poster || '').slice(0, 300), status: 'pending', at: Date.now(), ...(seasons.length ? { seasons } : {}), ...(b.via ? { via: b.via } : {}) };
       if (me.role === 'admin' || me.autoApprove) { const sr = await seerrAdd(s, x); x.seerrId = sr && sr.id; x.status = 'approved'; x.stage = 'approved'; }
-      else { feed('@admins', 'request', 'New request', `${me.name} asked for ${x.title}`, 'requests'); notify('requests', 'New request', `${me.name} requested ${x.title}`).catch(() => {}); }
-      db.requests.push(x); save(); audit(me.name, me.role !== 'admin' && me.autoApprove ? 'Requested (auto-approved)' : 'Requested', x.title); return send(res, 200, x);
+      else { feed('@admins', 'request', 'New request', `${me.name} asked for ${x.title}${b.via === 'watchlist' ? ' (from their watchlist)' : ''}`, 'requests'); notify('requests', 'New request', `${me.name} requested ${x.title}`).catch(() => {}); }
+      db.requests.push(x); save(); audit(me.name, me.role !== 'admin' && me.autoApprove ? 'Requested (auto-approved)' : 'Requested', x.title + (b.via === 'watchlist' ? ' (watchlist)' : ''));
+      return [200, x];
+    };
+    if (p === '/api/requests' && m === 'POST') {
+      if (deny('request', 'make requests')) return;
+      const [code, body] = await makeRequest(await readBody(req));
+      return send(res, code, body);
+    }
+    // ---------- Watchlist: what each person wants to watch. They hear when it lands in the library. ----------
+    const wlOf = () => (db.watchlist || []).filter(w => w.uid === me.id);
+    const wlState = async l => {
+      const idx = await libIndex().catch(() => null);
+      return l.map(w => { const e = idx && idx[w.type].get(w.id), rq = db.requests.filter(r => r.mediaType === w.type && +r.mediaId === w.id && r.uid === w.uid).pop();
+        return { ...w, inLib: !!(e && e.size > 0), wanted: !!e && !(e.size > 0), request: rq ? (rq.stage || rq.status) : '' }; });
+    };
+    if (p === '/api/watchlist' && m === 'GET') return send(res, 200, { auto: !!(db.settings.watchlist || {}).auto, items: await wlState(wlOf().sort((a, b) => b.added - a.added)) });
+    if (p === '/api/watchlist' && m === 'POST') {
+      const b = await readBody(req), type = b.type === 'tv' ? 'tv' : 'movie', id = Math.round(+b.id);
+      if (!(id > 0)) return send(res, 400, { error: 'Bad request' });
+      db.watchlist = db.watchlist || [];
+      if (wlOf().length >= 500) return send(res, 400, { error: 'Your watchlist is full (500). Remove some first.' });
+      let w = db.watchlist.find(x => x.uid === me.id && x.type === type && x.id === id), req2 = null;
+      if (!w) {
+        const idx = await libIndex().catch(() => null), e = idx && idx[type].get(id);
+        w = { uid: me.id, type, id, title: String(b.title || '').slice(0, 200), year: String(b.year || '').slice(0, 4), poster: String(b.poster || '').slice(0, 400), added: Date.now(), ...(e && e.size > 0 ? { told: Date.now() } : {}) };
+        db.watchlist.push(w); save();
+        // Ask for it straight away when the admin turned that on, it is not in the library yet, and nobody asked already.
+        if ((db.settings.watchlist || {}).auto && !e && can('request') && !db.requests.some(r => r.mediaType === type && +r.mediaId === id && r.status !== 'declined')) {
+          const [code, body] = await makeRequest({ mediaType: type, mediaId: id, title: w.title, year: w.year, poster: w.poster, via: 'watchlist' });
+          req2 = code === 200 ? body.status : { error: body.error };
+        }
+      }
+      return send(res, 200, { ok: true, requested: req2, items: await wlState(wlOf().sort((a, b) => b.added - a.added)) });
+    }
+    if ((r = p.match(/^\/api\/watchlist\/(movie|tv)\/(\d+)$/)) && m === 'DELETE') {
+      db.watchlist = (db.watchlist || []).filter(w => !(w.uid === me.id && w.type === r[1] && w.id === +r[2])); save();
+      return send(res, 200, { ok: true });
     }
     if (p === '/api/seerr/tv' && m === 'GET') {
       const q = new URL(req.url, 'http://x').searchParams, sv = svcOf(q.get('sid'), 'seerr'); if (!sv || !+q.get('id')) return send(res, 404, { error: 'Not found' });
@@ -2119,6 +2170,7 @@ const goatServer = http.createServer(async (req, res) => {
         similar: (((rec && rec.results) || [])).map(x => mediaCard(x, idx, x.mediaType || x.media_type || type)).filter(Boolean).slice(0, 20).map(({ votes, date, ...x }) => x),
         seasons: type === 'tv' ? (d.seasons || []).filter(x => +pk(x, 'seasonNumber', 'season_number') > 0).map(x => ({ n: +pk(x, 'seasonNumber', 'season_number'), episodes: +pk(x, 'episodeCount', 'episode_count') || 0, name: cut(x.name, 80), date: String(pk(x, 'airDate', 'air_date') || '').slice(0, 10) })) : [],
         trailer: trailer ? trailer.key : '', seerr: sv ? sv.id : '', available: +((d.mediaInfo || {}).status) || 0,
+        watch: (db.watchlist || []).some(w => w.uid === me.id && w.type === type && w.id === id),
         library: libSvc ? { sid: libSvc.id, id: inLib.id, kind: type } : null, request: reqs.length ? { status: reqs[reqs.length - 1].status, stage: reqs[reqs.length - 1].stage || reqs[reqs.length - 1].status } : null });
     }
     if ((r = p.match(/^\/api\/requests\/(\w+)\/report$/)) && m === 'POST') {
@@ -2887,6 +2939,10 @@ const goatServer = http.createServer(async (req, res) => {
     if ((r = p.match(/^\/api\/users\/(\w+)\/2fa\/reset$/)) && m === 'POST') {
       const u = userOf(r[1]); if (!u) return send(res, 404, { error: 'Not found' });
       u.totp = undefined; save(); audit(me.name, 'Turned off two-step sign-in for', u.name); return send(res, 200, {});
+    }
+    if (p === '/api/watchlist/settings' && m === 'PUT') {
+      const b = await readBody(req); db.settings.watchlist = { ...(db.settings.watchlist || {}), auto: !!b.auto }; save();
+      audit(me.name, 'Changed watchlists', db.settings.watchlist.auto ? 'request automatically' : 'do not request'); return send(res, 200, { auto: db.settings.watchlist.auto });
     }
     if (p === '/api/heal' && m === 'GET') return send(res, 200, { cfg: healCfg(), log: db.healLog || [] });
     if (p === '/api/heal' && m === 'PUT') {

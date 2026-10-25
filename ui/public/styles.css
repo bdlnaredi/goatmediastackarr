@@ -19,6 +19,7 @@ html[data-rail=min] .ng{padding:4px 0;border-bottom:1px solid var(--line)}
 .qs span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 @media(max-width:860px){.side .wn,.side .ver{display:none}}
 img.nopic{visibility:hidden}
+.wlc{position:relative}.wlx{position:absolute;top:8px;right:8px;opacity:0;transition:opacity .15s;background:rgba(8,8,18,.75)!important;color:#fff!important;border:0!important}.wlc:hover .wlx,.wlx:focus-visible{opacity:1}@media(hover:none){.wlx{opacity:1}}
 /* What's new */
 .wnh{display:flex;gap:14px;align-items:center;margin:6px 0 18px}
 .wni{display:grid;place-items:center;width:48px;height:48px;border-radius:16px;background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--accent);flex:none}.wni .ic{width:26px;height:26px}

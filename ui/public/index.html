@@ -688,6 +688,7 @@ const ICONS={goat:'<path d="M12 3 3 7.5l9 4.5 9-4.5L12 3zM3 12l9 4.5 9-4.5M3 16.
  sub:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 11h3M13 11h4M7 15h5M15 15h2"/>',
  nzb:'<path d="M7 18a4 4 0 0 1-.6-7.96A6 6 0 0 1 18 9a4.5 4.5 0 0 1-.5 9H7z"/><path d="M12 11v6m0 0-2.5-2.5M12 17l2.5-2.5"/>',
  eye:'<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+ wl:'<path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z"/>',
  new:'<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/>',
  more:'<circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>',
  hl:'<path d="M3 12h4l2-5 4 10 2-5h6"/>',
@@ -719,20 +720,20 @@ const ICONS={goat:'<path d="M12 3 3 7.5l9 4.5 9-4.5L12 3zM3 12l9 4.5 9-4.5M3 16.
  disc:'<circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/>',hist:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',trash:'<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>'};
 const ic=k=>`<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${ICONS[k]}</svg>`;
 const LOGO='<img src="/icon-192.png" alt="" width="38" height="38">';
-const PAGES={dash:['',''],find:['Search','Find a show or movie and add it to Sonarr or Radarr.'],disc:['Discover','What is trending, popular and anticipated on Trakt, TMDB and TheTVDB.'],rq:['Requests','Ask for something new, or approve what others asked for.'],lib:['Library','Everything in Sonarr and Radarr, and what is still missing.'],
+const PAGES={dash:['',''],wl:['Watchlist','What you want to watch. You hear when each one is in the library.'],find:['Search','Find a show or movie and add it to Sonarr or Radarr.'],disc:['Discover','What is trending, popular and anticipated on Trakt, TMDB and TheTVDB.'],rq:['Requests','Ask for something new, or approve what others asked for.'],lib:['Library','Everything in Sonarr and Radarr, and what is still missing.'],
  wt:['Wanted','Episodes and movies you are still missing, or that could be a better quality.'],dl:['Downloads','What qBittorrent is fetching right now.'],rss:['RSS','Feeds and auto-download rules from qBittorrent.'],up:['Upcoming','Releases coming soon, and what is downloading.'],
  idx:['Indexers','Search, check, add and remove the indexers in Jackett and Prowlarr.'],trk:['Trackers','Search your trackers, and browse their websites (through the VPN if you like). Downloads go straight to qBittorrent.'],mb:['Music and books','Artists and authors from Lidarr and Readarr.'],sub:['Subtitles','Episodes and movies that are missing subtitles in Bazarr.'],nzb:['Usenet','What SABnzbd is fetching, what finished, and adding NZB files.'],hl:['Health','Problems, disk space and stuck downloads across your apps.'],ur:['Unraid','Server health, disks and containers.'],stats:['Watch stats','Who watches what on Plex.'],goat:['Stack','The apps inside GoatMediaStackarr: VPN, connections, logins and restarts.'],set:['Settings','Apps, profiles, alerts, backups and how GoatMediaStackarr looks.']};
 // The menu, grouped. Pages not listed in a group (none today) would not show in the menu.
-const NAVG=[['Watch',['dash','disc','find','lib','up','mb']],['Requests',['rq','wt']],['Downloads',['dl','rss','nzb','trk','idx','sub']],['Server',['goat','hl','ur','stats','set']]];
+const NAVG=[['Watch',['dash','disc','wl','find','lib','up','mb']],['Requests',['rq','wt']],['Downloads',['dl','rss','nzb','trk','idx','sub']],['Server',['goat','hl','ur','stats','set']]];
 const navGroupOf=k=>{const g=NAVG.find(([,l])=>l.includes(k));return g&&k!=='dash'?g[0]:''};
-const TABS=[['dash','Dashboard'],['find','Search'],['disc','Discover'],['rq','Requests'],['lib','Library'],['wt','Wanted'],['dl','Downloads'],['rss','RSS'],['up','Upcoming'],['idx','Indexers'],['trk','Trackers'],['mb','Music & books'],['sub','Subtitles'],['nzb','Usenet'],['hl','Health'],['ur','Unraid'],['stats','Stats'],['goat','Stack'],['set','Settings']];
+const TABS=[['dash','Dashboard'],['find','Search'],['disc','Discover'],['wl','Watchlist'],['rq','Requests'],['lib','Library'],['wt','Wanted'],['dl','Downloads'],['rss','RSS'],['up','Upcoming'],['idx','Indexers'],['trk','Trackers'],['mb','Music & books'],['sub','Subtitles'],['nzb','Usenet'],['hl','Health'],['ur','Unraid'],['stats','Stats'],['goat','Stack'],['set','Settings']];
 const TYPE_TABS={trk:['qbittorrent'],find:['sonarr','radarr'],rq:['seerr'],lib:['sonarr','radarr'],wt:['sonarr','radarr'],dl:['qbittorrent','rutorrent','deluge'],rss:['qbittorrent'],up:['sonarr','radarr'],idx:['jackett','prowlarr'],mb:['lidarr','readarr'],sub:['bazarr'],nzb:['sabnzbd'],ur:['unraid'],stats:['tautulli']};
 const PICK={sub:'bazarr',nzb:'sabnzbd',dl:'torrent',rss:'qbittorrent',idx:'jackett',ur:'unraid',rq:'seerr',stats:'tautulli'};
 const visibleTabs=()=>TABS.filter(([k])=>!TYPE_TABS[k]||TYPE_TABS[k].some(t=>ofType(t).length)).filter(([k])=>k!=='disc'||Object.values(me.lists||{}).some(Boolean)).filter(([k])=>k!=='hl'||(me.role==='admin'&&services.some(s=>['sonarr','radarr','lidarr','readarr','prowlarr'].includes(s.type)))).filter(([k])=>k!=='goat'||(GOAT&&me.role==='admin')).filter(([k])=>k!=='trk'||me.role==='admin');
 let stSub='acct';
 // ---------- Addresses: every tab and every Settings section has its own address (/downloads, /settings/apps),
 // so the browser's back button, bookmarks and links work.
-const SLUG={dash:'dashboard',find:'search',disc:'discover',rq:'requests',lib:'library',wt:'wanted',dl:'downloads',rss:'rss',up:'upcoming',idx:'indexers',trk:'trackers',mb:'music',sub:'subtitles',nzb:'usenet',hl:'health',ur:'unraid',stats:'stats',goat:'stack',set:'settings'};
+const SLUG={dash:'dashboard',wl:'watchlist',find:'search',disc:'discover',rq:'requests',lib:'library',wt:'wanted',dl:'downloads',rss:'rss',up:'upcoming',idx:'indexers',trk:'trackers',mb:'music',sub:'subtitles',nzb:'usenet',hl:'health',ur:'unraid',stats:'stats',goat:'stack',set:'settings'};
 const UNSLUG=Object.fromEntries(Object.entries(SLUG).map(([k,v])=>[v,k]));
 const pathFor=()=>tab==='dash'?'/':'/'+(SLUG[tab]||tab)+(tab==='set'&&stSub&&stSub!=='acct'?'/'+encodeURIComponent(stSub):'');
 // Reads the tab (and Settings section) from the address. Returns false when the address names no page.
@@ -788,7 +789,7 @@ $('#rl').onclick=()=>{UI.rail=!UI.rail;saveUI()};$('#qs').onclick=quick;
     $('#pk2').onchange=e=>{UI['pick_'+pt]=e.target.value;saveUI();render()}}
   [].concat(timer||[]).forEach(clearInterval);liveFns=[];LIVE.subs.clear();if(tab!=='dash'&&tab!=='ur')liveStop();
   const on=document.querySelector('.nv.on');if(on&&on.scrollIntoView)on.scrollIntoView({inline:'center',block:'nearest'});
-  ({trk:trkView,dash:dashView,find:findView,disc:discView,rq:rqView,lib:libView,wt:wtView,dl:dlView,rss:rssView,up:upView,idx:idxView,mb:mbView,sub:subView,nzb:nzbView,hl:hlView,ur:urView,stats:statsView,goat:goatView,set:setView})[tab]();
+  ({trk:trkView,wl:wlView,dash:dashView,find:findView,disc:discView,rq:rqView,lib:libView,wt:wtView,dl:dlView,rss:rssView,up:upView,idx:idxView,mb:mbView,sub:subView,nzb:nzbView,hl:hlView,ur:urView,stats:statsView,goat:goatView,set:setView})[tab]();
   // Keep the address bar in step with what is on screen: a new history entry for each move, none for back/forward.
   {const want=pathFor();if(location.pathname!==want){if(routeQuiet)history.replaceState(null,'',want+location.search);else history.pushState(null,'',want)}routeQuiet=false;
    document.title=(tab==='dash'?'':(PAGES[tab]&&PAGES[tab][0]?PAGES[tab][0]+' · ':''))+'GoatMediaStackarr'}
@@ -2171,6 +2172,24 @@ async function openInLibrary(l){
   const sv=services.find(z=>z.id===l.sid);if(!sv)return toast('That library is not available to you','bad');
   try{const list=await api('/api/library?sid='+encodeURIComponent(sv.id)),x=list.find(y=>y.id===l.id);if(!x)throw new Error('It is no longer in '+sv.name);openLibItem(sv,x,{})}catch(e){toast(e.message,'bad')}
 }
+// ---------- Watchlist
+const wlToggle=(type,id,on,x)=>on?api('/api/watchlist','POST',{type,id,title:x.title,year:x.year,poster:x.poster}):api(`/api/watchlist/${type}/${id}`,'DELETE');
+async function wlView(){
+  $('#m').innerHTML=skel(3);
+  let d;try{d=await api('/api/watchlist')}catch(x){$('#m').innerHTML=`<div class="err">${esc(x.message)}</div>`;return}
+  if(tab!=='wl')return;
+  const st=w=>w.inLib?['In the library','ok']:w.request?[{pending:'Waiting for approval',declined:'Request declined',available:'Available'}[w.request]||'Requested','acc']:w.wanted?['Being looked for','']:['Not yet',''];
+  const draw=()=>{$('#m').innerHTML=`${me.role==='admin'?`<div class="panel row" style="margin-bottom:16px;padding:12px 18px"><label class="tgl grow"><input type="checkbox" id="wla" ${d.auto?'checked':''}><span>Request what people put on their watchlist, by itself <span class="mute">(their request limits and approval still apply)</span></span></label></div>`:''}
+    ${d.items.length?`<div class="row" style="margin-bottom:12px"><span class="mute grow">${d.items.length} ${d.items.length===1?'title':'titles'}, ${d.items.filter(w=>w.inLib).length} in the library</span><div class="seg" id="wlf">${[['all','All'],['lib','In the library'],['not','Not yet']].map(([k,n])=>`<button data-v="${k}" class="${(UI.wlf||'all')===k?'on':''}">${n}</button>`).join('')}</div></div>
+    <div class="grid pgrid">${d.items.filter(w=>(UI.wlf||'all')==='all'||((UI.wlf==='lib')===w.inLib)).map(w=>{const [t,k]=st(w);return `<div class="wlc"><button type="button" class="cn-card" data-k="${w.type}:${w.id}" aria-label="${esc(w.title)}"><span class="cn-pw">${w.poster?`<img src="${esc(w.poster)}" alt="" loading="lazy">`:`<span class="cph sq">${esc(w.title)}</span>`}<span class="cn-have ${k==='ok'?'':'rq'}">${T(t)}</span></span><span class="cn-t">${esc(w.title)}</span><small class="mute cn-y">${esc([w.year,w.type==='tv'?T('Show'):T('Movie')].filter(Boolean).join(' · '))}</small></button><button class="icon wlx" data-rm="${w.type}:${w.id}" aria-label="Remove ${esc(w.title)}" title="Remove">${ic('trash')}</button></div>`}).join('')}</div>`
+    :empty(T('Your watchlist is empty'),T('Open any movie or show and press Watchlist. You hear when it is in the library.'))}`;
+    const a=$('#wla');if(a)a.onchange=async()=>{try{d.auto=(await api('/api/watchlist/settings','PUT',{auto:a.checked})).auto;toast('Saved','ok')}catch(x){toast(x.message,'bad')}};
+    const f=$('#wlf');if(f)f.onclick=e=>{const b=e.target.closest('[data-v]');if(b){UI.wlf=b.dataset.v;saveUI();draw()}};
+    $('#m').querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{const [type,id]=b.dataset.k.split(':'),w=d.items.find(x=>x.type===type&&x.id===+id);const o=titlePage(type,+id,w);const mo=new MutationObserver(()=>{if(!document.contains(o)){mo.disconnect();if(tab==='wl')wlView()}});mo.observe(document.body,{childList:true})});
+    $('#m').querySelectorAll('[data-rm]').forEach(b=>b.onclick=async()=>{const [type,id]=b.dataset.rm.split(':');try{await api(`/api/watchlist/${type}/${id}`,'DELETE');d.items=d.items.filter(x=>!(x.type===type&&x.id===+id));draw()}catch(x){toast(x.message,'bad')}});
+  };
+  draw();
+}
 function titlePage(type,id,seed){
   seed=seed||{};type=type==='tv'?'tv':'movie';
   const o=modal(`<button class="pgback" data-x>${ic('back')}Back</button><h2 style="margin:4px 0 0">${esc(seed.title||'')}</h2><div id="tpb" style="margin-top:12px">${skel(3)}</div>`,true);
@@ -2187,10 +2206,12 @@ function titlePage(type,id,seed){
       <div class="chips" style="margin:8px 0">${st?`<span class="pill ${st[1]}">${T(st[0])}</span>`:''}${t.genres.map(g=>`<span class="pill">${esc(g)}</span>`).join('')}</div>
       ${t.tagline?`<p style="margin:6px 0;font-style:italic;color:var(--link)">${esc(t.tagline)}</p>`:''}<p>${esc(t.overview||T('No description available yet.'))}</p>
       ${t.date?`<div class="mute">${tv?T('First aired'):T('Released')} ${esc(new Date(t.date).toLocaleDateString(undefined,{day:'numeric',month:'long',year:'numeric'}))}${tv&&t.seasons.length?' · '+t.seasons.length+' '+(t.seasons.length===1?T('season'):T('seasons')):''}</div>`:''}
-      <div class="row" style="margin-top:14px;flex-wrap:wrap">${canAsk?`<button class="primary" id="tq">${t.request?T('Ask again'):T('Request')}</button>`:''}${t.library?`<button id="tl">${ic('film')}${T('Open in library')}</button>`:''}${t.trailer?`<a class="btn" href="https://www.youtube.com/watch?v=${esc(t.trailer)}" target="_blank" rel="noopener noreferrer">${T('Trailer')} ${ic('ext')}</a>`:''}</div>
+      <div class="row" style="margin-top:14px;flex-wrap:wrap">${canAsk?`<button class="primary" id="tq">${t.request?T('Ask again'):T('Request')}</button>`:''}<button id="twl" class="${t.watch?'tog':''}" aria-pressed="${!!t.watch}">${ic('wl')}${t.watch?T('On your watchlist'):T('Watchlist')}</button>${t.library?`<button id="tl">${ic('film')}${T('Open in library')}</button>`:''}${t.trailer?`<a class="btn" href="https://www.youtube.com/watch?v=${esc(t.trailer)}" target="_blank" rel="noopener noreferrer">${T('Trailer')} ${ic('ext')}</a>`:''}</div>
       ${!t.seerr&&!t.library?`<p class="mute">${T('Requests need Seerr, and it is not set up on this server.')}</p>`:''}<div class="err" id="tqe"></div></div></div><div id="tpx" style="margin-top:10px"></div>`;
     titleExtras(o.querySelector('#tpx'),t);
     const tl=o.querySelector('#tl');if(tl)tl.onclick=()=>openInLibrary(t.library);
+    const twl=o.querySelector('#twl');twl.onclick=async()=>{twl.disabled=true;try{const on=!t.watch;const r=await wlToggle(t.type,t.id,on,t);t.watch=on;twl.classList.toggle('tog',on);twl.setAttribute('aria-pressed',on);twl.innerHTML=ic('wl')+(on?T('On your watchlist'):T('Watchlist'));
+      if(r&&r.requested&&r.requested.error)toast(r.requested.error,'bad');else if(r&&r.requested)toast(r.requested==='approved'?T('Added, and requested'):T('Added, and sent for approval'),'ok');else toast(on?T('Added to your watchlist'):T('Taken off your watchlist'),'ok')}catch(x){toast(x.message,'bad')}twl.disabled=false};
     const tq=o.querySelector('#tq');if(tq)tq.onclick=async()=>{tq.disabled=true;tq.textContent=T('Sending…');
       try{const r=await api('/api/requests','POST',{sid:t.seerr,mediaType:t.type,mediaId:t.id,title:t.title,year:t.year,poster:t.poster,seasons:[]});tq.outerHTML=`<span class="pill ok">${r.status==='approved'?T('Requested'):T('Sent for approval')}</span>${tv?` <span class="mute">${T('All seasons')}</span>`:''}`}
       catch(e){tq.disabled=false;tq.textContent=T('Request');o.querySelector('#tqe').textContent=e.message}};
