@@ -3,7 +3,9 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
 const fs = require('node:fs'), os = require('node:os'), path = require('node:path'), net = require('node:net');
-const free = () => new Promise(r => { const s = net.createServer().listen(0, () => { const p = s.address().port; s.close(() => r(p)); }); });
+// A spare port, never the same one twice in a run (the system can hand a just-closed port out again).
+const used = new Set();
+const free = () => new Promise(r => { const s = net.createServer().listen(0, () => { const p = s.address().port; s.close(() => used.has(p) ? free().then(r) : (used.add(p), r(p))); }); });
 
 test('FlareSolverr becomes a tagged Prowlarr proxy, once', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'goat-fs-'));

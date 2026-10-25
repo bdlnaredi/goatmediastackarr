@@ -4,7 +4,9 @@ const assert = require('node:assert/strict');
 const http = require('node:http');
 const fs = require('node:fs'), os = require('node:os'), path = require('node:path'), net = require('node:net');
 
-const free = () => new Promise(r => { const s = net.createServer().listen(0, () => { const p = s.address().port; s.close(() => r(p)); }); });
+// A spare port, never the same one twice in a run (the system can hand a just-closed port out again).
+const used = new Set();
+const free = () => new Promise(r => { const s = net.createServer().listen(0, () => { const p = s.address().port; s.close(() => used.has(p) ? free().then(r) : (used.add(p), r(p))); }); });
 const body = req => new Promise(r => { let d = ''; req.on('data', c => d += c); req.on('end', () => { try { r(JSON.parse(d || 'null')); } catch { r(d); } }); });
 const json = (res, code, o) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(o === undefined ? '' : JSON.stringify(o)); };
 

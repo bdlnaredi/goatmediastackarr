@@ -117,6 +117,7 @@ test('changing a login password: checked, given to the running app, saved, then 
 test('backups of the stack run as a job in the background, one at a time', async () => {
   const cfg = process.env.GOAT_CONFIG_DIR;
   process.env.GOAT_BACKUP_DIR = path.join(root, 'sb'); process.env.GOAT_BACKUP_JOB = path.join(root, 'sbjob.json');
+  process.env.PUID = String(process.getuid()); process.env.PGID = String(process.getgid());
   fs.mkdirSync(path.join(cfg, 'sonarr'), { recursive: true }); fs.writeFileSync(path.join(cfg, 'sonarr', 'config.xml'), '<Config/>');
   const x = fake();
   assert.deepEqual(await handle({ cmd: 'stack-job' }, x), { ok: true, job: null });

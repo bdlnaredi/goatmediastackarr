@@ -214,9 +214,10 @@ jobs:
           echo "$l" | jq -e --arg n "$name" '.files | map(.name) | index($n) != null' >/dev/null || { echo "::error::The backup is not listed"; exit 1; }
           curl -fsS -b /tmp/ck2 -o /tmp/sb.tar.gz "$B/api/stack/backups/$name"
           tar -tzf /tmp/sb.tar.gz > /tmp/sb.txt
-          for f in ./sonarr/config.xml ./sonarr/sonarr.db ./radarr/radarr.db ./goat/secrets.json ./ui/db.json ./qbittorrent/qBittorrent/config/qBittorrent.conf ./jellyfin/data/jellyfin.db; do
+          for f in ./sonarr/config.xml ./sonarr/sonarr.db ./radarr/radarr.db ./goat/secrets.json ./ui/db.json ./qbittorrent/qBittorrent/config/qBittorrent.conf; do
             grep -qxF "$f" /tmp/sb.txt || { echo "::error::$f is missing from the backup"; exit 1; }
           done
+          grep -q '^./jellyfin/.*jellyfin\.db$' /tmp/sb.txt || { echo "::error::Jellyfin's database is missing from the backup"; grep '^./jellyfin/' /tmp/sb.txt | head -20; exit 1; }
           grep -q '^./sonarr/MediaCover/\|^./jellyfin/cache/\|^./jellyfin/data/metadata/' /tmp/sb.txt && { echo "::error::The backup carries artwork or caches"; exit 1; }
           # The database copy is a whole, working database.
           tar -xzf /tmp/sb.tar.gz -C /tmp ./sonarr/sonarr.db && docker run --rm --entrypoint sqlite3 -v /tmp/sonarr:/d goat:ci /d/sonarr.db 'pragma integrity_check;' | grep -qx ok \

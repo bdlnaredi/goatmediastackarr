@@ -2,7 +2,9 @@
 const { spawn } = require('node:child_process');
 const fs = require('node:fs'), os = require('node:os'), path = require('node:path'), net = require('node:net');
 
-const free = () => new Promise(r => { const s = net.createServer().listen(0, () => { const p = s.address().port; s.close(() => r(p)); }); });
+// A spare port, never the same one twice in a run (the system can hand a just-closed port out again).
+const used = new Set();
+const free = () => new Promise(r => { const s = net.createServer().listen(0, () => { const p = s.address().port; s.close(() => used.has(p) ? free().then(r) : (used.add(p), r(p))); }); });
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'mediahub-test-'));
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
