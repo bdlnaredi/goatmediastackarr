@@ -392,6 +392,18 @@ async function run() {
     if (round > 1) { log(`trying again in ${pause / 1000}s: ${todo.map(([k]) => k).join(', ')}`); await sleep(pause); }
     for (const [k, fn] of todo) await step(k, fn);
   }
+  // Sonarr and the others keep the login they last sent to a download client (their web client "pre-authenticates"),
+  // so a new ruTorrent password only takes effect after they restart. Restart those that were just given one.
+  const again = ['sonarr', 'radarr', 'lidarr', 'prowlarr'].filter(k => state.steps[k] && state.steps[k].ok && (state.steps[k].result || {}).rutorrent === 'new password given');
+  for (const k of again) {
+    try {
+      const api = await arr(k, keys[k]).ready();
+      await api.post('system/restart', {});
+      await sleep(Number(process.env.GOAT_WIRE_RESTART_PAUSE || 8000));
+      await waitFor(E.ENGINES[k].name, () => arr(k, keys[k]).ready());
+      log(`${k}: restarted so it uses the new ruTorrent password`);
+    } catch (e) { log(`${k}: could not restart it (${e.message}); restart it once so it uses the new ruTorrent password`); }
+  }
   // Remembered once Sonarr, Radarr, Lidarr and Prowlarr all took them; otherwise tried again next time.
   if (!last || steps.filter(([k]) => ['sonarr', 'radarr', 'lidarr', 'prowlarr'].includes(k)).every(([k]) => state.steps[k] && state.steps[k].ok)) writeJSON(pf, prints);
   state.running = false; state.finished = Date.now();
