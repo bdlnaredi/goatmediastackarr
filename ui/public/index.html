@@ -2859,6 +2859,23 @@ async function trkView(){
     if(e.target.closest('[data-pg]'))return openTab(async()=>{const r=await api('/api/sites/open-url','POST',{url:x.info});if(r.direct)toast('Add this tracker under Tracker websites to open its pages through GoatMediaStackarr','');return r.url});
     const b=e.target.closest('[data-dl]');if(b){b.disabled=true;try{await api('/api/trackers/grab','POST',{id:x.id,category:$('#tcat').value});toast('Added to qBittorrent','ok');b.textContent='Added'}catch(er){toast(er.message,'bad');b.disabled=false}}};
 }
+// Self-healing: what it may fix by itself, and what it fixed.
+async function healPanel(){
+  const el=$('#heal');if(!el)return;
+  let d;try{d=await api('/api/heal')}catch{el.remove();return}
+  if(!$('#heal'))return;const c=d.cfg;
+  el.innerHTML=`<div class="row"><b style="font-size:16px" class="grow">Fix problems by itself</b><label class="tgl"><input type="checkbox" data-h="on" ${c.on?'checked':''} aria-label="Fix problems by itself"></label></div>
+    <p class="mute" style="margin:4px 0 8px">Checks every few minutes, and tells you what it did (the bell, and alert channels that want it).</p>
+    <div class="tg" ${c.on?'':'style="opacity:.55"'}>
+      <label class="chk"><input type="checkbox" data-h="stuck" ${c.stuck?'checked':''}>A download that has not moved for <input type="number" data-h="hours" min="2" max="168" value="${c.hours}" style="width:64px;margin:0 6px;padding:4px 8px"> hours is removed, blocked and searched for again</label>
+      <label class="chk"><input type="checkbox" data-h="failed" ${c.failed?'checked':''}>A download that failed is removed, blocked and searched for again</label>
+      ${GOAT?`<label class="chk"><input type="checkbox" data-h="apps" ${c.apps?'checked':''}>An app inside the container that stops answering is restarted (at most once in 30 minutes, three times a day)</label>`:''}
+    </div>
+    ${d.log.length?`<details class="tbv" ${d.log.some(x=>Date.now()-x.at<86400e3)?'open':''}><summary>What it fixed (${d.log.length})</summary>${d.log.slice(0,30).map(x=>`<div class="box row" style="padding:8px 10px;gap:4px 10px"><span class="pill ${x.kind==='app'?'warn':'acc'}">${x.kind==='app'?'App':'Download'}</span><b class="grow" style="word-break:break-word;font-weight:560">${esc(x.title)}</b><span class="mute">${esc(x.app)} · ${esc(fdt(x.at))}</span><div class="mute" style="flex-basis:100%">${esc(x.what)}</div></div>`).join('')}</details>`:'<p class="mute" style="margin:8px 0 0">Nothing needed fixing yet.</p>'}`;
+  const save=async()=>{const v=k=>el.querySelector(`[data-h="${k}"]`);
+    try{await api('/api/heal','PUT',{on:v('on').checked,stuck:v('stuck').checked,failed:v('failed').checked,apps:v('apps')?v('apps').checked:c.apps,hours:v('hours').value});toast('Saved','ok');healPanel()}catch(x){toast(x.message,'bad')}};
+  el.querySelectorAll('[data-h]').forEach(i=>i.onchange=save);
+}
 async function hlView(){
   $('#m').innerHTML=skel(4);
   let l;try{l=await api('/api/libhealth')}catch(x){$('#m').innerHTML=`<div class="err">${esc(x.message)}</div>`;return}
@@ -2867,13 +2884,14 @@ async function hlView(){
   // Every app reports the same disks, so they are shown once, with what each folder is for.
   const seen=new Set(),disks=l.flatMap(x=>x.disks||[]).filter(d=>{const k=d.path+'|'+d.total;if(seen.has(k))return false;seen.add(k);return true});
   const diskRow=d=>{const used=(1-d.free/d.total)*100;return `<div style="margin:10px 0"><div class="row" style="gap:4px 12px"><span class="grow"><b style="font-weight:560">${esc(d.label||d.path)}</b>${d.label?` <span class="mute">${esc(d.path)}</span>`:''}</span><span class="mute">${fmt(d.free)} free of ${fmt(d.total)} · ${used.toFixed(0)}% used</span></div><div class="bar" role="img" aria-label="${used.toFixed(0)} percent used"><i class="${used>90?'bad':''}" style="width:${used.toFixed(0)}%"></i></div></div>`};
-  $('#m').innerHTML=`<p class="mute">${total?`${total} thing${total===1?'':'s'} to look at.`:'Everything looks healthy.'}</p>`+(disks.length?`<div class="panel" style="margin-bottom:14px"><b style="font-size:16px">Disk space</b>${disks.map(diskRow).join('')}</div>`:'')+l.map(x=>{
+  $('#m').innerHTML=`<p class="mute">${total?`${total} thing${total===1?'':'s'} to look at.`:'Everything looks healthy.'}</p><div class="panel" id="heal" style="margin-bottom:14px"></div>`+(disks.length?`<div class="panel" style="margin-bottom:14px"><b style="font-size:16px">Disk space</b>${disks.map(diskRow).join('')}</div>`:'')+l.map(x=>{
     const n=x.issues.length+x.queue.length+(x.ok?0:1);
     return `<div class="panel" style="margin-bottom:14px"><div class="row"><b style="font-size:16px">${esc(x.name)}</b>${String(TYPES[x.type]||x.type).toLowerCase()===String(x.name).toLowerCase()?'':`<span class="mute">${esc(TYPES[x.type]||x.type)}</span>`}<span class="grow"></span>${x.missing!=null?`<span class="mute">${x.missing} missing</span>`:''}<span class="pill ${!x.ok?'bad':n?'warn':'ok'}">${!x.ok?'Not reachable':n?n+' to check':'Healthy'}</span></div>
       ${!x.ok?`<div class="err">${esc(x.error||'')}</div>`:''}
       ${x.issues.map(i=>`<div class="box row" style="margin-top:8px"><span class="pill ${i.level==='bad'?'bad':'warn'}">${i.level==='bad'?'Error':'Warning'}</span><span class="grow" style="word-break:break-word">${esc(i.text)}</span></div>`).join('')}
       ${x.queue.length?`<div class="mute" style="margin-top:12px">Downloads that are stuck</div>${x.queue.map(i=>`<div class="box"><b style="word-break:break-word">${esc(i.title)}</b><div class="mute">${esc(i.message)}</div></div>`).join('')}`:''}
       </div>`}).join('');
+  healPanel();
 }
 if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
 start();

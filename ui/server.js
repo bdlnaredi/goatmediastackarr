@@ -804,6 +804,58 @@ async function ext(s, path, opt = {}) {
   if (!r.ok) throw new Error((Array.isArray(d) && d[0] && d[0].errorMessage) || (d && d.message) || 'Request failed (' + r.status + ')');
   return d;
 }
+// ---------- Self-healing: downloads that are stuck or failed, and built-in apps that stop answering ----------
+// Settings → Download rules → Fix problems by itself. Every fix is written to db.healLog and shown on the Health page.
+const HEAL_MS = Math.max(200, +process.env.HEAL_MS || 300000), HEAL_HOUR = +process.env.HEAL_HOUR_MS || 3600e3;
+const healCfg = () => ({ on: true, stuck: true, failed: true, apps: true, hours: 24, ...(db.settings.heal || {}) });
+const healNote = (kind, app, title, what) => {
+  db.healLog = [{ at: Date.now(), kind, app, title: String(title || '').slice(0, 200), what }, ...(db.healLog || [])].slice(0, 100); save();
+  feed('@admins', 'info', kind === 'app' ? 'App restarted by itself' : 'Download fixed by itself', `${title}: ${what}`, 'health');
+  notify('healed', kind === 'app' ? 'App restarted by itself' : 'Download fixed by itself', `${app}: ${title}: ${what}`).catch(() => {});
+};
+mon.heal = { seen: {}, restarts: {} };
+async function heal() {
+  const c = healCfg(); if (!c.on) return;
+  const now = Date.now(), seen = mon.heal.seen, alive = new Set();
+  let fixes = 0;
+  // Downloads: what Sonarr, Radarr and Lidarr are waiting for. Removed, blocklisted and searched again (the app looks
+  // for another release itself) when it failed, or when it has not moved for the set number of hours.
+  if (c.stuck || c.failed) for (const sv of db.services.filter(x => ['sonarr', 'radarr', 'lidarr'].includes(x.type))) {
+    const v = sv.type === 'lidarr' ? 'v1' : 'v3';
+    let q; try { q = await ext(sv, `/api/${v}/queue?page=1&pageSize=200&includeUnknownSeriesItems=false`); } catch { continue; }
+    for (const x of (q && q.records) || []) {
+      const key = sv.id + ':' + (x.downloadId || x.id); alive.add(key);
+      const s0 = seen[key] || (seen[key] = { left: x.sizeleft, at: now }); if (x.sizeleft !== s0.left) { s0.left = x.sizeleft; s0.at = now; }
+      const msg = [x.errorMessage, ...((x.statusMessages || []).flatMap(m => m.messages || []))].filter(Boolean).join(' ');
+      const failed = c.failed && (x.status === 'failed' || ['failed', 'failedPending'].includes(x.trackedDownloadState));
+      const moving = ['downloading', 'warning', 'stalled', 'queued'].includes(String(x.status).toLowerCase()) && !/paused/i.test(x.status);
+      const stuck = c.stuck && moving && x.trackedDownloadState !== 'importPending' && x.trackedDownloadState !== 'importing' && now - s0.at > c.hours * HEAL_HOUR;
+      if (!failed && !stuck) continue;
+      if (fixes >= 5) break;
+      try {
+        await ext(sv, `/api/${v}/queue/${x.id}?removeFromClient=true&blocklist=true&skipRedownload=false`, { method: 'DELETE' });
+        fixes++; delete seen[key];
+        healNote('download', sv.name, x.title, failed ? `the download failed${msg ? ' (' + msg.slice(0, 120) + ')' : ''}; removed, blocked and searching for another` : `no progress for ${c.hours} hours; removed, blocked and searching for another`);
+      } catch (e) { console.log('[self-healing] could not fix', x.title, e.message); }
+    }
+  }
+  for (const k of Object.keys(seen)) if (!alive.has(k)) delete seen[k];
+  // Built-in apps: one that has not answered for four checks in a row is restarted, at most once in 30 minutes and
+  // three times a day each. Apps stopped by hand on the Stack page are left alone.
+  if (c.apps && GOAT_MANAGED) {
+    const stopped = goatRead(path.join(GOAT_RUN, 'stopped.json')) || [];
+    for (const sv of db.services.filter(x => x.managed && !stopped.includes(x.managed))) {
+      // Only an app that worked since GoatMediaStackarr started (not one still busy with its first start).
+      const st = mon.up[sv.id]; if (!st || !st.everOk || st.n < 4) continue;
+      const r = mon.heal.restarts[sv.managed] || (mon.heal.restarts[sv.managed] = []);
+      const recent = r.filter(t => now - t < 86400e3); mon.heal.restarts[sv.managed] = recent;
+      if (recent.some(t => now - t < 1800e3) || recent.length >= 3) continue;
+      recent.push(now);
+      const x = await goatControl({ cmd: 'restart', engine: sv.managed });
+      healNote('app', sv.name, sv.name, x.ok ? `it stopped answering, so it was restarted` : `it stopped answering; restarting it failed (${x.error || 'unknown'})`);
+    }
+  }
+}
 const plexGet = async (s, pth) => {
   const x = await fetch(s.url.replace(/\/+$/, '') + pth, { signal: AbortSignal.timeout(8000), headers: { 'X-Plex-Token': s.apiKey, Accept: 'application/json' } });
   if (!x.ok) throw new Error('Plex returned ' + x.status); return x.json();
@@ -1128,9 +1180,11 @@ async function monitor() {
       health[s.id] = { ok, t: Date.now() };
       uptNote(s.id, ok);
       const st = mon.up[s.id] || (mon.up[s.id] = { ok: true, n: 0 });
+      if (ok) st.everOk = true;
       if (ok) { if (!st.ok) { feed('@admins', 'problem', 'App back online', s.name + ' is reachable again', 'health'); await notify('offline', 'App back online', s.name + ' is reachable again').catch(() => {}); } st.ok = true; st.n = 0; }
       else if (++st.n >= 2 && st.ok) { st.ok = false; feed('@admins', 'problem', 'App offline', s.name + ' is not responding', 'health'); await notify('offline', 'App offline', s.name + ' is not responding').catch(() => {}); }
     }));
+    if (Date.now() - (mon.healT || 0) >= HEAL_MS) { mon.healT = Date.now(); await safe(heal); }
     for (const s of db.services.filter(x => x.type === 'unraid')) await safe(async () => {
       const k = (await gql(s, '{ array { capacity { kilobytes { used total } } } }')).array.capacity.kilobytes, pct = +k.used / +k.total * 100, lim = a.diskPct || 90;
       if (pct >= lim && !mon.disk[s.id]) { mon.disk[s.id] = 1; feed('@admins', 'problem', 'Array almost full', pct.toFixed(0) + '% of the array is used', 'unraid'); await notify('disk', 'Array almost full', pct.toFixed(0) + '% of the array is used'); }
@@ -2833,6 +2887,12 @@ const goatServer = http.createServer(async (req, res) => {
     if ((r = p.match(/^\/api\/users\/(\w+)\/2fa\/reset$/)) && m === 'POST') {
       const u = userOf(r[1]); if (!u) return send(res, 404, { error: 'Not found' });
       u.totp = undefined; save(); audit(me.name, 'Turned off two-step sign-in for', u.name); return send(res, 200, {});
+    }
+    if (p === '/api/heal' && m === 'GET') return send(res, 200, { cfg: healCfg(), log: db.healLog || [] });
+    if (p === '/api/heal' && m === 'PUT') {
+      const b = await readBody(req);
+      db.settings.heal = { on: !!b.on, stuck: !!b.stuck, failed: !!b.failed, apps: !!b.apps, hours: Math.min(168, Math.max(2, Math.round(+b.hours) || 24)) };
+      save(); audit(me.name, 'Changed self-healing', db.settings.heal.on ? 'on' : 'off'); return send(res, 200, { cfg: healCfg() });
     }
     // ---------- Backups of the whole stack (every app inside the container) ----------
     if (p.startsWith('/api/stack/backups')) {

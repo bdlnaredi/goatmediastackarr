@@ -4,6 +4,7 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- Fix problems by itself (the Health page, on by default): a download that failed, or that has not moved for a day (or the hours you choose), is removed, blocked and searched for again by Sonarr, Radarr or Lidarr; an app inside the container that stops answering is restarted (at most once in 30 minutes and three times a day, never one you stopped by hand, never during its first start). Every fix is listed on the Health page and told to admins.
 - Backups of the whole stack (Settings → Backup): every app's settings and databases in one file, without artwork, caches and logs: Sonarr, Radarr, Lidarr, Prowlarr, Bazarr, qBittorrent, ruTorrent, Deluge, SABnzbd, Jellyfin, Seerr, Tautulli, Plex, the VPN files, and GoatMediaStackarr's keys, logins, profiles and history. Databases are copied with SQLite's own backup, so one in use is still copied whole. Every day or once a week at a time you choose, keeping the last few; or *Back up now*. Download one, or drop one in the backups folder to move to a new server.
 - *Put back* (guided): choose which apps to put back, and only those are stopped, replaced and started again; the apps are then connected to each other again. A copy of how they were just before is made first, so a restore can be undone, and a restore that fails changes nothing. A failed backup or restore is told to admins (the bell, and alert channels that want it).
 ## v0.7.5 — 2026-10-24
