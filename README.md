@@ -90,6 +90,9 @@ The menu has four groups. In the Cinema style they are drop-downs on the bar acr
 - **Discover** and **Search**: what is trending, popular and coming on TMDB, Trakt and TheTVDB, and a search across Sonarr and Radarr.
 - **Library**: your shows and movies, as posters or a list, with filters. A show's page has its seasons and episodes (each with its story), monitoring, search and **Choose a release** (pick a release yourself from what your indexers have).
 - **Every title has its own page**: story, cast, seasons, trailer, whether it is in your library, and **More like this**. Tap an actor for their own page with everything they were in, filterable to movies, shows or what you already have; any title there can be opened and requested.
+- **Watchlist**: everyone keeps their own list of what they want to watch, from any title's page. It shows which are here, on their way or not asked for yet, and each person gets a message when theirs lands. Admins can have titles on a watchlist asked for automatically.
+- **Collections** and **Because you watched**: a movie's page says which collection it belongs to, the collection's page lists every film in it with *Request the missing ones*, Radarr's collections are under Library, and the dashboard suggests titles from what each person actually watched.
+- **Missing episodes**: a show's page lists the episodes that aren't here, and each can be asked for on its own.
 - **Upcoming**: the next two weeks, or a month calendar.
 - **Music & books**: Lidarr's artists and Readarr's authors.
 
@@ -120,9 +123,13 @@ The menu has four groups. In the Cinema style they are drop-downs on the bar acr
 ### Server
 
 - **Stack** (admins): everything about the container. The VPN (on or off, PIA with a region list or your provider's file, which apps use it, port forwarding, a leak test); every app's health and version with **Restart**, **Stop**, **Start** and its own page; what changed after an update; **Logins made for you** (Jellyfin, qBittorrent, ruTorrent, Deluge) with **Change** to set your own password, which Sonarr, Radarr, Lidarr and Prowlarr are given too; the outside addresses for the Open buttons; linking Plex; and the connections, with a button to run them again.
-- **Health**: problems the apps report, stuck downloads, and disk space per folder.
+- **Health**: problems the apps report, stuck downloads, and disk space per folder. **Fix problems by itself** (on by default) removes, blocks and searches again for downloads that failed or have not moved for a day, and restarts a built-in app that stops answering; every fix is listed here.
 - **Unraid**: the array, disks and containers, if you add your Unraid server. **Stats**: what gets watched, from Tautulli.
 - **Settings**: *Account* (password, two-step sign-in, Sign in with Plex, devices), *Appearance*, *Apps*, *Discover lists*, *Users* (what each profile can see and do), *Limits* (streaming per month and disk space per person), *Status pages*, *Alerts* (email, ntfy, Discord, Telegram, Pushover, Gotify or any webhook, each with its own list of what it hears about), *Download rules*, *Backup* and *Activity*.
+- **Kids profiles** (Settings → Users): a simpler look with only what is in the library and rated for their age, and no searching or requesting.
+- **Invite links** (Settings → Users): a link or QR code that lets people make their own profile, with the apps and rights you choose, for a day, a week, a month or until you remove it.
+- **Backups of the whole stack** (Settings → Backup): every app's settings and databases in one file, daily or weekly, and a guided *Put back* that restores only the apps you pick (with a copy of how they were just before).
+- **Weekly email for everyone** (Settings → Alerts): each person with an email address gets their own week: their requests and watchlist titles that came in, what is new and what is coming.
 
 | | |
 |---|---|
@@ -152,7 +159,8 @@ A native app (Kotlin and Jetpack Compose), not a web page in a frame. It has the
 - **Home**: speeds, what is playing and downloading, what is coming, the latest requests, and whether every app and the VPN are fine. A bell with what is new for you.
 - **Discover**, **Search** and **Library**, with each title's page (cast, More like this, seasons, trailer) and actors' filmographies; request through Seerr (the whole show or chosen seasons) or add straight to Sonarr or Radarr.
 - **Downloads** with every client, **RSS** (tick several articles and download them at once), **Upcoming** with a calendar, **Wanted** and **Choose a release**.
-- **More**: every other page in groups like the web page (Watch, Requests, Downloads, Server, You), including **What's new**.
+- **More**: every other page in groups like the web page (Watch, Requests, Downloads, Server, You), including **Watchlist** and **What's new**.
+- **In your language**: English, Hindi, Spanish, German or French (Settings → Language), and a **home-screen widget** with the download and upload speeds and what is playing.
 - **Profile**: your picture, your streaming this month, the space your requests take and your watch time.
 - **Notifications** that work with the app closed and without Google services: something you asked for is ready, a request was approved or declined, your streaming limit; for admins also new requests, problem reports and server problems.
 - **Sign in** with your name and password (two-step codes work) or **Sign in with Plex**.
