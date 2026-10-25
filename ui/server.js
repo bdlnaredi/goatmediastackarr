@@ -155,8 +155,24 @@ const avFile = u => path.join(AVD, String(u.id).replace(/\W/g, '') + '.img');
 const arrGet = async (s, p) => { const r = await fetch(s.url.replace(/\/+$/, '') + p, { signal: AbortSignal.timeout(20000), headers: { 'X-Api-Key': s.apiKey || '' } }); if (!r.ok) throw new Error(s.name + ' returned ' + r.status); return r.json(); };
 // Every movie and show in Sonarr and Radarr by its TMDB number, with its size on disk. Kept for five minutes.
 let libIdx = { t: 0, v: null, p: null };
+// Answers kept for a while: a fresh one is returned as it is; an older one is returned at once and refreshed in the
+// background (so pages never wait on Sonarr or Radarr twice); only the first ever ask waits.
+const swrMap = new Map();
+function swr(key, freshMs, maxMs, fn) {
+  const e = swrMap.get(key), now = Date.now();
+  const run = () => { if (e && e.p) return e.p; const x = e || {}; x.p = Promise.resolve().then(fn).then(v => { x.v = v; x.at = Date.now(); x.has = true; return v; }).finally(() => { x.p = null; }); swrMap.set(key, x); return x.p; };
+  if (e && e.has && now - e.at < freshMs) return Promise.resolve(e.v);
+  if (e && e.has && now - e.at < maxMs) { run().catch(() => {}); return Promise.resolve(e.v); }
+  return run();
+}
+const swrDrop = pre => { for (const k of swrMap.keys()) if (k.startsWith(pre)) { const e = swrMap.get(k); if (e) e.at = 0; } };
 const libIndex = () => {
   if (libIdx.v && Date.now() - libIdx.t < 300000) return Promise.resolve(libIdx.v);
+  // An older index is used straight away while a new one is made.
+  if (libIdx.v && Date.now() - libIdx.t < 6 * 3600e3) { if (!libIdx.p) libIndexBuild(); return Promise.resolve(libIdx.v); }
+  return libIndexBuild();
+};
+function libIndexBuild() {
   if (!libIdx.p) libIdx.p = (async () => {
     const out = { movie: new Map(), tv: new Map() };
     await Promise.all(db.services.filter(s => s.type === 'radarr' || s.type === 'sonarr').map(async s => { try {
@@ -169,7 +185,7 @@ const libIndex = () => {
     libIdx = { t: Date.now(), v: out, p: null }; return out;
   })().finally(() => { libIdx.p = null; });
   return libIdx.p;
-};
+}
 // The space taken by what this person asked for (each title counted once, even if asked for twice).
 const usedSpace = async u => {
   const idx = await libIndex(), seen = new Set(), items = []; let bytes = 0;
@@ -1773,6 +1789,8 @@ const goatServer = http.createServer(async (req, res) => {
       const host = (TRUST && req.headers['x-forwarded-host']) || req.headers.host; db.settings.publicUrl = (res.secure ? 'https://' : 'http://') + String(host).split(',')[0].trim(); save();
     }
     const allowed = s => svcOk(me, s);
+    // Anything that changes things (adding, removing, monitoring, requesting) makes the kept lists be fetched fresh next time.
+    if (m !== 'GET' && p.startsWith('/api/')) { swrDrop('lib:'); swrDrop('look:'); swrDrop('seerr:'); }
     const can = k => me.role === 'admin' || (!(me.kids && k === 'request') && (!me.perms || me.perms[k] !== false));
     const deny = (k, what) => can(k) ? false : (send(res, 403, { error: `Your profile cannot ${what}.` }), true);
     // Kids profiles: only what is already here and rated for their age; no finding new things.
@@ -1838,7 +1856,9 @@ const goatServer = http.createServer(async (req, res) => {
       const q = new URL(req.url, 'http://x').searchParams, s = arr(db.services.find(x => x.id === q.get('sid')));
       if (!s) return send(res, 404, { error: 'Pick a Sonarr or Radarr service' });
       const look = (s.type === 'sonarr' ? '/api/v3/series/lookup?term=' : '/api/v3/movie/lookup?term=') + encodeURIComponent(q.get('term') || '');
-      const [found, folders, profiles] = await Promise.all([call(s, look), call(s, '/api/v3/rootfolder'), call(s, '/api/v3/qualityprofile')]);
+      // The same words are not looked up again for ten minutes; folders and quality profiles hardly change.
+      const [found, folders, profiles] = await Promise.all([swr('look:' + s.id + ':' + String(q.get('term') || '').trim().toLowerCase(), 600000, 600000, () => call(s, look)),
+        swr('folders:' + s.id, 600000, 24 * 3600e3, () => call(s, '/api/v3/rootfolder')), swr('profiles:' + s.id, 600000, 24 * 3600e3, () => call(s, '/api/v3/qualityprofile'))]);
       const results = found.slice(0, 12).map(x => ({ title: x.title, year: x.year, overview: x.overview, added: !!x.id,
         poster: x.remotePoster || ((x.images || []).find(i => i.coverType === 'poster') || {}).remoteUrl, raw: x }));
       return send(res, 200, { results, folders: folders.map(f => ({ path: f.path })), profiles: profiles.map(f => ({ id: f.id, name: f.name })) });
@@ -2213,7 +2233,7 @@ const goatServer = http.createServer(async (req, res) => {
     if (p === '/api/seerr/search' && m === 'GET') {
       const q = new URL(req.url, 'http://x').searchParams, s = svcOf(q.get('sid'), 'seerr');
       if (!s) return send(res, 404, { error: 'Pick a Seerr service' });
-      const d = await call(s, '/api/v1/search?page=1&language=en&query=' + encodeURIComponent(q.get('term') || ''));
+      const d = await swr('seerr:' + s.id + ':' + String(q.get('term') || '').trim().toLowerCase(), 600000, 600000, () => call(s, '/api/v1/search?page=1&language=en&query=' + encodeURIComponent(q.get('term') || '')));
       if (!d || !Array.isArray(d.results)) throw new Error('Seerr gave an unexpected reply: ' + JSON.stringify(d).slice(0, 160));
       const kind = x => x.mediaType || (x.firstAirDate || x.name ? 'tv' : x.releaseDate || x.title ? 'movie' : '');
       return send(res, 200, d.results.filter(x => ['movie', 'tv'].includes(kind(x))).slice(0, 20).map(x => ({
@@ -2512,7 +2532,8 @@ const goatServer = http.createServer(async (req, res) => {
     if (p === '/api/library' && m === 'GET') {
       const s = arr(db.services.find(x => x.id === new URL(req.url, 'http://x').searchParams.get('sid')));
       if (!s) return send(res, 404, { error: 'Pick a Sonarr or Radarr service' });
-      const [d, profs] = await Promise.all([call(s, s.type === 'sonarr' ? '/api/v3/series' : '/api/v3/movie', { signal: AbortSignal.timeout(60000) }), call(s, '/api/v3/qualityprofile').catch(() => [])]);
+      // Kept for a minute, and shown at once when older while it is fetched again: a big library opens without waiting.
+      const [d, profs] = await swr('lib:' + s.id, 60000, 24 * 3600e3, () => Promise.all([call(s, s.type === 'sonarr' ? '/api/v3/series' : '/api/v3/movie', { signal: AbortSignal.timeout(60000) }), call(s, '/api/v3/qualityprofile').catch(() => [])]));
       const prof = {}; (Array.isArray(profs) ? profs : []).forEach(q => { prof[q.id] = q.name; });
       return send(res, 200, d.filter(x => kidsOk(me, x.certification)).map(x => {
         const st = x.statistics || {}, img = (x.images || []).find(i => i.coverType === 'poster') || {}, tv = s.type === 'sonarr', rt = x.ratings || {};
@@ -3563,5 +3584,7 @@ setTimeout(() => wpSync(), +process.env.WP_DELAY_MS || 20000).unref();
 setInterval(() => wpSync(), 6 * 3600e3).unref();
 // Discover's lists are fetched ahead of time (soon after starting, then every 3 hours), so opening them never waits on the sites.
 setTimeout(() => lists.warm().catch(() => {}), 90000).unref();
+// The libraries are read once soon after starting, so the first visit to Library does not wait either.
+setTimeout(() => { libIndex().catch(() => {}); }, 60000).unref();
 setInterval(() => lists.warm().catch(() => {}), 3 * 3600e3).unref();
 setInterval(() => { if (!DEMO && wpMode() === 'library' && db.services.some(x => ['sonarr', 'radarr'].includes(x.type)) && !wpList().some(f => LIBWP.test(f)) && Date.now() - wpState.at > 12e4) wpSync(); }, 6e4).unref();   // until the first pictures are saved, try again every couple of minutes

@@ -4,6 +4,7 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- Library and Search open faster: a library is kept for a minute and shown at once when older while it is fetched again in the background; the same search is not asked again for ten minutes; anything you change makes them fresh straight away.
 - Remove after the tracker's seeding goal (Settings → Download rules): give each tracker its own rule (a ratio, days seeding, or both, plus one for any other tracker). A finished movie or show in the chosen categories is removed (with its downloaded files, if you want) once it meets its tracker's goal and Sonarr or Radarr has imported it. Works with qBittorrent, ruTorrent and Deluge; shows what is due right now and what was removed.
 
 ## v0.9.2 — 2026-10-25
