@@ -239,3 +239,39 @@ test('notifications: each person gets their own events, admins get the server\'s
     assert.equal((await k.post('/api/notifications/read', { upTo: 1e9 })).data.read, (await k.get('/api/notifications')).data.last, 'read marker never passes the newest');
   } finally { await w.stop(); }
 });
+
+test('collections: the films in one, which are here, and asking for the missing ones; Radarr\'s collections', async () => {
+  const w = await world();
+  try {
+    const { k, a, ids, kid } = w;
+    const t = (await k.get('/api/title?type=movie&id=5001')).data;
+    assert.equal(t.collection.id, 10); assert.equal(t.collection.name, 'Demo Saga');
+    const c = (await k.get('/api/collection?id=10')).data;
+    assert.deepEqual(c.parts.map(x => [x.id, x.inLib]), [[5002, true], [5001, true], [6300, false], [6301, false]], 'oldest first, not dated yet last');
+    assert.equal((await k.get('/api/collection?id=99')).status, 404);
+    // Missing ones are asked for (not one that has no date yet), waiting for approval.
+    let r = await k.post('/api/collection/10/request', {});
+    assert.deepEqual([r.data.asked, r.data.waiting, r.data.approved], [1, 1, 0]);
+    assert.equal((await a.get('/api/requests')).data.find(x => x.mediaId === 6300).via, 'collection');
+    r = await k.post('/api/collection/10/request', {});
+    assert.equal(r.data.asked, 0, 'not asked twice');
+    const lc = (await a.get('/api/library/collections?sid=' + ids.radarr)).data;
+    assert.deepEqual(lc.map(x => [x.id, x.name, x.have, x.total]), [[10, 'Demo Saga', 2, 3]]);
+  } finally { await w.stop(); }
+});
+
+test('because you watched: from the person\'s own Jellyfin history, then what they asked for', async () => {
+  const w = await world();
+  try {
+    const { k, a, kid, ids } = w;
+    const fb = (await a.get('/api/services')).data.find(x => x.type === 'seerr').url.replace(/\/seerr$/, '');
+    const jf = (await a.post('/api/services', { type: 'jellyfin', name: 'Jellyfin', url: fb + '/jellyfin', apiKey: 'k' })).data.id;
+    await a.put(`/api/users/${kid.id}/access`, { access: [...Object.values(ids), jf] });
+    // Kid watched Demo movie 5001 and an episode of Demo show (7002) in Jellyfin. The show has only one suggestion,
+    // too few for a row of its own.
+    const f = (await k.get('/api/foryou')).data;
+    assert.deepEqual(f.rows.map(r => [r.because.title, r.source, r.items.map(x => [x.id, x.inLib])]), [['Demo movie 5001', 'watched', [[5002, true], [6100, false]]]]);
+    // The admin has no history and asked for nothing: nothing to go on.
+    assert.deepEqual((await a.get('/api/foryou')).data.rows, []);
+  } finally { await w.stop(); }
+});

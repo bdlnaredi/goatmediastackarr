@@ -111,7 +111,18 @@ function create(o) {
     return get(url, opt, 'TMDB');
   }
 
-  return { list, enabled, details, person, LISTS, NAMES };
+  // A collection (a franchise, like every Bond film) and the titles in it.
+  async function collection(id) {
+    const [url, opt] = tmdbAuth(`/collection/${posInt(id)}`);
+    return get(url, opt, 'TMDB');
+  }
+  // Titles like this one, for "Because you watched".
+  async function recommendations(kind, id) {
+    const [url, opt] = tmdbAuth(`/${kind === 'tv' ? 'tv' : 'movie'}/${posInt(id)}/recommendations`);
+    return get(url, opt, 'TMDB');
+  }
+
+  return { list, enabled, details, person, collection, recommendations, LISTS, NAMES };
 }
 
 module.exports = { create, LISTS, NAMES };

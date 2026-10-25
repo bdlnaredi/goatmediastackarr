@@ -71,7 +71,7 @@ function create(opts = {}) {
   const stats = sr => { const have = sr.eps.filter(e => e.hasFile).length; return { seasonCount: sr.seasonsN, episodeCount: sr.eps.filter(e => Date.parse(e.airDateUtc) < now).length, episodeFileCount: have, sizeOnDisk: have * 1e9 }; };
   const sonarrOut = sr => ({ id: sr.id, title: sr.title, year: sr.year, status: sr.status, network: sr.network, genres: sr.genres, ratings: sr.ratings, overview: sr.overview, monitored: sr.monitored,
     qualityProfileId: sr.qualityProfileId, seasons: sr.seasons, statistics: stats(sr), images: [{ coverType: 'poster', remoteUrl: svg(sr.title, sr.hue, sr.id) }, { coverType: 'fanart', remoteUrl: fan(sr.title, sr.hue, sr.id), url: `/MediaCover/${sr.id}/fanart.jpg` }], added: sr.added, tvdbId: 9000 + sr.id, tmdbId: 7000 + sr.id, imdbId: 'tt' + (2000000 + sr.id) });
-  const radarrOut = mv => ({ ...mv, imdbId: 'tt' + (1000000 + mv.id), images: [{ coverType: 'poster', remoteUrl: svg(mv.title, mv.hue, mv.id + 1) }, { coverType: 'fanart', remoteUrl: fan(mv.title, mv.hue, mv.id + 1), url: `/MediaCover/${mv.id}/fanart.jpg` }], tmdbId: 5000 + mv.id });
+  const radarrOut = mv => ({ ...mv, ...(mv.id <= 2 ? { collection: { title: 'Demo Saga', tmdbId: 10 } } : {}), imdbId: 'tt' + (1000000 + mv.id), images: [{ coverType: 'poster', remoteUrl: svg(mv.title, mv.hue, mv.id + 1) }, { coverType: 'fanart', remoteUrl: fan(mv.title, mv.hue, mv.id + 1), url: `/MediaCover/${mv.id}/fanart.jpg` }], tmdbId: 5000 + mv.id });
   const media = (kind, x) => ({ ...x, images: [{ coverType: 'poster', remoteUrl: svg(x.artistName || x.authorName, x.hue) }] });
   const monitorEps = (ids, on) => st.shows.forEach(s => s.eps.forEach(e => { if (ids.includes(e.id)) e.monitored = on; }));
 
@@ -82,6 +82,8 @@ function create(opts = {}) {
     if (p === '/api/v3/health') return json(res, tv ? [{ type: 'warning', source: 'IndexerStatusCheck', message: 'Indexers unavailable due to failures: Broken Tracker' }] : []);
     if (p === '/api/v3/diskspace') return json(res, [{ path: '/tv', label: 'Media', freeSpace: 420e9, totalSpace: 4e12 }, { path: '/movies', label: 'Movies', freeSpace: 60e9, totalSpace: 2e12 }, { path: '/', freeSpace: 42e9, totalSpace: 53e9 }, { path: '/downloads', freeSpace: 900e9, totalSpace: 2e12 }]);
     if (p === '/api/v3/qualityprofile') return json(res, st.profiles);
+    // Radarr's collections: one franchise with two films here and one not.
+    if (!tv && p === '/api/v3/collection') return json(res, [{ id: 1, tmdbId: 10, title: 'Demo Saga', monitored: false, images: [], movies: [{ tmdbId: 5001, title: st.movies[0].title }, { tmdbId: 5002, title: st.movies[1].title }, { tmdbId: 6300, title: 'Demo Saga III' }] }]);
     if (p === '/api/v3/rootfolder') return json(res, [{ path: tv ? '/tv' : '/movies' }]);
     if (p === '/api/v3/command' && m === 'POST') return json(res, { id: 1, name: data.name });
     if (p === '/api/v3/queue/details') return json(res, (st.queueDetails || []).filter(r => (q.get('movieId') && +r.movieId === +q.get('movieId')) || (q.get('seriesId') && +r.seriesId === +q.get('seriesId'))));
@@ -277,6 +279,11 @@ function create(opts = {}) {
       return json(res, { MediaContainer: {} });
     }
     if (type === 'jellyfin') {
+      // Who has an account, and what "kid" watched (for "Because you watched").
+      if (sub === '/Users') return json(res, [{ Id: 'u-admin', Name: 'admin' }, { Id: 'u-kid', Name: 'kid' }, { Id: 'u-kid', Name: 'demo' }]);
+      if (sub === '/Users/u-kid/Items') return json(res, { Items: [{ Id: 'm1', Type: 'Movie', Name: 'Demo movie 5001', ProviderIds: { Tmdb: '5001' } }, { Id: 'e1', Type: 'Episode', Name: 'Pilot', SeriesId: 's1' }] });
+      if (sub === '/Users/u-admin/Items') return json(res, { Items: [] });
+      if (sub === '/Items' && q.get('Ids')) return json(res, { Items: [{ Id: 's1', Type: 'Series', Name: 'Demo show', ProviderIds: { Tmdb: '7002' } }] });
       if (sub === '/System/Info' || sub === '/System/Info/Public') return json(res, { ServerName: 'Demo Jellyfin', Version: '10.10.0' });
       { const sm = sub.match(/^\/Sessions\/(\w+)\/(Message|Playing\/Stop)$/); if (sm && req.method === 'POST') { st.calls.push('jellyfin ' + sm[2] + ' ' + sm[1]); res.writeHead(204); return res.end(); } }
       if (sub === '/Sessions') { const mv = st.movies[2 % st.movies.length];
@@ -311,7 +318,13 @@ function create(opts = {}) {
           { id: 6200, mediaType: 'movie', title: 'Next Year', releaseDate: '', character: 'Lead', posterPath: '/next.jpg', voteCount: 0 }],
         crew: [{ id: 5001, mediaType: 'movie', title: 'Demo movie 5001', releaseDate: '2025-04-11', job: 'Producer', posterPath: '' }, { id: 1, mediaType: 'person', name: 'skip me' }] });
       const mv = sub.match(/^\/api\/v1\/movie\/(\d+)$/);
-      if (mv) return json(res, { id: +mv[1], title: 'Demo movie ' + mv[1], releaseDate: '2025-04-11', overview: 'An invented movie for the demo.', tagline: 'Nothing here is real.', posterPath: '', backdropPath: '', voteAverage: 7.6, runtime: 118,
+      const co = sub.match(/^\/api\/v1\/collection\/(\d+)$/);
+      if (co) return +co[1] !== 10 ? json(res, { message: 'Not found' }, 404) : json(res, { id: 10, name: 'Demo Saga', overview: 'Three invented films that belong together.', posterPath: pic('Demo Saga'), backdropPath: '',
+        parts: [{ id: 5001, mediaType: 'movie', title: 'Demo movie 5001', releaseDate: '2025-04-11', posterPath: pic('Demo movie 5001'), voteAverage: 7.6 },
+          { id: 5002, mediaType: 'movie', title: 'Salt & Ember', releaseDate: '2023-02-01', posterPath: pic('Salt & Ember'), voteAverage: 6.9 },
+          { id: 6300, mediaType: 'movie', title: 'Demo Saga III', releaseDate: '2026-03-01', posterPath: pic('Demo Saga III'), voteAverage: 7.1 },
+          { id: 6301, mediaType: 'movie', title: 'Demo Saga IV', releaseDate: '', posterPath: '' }] });
+      if (mv) return json(res, { id: +mv[1], collection: +mv[1] === 5001 ? { id: 10, name: 'Demo Saga', posterPath: pic('Demo Saga') } : null, title: 'Demo movie ' + mv[1], releaseDate: '2025-04-11', overview: 'An invented movie for the demo.', tagline: 'Nothing here is real.', posterPath: '', backdropPath: '', voteAverage: 7.6, runtime: 118,
         genres: [{ name: 'Drama' }, { name: 'Sci-Fi' }], status: 'Released', productionCompanies: [{ name: 'Demo Pictures' }], credits: { cast }, relatedVideos: [{ type: 'Trailer', site: 'YouTube', key: 'dQw4w9WgXcQ' }], mediaInfo: { status: 0 } });
       if (r) return json(res, { id: +r[1], name: 'Demo show', overview: 'An invented show for the demo.', firstAirDate: '2022-05-01', voteAverage: 8.1, episodeRunTime: [44], genres: [{ name: 'Drama' }], networks: [{ name: 'Demo TV' }], credits: { cast }, numberOfSeasons: 3, seasons: [{ seasonNumber: 0, episodeCount: 2 }, { seasonNumber: 1, episodeCount: 8 }, { seasonNumber: 2, episodeCount: 10 }, { seasonNumber: 3, episodeCount: 6 }] });
       if (sub === '/api/v1/request' && m === 'POST') { const id = st.nextReq++; st.seerrReq[id] = data; st.calls.push('seerr request ' + JSON.stringify(data)); return json(res, { id }); }

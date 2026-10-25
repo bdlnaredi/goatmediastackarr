@@ -2144,6 +2144,99 @@ const goatServer = http.createServer(async (req, res) => {
         born: String(d.birthday || '').slice(0, 10), died: String(d.deathday || '').slice(0, 10), place: cut(pk('placeOfBirth', 'place_of_birth'), 160),
         known: cut(pk('knownForDepartment', 'known_for_department'), 60), seerr: sv ? sv.id : '', credits });
     }
+    // ---------- For you: "Because you watched …" from what this person watched (Jellyfin, or Plex through Tautulli),
+    // or else from what they asked for and put on their watchlist. Kept for six hours per person.
+    if (p === '/api/foryou' && m === 'GET') {
+      mon.forYou = mon.forYou || {};
+      const hit = mon.forYou[me.id]; if (hit && Date.now() - hit.at < 6 * 3600e3 && !new URL(req.url, 'http://x').searchParams.get('fresh')) return send(res, 200, hit.v);
+      const names = [me.name, me.plex && me.plex.name, me.plexName].filter(Boolean).map(x => String(x).trim().toLowerCase());
+      const seeds = [], add = (type, id, title, source) => { if (id > 0 && ['movie', 'tv'].includes(type) && !seeds.some(x => x.type === type && x.id === id)) seeds.push({ type, id, title, source }); };
+      const watched = new Set();
+      // Jellyfin: the person's own account, matched by name.
+      for (const sv of db.services.filter(x => x.type === 'jellyfin' && allowed(x))) { try {
+        const u = ((await (await jfGet(sv, '/Users')).json()) || []).find(x => names.includes(String(x.Name || '').trim().toLowerCase())); if (!u) continue;
+        const l = (await (await jfGet(sv, `/Users/${u.Id}/Items?Filters=IsPlayed&SortBy=DatePlayed&SortOrder=Descending&Recursive=true&IncludeItemTypes=Movie,Episode&Fields=ProviderIds&Limit=60`)).json()).Items || [];
+        const series = [...new Set(l.filter(x => x.Type === 'Episode' && x.SeriesId).map(x => x.SeriesId))].slice(0, 20);
+        const sm = series.length ? ((await (await jfGet(sv, `/Items?Ids=${series.join(',')}&Fields=ProviderIds`)).json()).Items || []) : [];
+        for (const x of l) {
+          const it = x.Type === 'Episode' ? sm.find(y => y.Id === x.SeriesId) : x; if (!it) continue;
+          const tm = +((it.ProviderIds || {}).Tmdb || 0), type = x.Type === 'Episode' ? 'tv' : 'movie';
+          if (tm) { watched.add(type + ':' + tm); add(type, tm, it.Name, 'watched'); }
+        }
+      } catch {} }
+      // Plex, through Tautulli: what the person watched, mapped to TMDB through Plex's own ids.
+      const tt = db.services.find(x => x.type === 'tautulli');
+      if (seeds.length < 3 && tt) { try {
+        const t = async (cmd, extra = '') => { const r2 = await fetch(`${tt.url.replace(/\/+$/, '')}/api/v2?apikey=${encodeURIComponent(tt.apiKey || '')}&cmd=${cmd}${extra}`, { signal: AbortSignal.timeout(10000) }); const d = await r2.json(); return d.response.data; };
+        const who = ((await t('get_users')) || []).find(x => names.includes(String(x.username || '').trim().toLowerCase()) || names.includes(String(x.friendly_name || '').trim().toLowerCase()));
+        if (who) {
+          const h = ((await t('get_history', `&user_id=${encodeURIComponent(who.user_id)}&length=40`)) || {}).data || [];
+          const keys = [...new Map(h.map(x => [x.media_type === 'episode' ? x.grandparent_rating_key : x.rating_key, x])).values()].slice(0, 6);
+          for (const x of keys) { try {
+            const md = await t('get_metadata', '&rating_key=' + encodeURIComponent(x.media_type === 'episode' ? x.grandparent_rating_key : x.rating_key));
+            const g = (md.guids || []).map(String).find(v => v.startsWith('tmdb://')), type = x.media_type === 'episode' ? 'tv' : 'movie';
+            if (g) { const tm = +g.slice(7); watched.add(type + ':' + tm); add(type, tm, md.title || x.grandparent_title || x.title, 'watched'); }
+          } catch {} }
+        }
+      } catch {} }
+      // What they asked for, and their watchlist.
+      for (const r2 of db.requests.filter(x => x.uid === me.id && x.status !== 'declined').slice(-10).reverse()) add(r2.mediaType, +r2.mediaId, r2.title, 'asked');
+      for (const w of (db.watchlist || []).filter(x => x.uid === me.id).sort((a, b) => b.added - a.added).slice(0, 5)) add(w.type, w.id, w.title, 'watchlist');
+      const sv = db.services.filter(allowed).find(x => x.type === 'seerr'), idx = await libIndex().catch(() => null), shown = new Set(), rows = [];
+      for (const sd of seeds.slice(0, 4)) {
+        let rec = null;
+        if (sv) rec = await call(sv, `/api/v1/${sd.type}/${sd.id}/recommendations`).catch(() => null);
+        if (!((rec && rec.results) || []).length && listKeys().tmdb) rec = await lists.recommendations(sd.type, sd.id).catch(() => null);
+        const items = ((rec && rec.results) || []).map(x => mediaCard(x, idx, x.mediaType || x.media_type || sd.type)).filter(Boolean)
+          .filter(x => !watched.has(x.type + ':' + x.id) && !shown.has(x.type + ':' + x.id) && !seeds.some(y => y.type === x.type && y.id === x.id)).slice(0, 16);
+        items.forEach(x => shown.add(x.type + ':' + x.id));
+        if (items.length >= 2) rows.push({ because: { type: sd.type, id: sd.id, title: sd.title }, source: sd.source, items: items.map(({ votes, date, ...x }) => x) });
+        if (rows.length >= 3) break;
+      }
+      const v = { rows }; mon.forYou[me.id] = { at: Date.now(), v }; return send(res, 200, v);
+    }
+    // A collection (franchise): every film in it, which are here, and asking for the missing ones in one go.
+    const collOf = async id => {
+      const sv = db.services.filter(allowed).find(x => x.type === 'seerr');
+      let d = null;
+      if (sv) d = await call(sv, `/api/v1/collection/${id}`).catch(() => null);
+      if ((!d || !d.name) && listKeys().tmdb) d = await lists.collection(id).catch(() => null);
+      if (!d || !d.name) return null;
+      const idx = await libIndex().catch(() => null);
+      const parts = (d.parts || []).map(x => mediaCard(x, idx, 'movie')).filter(Boolean).sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999'));
+      return { id, name: cut(d.name, 160), overview: cut(d.overview, 3000), poster: tmdbImg(d.posterPath || d.poster_path, 'w342'), backdrop: tmdbImg(d.backdropPath || d.backdrop_path, 'w780'),
+        seerr: sv ? sv.id : '', parts: parts.map(({ votes, ...x }) => ({ ...x, requested: db.requests.some(r => r.mediaType === 'movie' && +r.mediaId === x.id && r.status !== 'declined') })) };
+    };
+    if (p === '/api/collection' && m === 'GET') {
+      const id = Math.round(+new URL(req.url, 'http://x').searchParams.get('id'));
+      if (!(id > 0)) return send(res, 400, { error: 'Bad request' });
+      const c = await collOf(id); return c ? send(res, 200, c) : send(res, 404, { error: 'This collection is not known (it needs Seerr, or a TMDB key).' });
+    }
+    if ((r = p.match(/^\/api\/collection\/(\d+)\/request$/)) && m === 'POST') {
+      if (deny('request', 'make requests')) return;
+      const c = await collOf(+r[1]); if (!c) return send(res, 404, { error: 'Not found' });
+      if (!c.seerr) return send(res, 400, { error: 'Requests need Seerr' });
+      const missing = c.parts.filter(x => !x.inLib && !(x.available >= 2) && !x.requested && x.year && x.year <= String(new Date().getFullYear() + 1)).slice(0, 30), out = { asked: 0, approved: 0, waiting: 0, errors: [] };
+      for (const x of missing) {
+        const [code, body] = await makeRequest({ sid: c.seerr, mediaType: 'movie', mediaId: x.id, title: x.title, year: x.year, poster: x.poster, via: 'collection' });
+        if (code === 200) { out.asked++; body.status === 'approved' ? out.approved++ : out.waiting++; } else { out.errors.push(`${x.title}: ${body.error}`); if (code === 429) break; }
+      }
+      return send(res, 200, out);
+    }
+    // The collections in a Radarr library: how many of each are here.
+    if (p === '/api/library/collections' && m === 'GET') {
+      const sv = arr(db.services.find(x => x.id === new URL(req.url, 'http://x').searchParams.get('sid')));
+      if (!sv || sv.type !== 'radarr') return send(res, 404, { error: 'Pick a Radarr' });
+      const [cl, mv] = await Promise.all([call(sv, '/api/v3/collection').catch(() => null), call(sv, '/api/v3/movie')]);
+      const have = new Set((Array.isArray(mv) ? mv : []).map(x => +x.tmdbId)), byColl = new Map();
+      for (const x of Array.isArray(mv) ? mv : []) { const c = x.collection; if (c && +c.tmdbId > 0) { const e = byColl.get(+c.tmdbId) || { id: +c.tmdbId, name: c.title || c.name || '', have: 0, total: 0, poster: '' }; e.have++; if (!e.poster) e.poster = ((x.images || []).find(i => i.coverType === 'poster') || {}).remoteUrl || ''; byColl.set(+c.tmdbId, e); } }
+      for (const c of Array.isArray(cl) ? cl : []) {
+        const e = byColl.get(+c.tmdbId) || { id: +c.tmdbId, name: c.title, have: 0, total: 0, poster: '' };
+        e.name = c.title || e.name; e.total = (c.movies || []).length || e.total; e.have = (c.movies || []).filter(m2 => have.has(+m2.tmdbId)).length || e.have;
+        e.poster = ((c.images || []).find(i => i.coverType === 'poster') || {}).remoteUrl || e.poster; if (e.have) byColl.set(e.id, e);
+      }
+      return send(res, 200, [...byColl.values()].filter(x => x.id > 0 && x.name).map(x => ({ ...x, total: Math.max(x.total, x.have) })).sort((a, b) => a.name.localeCompare(b.name)));
+    }
     // One movie or show, in full: for the title page in the phone app. From Seerr, or from TMDB when there is no Seerr.
     if (p === '/api/title' && m === 'GET') {
       const q = new URL(req.url, 'http://x').searchParams, type = q.get('type') === 'tv' ? 'tv' : 'movie', id = Math.round(+q.get('id'));
@@ -2171,6 +2264,7 @@ const goatServer = http.createServer(async (req, res) => {
         seasons: type === 'tv' ? (d.seasons || []).filter(x => +pk(x, 'seasonNumber', 'season_number') > 0).map(x => ({ n: +pk(x, 'seasonNumber', 'season_number'), episodes: +pk(x, 'episodeCount', 'episode_count') || 0, name: cut(x.name, 80), date: String(pk(x, 'airDate', 'air_date') || '').slice(0, 10) })) : [],
         trailer: trailer ? trailer.key : '', seerr: sv ? sv.id : '', available: +((d.mediaInfo || {}).status) || 0,
         watch: (db.watchlist || []).some(w => w.uid === me.id && w.type === type && w.id === id),
+        collection: (c => c && +c.id > 0 ? { id: +c.id, name: cut(c.name, 120), poster: img(pk(c, 'posterPath', 'poster_path'), 'w342') } : null)(d.collection || d.belongs_to_collection),
         library: libSvc ? { sid: libSvc.id, id: inLib.id, kind: type } : null, request: reqs.length ? { status: reqs[reqs.length - 1].status, stage: reqs[reqs.length - 1].stage || reqs[reqs.length - 1].status } : null });
     }
     if ((r = p.match(/^\/api\/requests\/(\w+)\/report$/)) && m === 'POST') {
