@@ -107,7 +107,30 @@ const feed = (to, kind, title, body, link = '') => {
   if (f.items.length > 600) f.items.splice(0, f.items.length - 600);
   save();
 };
-const notifyUser = (u, title, body, kind = 'reqstatus', link = '') => { if (u) feed(u.id, kind, title, body, link); return u && u.notify ? pushTo(u.notify, title, body) : Promise.resolve(false); };
+const notifyUser = (u, title, body, kind = 'reqstatus', link = '') => {
+  if (u) feed(u.id, kind, title, body, link);
+  // "Ready for you" emails: what arrived is collected and sent together a few minutes later, not one email each.
+  if (u && kind === 'ready' && u.readyMail && u.email) { (readyQ[u.id] = readyQ[u.id] || []).push({ title, body, link, at: Date.now() }); }
+  return u && u.notify ? pushTo(u.notify, title, body) : Promise.resolve(false);
+};
+const readyQ = {}, READY_MS = Math.max(200, +process.env.READY_MAIL_MS || 600000);
+async function readyFlush() {
+  for (const [uid, items] of Object.entries(readyQ)) {
+    const u = userOf(uid); delete readyQ[uid];
+    if (!u || !u.email || !u.readyMail || !items.length) continue;
+    const c = mailer(); if (!c) continue;
+    const base = baseUrl(), F = 'font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif';
+    const line = x => ({ text: x.body, href: base });
+    const subject = items.length === 1 ? items[0].body.replace(/\.$/, '') : `${items.length} things are ready for you`;
+    const text = `Hi ${u.name},\n\n${items.map(x => '- ' + x.body).join('\n')}\n\n${base ? 'Open GoatMediaStackarr: ' + base + '\n\n' : ''}To stop these emails, turn off "Email me when something is ready" under Account.`;
+    const html = `<!doctype html><html><body style="margin:0;background:#e9ecf2"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:20px 10px"><table role="presentation" width="520" style="max-width:520px;width:100%;background:#fff;border-radius:12px"><tr><td style="padding:24px">
+<div style="${F};font-size:20px;font-weight:700;color:#111">Ready for you, ${hx(u.name)}</div><ul style="padding-left:18px">${items.map(x => { const l = line(x); return `<li style="${F};font-size:14px;color:#222;margin:6px 0">${l.href ? `<a href="${hx(l.href)}" style="color:#2952cc">${hx(l.text)}</a>` : hx(l.text)}</li>`; }).join('')}</ul>
+<p style="${F};font-size:11px;color:#889;margin-top:20px">To stop these emails, turn off <i>Email me when something is ready</i> under Account.</p></td></tr></table></td></tr></table></body></html>`;
+    try { await require('./lib/smtp').sendMail({ host: c.host, port: c.port, secure: c.secure, user: c.user, pass: c.pass, from: c.from, insecure: !!c.insecure, to: u.email, subject: cut(subject, 150), text, html }); }
+    catch (e) { audit('system', 'Ready email not sent', u.name + ': ' + e.message); }
+  }
+}
+setInterval(() => readyFlush().catch(() => {}), READY_MS).unref();
 const KINDS = ['sonarr', 'radarr', 'prowlarr', 'jackett', 'qbittorrent', 'rutorrent', 'deluge', 'seerr', 'unraid', 'plex', 'jellyfin', 'tautulli', 'sabnzbd', 'bazarr', 'lidarr', 'readarr'];
 const SESSF = path.join(DATA, 'sessions.json'), th = t => crypto.createHash('sha256').update(String(t || '')).digest('hex');
 let sessions; try { sessions = new Map(Object.entries(JSON.parse(fs.readFileSync(SESSF))).map(([k, v]) => [k, typeof v === 'string' ? { uid: v, at: 0, seen: 0, ua: '', ip: '' } : v])); } catch { sessions = new Map(); }
@@ -121,7 +144,7 @@ const listKeys = () => { const l = (db.settings || {}).lists || {}; return { tra
 const lists = listsLib.create({ keys: listKeys, file: path.join(DATA, 'lists-cache.json'),
   urls: new Proxy({}, { get: (_, k) => String(process.env[k.toUpperCase() + '_URL'] || (DEMO ? `http://127.0.0.1:${PORT}/__demo/${k}` : { trakt: 'https://api.trakt.tv', tmdb: 'https://api.themoviedb.org/3', tvdb: 'https://api4.thetvdb.com/v4' }[k])).replace(/\/+$/, '') }),
   seerrPoster: async (kind, id) => { const s = db.services.find(x => x.type === 'seerr'); if (!s) return ''; const r = await fetch(`${s.url.replace(/\/+$/, '')}/api/v1/${kind === 'tv' ? 'tv' : 'movie'}/${id}`, { signal: AbortSignal.timeout(8000), headers: { 'X-Api-Key': s.apiKey } }); return r.ok ? ((await r.json()).posterPath || '') : ''; } });
-const pubUser = u => ({ email: u.email || '', weekly: !u.noWeekly, twofa: !!(u.totp && u.totp.on), id: u.id, name: u.name, role: u.role, access: u.access, perms: u.perms || null, notify: u.notify || '', dash: u.dash || null, reqLimit: u.reqLimit || null, autoApprove: !!u.autoApprove, plex: u.plex ? { name: u.plex.name } : null, hide: cleanHide(u.hide), restr: u.plexRules ? Object.fromEntries(['contentRating', 'contentRating!', 'label', 'label!'].filter(k => (u.plexRules[k] || []).length).map(k => [k, u.plexRules[k]])) : null, libs: u.plex ? { n: ((u.plexLibs || {}).mine || []).length, of: ((u.plexLibs || {}).all || []).length, limited: libLimited(u) } : null, plexName: u.plexName || '', lists: lists.enabled(), avatar: u.avatar ? `/api/avatar/${u.id}?v=${u.avatar.v}` : '', dataLimit: u.dataLimit || 0, streamLimit: u.streamLimit == null ? null : u.streamLimit, kids: u.kids ? { age: u.kids.age } : null });
+const pubUser = u => ({ email: u.email || '', weekly: !u.noWeekly, readyMail: !!u.readyMail, twofa: !!(u.totp && u.totp.on), id: u.id, name: u.name, role: u.role, access: u.access, perms: u.perms || null, notify: u.notify || '', dash: u.dash || null, reqLimit: u.reqLimit || null, autoApprove: !!u.autoApprove, plex: u.plex ? { name: u.plex.name } : null, hide: cleanHide(u.hide), restr: u.plexRules ? Object.fromEntries(['contentRating', 'contentRating!', 'label', 'label!'].filter(k => (u.plexRules[k] || []).length).map(k => [k, u.plexRules[k]])) : null, libs: u.plex ? { n: ((u.plexLibs || {}).mine || []).length, of: ((u.plexLibs || {}).all || []).length, limited: libLimited(u) } : null, plexName: u.plexName || '', lists: lists.enabled(), avatar: u.avatar ? `/api/avatar/${u.id}?v=${u.avatar.v}` : '', dataLimit: u.dataLimit || 0, streamLimit: u.streamLimit == null ? null : u.streamLimit, kids: u.kids ? { age: u.kids.age } : null });
 // What the folders the apps report mean, in words (these are the container's own folders).
 const DISK_NAMES = { '/media': 'Media library', '/data': 'Media library', '/downloads': 'Downloads', '/config': 'App data', '/': 'Container (Docker image)' };
 const DISK_ORDER = ['Media library', 'Downloads', '', 'App data', 'Container (Docker image)'];
@@ -1742,7 +1765,7 @@ const goatServer = http.createServer(async (req, res) => {
     }
     if (p === '/api/logout') { sessions.delete(th(token)); saveSess(); return send(res, 200, {}, { 'Set-Cookie': 'sid=; Path=/; Max-Age=0' }); }
     if (!me) return send(res, 401, { error: 'Sign in first' });
-    if (DEMO && m !== 'GET' && /^\/api\/(users|password|2fa|backups?|stack\/backups|restore|alerts|statuslinks|signin|services|weekly|throttle|me\/notify|me\/email|me\/weekly|me\/avatar|plexsettings|listsettings)/.test(p)) return send(res, 403, { error: 'This is turned off in the demo' });
+    if (DEMO && m !== 'GET' && /^\/api\/(users|password|2fa|backups?|stack\/backups|restore|alerts|statuslinks|signin|services|weekly|throttle|me\/notify|me\/email|me\/weekly|me\/readymail|me\/avatar|plexsettings|listsettings)/.test(p)) return send(res, 403, { error: 'This is turned off in the demo' });
 
     if (p === '/api/2fa/start' && m === 'POST') {
       if (me.totp && me.totp.on) return send(res, 400, { error: 'Two-step sign-in is already on' });
@@ -1764,6 +1787,7 @@ const goatServer = http.createServer(async (req, res) => {
       if (!ok) return send(res, 400, { error: 'That code is not right' });
       me.totp = undefined; save(); audit(me.name, 'Turned off two-step sign-in', ''); return send(res, 200, {});
     }
+    if (p === '/api/me/readymail' && m === 'PUT') { me.readyMail = !!(await readBody(req)).on || undefined; save(); return send(res, 200, { readyMail: !!me.readyMail }); }
     if (p === '/api/me/weekly' && m === 'PUT') { me.noWeekly = !(await readBody(req)).on || undefined; save(); return send(res, 200, { weekly: !me.noWeekly }); }
     if (p === '/api/me/weekly' && m === 'GET') {
       const n = await newsData(), pz = newsFor(me, n);
@@ -1790,7 +1814,7 @@ const goatServer = http.createServer(async (req, res) => {
     }
     const allowed = s => svcOk(me, s);
     // Anything that changes things (adding, removing, monitoring, requesting) makes the kept lists be fetched fresh next time.
-    if (m !== 'GET' && p.startsWith('/api/')) { swrDrop('lib:'); swrDrop('look:'); swrDrop('seerr:'); }
+    if (m !== 'GET' && p.startsWith('/api/')) { swrDrop('lib:'); swrDrop('look:'); swrDrop('seerr:'); if (p.startsWith('/api/services')) libIdx.t = 0; }
     const can = k => me.role === 'admin' || (!(me.kids && k === 'request') && (!me.perms || me.perms[k] !== false));
     const deny = (k, what) => can(k) ? false : (send(res, 403, { error: `Your profile cannot ${what}.` }), true);
     // Kids profiles: only what is already here and rated for their age; no finding new things.

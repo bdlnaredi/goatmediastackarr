@@ -1110,6 +1110,7 @@ async function stAcct(){
       <p class="mute">Your own email address. If you ever forget your password, the reset link is sent here. Type your current password to save a change.</p>
       <form id="ef" style="margin:0"><input name="email" type="email" value="${esc(me.email||'')}" placeholder="you@example.com" autocomplete="email"><input name="password" type="password" placeholder="Current password" autocomplete="current-password" required>
       <div class="row"><button class="primary">Save email</button></div><div class="err" id="ee"></div></form>
+      ${me.email?`<label class="chk" style="margin-top:14px"><input type="checkbox" id="rdm" ${me.readyMail?'checked':''}>${T('Email me when something is ready')}</label><p class="mute" style="margin:2px 0 0;font-size:13px">${T('When something you asked for, or put on your watchlist, is in the library. Several at once come in one email.')}</p>`:''}
       <div id="wkm" style="margin-top:14px" hidden><label class="chk"><input type="checkbox" id="wkon" ${me.weekly!==false?'checked':''}>${T('Weekly email')}</label><button type="button" class="lnk" id="wkp">${T('Preview')}</button>
         <p class="mute" style="margin:2px 0 0;font-size:13px">${T('Once a week: what is new for you, your requests and watchlist titles that came in, and what is coming up.')}</p><div id="wko" class="nlprev" hidden></div></div></div>
     ${me.role==='admin'&&PLEXLOGIN?`<div class="panel" style="max-width:560px;margin-top:16px"><h3 style="margin-top:0">Sign in with Plex</h3>
@@ -1128,6 +1129,7 @@ async function stAcct(){
   $('#nt').onclick=async()=>{try{await api('/api/me/notify/test','POST');toast('Test message sent','ok')}catch(x){toast(x.message,'bad')}};
   $('#ef').onsubmit=async e=>{e.preventDefault();const f=e.target.elements;$('#ee').textContent='';
     try{const r=await api('/api/me/email','PUT',{email:f.email.value.trim(),password:f.password.value});me.email=r.email;f.password.value='';toast(r.email?'Recovery email saved':'Recovery email removed','ok')}catch(x){$('#ee').textContent=x.message}};
+  if($('#rdm'))$('#rdm').onchange=async e=>{try{const r=await api('/api/me/readymail','PUT',{on:e.target.checked});me.readyMail=r.readyMail;toast(T('Saved'),'ok')}catch(x){toast(x.message,'bad');e.target.checked=!e.target.checked}};
   api('/api/me/weekly').then(w=>{if(!w.everyone||!$('#wkm'))return;$('#wkm').hidden=false;
     $('#wkon').onchange=async e=>{try{const r=await api('/api/me/weekly','PUT',{on:e.target.checked});me.weekly=r.weekly;toast('Saved','ok')}catch(x){toast(x.message,'bad')}};
     $('#wkp').onclick=()=>{$('#wko').hidden=!$('#wko').hidden;$('#wko').innerHTML=w.html}}).catch(()=>{});
