@@ -524,6 +524,7 @@ let me=null,tab='dash',services=[],users=[];
 async function api(url,method='GET',body){
   const r=await fetch(url,{method,headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});
   const d=await r.json().catch(()=>({}));
+  if(!r.ok&&d.need2fa&&!api.gated){api.gated=true;location.reload()}
   if(!r.ok)throw new Error(d.error||'Something went wrong');
   return d;
 }
@@ -551,7 +552,9 @@ async function start(){
   const iv=(location.hash.match(/^#invite=([\w-]{16,64})$/)||[])[1];
   if(iv&&!s.user)return inviteView(iv);
   if(!s.user)return authView(s.setup,s.setupCode);
-  DEMO=!!s.demo;me=s.user;await load();
+  DEMO=!!s.demo;me=s.user;
+  if(me.need2fa)return tfaGate();
+  await load();
   // An address like /downloads opens that page; the plain address opens the dashboard.
   const fromUrl=readPath();routeQuiet=true;
   // First visit to a new GoatMediaStackarr: open the Stack page, where the setup checklist is, until it is marked done.
@@ -1169,8 +1172,27 @@ async function signinPanel(){
   $('#sf').onsubmit=async e=>{e.preventDefault();$('#se').textContent='';$('#so').textContent='';try{await api('/api/signin','PUT',{publicUrl:e.target.url.value.trim()});toast('Saved','ok');signinPanel()}catch(x){$('#se').textContent=x.message}};
   $('#tm').onclick=async()=>{const b=$('#tm');b.disabled=true;$('#se').textContent='';$('#so').textContent='Sending…';try{await api('/api/signin/test','POST');$('#so').textContent='Sent. Check the inbox for '+me.email+' (and the spam folder).'}catch(x){$('#so').textContent='';$('#se').textContent=x.message}b.disabled=false};
 }
+// Two-step sign-in is required for this profile and not set up yet: nothing else opens until it is.
+async function tfaPolicyPanel(){
+  const el=$('#t2p');if(!el)return;let d;try{d=await api('/api/settings/2fa')}catch{el.remove();return}
+  const draw=()=>{el.innerHTML=`<h3 style="margin-top:0">${T('Two-step sign-in')}</h3><p class="mute" style="margin-top:0">${T('Who must use a code from an authenticator app when signing in. They set it up the next time they sign in; nothing else opens until they do. People who sign in with Plex are left out, except admins. You can also require it for one profile below.')}</p>
+    <div class="opts" role="radiogroup">${[['none','Nobody has to'],['admins','Admins'],['everyone','Everyone']].map(([v,n])=>`<label class="opt ${d.policy===v?'on':''}"><input type="radio" name="t2pol" value="${v}" ${d.policy===v?'checked':''} style="width:auto;min-height:0"><b>${T(n)}</b></label>`).join('')}</div>
+    ${d.missing.length?`<p class="mute" style="margin-bottom:0">${T('Still to set it up')}: ${esc(d.missing.join(', '))}</p>`:''}`;
+    el.querySelectorAll('[name=t2pol]').forEach(r=>r.onchange=async()=>{try{d=await api('/api/settings/2fa','PUT',{policy:r.value});toast(T('Saved'),'ok');draw()}catch(x){toast(x.message,'bad')}})};
+  draw();
+}
+function tfaGate(){
+  Cinema.stopAmbient();showStage();
+  $('#app').innerHTML=`<div class="gate"><div class="login box" style="max-width:460px"><span class="logo big">${LOGO}</span><h2>${T('Set up two-step sign-in')}</h2>
+    <p class="mute lead">${T('Your admin asks every sign-in on this profile to use a code from an authenticator app as well as your password. It takes a minute.')}</p>
+    <div id="tf" style="text-align:left"></div><button type="button" class="lnk" id="tgo">${T('Sign out')}</button></div></div>`;
+  $('#tgo').onclick=async()=>{try{await api('/api/logout','POST')}catch{}location.reload()};
+  window.onTfaDone=()=>{location.reload()};
+  tfaPanel();
+}
 function tfaPanel(){
   const box=$('#tf');if(!box)return;
+  if(me.twofa&&me.tfaRequired){box.innerHTML=`<div class="row"><h3 style="margin:0;flex:1">Two-step sign-in</h3><span class="pill ok">On</span></div><p class="mute">${T('Required for your profile, so it stays on.')}</p>`;return}
   if(me.twofa){
     box.innerHTML=`<div class="row"><h3 style="margin:0;flex:1">Two-step sign-in</h3><span class="pill ok">On</span></div>
       <p class="mute">Signing in needs your password and a code from your authenticator app.</p>
@@ -1195,7 +1217,7 @@ function tfaPanel(){
           box.innerHTML=`<h3 style="margin-top:0">Save your recovery codes</h3><p class="mute">Each code works once if you lose your phone. They are shown only now.</p>
             <div class="box" style="font-family:ui-monospace,monospace;columns:2;line-height:1.9">${r.recovery.map(c=>esc(c)).join('<br>')}</div>
             <div class="row" style="margin-top:10px"><button id="t4">Copy codes</button><button class="primary" id="t5">I saved them</button></div>`;
-          $('#t4').onclick=()=>copyText(r.recovery.join('\n'));$('#t5').onclick=tfaPanel}
+          $('#t4').onclick=()=>copyText(r.recovery.join('\n'));$('#t5').onclick=()=>{if(window.onTfaDone){const f=window.onTfaDone;window.onTfaDone=null;f()}else tfaPanel()}}
         catch(x){$('#te').textContent=x.message}};
     }catch(x){$('#te').textContent=x.message}};
 }
@@ -1416,13 +1438,14 @@ async function usrView(){
     <div class="mute" style="margin-top:12px">and can</div><div>${PERMS.map(([k,n])=>`<label class="chk" style="margin:6px 14px 0 0"><input type="checkbox" data-pp="${k}" ${px.perms[k]?'checked':''}>${n}</label>`).join('')}</div>
     <div class="row"><button class="primary">Save</button><span class="mute">${px.linked?px.linked+' Plex profile'+(px.linked===1?'':'s')+' so far':''}</span></div><div class="err" id="pxe"></div>`:'<p class="mute" style="margin:0"><b>Add your Plex server first</b> (Settings, then Apps) so GoatMediaStackarr can check who has access.</p>'}</form>`;
   $('#m').innerHTML=pxPanel+`<div class="panel" style="margin-bottom:16px"><h3 style="margin-top:0">Add a profile</h3><form id="uf" style="margin:0;max-width:420px"><input name="name" placeholder="Name" required><input name="password" type="password" placeholder="Password (8+ characters)" required>
-      <input name="email" type="email" placeholder="Email for password recovery (optional)" autocomplete="off"><select name="role" aria-label="Role"><option value="user">User</option><option value="admin">Admin</option></select><div class="row"><button class="primary">${ic('rq')}Add profile</button></div><div class="err" id="ue"></div></form></div>${invitePanel()}
+      <input name="email" type="email" placeholder="Email for password recovery (optional)" autocomplete="off"><select name="role" aria-label="Role"><option value="user">User</option><option value="admin">Admin</option></select><div class="row"><button class="primary">${ic('rq')}Add profile</button></div><div class="err" id="ue"></div></form></div>${invitePanel()}<div class="panel" style="margin-bottom:16px" id="t2p"></div>
     ${users.map(u=>`<div class="panel" style="margin-bottom:14px" data-u="${u.id}"><div class="row"><b style="font-size:16px">${esc(u.name)}</b><span class="pill ${u.role==='admin'?'acc':''}">${u.role==='admin'?'Admin':'User'}</span>${u.id===me.id?'<span class="pill">You</span>':''}${u.twofa?'<span class="pill ok">2FA</span>':''}${u.plex?`<span class="pill acc">Plex: ${esc(u.plex.name)}</span>`:''}${u.plex&&u.libs?`<span class="pill ${u.libs.limited?'warn':'ok'}" title="Checked each time they sign in with Plex">${u.libs.limited?(u.libs.of?u.libs.n+' of '+u.libs.of+' libraries':'Libraries not checked yet'):'All libraries'}</span>`:''}<span class="grow"></span>${u.twofa&&u.id!==me.id?'<button data-t2>Turn off 2FA</button>':''}
       <button data-rp>Reset password</button>${u.id!==me.id?'<button class="danger" data-del>Delete</button>':''}</div>
       <div class="row" style="margin-top:12px"><label class="mute">Role <select data-role><option value="user" ${u.role==='user'?'selected':''}>User</option><option value="admin" ${u.role==='admin'?'selected':''}>Admin</option></select></label>
       <label class="mute" style="margin-left:12px">Phone messages <input data-nt value="${esc(u.notify||'')}" placeholder="https://ntfy.sh/…" style="min-width:230px"></label><button data-ns>Save</button></div>
       ${u.role==='user'?`<div class="row" style="margin-top:10px"><label class="mute">Plex name <input data-pn value="${esc(u.plex?u.plex.name:u.plexName||'')}" placeholder="Their Plex username" ${u.plex?'readonly':''} style="min-width:230px"></label>${u.plex?'<button data-pu>Unlink</button>':'<button data-ps>Save</button>'}</div>`:''}
       ${u.plex?`<div class="mute" style="margin-top:14px">Also hide from this profile</div><div class="row" style="margin-top:8px;gap:10px;align-items:flex-end"><label class="mute">Genres <input data-hp-g value="${esc(((u.hide||{}).genre||[]).join(', '))}" placeholder="Horror, Adult" style="min-width:170px"></label><label class="mute">Tags or labels <input data-hp-l value="${esc(((u.hide||{}).label||[]).join(', '))}" placeholder="Private" style="min-width:170px"></label><label class="mute">Content ratings <input data-hp-r value="${esc(((u.hide||{}).rating||[]).join(', '))}" placeholder="R, NC-17" style="min-width:150px"></label></div><div class="row" style="margin-top:6px"><button data-hs>Save</button><span class="mute" style="font-size:13px">${u.restr?'Restrictions found in Plex: '+esc(Object.entries(u.restr).map(([k,v])=>({contentRating:'only ratings','contentRating!':'not ratings',label:'only tags','label!':'not tags'})[k]+' '+v.join(', ')).join('; ')):'No restrictions found in Plex. They are read each time this person signs in.'}</span></div>`:''}
+      <label class="chk" style="margin-top:10px"><input type="checkbox" data-r2 ${u.require2fa?'checked':''}>${T('Require two-step sign-in')}${u.twofa?'':` <span class="mute">(${T('not set up yet')})</span>`}</label>
       ${u.role==='user'?`<div class="row" style="margin-top:12px"><label class="chk"><input type="checkbox" data-kd ${u.kids?'checked':''}>Kids profile</label><label class="mute">up to age <select data-ka aria-label="Age">${[4,7,10,13,16].map(a=>`<option value="${a}" ${(u.kids?u.kids.age:7)===a?'selected':''}>${a}</option>`).join('')}</select></label></div>
       <p class="mute" style="margin:4px 0 0;font-size:13px">A simpler look with only what is already here and rated for that age (titles without a rating are left out). No searching, discovering or requesting.</p>
       <div class="mute" style="margin-top:14px">Apps this profile can open</div><div>${services.map(s=>`<label class="chk" style="margin:6px 14px 0 0"><input type="checkbox" data-ac="${s.id}" ${u.access.includes(s.id)?'checked':''}>${esc(s.name)}</label>`).join('')||'<span class="mute">Add apps first.</span>'}</div>
@@ -1437,7 +1460,7 @@ async function usrView(){
       <p class="mute" style="margin:4px 0 0;font-size:13px">What they may stream from Plex and Jellyfin each month. Empty uses the default from Settings, Limits; 0 means no limit. At the limit their streams are stopped until the 1st.</p>`:'<p class="mute" style="margin:12px 0 0">Admins can open every app and do everything.</p>'}</div>`).join('')}`;
   if($('#pxf')&&px.servers.length)$('#pxf').onsubmit=async e=>{e.preventDefault();const f=e.target,v=new FormData(f);$('#pxe').textContent='';
     try{await api('/api/plexsettings','PUT',{on:f.on.checked,sid:v.get('sid'),auto:v.get('auto')==='1',access:[...f.querySelectorAll('[data-pa]:checked')].map(c=>c.dataset.pa),perms:Object.fromEntries([...f.querySelectorAll('[data-pp]')].map(c=>[c.dataset.pp,c.checked])),hide:{genre:f.querySelector('[data-hx-g]').value,label:f.querySelector('[data-hx-l]').value,rating:f.querySelector('[data-hx-r]').value}});toast('Saved','ok');if(f.on.checked&&!PLEXLOGIN)PLEXLOGIN=true;usrView()}catch(x){$('#pxe').textContent=x.message}};
-  inviteWire();
+  inviteWire();tfaPolicyPanel();
   $('#uf').onsubmit=async e=>{e.preventDefault();$('#ue').textContent='';try{await api('/api/users','POST',Object.fromEntries(new FormData(e.target)));toast('Profile added','ok');usrView()}catch(x){$('#ue').textContent=x.message}};
   const put=async(id,b)=>{try{await api('/api/users/'+id,'PUT',b);toast('Saved','ok');return true}catch(x){toast(x.message,'bad');return false}};
   document.querySelectorAll('[data-du]').forEach(async el=>{const id=el.closest('[data-u]').dataset.u;try{const u=await api(`/api/users/${id}/usage`),gb=b=>(b/1e9).toFixed(b>=1e11?0:1)+' GB';
@@ -1448,6 +1471,7 @@ async function usrView(){
     else if(t.matches('[data-role]')){if(await put(id,{role:t.value}))usrView();else usrView()}
     else if(t.matches('[data-pre]')){if(t.value!=='custom'){card.querySelectorAll('[data-pm]').forEach(c=>c.checked=!!PRESET[t.value][c.dataset.pm]);await put(id,{perms:PRESET[t.value]})}}
     else if(t.matches('[data-rl],[data-rd]')){const n=+card.querySelector('[data-rl]').value||0;await put(id,{reqLimit:{n,days:+card.querySelector('[data-rd]').value}})}
+    else if(t.matches('[data-r2]')){await put(id,{require2fa:t.checked})}
     else if(t.matches('[data-kd],[data-ka]')){await put(id,{kids:card.querySelector('[data-kd]').checked?{age:+card.querySelector('[data-ka]').value}:null})}
     else if(t.matches('[data-aa]')){await put(id,{autoApprove:t.checked})}
     else if(t.matches('[data-dl]')){await put(id,{dataLimit:+t.value||0})}

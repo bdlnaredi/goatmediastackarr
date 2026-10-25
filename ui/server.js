@@ -144,7 +144,12 @@ const listKeys = () => { const l = (db.settings || {}).lists || {}; return { tra
 const lists = listsLib.create({ keys: listKeys, file: path.join(DATA, 'lists-cache.json'),
   urls: new Proxy({}, { get: (_, k) => String(process.env[k.toUpperCase() + '_URL'] || (DEMO ? `http://127.0.0.1:${PORT}/__demo/${k}` : { trakt: 'https://api.trakt.tv', tmdb: 'https://api.themoviedb.org/3', tvdb: 'https://api4.thetvdb.com/v4' }[k])).replace(/\/+$/, '') }),
   seerrPoster: async (kind, id) => { const s = db.services.find(x => x.type === 'seerr'); if (!s) return ''; const r = await fetch(`${s.url.replace(/\/+$/, '')}/api/v1/${kind === 'tv' ? 'tv' : 'movie'}/${id}`, { signal: AbortSignal.timeout(8000), headers: { 'X-Api-Key': s.apiKey } }); return r.ok ? ((await r.json()).posterPath || '') : ''; } });
-const pubUser = u => ({ email: u.email || '', weekly: !u.noWeekly, readyMail: !!u.readyMail, twofa: !!(u.totp && u.totp.on), id: u.id, name: u.name, role: u.role, access: u.access, perms: u.perms || null, notify: u.notify || '', dash: u.dash || null, reqLimit: u.reqLimit || null, autoApprove: !!u.autoApprove, plex: u.plex ? { name: u.plex.name } : null, hide: cleanHide(u.hide), restr: u.plexRules ? Object.fromEntries(['contentRating', 'contentRating!', 'label', 'label!'].filter(k => (u.plexRules[k] || []).length).map(k => [k, u.plexRules[k]])) : null, libs: u.plex ? { n: ((u.plexLibs || {}).mine || []).length, of: ((u.plexLibs || {}).all || []).length, limited: libLimited(u) } : null, plexName: u.plexName || '', lists: lists.enabled(), avatar: u.avatar ? `/api/avatar/${u.id}?v=${u.avatar.v}` : '', dataLimit: u.dataLimit || 0, streamLimit: u.streamLimit == null ? null : u.streamLimit, kids: u.kids ? { age: u.kids.age } : null });
+// Two-step sign-in can be required: for everyone, for admins, or for chosen profiles. People who sign in with Plex
+// are left out (Plex's own sign-in protects them), except admins.
+const tfaPolicy = () => ['none', 'admins', 'everyone'].includes((db.settings || {}).require2fa) ? db.settings.require2fa : 'none';
+const tfaRequired = u => !!u && (u.require2fa || tfaPolicy() === 'everyone' || (tfaPolicy() === 'admins' && u.role === 'admin')) && !(u.plex && u.role !== 'admin');
+const need2fa = u => tfaRequired(u) && !(u.totp && u.totp.on);
+const pubUser = u => ({ email: u.email || '', weekly: !u.noWeekly, readyMail: !!u.readyMail, need2fa: need2fa(u), require2fa: !!u.require2fa, tfaRequired: tfaRequired(u), twofa: !!(u.totp && u.totp.on), id: u.id, name: u.name, role: u.role, access: u.access, perms: u.perms || null, notify: u.notify || '', dash: u.dash || null, reqLimit: u.reqLimit || null, autoApprove: !!u.autoApprove, plex: u.plex ? { name: u.plex.name } : null, hide: cleanHide(u.hide), restr: u.plexRules ? Object.fromEntries(['contentRating', 'contentRating!', 'label', 'label!'].filter(k => (u.plexRules[k] || []).length).map(k => [k, u.plexRules[k]])) : null, libs: u.plex ? { n: ((u.plexLibs || {}).mine || []).length, of: ((u.plexLibs || {}).all || []).length, limited: libLimited(u) } : null, plexName: u.plexName || '', lists: lists.enabled(), avatar: u.avatar ? `/api/avatar/${u.id}?v=${u.avatar.v}` : '', dataLimit: u.dataLimit || 0, streamLimit: u.streamLimit == null ? null : u.streamLimit, kids: u.kids ? { age: u.kids.age } : null });
 // What the folders the apps report mean, in words (these are the container's own folders).
 const DISK_NAMES = { '/media': 'Media library', '/data': 'Media library', '/downloads': 'Downloads', '/config': 'App data', '/': 'Container (Docker image)' };
 const DISK_ORDER = ['Media library', 'Downloads', '', 'App data', 'Container (Docker image)'];
@@ -1765,6 +1770,8 @@ const goatServer = http.createServer(async (req, res) => {
     }
     if (p === '/api/logout') { sessions.delete(th(token)); saveSess(); return send(res, 200, {}, { 'Set-Cookie': 'sid=; Path=/; Max-Age=0' }); }
     if (!me) return send(res, 401, { error: 'Sign in first' });
+    // Two-step sign-in is required and not set up yet: only setting it up (and signing out) works until it is.
+    if (need2fa(me) && !['/api/2fa/start', '/api/2fa/enable', '/api/changelog'].includes(p)) return send(res, 403, { error: 'Set up two-step sign-in first. It is required for your profile.', need2fa: true });
     if (DEMO && m !== 'GET' && /^\/api\/(users|password|2fa|backups?|stack\/backups|restore|alerts|statuslinks|signin|services|weekly|throttle|me\/notify|me\/email|me\/weekly|me\/readymail|me\/avatar|plexsettings|listsettings)/.test(p)) return send(res, 403, { error: 'This is turned off in the demo' });
 
     if (p === '/api/2fa/start' && m === 'POST') {
@@ -1782,6 +1789,7 @@ const goatServer = http.createServer(async (req, res) => {
     if (p === '/api/2fa/disable' && m === 'POST') {
       const b = await readBody(req);
       if (!me.totp || !me.totp.on) return send(res, 400, { error: 'Two-step sign-in is not on' });
+      if (tfaRequired(me)) return send(res, 400, { error: 'Two-step sign-in is required for your profile, so it cannot be turned off. An admin can change that under Users.' });
       if (hash(b.password || '', me.salt) !== me.hash) return send(res, 400, { error: 'Your password is wrong' });
       const code = String(b.code || '').trim(), ok = totp.verify(me.totp.secret, code, Date.now(), 0) || (me.totp.recovery || []).includes(th(code.toLowerCase()));
       if (!ok) return send(res, 400, { error: 'That code is not right' });
@@ -3280,6 +3288,12 @@ const goatServer = http.createServer(async (req, res) => {
     const invOut = x => ({ id: x.id, label: x.label || '', at: x.at, by: x.by || '', exp: x.exp || 0, max: x.max || 0, used: x.used || 0, people: x.people || [], access: x.access || [],
       perms: x.perms || null, kids: x.kids || null, reqLimit: x.reqLimit || null, autoApprove: !!x.autoApprove, hint: x.hint || '',
       live: (!x.exp || x.exp > Date.now()) && (!x.max || (x.used || 0) < x.max) });
+    if (p === '/api/settings/2fa' && m === 'GET') return send(res, 200, { policy: tfaPolicy(), missing: db.users.filter(need2fa).map(u => u.name) });
+    if (p === '/api/settings/2fa' && m === 'PUT') {
+      const v = (await readBody(req)).policy; if (!['none', 'admins', 'everyone'].includes(v)) return send(res, 400, { error: 'Bad request' });
+      db.settings.require2fa = v; save(); audit(me.name, 'Changed who must use two-step sign-in', v);
+      return send(res, 200, { policy: v, missing: db.users.filter(need2fa).map(u => u.name) });
+    }
     if (p === '/api/invites' && m === 'GET') return send(res, 200, db.invites.map(invOut).reverse());
     if (p === '/api/invites' && m === 'POST') {
       const b = await readBody(req); if (db.invites.length >= 100) return send(res, 400, { error: 'That is a lot of invites. Remove some old ones first.' });
@@ -3434,6 +3448,7 @@ const goatServer = http.createServer(async (req, res) => {
       if ('perms' in b) u.perms = b.perms ? Object.fromEntries(['add', 'control', 'remove', 'request'].map(k => [k, b.perms[k] !== false])) : undefined;
       if ('reqLimit' in b) { const n = Math.round(+(b.reqLimit || {}).n), d = Math.round(+(b.reqLimit || {}).days); u.reqLimit = n > 0 ? { n: Math.min(n, 1000), days: Math.min(Math.max(d || 7, 1), 365) } : undefined; }
       if ('autoApprove' in b) u.autoApprove = !!b.autoApprove;
+      if ('require2fa' in b) u.require2fa = !!b.require2fa || undefined;
       if ('kids' in b) { if (b.kids && u.role === 'admin') return send(res, 400, { error: 'An admin cannot be a kids profile.' }); u.kids = b.kids ? { age: Math.min(17, Math.max(0, Math.round(+b.kids.age) || 7)) } : undefined; if (mon.forYou) delete mon.forYou[u.id]; }
       if ('dataLimit' in b) { const gb = Math.round(+b.dataLimit || 0); u.dataLimit = gb > 0 ? Math.min(gb, 1e6) : undefined; }
       if ('streamLimit' in b) { u.streamLimit = b.streamLimit == null || b.streamLimit === '' ? undefined : limitGb(b.streamLimit); const e = streamOf(u); if (e) { delete e.warn; delete e.stopErr; } }
