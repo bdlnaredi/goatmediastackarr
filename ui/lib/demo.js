@@ -52,7 +52,8 @@ function create(opts = {}) {
       ['Glass.Meridian.2024.1080p.BluRay', 8.1e9, 1, 'movies'], ['Ubuntu.24.04.iso', 5.9e9, 1, 'software'],
     ].map((x, i) => ({ hash: ('abcdef0123'.repeat(5)).slice(i, i + 40).padEnd(40, String(i)), name: x[0], size: x[1], progress: x[2], category: x[3], tags: '', state: x[2] >= 1 ? 'stalledUP' : 'downloading',
       dlspeed: x[2] >= 1 ? 0 : 2.4e6, upspeed: x[2] >= 1 ? 3e5 : 4e4, eta: x[2] >= 1 ? 8640000 : 3600, ratio: 1.2, num_seeds: 12, num_leechs: 3, added_on: Math.floor(now / 1000) - 86400 * (i + 1),
-      completion_on: x[2] >= 1 ? Math.floor(now / 1000) - 3600 * (i + 2) : -1, save_path: '/downloads', amount_left: Math.round(x[1] * (1 - x[2])), uploaded: Math.round(x[1] * 1.2), downloaded: Math.round(x[1] * x[2]), priority: i + 1 })),
+      completion_on: x[2] >= 1 ? Math.floor(now / 1000) - 3600 * (i + 2) : -1, save_path: '/downloads', amount_left: Math.round(x[1] * (1 - x[2])), uploaded: Math.round(x[1] * 1.2), downloaded: Math.round(x[1] * x[2]), priority: i + 1,
+      tracker: ['https://tracker.demo-tracker.org:2710/announce', 'udp://open.tracker.example:1337/announce', 'https://t.private-hd.net/announce/abc', 'https://torrent.ubuntu.com/announce'][i], seeding_time: x[2] >= 1 ? 3600 * (i + 2) : 0 })),
     indexers: [['NZBgeek', 'usenet'], ['1337x', 'torrent'], ['Demo Tracker', 'torrent'], ['Broken Tracker', 'torrent'], ['Archive Box', 'torrent'], ['Old Usenet', 'usenet']]
       .map((x, i) => ({ id: i + 1, name: x[0], protocol: x[1], enable: i !== 4, priority: 25, implementationName: 'Demo' })),
     artists: [['The Night Owls', 'Indie'], ['Velvet Static', 'Electronic'], ['Mara Quinn', 'Folk']].map((x, i) => ({ id: i + 1, artistName: x[0], overview: `${x[0]} (${x[1]}) is a demo artist.`, monitored: true, genres: [x[1]], hue: (i * 120 + 200) % 360,
@@ -88,7 +89,7 @@ function create(opts = {}) {
     if (p === '/api/v3/command' && m === 'POST') return json(res, { id: 1, name: data.name });
     if (p === '/api/v3/queue/details') return json(res, (st.queueDetails || []).filter(r => (q.get('movieId') && +r.movieId === +q.get('movieId')) || (q.get('seriesId') && +r.seriesId === +q.get('seriesId'))));
     if (p === '/api/v3/queue') return json(res, { records: [{ id: 1, title: 'Harbor.Lights.S04E06', size: 1.4e9, sizeleft: 5e8, timeleft: '00:12:00', status: 'downloading', trackedDownloadStatus: 'ok', series: { title: 'Harbor Lights' }, movie: { title: 'Glass Meridian' } },
-      { id: 2, title: 'Stuck.Release.1080p', size: 2e9, sizeleft: 2e9, status: 'warning', trackedDownloadStatus: 'warning', statusMessages: [{ messages: ['No files found are eligible for import'] }], series: { title: 'Night Shift' } }].slice(0, tv ? 2 : 1), totalRecords: 2 });
+      { id: 2, title: 'Stuck.Release.1080p', size: 2e9, sizeleft: 2e9, status: 'warning', trackedDownloadStatus: 'warning', statusMessages: [{ messages: ['No files found are eligible for import'] }], series: { title: 'Night Shift' } }].slice(0, tv ? 2 : 1).concat((st.importing || []).map((h, i) => ({ id: 90 + i, title: 'Importing', downloadId: h.toUpperCase(), trackedDownloadState: 'importPending' }))), totalRecords: 2 });
     if (p === '/api/v3/release') return json(res, [
       { guid: 'g1', indexerId: 1, title: 'Demo.Release.2024.1080p.WEB-DL.DDP5.1.H264-GRP', size: 4.2e9, seeders: 182, leechers: 9, indexer: 'DemoTracker', quality: { quality: { name: 'WEBDL-1080p' } }, age: 3, languages: [{ id: 1, name: 'English' }], infoUrl: 'https://tracker.example/details/12345', protocol: 'torrent', releaseGroup: 'GRP' },
       { guid: 'https://tracker2.example/torrent/987', indexerId: 2, title: 'Demo.Release.2024.MULTi.1080p.BluRay.x264-TEAM', size: 8.8e9, seeders: 64, indexer: 'OtherTracker', quality: { quality: { name: 'Bluray-1080p' } }, age: 40, languages: [{ id: 1, name: 'English' }, { id: 2, name: 'French' }, { id: 3, name: 'German' }], protocol: 'torrent', releaseGroup: 'TEAM' },
@@ -234,6 +235,7 @@ function create(opts = {}) {
       const wob = 0.85 + 0.3 * Math.sin(Date.now() / 4000);
       const live = () => st.torrents.map(x => x.progress < 1 ? { ...x, dlspeed: Math.round(x.dlspeed * wob * (st.altSpeed ? 0.2 : 1)), progress: Math.min(0.99, x.progress + ((Date.now() / 60000) % 0.2)) } : x);
       if (sub === '/api/v2/torrents/info') return json(res, live());
+      if (sub === '/api/v2/torrents/delete') { const hs = String(data.hashes || '').split('|'); st.calls.push('qb delete ' + data.hashes + ' files=' + data.deleteFiles); st.torrents = st.torrents.filter(t => !hs.includes(t.hash)); res.writeHead(200); return res.end(''); }
       if (sub.startsWith('/api/v2/sync/maindata')) return json(res, { server_state: { dl_info_speed: Math.round(2.4e6 * wob * (st.altSpeed ? 0.2 : 1)), up_info_speed: 3.5e5, dl_info_data: 4e10, up_info_data: 6e10, connection_status: 'connected', last_external_address_v4: '203.0.113.7',
         free_space_on_disk: 600e9, use_alt_speed_limits: st.altSpeed, dl_rate_limit: 0, up_rate_limit: 0 }, torrents: {}, categories: cats(), tags: st.qbTags || [] });
       if (sub === '/api/v2/transfer/info') return json(res, { dl_info_speed: Math.round(2.4e6 * wob * (st.altSpeed ? 0.2 : 1)), up_info_speed: Math.round(3.5e5 * (2 - wob)), dl_info_data: 4e10, up_info_data: 6e10, connection_status: 'connected' });

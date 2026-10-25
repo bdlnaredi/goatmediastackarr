@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- Remove after the tracker's seeding goal (Settings → Download rules): give each tracker its own rule (a ratio, days seeding, or both, plus one for any other tracker). A finished movie or show in the chosen categories is removed (with its downloaded files, if you want) once it meets its tracker's goal and Sonarr or Radarr has imported it. Works with qBittorrent, ruTorrent and Deluge; shows what is due right now and what was removed.
+
 ## v0.9.2 — 2026-10-25
 
 - Discover opens straight away: its lists are fetched ahead of time (soon after starting, then every 3 hours) and kept on disk, so a restart does not empty them; an older copy is shown at once and refreshed quietly; a site that is slow or briefly down is asked again instead of showing an error; Trakt posters are kept for a month.

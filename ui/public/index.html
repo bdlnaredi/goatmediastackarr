@@ -1243,7 +1243,7 @@ const PERMS=[['add','Add downloads and things to the library'],['control','Pause
 const presetOf=u=>{if(!u.perms)return 'std';const v=PERMS.map(([k])=>u.perms[k]!==false);return v.every(Boolean)?'std':v.every(x=>!x)?'view':'custom'};
 
 async function stRules(){
-  const s=first('qbittorrent');if(!s){$('#m').innerHTML=`<div class="panel">Connect qBittorrent first.</div>`;return}
+  const s=first('qbittorrent');if(!s){$('#m').innerHTML=`<div class="panel">Connect qBittorrent for the speed schedule and seeding limits.</div>`;seedGoalsPanel([]);return}
   $('#m').innerHTML=skel(3);
   let sch,rules,meta;
   try{[sch,rules,meta]=await Promise.all([api(`/api/qb/${s.id}/schedule`),api('/api/seedrules'),api(`/api/qb/${s.id}/meta`)])}catch(x){$('#m').innerHTML=`<div class="err">${esc(x.message)}</div>`;return}
@@ -1272,6 +1272,43 @@ async function stRules(){
   $('#rl3').onclick=e=>{const d=e.target.closest('[data-d]');if(d)d.closest('[data-rr]').remove()};
   $('#sr3').onclick=async()=>{const list=[...document.querySelectorAll('[data-rr]')].map(r=>({sid:s.id,category:r.querySelector('[data-c]').value,ratio:r.querySelector('[data-r]').value,minutes:r.querySelector('[data-m]').value}));
     try{await api('/api/seedrules','PUT',{rules:list});toast('Rules saved. They apply within a minute.','ok')}catch(x){toast(x.message,'bad')}};
+  seedGoalsPanel(meta.categories.map(c=>c.name));
+}
+// Tracker seeding goals: each tracker's own rule (ratio, days, or both); finished movies and shows are removed once it is met.
+async function seedGoalsPanel(catNames){
+  const box=document.createElement('div');box.className='panel';box.style.cssText='max-width:760px;margin-top:16px';$('#m').append(box);
+  box.innerHTML=`<h3 style="margin-top:0">${T('Remove after the tracker’s seeding goal')}</h3>${skel(2)}`;
+  let g,chk={hosts:[],rows:[]};try{g=await api('/api/seedgoals')}catch(x){box.innerHTML+=`<div class="err">${esc(x.message)}</div>`;return}
+  try{chk=await api('/api/seedgoals/check')}catch{}
+  const c=g.cfg,cats=[...new Set([...catNames,...c.cats])],hosts=[...new Set([...chk.hosts,...c.rules.map(r=>r.tracker)])].sort();
+  const row=r=>`<div class="box row" data-gr style="flex-wrap:wrap;gap:8px"><input data-t list="sghosts" value="${esc(r.tracker||'')}" placeholder="${T('tracker, e.g. iptorrents.com')}" style="min-width:190px;flex:1">
+    <label class="mute">${T('ratio')} <input data-r type="number" min="0" step="0.1" value="${r.ratio||''}" placeholder="–" style="width:80px"></label>
+    <select data-h aria-label="${T('Either or both')}"><option value="either" ${r.how!=='both'?'selected':''}>${T('or')}</option><option value="both" ${r.how==='both'?'selected':''}>${T('and')}</option></select>
+    <label class="mute"><input data-d type="number" min="0" step="1" value="${r.days||''}" placeholder="–" style="width:80px"> ${T('days seeding')}</label><button type="button" class="ghost" data-x aria-label="${T('Remove')}">✕</button></div>`;
+  const day=t=>new Date(t).toLocaleString(undefined,{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+  const prev=chk.rows.length?`<details style="margin-top:14px"><summary><b>${T('Right now')}</b> <span class="mute">${chk.rows.filter(r=>r.met).length} ${T('of')} ${chk.rows.length} ${T('have met their goal')}</span></summary>
+    ${chk.rows.map(r=>`<div class="row" style="margin-top:6px;font-size:13px"><span class="grow" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.name)}</span><span class="mute">${esc(r.host||T('unknown tracker'))} · ${T('ratio')} ${r.ratio} · ${r.days} ${T('days')}</span>
+      <span class="pill ${r.met?(r.importing?'warn':'ok'):''}">${!r.rule?T('No rule'):r.met?(r.importing?T('Waiting for import'):T('Goal met')):T('Seeding')}</span></div>`).join('')}</details>`:'';
+  box.innerHTML=`<h3 style="margin-top:0">${T('Remove after the tracker’s seeding goal')}</h3>
+    <p class="mute" style="margin-top:0">${T('Private trackers want each download seeded to a ratio or for some days. Give each tracker its rule; once a finished movie or show meets it, and Sonarr or Radarr has imported it, the torrent is removed. Works with qBittorrent, ruTorrent and Deluge.')}</p>
+    <label class="chk"><input type="checkbox" id="sgon" ${c.on?'checked':''}>${T('Remove torrents that met their tracker’s goal')}</label>
+    <div class="mute" style="margin-top:10px">${T('Only these categories')}</div><div>${cats.map(n=>`<label class="chk" style="margin:6px 14px 0 0"><input type="checkbox" data-sc="${esc(n)}" ${c.cats.includes(n)?'checked':''}>${esc(n)}</label>`).join('')||`<span class="mute">tv, movies</span>`}</div>
+    <label class="chk" style="margin-top:10px"><input type="checkbox" id="sgf" ${c.files?'checked':''}>${T('Delete the downloaded files too (the copies in the library stay)')}</label>
+    <datalist id="sghosts">${hosts.map(h=>`<option value="${esc(h)}">`).join('')}</datalist>
+    <div class="mute" style="margin-top:12px">${T('Trackers')}</div><div id="sgl">${(c.rules.length?c.rules:[{}]).map(row).join('')}</div>
+    <div class="row" style="margin-top:8px;flex-wrap:wrap;gap:8px"><label class="chk"><input type="checkbox" id="sgo" ${c.other?'checked':''}>${T('Any other tracker:')}</label>
+      <label class="mute">${T('ratio')} <input id="sgor" type="number" min="0" step="0.1" value="${c.other?c.other.ratio||'':''}" style="width:80px"></label><select id="sgoh"><option value="either">${T('or')}</option><option value="both" ${c.other&&c.other.how==='both'?'selected':''}>${T('and')}</option></select>
+      <label class="mute"><input id="sgod" type="number" min="0" value="${c.other?c.other.days||'':''}" style="width:80px"> ${T('days seeding')}</label></div>
+    <div class="row" style="margin-top:12px"><button type="button" id="sga">${ic('rq')}${T('Add a tracker')}</button><button class="primary" id="sgs">${T('Save')}</button></div><div class="err" id="sge"></div>${prev}
+    ${g.log.length?`<details style="margin-top:10px"><summary><b>${T('Removed')}</b> <span class="mute">${g.log.length}</span></summary>${g.log.map(x=>`<div class="mute" style="font-size:13px;margin-top:6px">${day(x.at)} · <b style="color:var(--text)">${esc(x.name)}</b> · ${esc(x.host)}: ${esc(x.why)}</div>`).join('')}</details>`:''}`;
+  box.querySelector('#sga').onclick=()=>box.querySelector('#sgl').insertAdjacentHTML('beforeend',row({}));
+  box.querySelector('#sgl').onclick=e=>{const x=e.target.closest('[data-x]');if(x)x.closest('[data-gr]').remove()};
+  box.querySelector('#sgs').onclick=async()=>{box.querySelector('#sge').textContent='';
+    const rules=[...box.querySelectorAll('[data-gr]')].map(r=>({tracker:r.querySelector('[data-t]').value,ratio:+r.querySelector('[data-r]').value||0,days:+r.querySelector('[data-d]').value||0,how:r.querySelector('[data-h]').value})).filter(r=>r.tracker.trim());
+    const b={on:box.querySelector('#sgon').checked,files:box.querySelector('#sgf').checked,cats:[...box.querySelectorAll('[data-sc]:checked')].map(x=>x.dataset.sc),rules,
+      other:box.querySelector('#sgo').checked?{ratio:+box.querySelector('#sgor').value||0,days:+box.querySelector('#sgod').value||0,how:box.querySelector('#sgoh').value}:null};
+    if(!b.cats.length&&!cats.length)b.cats=['tv','movies'];
+    try{await api('/api/seedgoals','PUT',b);toast(T('Saved'),'ok');box.remove();seedGoalsPanel(catNames)}catch(x){box.querySelector('#sge').textContent=x.message}};
 }
 function stBackup(){
   $('#m').innerHTML=`${GOAT?'<div class="panel" style="max-width:760px;margin-bottom:16px" id="sbk"></div>':''}<div class="panel" style="max-width:560px"><h3 style="margin-top:0">${GOAT?'Back up GoatMediaStackarr only':'Back up'}</h3><p class="mute">Saves your apps, profiles, requests, alert settings and history to a file, locked with a passphrase. Keep the passphrase safe. Without it the file cannot be opened.</p>
