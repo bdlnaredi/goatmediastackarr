@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+## v0.9.1 — 2026-10-25
+
 - ruTorrent: after its password is changed on the Stack page, Sonarr, Radarr, Lidarr and Prowlarr are restarted once, as they keep sending the old login until they restart (they could not reach rTorrent).
 - Android app in Hindi, Spanish, German and French (Settings → Language, or the phone's own language), with the same words as the web page.
 - Android home-screen widget: download and upload speeds and what is playing; tap it to open Downloads, or the arrows to refresh.
