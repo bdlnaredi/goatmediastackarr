@@ -260,7 +260,7 @@ class ScreensTest {
         scrollTo("Because you watched"); waitFor("Ember Falls"); shot("72-for-you")
         tap("More"); waitFor("Go to")
         openFromMore("Watchlist"); waitFor("Waiting for approval"); shot("73-watchlist"); back()
-        openFromMore("Health"); waitFor("to look at"); scrollTo("Fix problems by itself"); waitFor("Glass.City.S02E06"); shot("74-health-healing"); back()
+        openFromMore("Health"); waitFor("to look at"); waitFor("Fix problems by itself"); waitFor("Glass.City.S02E06"); shot("74-health-healing"); back()
         compose.runOnUiThread { state.setPrefs(state.prefs.value.copy(lang = "hi")) }
         compose.waitForIdle(); waitFor("होम"); shot("75-home-hindi")
         compose.runOnUiThread { state.setPrefs(state.prefs.value.copy(lang = "")) }
