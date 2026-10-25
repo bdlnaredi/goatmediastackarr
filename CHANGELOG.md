@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+## v0.9.2 — 2026-10-25
+
 - Discover opens straight away: its lists are fetched ahead of time (soon after starting, then every 3 hours) and kept on disk, so a restart does not empty them; an older copy is shown at once and refreshed quietly; a site that is slow or briefly down is asked again instead of showing an error; Trakt posters are kept for a month.
 
 ## v0.9.1 — 2026-10-25
