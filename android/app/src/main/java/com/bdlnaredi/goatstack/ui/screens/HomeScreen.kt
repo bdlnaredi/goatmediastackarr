@@ -154,7 +154,6 @@ fun HomeScreen() {
                 else if (ctx.user.kids == null) QuickAction("Watchlist", Icons.Rounded.Bookmark, Modifier.weight(1f)) { ctx.go("watchlist") }
             }
         }
-        item(key = "foryou") { Column { ForYouRows() } }
 
         if (playing.isNotEmpty()) {
             item { SectionTitle("Playing now") }
@@ -229,6 +228,8 @@ fun HomeScreen() {
             }
         }
 
+        item(key = "foryou") { Column { ForYouRows() } }
+
         val reqs = requests.value.orEmpty()
         val waiting = reqs.filter { it.status == "pending" }
         if (reqs.isNotEmpty()) {
@@ -291,13 +292,13 @@ private fun UpdateCard(u: com.bdlnaredi.goatstack.data.Updates, appOld: Boolean,
             var all by remember { mutableStateOf(false) }
             Spacer(Modifier.height(10.dp))
             Text(com.bdlnaredi.goatstack.data.tr("What's new"), style = MaterialTheme.typography.labelLarge, color = g.primary)
-            (if (all) notes else notes.take(3)).forEach { n ->
+            (if (all) notes else notes.take(2)).forEach { n ->
                 Row(Modifier.padding(top = 4.dp)) {
                     Text("•", style = MaterialTheme.typography.bodySmall, color = g.primary, modifier = Modifier.width(14.dp))
                     Text(n, style = MaterialTheme.typography.bodySmall, color = g.text.copy(alpha = 0.85f), maxLines = if (all) 8 else 3, overflow = TextOverflow.Ellipsis)
                 }
             }
-            if (notes.size > 3) Text(com.bdlnaredi.goatstack.data.tr(if (all) "Show less" else "Show all") + if (all) "" else " (${notes.size})", style = MaterialTheme.typography.labelLarge, color = g.primary,
+            if (notes.size > 2) Text(com.bdlnaredi.goatstack.data.tr(if (all) "Show less" else "Show all") + if (all) "" else " (${notes.size})", style = MaterialTheme.typography.labelLarge, color = g.primary,
                 modifier = Modifier.padding(top = 6.dp).clickable { all = !all })
         }
         Spacer(Modifier.height(10.dp))
