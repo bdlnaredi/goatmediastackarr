@@ -38,14 +38,14 @@ function create(opts = {}) {
         eps.push({ id: id * 1000 + s * 100 + e, seriesId: id, seasonNumber: s, episodeNumber: e, title: `Episode ${e}`, overview: `In episode ${e} of season ${s}, something invented happens.`, runtime: 44, airDateUtc: iso(t), monitored: true,
           hasFile: has, episodeFileId: has ? id * 1000 + s * 100 + e : 0, size: has ? 900e6 + e * 11e6 : 0 });
       }
-      return { id, title, year, status, network, genres, ratings: { value: rating }, overview: `${title} is a demo show. Nothing here is real.`, monitored: true, qualityProfileId: 2,
+      return { id, title, year, status, network, genres, ratings: { value: rating }, certification: ['TV-14', 'TV-Y7', 'TV-MA', 'TV-PG', 'TV-G'][i % 5], overview: `${title} is a demo show. Nothing here is real.`, monitored: true, qualityProfileId: 2,
         seasonsN: seasons, eps, seasons: Array.from({ length: seasons }, (_, k) => ({ seasonNumber: k + 1, monitored: true })), hue: (i * 57) % 360, added: iso(now, -400 + i * 30) };
     }),
     movies: [
       ['Glass Meridian', 2024, 'Thriller', 7.4, true], ['Salt & Ember', 2023, 'Drama', 8.0, true], ['The Last Lighthouse', 2022, 'Horror', 6.9, true],
       ['Parallel Sundays', 2025, 'Romance', 7.1, false], ['Orbit Breakers', 2021, 'Action', 7.8, true], ['Quiet Machines', 2026, 'Sci-Fi', 8.4, false],
     ].map((x, i) => ({ id: i + 1, title: x[0], year: x[1], genres: [x[2]], ratings: { imdb: { value: x[3] } }, overview: `${x[0]} is a demo movie.`, monitored: true, hasFile: x[4], sizeOnDisk: x[4] ? 4.2e9 + i * 3e8 : 0,
-      qualityProfileId: i % 2 ? 3 : 2, runtime: 95 + i * 7, studio: 'Demo Pictures', status: x[4] ? 'released' : 'announced', certification: 'PG-13', hue: (i * 83 + 20) % 360, added: iso(now, -200 + i * 20),
+      qualityProfileId: i % 2 ? 3 : 2, runtime: 95 + i * 7, studio: 'Demo Pictures', status: x[4] ? 'released' : 'announced', certification: ['G', 'PG-13', 'R', 'PG-13', 'PG', 'PG-13'][i], hue: (i * 83 + 20) % 360, added: iso(now, -200 + i * 20),
       inCinemas: iso(now, x[4] ? -300 : 25), digitalRelease: x[4] ? iso(now, -250) : iso(now, 40) })),
     torrents: [
       ['Harbor.Lights.S04E06.1080p.WEB.x265', 1.4e9, 0.62, 'tv'], ['The.Long.Orbit.S03E08.2160p.WEB', 4.8e9, 0.18, 'tv'],
@@ -69,7 +69,7 @@ function create(opts = {}) {
   const json = (res, d, code = 200) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(d)); };
   const body = req => new Promise(ok => { let b = ''; req.on('data', c => { b += c; }); req.on('end', () => { try { ok(JSON.parse(b || '{}')); } catch { ok({ _raw: b }); } }); });
   const stats = sr => { const have = sr.eps.filter(e => e.hasFile).length; return { seasonCount: sr.seasonsN, episodeCount: sr.eps.filter(e => Date.parse(e.airDateUtc) < now).length, episodeFileCount: have, sizeOnDisk: have * 1e9 }; };
-  const sonarrOut = sr => ({ id: sr.id, title: sr.title, year: sr.year, status: sr.status, network: sr.network, genres: sr.genres, ratings: sr.ratings, overview: sr.overview, monitored: sr.monitored,
+  const sonarrOut = sr => ({ id: sr.id, title: sr.title, year: sr.year, status: sr.status, network: sr.network, genres: sr.genres, ratings: sr.ratings, certification: sr.certification, overview: sr.overview, monitored: sr.monitored,
     qualityProfileId: sr.qualityProfileId, seasons: sr.seasons, statistics: stats(sr), images: [{ coverType: 'poster', remoteUrl: svg(sr.title, sr.hue, sr.id) }, { coverType: 'fanart', remoteUrl: fan(sr.title, sr.hue, sr.id), url: `/MediaCover/${sr.id}/fanart.jpg` }], added: sr.added, tvdbId: 9000 + sr.id, tmdbId: 7000 + sr.id, imdbId: 'tt' + (2000000 + sr.id) });
   const radarrOut = mv => ({ ...mv, ...(mv.id <= 2 ? { collection: { title: 'Demo Saga', tmdbId: 10 } } : {}), imdbId: 'tt' + (1000000 + mv.id), images: [{ coverType: 'poster', remoteUrl: svg(mv.title, mv.hue, mv.id + 1) }, { coverType: 'fanart', remoteUrl: fan(mv.title, mv.hue, mv.id + 1), url: `/MediaCover/${mv.id}/fanart.jpg` }], tmdbId: 5000 + mv.id });
   const media = (kind, x) => ({ ...x, images: [{ coverType: 'poster', remoteUrl: svg(x.artistName || x.authorName, x.hue) }] });

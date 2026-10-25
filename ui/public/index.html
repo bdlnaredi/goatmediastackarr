@@ -548,6 +548,8 @@ async function start(){
   VER=s.version||'';GOAT=!!s.goat;DEMO=!!s.demo;REC=!!s.recovery;PLEXLOGIN=!!s.plexLogin;ICONB=s.iconBase?s.iconBase.replace(/\/*$/,'/'):'';
   const rt=(location.hash.match(/^#reset=([\w-]{20,80})$/)||[])[1];
   if(rt)return resetView(rt);
+  const iv=(location.hash.match(/^#invite=([\w-]{16,64})$/)||[])[1];
+  if(iv&&!s.user)return inviteView(iv);
   if(!s.user)return authView(s.setup,s.setupCode);
   DEMO=!!s.demo;me=s.user;await load();
   // An address like /downloads opens that page; the plain address opens the dashboard.
@@ -654,6 +656,59 @@ function forgotView(setup,needCode){
     try{await api('/api/forgot','POST',{who:e.target.who.value.trim()});$('#o').textContent='If that profile has an email address saved, a reset link is on its way. It works for 30 minutes. Check your spam folder if it does not arrive.';b.textContent='Sent'}
     catch(x){$('#e').textContent=x.message;b.disabled=false}};
 }
+// Joining with an invite link: the person picks their own name and password and is signed in.
+async function inviteView(code){
+  Cinema.stopAmbient();showStage();
+  const leave=()=>{history.replaceState(null,'',location.pathname+location.search);start()};
+  let d;try{d=await api('/api/invite/'+code)}catch(x){
+    $('#app').innerHTML=`<div class="gate"><div class="login box"><span class="logo big">${LOGO}</span><h2>${T('Invite')}</h2><p class="err">${esc(x.message)}</p><button class="primary" id="bk">${T('Go to sign in')}</button></div></div>`;$('#bk').onclick=leave;return}
+  $('#app').innerHTML=`<div class="gate"><form class="login box" id="jf"><span class="logo big">${LOGO}</span><h2>${T("You're invited")}</h2>
+    <p class="mute lead">${d.by?esc(d.by)+' '+T('invited you to')+' ':T('Join')+' '}<b>${esc(d.server)}</b>${d.label?' ('+esc(d.label)+')':''}. ${T('Pick a name and a password to make your profile.')}</p>
+    <input name="name" placeholder="${T('Your name')}" aria-label="${T('Your name')}" autocomplete="username" required maxlength="40" autofocus>
+    <div class="pwf"><input name="password" type="password" placeholder="${T('Password (8+ characters)')}" aria-label="${T('Password')}" autocomplete="new-password" required minlength="8"><button type="button" class="ghost" id="pwt" aria-label="Show password" aria-pressed="false">${ic('eye')}</button></div>
+    <input name="email" type="email" placeholder="${T('Email for password recovery (optional)')}" autocomplete="email">
+    <button class="primary">${T('Make my profile')}</button><button type="button" class="lnk" id="bk">${T('I already have a profile')}</button><div class="err" id="e" role="alert"></div></form></div>`;
+  pwToggle();$('#bk').onclick=leave;
+  $('#jf').onsubmit=async e=>{e.preventDefault();const f=e.target.elements,b=e.target.querySelector('.primary');$('#e').textContent='';b.disabled=true;
+    try{await api('/api/invite/'+code,'POST',{name:f.name.value,password:f.password.value,email:f.email.value});history.replaceState(null,'',location.pathname+location.search);start()}
+    catch(x){$('#e').textContent=x.message;b.disabled=false}};
+}
+// Invite links, in Settings → Users: who can join, with which apps and rights, until when.
+function invitePanel(){
+  return `<div class="panel" style="margin-bottom:16px" id="invp"><h3 style="margin-top:0">${T('Invite links')}</h3>
+    <p class="mute" style="margin-top:0">${T('Send a link; whoever opens it makes their own profile with the settings you pick here. The link is shown once, so copy it or show the QR code.')}</p>
+    <form id="ivf" style="margin:0"><div class="row" style="gap:10px;align-items:flex-end;flex-wrap:wrap">
+      <label class="mute">${T('Name it')} <input name="label" placeholder="${T('Family, friends…')}" maxlength="60" style="min-width:170px"></label>
+      <label class="mute">${T('Works for')} <select name="days">${[[1,'1 day'],[7,'7 days'],[30,'30 days'],[0,'Until removed']].map(([v,n])=>`<option value="${v}" ${v===7?'selected':''}>${T(n)}</option>`).join('')}</select></label>
+      <label class="mute">${T('People')} <select name="max">${[[1,'1'],[5,'5'],[10,'10'],[0,'Any number']].map(([v,n])=>`<option value="${v}">${T(n)}</option>`).join('')}</select></label>
+      <label class="mute">${T('They can')} <select name="pre"><option value="std">${T('Standard')}</option><option value="view">${T('View only')}</option></select></label>
+      <label class="chk"><input type="checkbox" name="kids">${T('Kids profile')}</label><label class="mute">${T('up to age')} <select name="age">${[4,7,10,13,16].map(a=>`<option ${a===7?'selected':''}>${a}</option>`).join('')}</select></label></div>
+      <div class="mute" style="margin-top:12px">${T('Apps they can open')}</div><div>${services.map(x=>`<label class="chk" style="margin:6px 14px 0 0"><input type="checkbox" data-ia="${x.id}" ${['seerr','plex','jellyfin'].includes(x.type)?'checked':''}>${esc(x.name)}</label>`).join('')}</div>
+      <div class="row" style="margin-top:12px"><button class="primary">${ic('rq')}${T('Make invite link')}</button></div><div class="err" id="ive"></div></form>
+    <div id="ivl" style="margin-top:12px"></div></div>`;
+}
+async function inviteList(){
+  const el=$('#ivl');if(!el)return;let l=[];try{l=await api('/api/invites')}catch{return}
+  const day=t=>new Date(t).toLocaleDateString(undefined,{day:'numeric',month:'short'});
+  el.innerHTML=l.length?l.map(x=>`<div class="box row" style="margin-top:8px" data-iv="${x.id}"><b>${esc(x.label||T('Invite'))}</b><span class="pill ${x.live?'ok':''}">${x.live?T('Open'):T('Closed')}</span>${x.kids?`<span class="pill">${T('Kids')} ${x.kids.age}</span>`:''}
+    <span class="mute">${x.used}${x.max?' / '+x.max:''} ${T('joined')}${x.people.length?': '+esc(x.people.join(', ')):''}${x.exp?' · '+(x.exp>Date.now()?T('until'):T('ended'))+' '+day(x.exp):''}</span><span class="grow"></span><button class="danger" data-ivd>${T('Remove')}</button></div>`).join(''):`<p class="mute" style="margin:0">${T('No invite links yet.')}</p>`;
+  el.onclick=async e=>{const b=e.target.closest('[data-ivd]');if(!b)return;const id=b.closest('[data-iv]').dataset.iv;if(!confirm(T('Remove this invite link? Profiles already made with it stay.')))return;
+    try{await api('/api/invites/'+id,'DELETE');inviteList()}catch(x){toast(x.message,'bad')}};
+}
+function inviteWire(){
+  const f=$('#ivf');if(!f)return;inviteList();
+  f.onsubmit=async e=>{e.preventDefault();$('#ive').textContent='';
+    const v=new FormData(f),b={label:v.get('label'),days:+v.get('days'),max:+v.get('max'),perms:PRESET[v.get('pre')],kids:f.kids.checked?{age:+v.get('age')}:null,access:[...f.querySelectorAll('[data-ia]:checked')].map(c=>c.dataset.ia)};
+    try{const x=await api('/api/invites','POST',b),link=location.origin+'/#invite='+x.code;f.label.value='';inviteList();
+      const o=modal(`<div class="row"><h2 style="margin:0;flex:1">${T('Invite link ready')}</h2><button data-x>${T('Close')}</button></div>
+        <p class="mute">${T('Send this link, or let them scan the code. It is shown only now.')}</p>
+        <div class="row"><input readonly value="${esc(link)}" id="ivu" style="flex:1"><button class="primary" id="ivc">${T('Copy')}</button>${navigator.share?`<button id="ivs">${T('Share')}</button>`:''}</div>
+        <div class="qrw" style="margin-top:12px">${QR.svg(link,{size:220,label:T('Invite link')})}</div>`);
+      o.querySelector('[data-x]').onclick=o.close;
+      o.querySelector('#ivc').onclick=async()=>{try{await navigator.clipboard.writeText(link);toast(T('Copied'),'ok')}catch{o.querySelector('#ivu').select()}};
+      const sh=o.querySelector('#ivs');if(sh)sh.onclick=()=>navigator.share({title:T("You're invited"),url:link}).catch(()=>{});
+    }catch(x){$('#ive').textContent=x.message}};
+}
 function resetView(token,done){
   Cinema.stopAmbient();showStage();
   $('#app').innerHTML=`<div class="gate"><form class="login box" id="rf"><span class="logo big">${LOGO}</span><h2>Choose a new password</h2>
@@ -729,7 +784,9 @@ const navGroupOf=k=>{const g=NAVG.find(([,l])=>l.includes(k));return g&&k!=='das
 const TABS=[['dash','Dashboard'],['find','Search'],['disc','Discover'],['wl','Watchlist'],['rq','Requests'],['lib','Library'],['wt','Wanted'],['dl','Downloads'],['rss','RSS'],['up','Upcoming'],['idx','Indexers'],['trk','Trackers'],['mb','Music & books'],['sub','Subtitles'],['nzb','Usenet'],['hl','Health'],['ur','Unraid'],['stats','Stats'],['goat','Stack'],['set','Settings']];
 const TYPE_TABS={trk:['qbittorrent'],find:['sonarr','radarr'],rq:['seerr'],lib:['sonarr','radarr'],wt:['sonarr','radarr'],dl:['qbittorrent','rutorrent','deluge'],rss:['qbittorrent'],up:['sonarr','radarr'],idx:['jackett','prowlarr'],mb:['lidarr','readarr'],sub:['bazarr'],nzb:['sabnzbd'],ur:['unraid'],stats:['tautulli']};
 const PICK={sub:'bazarr',nzb:'sabnzbd',dl:'torrent',rss:'qbittorrent',idx:'jackett',ur:'unraid',rq:'seerr',stats:'tautulli'};
-const visibleTabs=()=>TABS.filter(([k])=>!TYPE_TABS[k]||TYPE_TABS[k].some(t=>ofType(t).length)).filter(([k])=>k!=='disc'||Object.values(me.lists||{}).some(Boolean)).filter(([k])=>k!=='hl'||(me.role==='admin'&&services.some(s=>['sonarr','radarr','lidarr','readarr','prowlarr'].includes(s.type)))).filter(([k])=>k!=='goat'||(GOAT&&me.role==='admin')).filter(([k])=>k!=='trk'||me.role==='admin');
+const visibleTabs=()=>TABS.filter(([k])=>!TYPE_TABS[k]||TYPE_TABS[k].some(t=>ofType(t).length)).filter(([k])=>k!=='disc'||Object.values(me.lists||{}).some(Boolean)).filter(([k])=>k!=='hl'||(me.role==='admin'&&services.some(s=>['sonarr','radarr','lidarr','readarr','prowlarr'].includes(s.type)))).filter(([k])=>k!=='goat'||(GOAT&&me.role==='admin')).filter(([k])=>k!=='trk'||me.role==='admin').filter(([k])=>!me.kids||KIDS_TABS.includes(k));
+// Kids profiles get a short, simple menu: what is here to watch, and their own settings.
+const KIDS_TABS=['dash','lib','mb','set'],KIDS_DASH=['hero','foryou','ticker','rails'];
 let stSub='acct';
 // ---------- Addresses: every tab and every Settings section has its own address (/downloads, /settings/apps),
 // so the browser's back button, bookmarks and links work.
@@ -764,6 +821,7 @@ window.addEventListener('popstate',()=>{
 function goto(k){if(String(k).includes(':')){const [t,s]=k.split(':');tab=t==='st'?'set':t;stSub=s}else tab=k;render()}
 function render(){
   hideStage();Cinema.ambient();Cinema.tilt();
+  document.documentElement.classList.toggle('kids',!!me.kids);
   const tabs=visibleTabs();if(!tabs.some(t=>t[0]===tab))tab='dash';
   const pg=PAGES[tab]||['',''];
   // The menu in four groups: watching, asking for things, downloading, and running the server.
@@ -827,7 +885,7 @@ document.addEventListener('keydown',e=>{if(!me)return;const t=(e.target&&e.targe
 const rowHead=(t,sub)=>`<div class="cn-rh"><h2 class="sec">${T(t)}${sub?`<small class="cn-sub">${esc(sub)}</small>`:''}</h2><span class="cn-arrows" data-row><button type="button" data-s="-1" aria-label="Back" title="Back">‹</button><button type="button" data-s="1" aria-label="Forward" title="Forward">›</button></span></div>`;
 document.addEventListener('click',e=>{const b=e.target.closest('[data-row] [data-s]');if(!b)return;const h=b.closest('.cn-rh'),sc=h&&h.nextElementSibling;if(sc)sc.scrollBy({left:+b.dataset.s*sc.clientWidth*.8,behavior:reduceMotion()?'auto':'smooth'})});
 const DSEC=[['plexnew','Recently added to Plex'],['foryou','Because you watched'],['ticker','Poster ticker (Radarr and Sonarr)'],['hero','Featured'],['attn','Needs attention'],['tiles','Live tiles'],['rails','Recently added to Radarr and Sonarr, and top rated'],['plex','Who is watching'],['dl','Downloading now'],['sab','Usenet'],['apps','Apps'],['up','Coming up']];
-const dashLayout=()=>{const d=me.dash||{},o=(d.order||[]).filter(k=>DSEC.some(s=>s[0]===k)),keys=DSEC.map(s=>s[0]);keys.forEach((k,i)=>{if(o.includes(k))return;const prev=keys.slice(0,i).reverse().find(x=>o.includes(x));o.splice(prev?o.indexOf(prev)+1:0,0,k)});return{order:o,hidden:d.hidden||[]}};
+const dashLayout=()=>{const d=me.dash||{},o=(d.order||[]).filter(k=>DSEC.some(s=>s[0]===k)),keys=DSEC.map(s=>s[0]);keys.forEach((k,i)=>{if(o.includes(k))return;const prev=keys.slice(0,i).reverse().find(x=>o.includes(x));o.splice(prev?o.indexOf(prev)+1:0,0,k)});return{order:o,hidden:me.kids?keys.filter(k=>!KIDS_DASH.includes(k)):d.hidden||[]}};
 function dashCustomize(){
   const L=dashLayout();let order=[...L.order];const hidden=new Set(L.hidden);
   const o=modal(`<div class="row"><h2 style="margin:0;flex:1">Customize your dashboard</h2><button data-x>Close</button></div><p class="mute">Choose what you see and in which order. This is saved for your profile.</p><div id="dl3"></div>
@@ -898,7 +956,7 @@ function dashView(){
     <p class="mute" style="margin:4px 0 0">${new Date().toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'})}</p></div><span class="live" id="lv" role="status"><i></i><span>Connecting</span></span><button id="cz">${ic('set')}Customize</button></div>
     ${services.length?'':`<div class="panel"><b>Nothing connected yet</b><p class="mute">${me.role==='admin'?'Connect Sonarr, Radarr, qBittorrent or any other app to see it here.':'Ask the admin which apps you can use.'}</p>${me.role==='admin'?'<button class="primary" id="go">Connect an app</button>':''}</div>`}
     ${L.order.filter(k=>!L.hidden.includes(k)).map(k=>S[k]).join('')}`;
-  $('#cz').onclick=dashCustomize;
+  $('#cz').onclick=dashCustomize;if(me.kids)$('#cz').hidden=true;
   forYou($('#fy'));
   if(arrOn)Cinema.load(api).then(art=>{
     if(tab!=='dash'||!art)return;
@@ -1314,14 +1372,16 @@ async function usrView(){
     <div class="mute" style="margin-top:12px">and can</div><div>${PERMS.map(([k,n])=>`<label class="chk" style="margin:6px 14px 0 0"><input type="checkbox" data-pp="${k}" ${px.perms[k]?'checked':''}>${n}</label>`).join('')}</div>
     <div class="row"><button class="primary">Save</button><span class="mute">${px.linked?px.linked+' Plex profile'+(px.linked===1?'':'s')+' so far':''}</span></div><div class="err" id="pxe"></div>`:'<p class="mute" style="margin:0"><b>Add your Plex server first</b> (Settings, then Apps) so GoatMediaStackarr can check who has access.</p>'}</form>`;
   $('#m').innerHTML=pxPanel+`<div class="panel" style="margin-bottom:16px"><h3 style="margin-top:0">Add a profile</h3><form id="uf" style="margin:0;max-width:420px"><input name="name" placeholder="Name" required><input name="password" type="password" placeholder="Password (8+ characters)" required>
-      <input name="email" type="email" placeholder="Email for password recovery (optional)" autocomplete="off"><select name="role" aria-label="Role"><option value="user">User</option><option value="admin">Admin</option></select><div class="row"><button class="primary">${ic('rq')}Add profile</button></div><div class="err" id="ue"></div></form></div>
+      <input name="email" type="email" placeholder="Email for password recovery (optional)" autocomplete="off"><select name="role" aria-label="Role"><option value="user">User</option><option value="admin">Admin</option></select><div class="row"><button class="primary">${ic('rq')}Add profile</button></div><div class="err" id="ue"></div></form></div>${invitePanel()}
     ${users.map(u=>`<div class="panel" style="margin-bottom:14px" data-u="${u.id}"><div class="row"><b style="font-size:16px">${esc(u.name)}</b><span class="pill ${u.role==='admin'?'acc':''}">${u.role==='admin'?'Admin':'User'}</span>${u.id===me.id?'<span class="pill">You</span>':''}${u.twofa?'<span class="pill ok">2FA</span>':''}${u.plex?`<span class="pill acc">Plex: ${esc(u.plex.name)}</span>`:''}${u.plex&&u.libs?`<span class="pill ${u.libs.limited?'warn':'ok'}" title="Checked each time they sign in with Plex">${u.libs.limited?(u.libs.of?u.libs.n+' of '+u.libs.of+' libraries':'Libraries not checked yet'):'All libraries'}</span>`:''}<span class="grow"></span>${u.twofa&&u.id!==me.id?'<button data-t2>Turn off 2FA</button>':''}
       <button data-rp>Reset password</button>${u.id!==me.id?'<button class="danger" data-del>Delete</button>':''}</div>
       <div class="row" style="margin-top:12px"><label class="mute">Role <select data-role><option value="user" ${u.role==='user'?'selected':''}>User</option><option value="admin" ${u.role==='admin'?'selected':''}>Admin</option></select></label>
       <label class="mute" style="margin-left:12px">Phone messages <input data-nt value="${esc(u.notify||'')}" placeholder="https://ntfy.sh/…" style="min-width:230px"></label><button data-ns>Save</button></div>
       ${u.role==='user'?`<div class="row" style="margin-top:10px"><label class="mute">Plex name <input data-pn value="${esc(u.plex?u.plex.name:u.plexName||'')}" placeholder="Their Plex username" ${u.plex?'readonly':''} style="min-width:230px"></label>${u.plex?'<button data-pu>Unlink</button>':'<button data-ps>Save</button>'}</div>`:''}
       ${u.plex?`<div class="mute" style="margin-top:14px">Also hide from this profile</div><div class="row" style="margin-top:8px;gap:10px;align-items:flex-end"><label class="mute">Genres <input data-hp-g value="${esc(((u.hide||{}).genre||[]).join(', '))}" placeholder="Horror, Adult" style="min-width:170px"></label><label class="mute">Tags or labels <input data-hp-l value="${esc(((u.hide||{}).label||[]).join(', '))}" placeholder="Private" style="min-width:170px"></label><label class="mute">Content ratings <input data-hp-r value="${esc(((u.hide||{}).rating||[]).join(', '))}" placeholder="R, NC-17" style="min-width:150px"></label></div><div class="row" style="margin-top:6px"><button data-hs>Save</button><span class="mute" style="font-size:13px">${u.restr?'Restrictions found in Plex: '+esc(Object.entries(u.restr).map(([k,v])=>({contentRating:'only ratings','contentRating!':'not ratings',label:'only tags','label!':'not tags'})[k]+' '+v.join(', ')).join('; ')):'No restrictions found in Plex. They are read each time this person signs in.'}</span></div>`:''}
-      ${u.role==='user'?`<div class="mute" style="margin-top:14px">Apps this profile can open</div><div>${services.map(s=>`<label class="chk" style="margin:6px 14px 0 0"><input type="checkbox" data-ac="${s.id}" ${u.access.includes(s.id)?'checked':''}>${esc(s.name)}</label>`).join('')||'<span class="mute">Add apps first.</span>'}</div>
+      ${u.role==='user'?`<div class="row" style="margin-top:12px"><label class="chk"><input type="checkbox" data-kd ${u.kids?'checked':''}>Kids profile</label><label class="mute">up to age <select data-ka aria-label="Age">${[4,7,10,13,16].map(a=>`<option value="${a}" ${(u.kids?u.kids.age:7)===a?'selected':''}>${a}</option>`).join('')}</select></label></div>
+      <p class="mute" style="margin:4px 0 0;font-size:13px">A simpler look with only what is already here and rated for that age (titles without a rating are left out). No searching, discovering or requesting.</p>
+      <div class="mute" style="margin-top:14px">Apps this profile can open</div><div>${services.map(s=>`<label class="chk" style="margin:6px 14px 0 0"><input type="checkbox" data-ac="${s.id}" ${u.access.includes(s.id)?'checked':''}>${esc(s.name)}</label>`).join('')||'<span class="mute">Add apps first.</span>'}</div>
       <div class="row" style="margin-top:14px"><span class="mute">What this profile can do</span><select data-pre aria-label="Preset"><option value="std" ${presetOf(u)==='std'?'selected':''}>Standard</option><option value="view" ${presetOf(u)==='view'?'selected':''}>View only</option><option value="custom" ${presetOf(u)==='custom'?'selected':''}>Custom</option></select></div>
       <div>${PERMS.map(([k,n])=>`<label class="chk" style="margin:6px 14px 0 0"><input type="checkbox" data-pm="${k}" ${!u.perms||u.perms[k]!==false?'checked':''}>${n}</label>`).join('')}</div>
       <div class="row" style="margin-top:14px"><span class="mute">Requests</span><label class="mute">Limit <input type="number" min="0" max="1000" data-rl value="${u.reqLimit?u.reqLimit.n:''}" placeholder="None" style="width:80px"></label>
@@ -1333,6 +1393,7 @@ async function usrView(){
       <p class="mute" style="margin:4px 0 0;font-size:13px">What they may stream from Plex and Jellyfin each month. Empty uses the default from Settings, Limits; 0 means no limit. At the limit their streams are stopped until the 1st.</p>`:'<p class="mute" style="margin:12px 0 0">Admins can open every app and do everything.</p>'}</div>`).join('')}`;
   if($('#pxf')&&px.servers.length)$('#pxf').onsubmit=async e=>{e.preventDefault();const f=e.target,v=new FormData(f);$('#pxe').textContent='';
     try{await api('/api/plexsettings','PUT',{on:f.on.checked,sid:v.get('sid'),auto:v.get('auto')==='1',access:[...f.querySelectorAll('[data-pa]:checked')].map(c=>c.dataset.pa),perms:Object.fromEntries([...f.querySelectorAll('[data-pp]')].map(c=>[c.dataset.pp,c.checked])),hide:{genre:f.querySelector('[data-hx-g]').value,label:f.querySelector('[data-hx-l]').value,rating:f.querySelector('[data-hx-r]').value}});toast('Saved','ok');if(f.on.checked&&!PLEXLOGIN)PLEXLOGIN=true;usrView()}catch(x){$('#pxe').textContent=x.message}};
+  inviteWire();
   $('#uf').onsubmit=async e=>{e.preventDefault();$('#ue').textContent='';try{await api('/api/users','POST',Object.fromEntries(new FormData(e.target)));toast('Profile added','ok');usrView()}catch(x){$('#ue').textContent=x.message}};
   const put=async(id,b)=>{try{await api('/api/users/'+id,'PUT',b);toast('Saved','ok');return true}catch(x){toast(x.message,'bad');return false}};
   document.querySelectorAll('[data-du]').forEach(async el=>{const id=el.closest('[data-u]').dataset.u;try{const u=await api(`/api/users/${id}/usage`),gb=b=>(b/1e9).toFixed(b>=1e11?0:1)+' GB';
@@ -1343,6 +1404,7 @@ async function usrView(){
     else if(t.matches('[data-role]')){if(await put(id,{role:t.value}))usrView();else usrView()}
     else if(t.matches('[data-pre]')){if(t.value!=='custom'){card.querySelectorAll('[data-pm]').forEach(c=>c.checked=!!PRESET[t.value][c.dataset.pm]);await put(id,{perms:PRESET[t.value]})}}
     else if(t.matches('[data-rl],[data-rd]')){const n=+card.querySelector('[data-rl]').value||0;await put(id,{reqLimit:{n,days:+card.querySelector('[data-rd]').value}})}
+    else if(t.matches('[data-kd],[data-ka]')){await put(id,{kids:card.querySelector('[data-kd]').checked?{age:+card.querySelector('[data-ka]').value}:null})}
     else if(t.matches('[data-aa]')){await put(id,{autoApprove:t.checked})}
     else if(t.matches('[data-dl]')){await put(id,{dataLimit:+t.value||0})}
     else if(t.matches('[data-sl]')){await put(id,{streamLimit:t.value===''?null:+t.value})}

@@ -257,3 +257,9 @@ html[data-style=compact][data-rail=min]{--rail:56px}
  [data-style=compact] #toasts{bottom:calc(70px + env(safe-area-inset-bottom))}
  [data-style=compact] .cn-card{width:96px}
 }
+
+/* Kids profiles: bigger pictures and buttons, fewer words. */
+html.kids .rail .card, html.kids .rail .pc{min-width:160px}
+html.kids button, html.kids .btn{min-height:44px;font-size:1.05em;border-radius:16px}
+html.kids .mute.small, html.kids .meta{display:none}
+html.kids nav a, html.kids .nav a{font-size:1.1em}

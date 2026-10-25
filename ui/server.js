@@ -39,7 +39,7 @@ if (fs.existsSync(FILE)) {
 }
 const defaults = d => {
   d.users = d.users || []; d.services = d.services || []; d.requests = d.requests || []; d.log = d.log || []; d.history = d.history || [];
-  d.seedRules = d.seedRules || []; d.reports = d.reports || []; d.statusLinks = d.statusLinks || []; d.settings = d.settings || {}; d.sites = d.sites || [];
+  d.seedRules = d.seedRules || []; d.reports = d.reports || []; d.statusLinks = d.statusLinks || []; d.invites = d.invites || []; d.settings = d.settings || {}; d.sites = d.sites || [];
   return d;
 };
 // Turns the on-disk form (secrets encrypted) into the in-memory form, and upgrades the old single alert channel.
@@ -121,7 +121,7 @@ const listKeys = () => { const l = (db.settings || {}).lists || {}; return { tra
 const lists = listsLib.create({ keys: listKeys,
   urls: new Proxy({}, { get: (_, k) => String(process.env[k.toUpperCase() + '_URL'] || (DEMO ? `http://127.0.0.1:${PORT}/__demo/${k}` : { trakt: 'https://api.trakt.tv', tmdb: 'https://api.themoviedb.org/3', tvdb: 'https://api4.thetvdb.com/v4' }[k])).replace(/\/+$/, '') }),
   seerrPoster: async (kind, id) => { const s = db.services.find(x => x.type === 'seerr'); if (!s) return ''; const r = await fetch(`${s.url.replace(/\/+$/, '')}/api/v1/${kind === 'tv' ? 'tv' : 'movie'}/${id}`, { signal: AbortSignal.timeout(8000), headers: { 'X-Api-Key': s.apiKey } }); return r.ok ? ((await r.json()).posterPath || '') : ''; } });
-const pubUser = u => ({ email: u.email || '', twofa: !!(u.totp && u.totp.on), id: u.id, name: u.name, role: u.role, access: u.access, perms: u.perms || null, notify: u.notify || '', dash: u.dash || null, reqLimit: u.reqLimit || null, autoApprove: !!u.autoApprove, plex: u.plex ? { name: u.plex.name } : null, hide: cleanHide(u.hide), restr: u.plexRules ? Object.fromEntries(['contentRating', 'contentRating!', 'label', 'label!'].filter(k => (u.plexRules[k] || []).length).map(k => [k, u.plexRules[k]])) : null, libs: u.plex ? { n: ((u.plexLibs || {}).mine || []).length, of: ((u.plexLibs || {}).all || []).length, limited: libLimited(u) } : null, plexName: u.plexName || '', lists: lists.enabled(), avatar: u.avatar ? `/api/avatar/${u.id}?v=${u.avatar.v}` : '', dataLimit: u.dataLimit || 0, streamLimit: u.streamLimit == null ? null : u.streamLimit });
+const pubUser = u => ({ email: u.email || '', twofa: !!(u.totp && u.totp.on), id: u.id, name: u.name, role: u.role, access: u.access, perms: u.perms || null, notify: u.notify || '', dash: u.dash || null, reqLimit: u.reqLimit || null, autoApprove: !!u.autoApprove, plex: u.plex ? { name: u.plex.name } : null, hide: cleanHide(u.hide), restr: u.plexRules ? Object.fromEntries(['contentRating', 'contentRating!', 'label', 'label!'].filter(k => (u.plexRules[k] || []).length).map(k => [k, u.plexRules[k]])) : null, libs: u.plex ? { n: ((u.plexLibs || {}).mine || []).length, of: ((u.plexLibs || {}).all || []).length, limited: libLimited(u) } : null, plexName: u.plexName || '', lists: lists.enabled(), avatar: u.avatar ? `/api/avatar/${u.id}?v=${u.avatar.v}` : '', dataLimit: u.dataLimit || 0, streamLimit: u.streamLimit == null ? null : u.streamLimit, kids: u.kids ? { age: u.kids.age } : null });
 // What the folders the apps report mean, in words (these are the container's own folders).
 const DISK_NAMES = { '/media': 'Media library', '/data': 'Media library', '/downloads': 'Downloads', '/config': 'App data', '/': 'Container (Docker image)' };
 const DISK_ORDER = ['Media library', 'Downloads', '', 'App data', 'Container (Docker image)'];
@@ -163,7 +163,7 @@ const libIndex = () => {
       const l = await arrGet(s, s.type === 'radarr' ? '/api/v3/movie' : '/api/v3/series'), k = s.type === 'radarr' ? 'movie' : 'tv';
       for (const x of Array.isArray(l) ? l : []) if (+x.tmdbId > 0) {
         const size = k === 'movie' ? +x.sizeOnDisk || 0 : +(x.statistics || {}).sizeOnDisk || 0, e = out[k].get(+x.tmdbId);
-        if (e) e.size += size; else out[k].set(+x.tmdbId, { size, sid: s.id, id: x.id });
+        if (e) e.size += size; else out[k].set(+x.tmdbId, { size, sid: s.id, id: x.id, cert: String(x.certification || '') });
       }
     } catch {} }));
     libIdx = { t: Date.now(), v: out, p: null }; return out;
@@ -430,7 +430,7 @@ const login = (res, user) => {
       throw new Error('qBittorrent refused the request');
     };
 
-const tickets = new Map(), pending2fa = new Map(), fails2 = {}, failsPub = {}, pubCache = {}, qbListCache = {}, grabCache = new Map(), vpnCache = {}, mon = { idle: {}, up: {}, done: {}, seeded: {}, disk: {}, vpn: {}, share: {}, reqT: 0, n: 0, busy: false };
+const tickets = new Map(), pending2fa = new Map(), fails2 = {}, failsPub = {}, failsInv = {}, pubCache = {}, qbListCache = {}, grabCache = new Map(), vpnCache = {}, mon = { idle: {}, up: {}, done: {}, seeded: {}, disk: {}, vpn: {}, share: {}, reqT: 0, n: 0, busy: false };
 let homeIp = { v: '', t: 0 };
 const cut = (v, n = 200) => String(v == null ? '' : v).slice(0, n);
 
@@ -537,6 +537,17 @@ const imgOk = new Map();
 const grant = (u, svc, paths) => { if (!ownNames(u)) return; const k = u.id + '|' + svc; let e = imgOk.get(k); if (!e) { if (imgOk.size > 400) imgOk.delete(imgOk.keys().next().value); e = new Set(); imgOk.set(k, e); }
   for (const p of paths) if (p) { if (e.size > 600) e.delete(e.values().next().value); e.add(String(p)); } };
 const mayImg = (u, svc, p) => !ownNames(u) || (imgOk.get(u.id + '|' + svc) || new Set()).has(p);
+// ---------- Kids profiles: only titles rated for their age. A rating is turned into the youngest age it is meant
+// for, across the usual systems (US films and TV, UK, India, Germany, and plain ages like "12" or "16+").
+const RATING_AGE = { g: 0, 'tv-y': 0, 'tv-g': 0, u: 0, 'tv-y7': 7, 'tv-y7-fv': 7, pg: 7, 'tv-pg': 7, 'pg-13': 13, 'tv-14': 14, r: 17, 'nc-17': 18, 'tv-ma': 17, x: 18, nr: 99, unrated: 99,
+  '12a': 12, ua: 12, 'u/a': 12, 'ua 7+': 7, 'ua 13+': 13, 'ua 16+': 16, a: 18, s: 18, fsk0: 0, 'fsk 0': 0, 'fsk 6': 6, 'fsk 12': 12, 'fsk 16': 16, 'fsk 18': 18, l: 0, al: 0, tp: 0, e: 0 };
+const ratingAge = r => {
+  const v = String(r || '').trim().toLowerCase().replace(/^(us|gb|in|de|uk)[:/ ]+/, ''); if (!v) return null;
+  if (v in RATING_AGE) return RATING_AGE[v];
+  const n = v.match(/(\d{1,2})\s*\+?$/) || v.match(/^(\d{1,2})/); return n ? Math.min(99, +n[1]) : null;
+};
+// A kids profile sees a title only when its rating is known and meant for their age.
+const kidsOk = (u, rating) => { if (!u || !u.kids) return true; const a = ratingAge(rating); return a != null && a <= (u.kids.age ?? 7); };
 // Things you do not want a Plex profile to see inside a library: by genre, by label or collection (tag), or by content rating.
 const hideList = v => [...new Set((Array.isArray(v) ? v : String(v || '').split(',')).map(x => cut(String(x).trim(), 40)).filter(Boolean))].slice(0, 30);
 const cleanHide = h => ({ genre: hideList((h || {}).genre), label: hideList((h || {}).label), rating: hideList((h || {}).rating) });
@@ -551,6 +562,7 @@ async function plexTags(s, key) {
 }
 const ratingIn = (r, list) => !!r && (list.includes(r) || list.includes(r.split('/').pop()));
 function isHidden(u, t) {
+  if (u.kids && !kidsOk(u, t.rating)) return true;
   const r = hideRules(u);
   if (t.genres.some(x => r.genre.includes(x)) || t.tags.some(x => r.label.includes(x)) || ratingIn(t.rating, r.rating)) return true;
   const x = u.plexRules; if (!x) return false;
@@ -1539,6 +1551,32 @@ const goatServer = http.createServer(async (req, res) => {
       tickets.delete(String(b.ticket)); delete fails2[tk.uid]; save(); audit(u.name, 'Signed in', res.info.ip + ' (two-step)');
       return login(res, u);
     }
+    // ---------- Invite links: someone with the link makes their own profile, with the settings the admin chose.
+    const invm = p.match(/^\/api\/invite\/([\w-]{16,64})$/);
+    if (invm && (m === 'GET' || m === 'POST')) {
+      const ip = ipOf(req), fl = failsInv[ip] || { n: 0, t: 0 };
+      if (Date.now() - fl.t > 600000) fl.n = 0;
+      if (fl.n >= 20) return send(res, 429, { error: 'Too many attempts. Try again in 10 minutes.' });
+      const hh = th(invm[1]), x = db.invites.find(l => same(l.hash, hh));
+      const live = x && (!x.exp || x.exp > Date.now()) && (!x.max || (x.used || 0) < x.max);
+      if (!live) { fl.n++; fl.t = Date.now(); failsInv[ip] = fl; return send(res, 404, { error: x ? 'This invite has expired or been used up. Ask for a new one.' : 'This invite link is not valid.' }); }
+      if (m === 'GET') return send(res, 200, { label: x.label || '', by: x.by || '', server: db.settings.serverName || 'GoatMediaStackarr', kids: !!x.kids, exp: x.exp || 0 });
+      const b = await readBody(req), name = cut(b.name, 40).trim();
+      if (!name || !/^[\p{L}\p{N} ._-]+$/u.test(name)) return send(res, 400, { error: 'Pick a name (letters, numbers, spaces, dots and dashes).' });
+      if ((b.password || '').length < 8) return send(res, 400, { error: 'Pick a password of 8+ characters' });
+      if (db.users.some(u => u.name.trim().toLowerCase() === name.toLowerCase())) return send(res, 400, { error: 'That name is taken. Pick another.' });
+      const u = mkUser(name, b.password, 'user');
+      u.access = (x.access || []).filter(a => db.services.some(s2 => s2.id === a));
+      if (x.perms) u.perms = { ...x.perms };
+      if (x.reqLimit) u.reqLimit = { ...x.reqLimit };
+      if (x.autoApprove) u.autoApprove = true;
+      if (x.kids) u.kids = { age: x.kids.age };
+      if (b.email && require('./lib/smtp').ADDR.test(String(b.email).trim())) u.email = cut(b.email, 120).trim();
+      u.invite = x.id; db.users.push(u); x.used = (x.used || 0) + 1; x.people = [...(x.people || []), name].slice(-50); save();
+      audit(name, 'Joined with an invite', (x.label || x.id) + ' · ' + res.info.ip);
+      feed('@admins', 'user', 'New profile', `${name} joined with ${x.label ? 'the invite "' + x.label + '"' : 'an invite'}`, 'set:users');
+      return login(res, u);
+    }
     const pubm = p.match(/^\/api\/public\/([\w-]{20,64})$/);
     if (pubm && m === 'GET') {
       const ip = ipOf(req), fl = failsPub[ip] || { n: 0, t: 0 };
@@ -1595,8 +1633,11 @@ const goatServer = http.createServer(async (req, res) => {
       const host = (TRUST && req.headers['x-forwarded-host']) || req.headers.host; db.settings.publicUrl = (res.secure ? 'https://' : 'http://') + String(host).split(',')[0].trim(); save();
     }
     const allowed = s => svcOk(me, s);
-    const can = k => me.role === 'admin' || !me.perms || me.perms[k] !== false;
+    const can = k => me.role === 'admin' || (!(me.kids && k === 'request') && (!me.perms || me.perms[k] !== false));
     const deny = (k, what) => can(k) ? false : (send(res, 403, { error: `Your profile cannot ${what}.` }), true);
+    // Kids profiles: only what is already here and rated for their age; no finding new things.
+    const kidCard = (idx, c) => !me.kids || !!(c && idx && (e => e && kidsOk(me, e.cert))(idx[c.type === 'tv' ? 'tv' : 'movie'].get(+c.id)));
+    if (me.kids && (p === '/api/search' || p === '/api/discover' || p === '/api/seerr/search' || p === '/api/upcoming' || p.startsWith('/api/watchlist') && m !== 'GET')) return send(res, 403, { error: 'Not on a kids profile.' });
     if (p === '/api/live' && m === 'GET') {
       if (liveClients.size >= 60) return send(res, 503, { error: 'Too many open live views' });
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
@@ -2134,7 +2175,7 @@ const goatServer = http.createServer(async (req, res) => {
       if (!d || !d.name) return send(res, 404, { error: sv ? 'Seerr does not know this person.' : 'This page needs Seerr, or a TMDB key under Settings → Discover lists.' });
       const pk = (a, b) => d[a] != null ? d[a] : d[b], idx = await libIndex().catch(() => null), seen = new Map();
       for (const [list, crew] of [[(cr && cr.cast) || [], false], [(cr && cr.crew) || [], true]]) for (const x of Array.isArray(list) ? list : []) {
-        const c = mediaCard(x, idx); if (!c) continue;
+        const c = mediaCard(x, idx); if (!c || !kidCard(idx, c)) continue;
         const role = cut(crew ? x.job : x.character, 120), k = c.type + ':' + c.id, e = seen.get(k);
         if (e) { if (role && !e.role.includes(role) && e.role.length < 160) e.role += (e.role ? ', ' : '') + role; continue; }
         seen.set(k, { ...c, role, crew });
@@ -2188,7 +2229,7 @@ const goatServer = http.createServer(async (req, res) => {
         if (sv) rec = await call(sv, `/api/v1/${sd.type}/${sd.id}/recommendations`).catch(() => null);
         if (!((rec && rec.results) || []).length && listKeys().tmdb) rec = await lists.recommendations(sd.type, sd.id).catch(() => null);
         const items = ((rec && rec.results) || []).map(x => mediaCard(x, idx, x.mediaType || x.media_type || sd.type)).filter(Boolean)
-          .filter(x => !watched.has(x.type + ':' + x.id) && !shown.has(x.type + ':' + x.id) && !seeds.some(y => y.type === x.type && y.id === x.id)).slice(0, 16);
+          .filter(x => kidCard(idx, x) && !watched.has(x.type + ':' + x.id) && !shown.has(x.type + ':' + x.id) && !seeds.some(y => y.type === x.type && y.id === x.id)).slice(0, 16);
         items.forEach(x => shown.add(x.type + ':' + x.id));
         if (items.length >= 2) rows.push({ because: { type: sd.type, id: sd.id, title: sd.title }, source: sd.source, items: items.map(({ votes, date, ...x }) => x) });
         if (rows.length >= 3) break;
@@ -2210,7 +2251,8 @@ const goatServer = http.createServer(async (req, res) => {
     if (p === '/api/collection' && m === 'GET') {
       const id = Math.round(+new URL(req.url, 'http://x').searchParams.get('id'));
       if (!(id > 0)) return send(res, 400, { error: 'Bad request' });
-      const c = await collOf(id); return c ? send(res, 200, c) : send(res, 404, { error: 'This collection is not known (it needs Seerr, or a TMDB key).' });
+      const c = await collOf(id); if (c && me.kids) { const idx = await libIndex().catch(() => null); c.parts = c.parts.filter(x => kidCard(idx, x)); if (!c.parts.length) return send(res, 404, { error: 'Not found' }); }
+      return c ? send(res, 200, c) : send(res, 404, { error: 'This collection is not known (it needs Seerr, or a TMDB key).' });
     }
     if ((r = p.match(/^\/api\/collection\/(\d+)\/request$/)) && m === 'POST') {
       if (deny('request', 'make requests')) return;
@@ -2228,8 +2270,8 @@ const goatServer = http.createServer(async (req, res) => {
       const sv = arr(db.services.find(x => x.id === new URL(req.url, 'http://x').searchParams.get('sid')));
       if (!sv || sv.type !== 'radarr') return send(res, 404, { error: 'Pick a Radarr' });
       const [cl, mv] = await Promise.all([call(sv, '/api/v3/collection').catch(() => null), call(sv, '/api/v3/movie')]);
-      const have = new Set((Array.isArray(mv) ? mv : []).map(x => +x.tmdbId)), byColl = new Map();
-      for (const x of Array.isArray(mv) ? mv : []) { const c = x.collection; if (c && +c.tmdbId > 0) { const e = byColl.get(+c.tmdbId) || { id: +c.tmdbId, name: c.title || c.name || '', have: 0, total: 0, poster: '' }; e.have++; if (!e.poster) e.poster = ((x.images || []).find(i => i.coverType === 'poster') || {}).remoteUrl || ''; byColl.set(+c.tmdbId, e); } }
+      const mvs = (Array.isArray(mv) ? mv : []).filter(x => kidsOk(me, x.certification)), have = new Set(mvs.map(x => +x.tmdbId)), byColl = new Map();
+      for (const x of mvs) { const c = x.collection; if (c && +c.tmdbId > 0) { const e = byColl.get(+c.tmdbId) || { id: +c.tmdbId, name: c.title || c.name || '', have: 0, total: 0, poster: '' }; e.have++; if (!e.poster) e.poster = ((x.images || []).find(i => i.coverType === 'poster') || {}).remoteUrl || ''; byColl.set(+c.tmdbId, e); } }
       for (const c of Array.isArray(cl) ? cl : []) {
         const e = byColl.get(+c.tmdbId) || { id: +c.tmdbId, name: c.title, have: 0, total: 0, poster: '' };
         e.name = c.title || e.name; e.total = (c.movies || []).length || e.total; e.have = (c.movies || []).filter(m2 => have.has(+m2.tmdbId)).length || e.have;
@@ -2252,6 +2294,7 @@ const goatServer = http.createServer(async (req, res) => {
       const credits = d.credits || {}, vids = (d.relatedVideos || ((d.videos || {}).results || []).map(x => ({ type: x.type, site: x.site, key: x.key, name: x.name })));
       const trailer = (Array.isArray(vids) ? vids : []).find(x => /^trailer$/i.test(x.type || '') && /youtube/i.test(x.site || '') && /^[\w-]{6,20}$/.test(x.key || ''));
       const idx = await libIndex().catch(() => null), inLib = idx && idx[type].get(id), libSvc = inLib && db.services.find(x => x.id === inLib.sid && allowed(x));
+      if (me.kids && !kidCard(idx, { type, id })) return send(res, 404, { error: 'Not found' });
       const reqs = db.requests.filter(x => x.mediaType === type && +x.mediaId === id && (me.role === 'admin' || x.uid === me.id));
       const date = String(v('releaseDate', 'release_date') || v('firstAirDate', 'first_air_date') || '');
       const rt = +v('runtime', 'runtime') || +((v('episodeRunTime', 'episode_run_time') || [])[0]) || 0;
@@ -2260,7 +2303,7 @@ const goatServer = http.createServer(async (req, res) => {
         genres: (d.genres || []).map(g => cut(g.name, 40)).filter(Boolean).slice(0, 6), status: cut(d.status, 40),
         studio: cut(((type === 'tv' ? d.networks : d.productionCompanies || d.production_companies) || [])[0] && ((type === 'tv' ? d.networks : d.productionCompanies || d.production_companies)[0].name), 80),
         cast: (credits.cast || []).slice(0, 20).map(c => ({ id: Math.round(+c.id) || 0, name: cut(c.name, 80), role: cut(c.character, 80), photo: img(pk(c, 'profilePath', 'profile_path'), 'w185') })),
-        similar: (((rec && rec.results) || [])).map(x => mediaCard(x, idx, x.mediaType || x.media_type || type)).filter(Boolean).slice(0, 20).map(({ votes, date, ...x }) => x),
+        similar: (((rec && rec.results) || [])).map(x => mediaCard(x, idx, x.mediaType || x.media_type || type)).filter(x => x && kidCard(idx, x)).slice(0, 20).map(({ votes, date, ...x }) => x),
         seasons: type === 'tv' ? (d.seasons || []).filter(x => +pk(x, 'seasonNumber', 'season_number') > 0).map(x => ({ n: +pk(x, 'seasonNumber', 'season_number'), episodes: +pk(x, 'episodeCount', 'episode_count') || 0, name: cut(x.name, 80), date: String(pk(x, 'airDate', 'air_date') || '').slice(0, 10) })) : [],
         trailer: trailer ? trailer.key : '', seerr: sv ? sv.id : '', available: +((d.mediaInfo || {}).status) || 0,
         watch: (db.watchlist || []).some(w => w.uid === me.id && w.type === type && w.id === id),
@@ -2288,7 +2331,7 @@ const goatServer = http.createServer(async (req, res) => {
       if (!s) return send(res, 404, { error: 'Pick a Sonarr or Radarr service' });
       const [d, profs] = await Promise.all([call(s, s.type === 'sonarr' ? '/api/v3/series' : '/api/v3/movie', { signal: AbortSignal.timeout(60000) }), call(s, '/api/v3/qualityprofile').catch(() => [])]);
       const prof = {}; (Array.isArray(profs) ? profs : []).forEach(q => { prof[q.id] = q.name; });
-      return send(res, 200, d.map(x => {
+      return send(res, 200, d.filter(x => kidsOk(me, x.certification)).map(x => {
         const st = x.statistics || {}, img = (x.images || []).find(i => i.coverType === 'poster') || {}, tv = s.type === 'sonarr', rt = x.ratings || {};
         const rating = tv ? +rt.value || 0 : +((rt.imdb || {}).value || (rt.tmdb || {}).value || rt.value) || 0;
         return { id: x.id, tmdb: +x.tmdbId > 0 ? +x.tmdbId : 0, title: x.title, year: x.year, poster: img.remoteUrl || x.remotePoster, fanart: mediaUrl(s, x, 'fanart').url, overview: (x.overview || '').slice(0, 600),
@@ -2315,7 +2358,7 @@ const goatServer = http.createServer(async (req, res) => {
     }
     if (p === '/api/artwork' && m === 'GET') {
       const svcs = db.services.filter(arr);
-      const all = (await Promise.all(svcs.map(s => artItems(s).catch(() => [])))).flat().map(({ fl, ...x }) => x);
+      const all = (await Promise.all(svcs.map(s => artItems(s).catch(() => [])))).flat().filter(x => kidsOk(me, x.cert)).map(({ fl, ...x }) => x);
       wpKick();
       const newest = [...all].sort((a, b) => String(b.added).localeCompare(String(a.added))), top = [...all].sort((a, b) => b.rating - a.rating);
       const hero = [], seen = new Set(), add = x => { const k = x.sid + ':' + x.id; if (!seen.has(k) && x.fanart && x.overview && hero.length < 8) { seen.add(k); hero.push(x); } };
@@ -3006,6 +3049,27 @@ const goatServer = http.createServer(async (req, res) => {
       const q = new URL(req.url, 'http://x').searchParams, sc = Object.fromEntries(SCOPES.map(k => [k, q.get(k) === '1']));
       return send(res, 200, await statusData({ name: cut(q.get('name'), 60).trim() || 'Status page', note: cut(q.get('note'), 160).trim(), look: LOOKS.includes(q.get('look')) ? q.get('look') : 'auto', scopes: sc }));
     }
+    const invOut = x => ({ id: x.id, label: x.label || '', at: x.at, by: x.by || '', exp: x.exp || 0, max: x.max || 0, used: x.used || 0, people: x.people || [], access: x.access || [],
+      perms: x.perms || null, kids: x.kids || null, reqLimit: x.reqLimit || null, autoApprove: !!x.autoApprove, hint: x.hint || '',
+      live: (!x.exp || x.exp > Date.now()) && (!x.max || (x.used || 0) < x.max) });
+    if (p === '/api/invites' && m === 'GET') return send(res, 200, db.invites.map(invOut).reverse());
+    if (p === '/api/invites' && m === 'POST') {
+      const b = await readBody(req); if (db.invites.length >= 100) return send(res, 400, { error: 'That is a lot of invites. Remove some old ones first.' });
+      const code = crypto.randomBytes(18).toString('base64url'), days = Math.round(+b.days || 0), max = Math.round(+b.max || 0);
+      const n = Math.round(+(b.reqLimit || {}).n), d = Math.round(+(b.reqLimit || {}).days);
+      const x = { id: uid(), hash: th(code), hint: code.slice(0, 4), label: cut(b.label, 60).trim(), at: Date.now(), by: me.name,
+        exp: days > 0 ? Date.now() + Math.min(days, 365) * 864e5 : 0, max: max > 0 ? Math.min(max, 1000) : 0, used: 0,
+        access: (Array.isArray(b.access) ? b.access : []).filter(a => db.services.some(s2 => s2.id === a)),
+        perms: b.perms ? Object.fromEntries(['add', 'control', 'remove', 'request'].map(k => [k, b.perms[k] !== false])) : null,
+        kids: b.kids ? { age: Math.min(17, Math.max(0, Math.round(+b.kids.age) || 7)) } : null,
+        reqLimit: n > 0 ? { n: Math.min(n, 1000), days: Math.min(Math.max(d || 7, 1), 365) } : null, autoApprove: !!b.autoApprove };
+      db.invites.push(x); save(); audit(me.name, 'Made an invite link', x.label || x.id);
+      return send(res, 200, { ...invOut(x), code });
+    }
+    if ((r = p.match(/^\/api\/invites\/(\w+)$/)) && m === 'DELETE') {
+      const x = db.invites.find(l => l.id === r[1]); if (!x) return send(res, 404, { error: 'Not found' });
+      db.invites = db.invites.filter(l => l !== x); save(); audit(me.name, 'Removed an invite link', x.label || x.id); return send(res, 200, {});
+    }
     if (p === '/api/statuslinks' && m === 'POST') {
       const b = await readBody(req), token = crypto.randomBytes(24).toString('base64url');
       const x = { id: uid(), name: cut(b.name, 60).trim() || 'Status page', note: cut(b.note, 160).trim(), look: LOOKS.includes(b.look) ? b.look : 'auto', hash: th(token), at: Date.now(), used: 0, scopes: linkScopes(b) };
@@ -3136,12 +3200,13 @@ const goatServer = http.createServer(async (req, res) => {
       const u = userOf(r[1]), b = await readBody(req); if (!u) return send(res, 404, { error: 'Not found' });
       if (b.role && ['admin', 'user'].includes(b.role) && b.role !== u.role) {
         if (u.role === 'admin' && db.users.filter(x => x.role === 'admin').length < 2) return send(res, 400, { error: 'There must be at least one admin' });
-        u.role = b.role;
+        u.role = b.role; if (u.role === 'admin') delete u.kids;
       }
       if ('hide' in b) u.hide = cleanHide(b.hide);
       if ('perms' in b) u.perms = b.perms ? Object.fromEntries(['add', 'control', 'remove', 'request'].map(k => [k, b.perms[k] !== false])) : undefined;
       if ('reqLimit' in b) { const n = Math.round(+(b.reqLimit || {}).n), d = Math.round(+(b.reqLimit || {}).days); u.reqLimit = n > 0 ? { n: Math.min(n, 1000), days: Math.min(Math.max(d || 7, 1), 365) } : undefined; }
       if ('autoApprove' in b) u.autoApprove = !!b.autoApprove;
+      if ('kids' in b) { if (b.kids && u.role === 'admin') return send(res, 400, { error: 'An admin cannot be a kids profile.' }); u.kids = b.kids ? { age: Math.min(17, Math.max(0, Math.round(+b.kids.age) || 7)) } : undefined; if (mon.forYou) delete mon.forYou[u.id]; }
       if ('dataLimit' in b) { const gb = Math.round(+b.dataLimit || 0); u.dataLimit = gb > 0 ? Math.min(gb, 1e6) : undefined; }
       if ('streamLimit' in b) { u.streamLimit = b.streamLimit == null || b.streamLimit === '' ? undefined : limitGb(b.streamLimit); const e = streamOf(u); if (e) { delete e.warn; delete e.stopErr; } }
       if ('plexName' in b) { const v = cut(b.plexName, 60).trim(); if (v && u.role === 'admin') return send(res, 400, { error: 'Admins sign in with their GoatMediaStackarr password.' }); u.plexName = v || undefined; if (!v) delete u.plex; }

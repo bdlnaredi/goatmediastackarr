@@ -4,12 +4,15 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- Kids profiles (Settings → Users, *Kids profile* and an age): a simpler look with only what is already in the library and rated for that age; titles without a rating are left out. No searching, discovering or requesting, and the dashboard keeps to the pictures and suggestions.
+- Invite links (Settings → Users): make a link (or a QR code) that lets people make their own profile, with the apps, rights and kids setting you choose. It can work for a day, a week, a month or until removed, and for one person or more; the list shows who joined with each.
 - Watchlist (web page: Watch → Watchlist): each person keeps a list of what they want to watch, from any title's page. It shows which are in the library, requested or not yet, and the person gets a message when one lands in the library. Admins can have whatever goes on a watchlist requested by itself (request limits and approval still apply).
 - Collections: a movie's page says which collection it belongs to (every Bond film, say); the collection's page lists every film in it, which you have, and *Request the missing ones* asks for the rest in one go. *Collections* in the Library (Radarr) lists them all with how many of each you have.
 - *Because you watched …* on the dashboard: suggestions from what each person actually watched (their Jellyfin account, or Plex through Tautulli), or else from what they asked for and put on their watchlist.
 - Fix problems by itself (the Health page, on by default): a download that failed, or that has not moved for a day (or the hours you choose), is removed, blocked and searched for again by Sonarr, Radarr or Lidarr; an app inside the container that stops answering is restarted (at most once in 30 minutes and three times a day, never one you stopped by hand, never during its first start). Every fix is listed on the Health page and told to admins.
 - Backups of the whole stack (Settings → Backup): every app's settings and databases in one file, without artwork, caches and logs: Sonarr, Radarr, Lidarr, Prowlarr, Bazarr, qBittorrent, ruTorrent, Deluge, SABnzbd, Jellyfin, Seerr, Tautulli, Plex, the VPN files, and GoatMediaStackarr's keys, logins, profiles and history. Databases are copied with SQLite's own backup, so one in use is still copied whole. Every day or once a week at a time you choose, keeping the last few; or *Back up now*. Download one, or drop one in the backups folder to move to a new server.
 - *Put back* (guided): choose which apps to put back, and only those are stopped, replaced and started again; the apps are then connected to each other again. A copy of how they were just before is made first, so a restore can be undone, and a restore that fails changes nothing. A failed backup or restore is told to admins (the bell, and alert channels that want it).
+
 ## v0.7.5 — 2026-10-24
 
 - A new design for the web page, in four styles to choose from under Appearance → Style: **Cinema** (dark and poster-first like a streaming app, with the menu as a bar across the top), **Dashboard** (clean cards and clear lists, information first), **Glass** (frosted panels over your artwork) and **Compact** (flat and tight, more on every screen). Each works in light and dark and with every accent colour.
@@ -19,6 +22,7 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 - The changelog is kept by version, with dates, and each GitHub release now carries its version's notes.
 - A new README, with new screenshots of every style on a computer, a phone and the app.
 - Phones: the Stack page no longer gets wider than the screen (a long VPN provider name in its list), which pushed the bottom bar out of view; the setup checklist lines up its ticks with their text. Pictures that cannot load leave an empty space instead of a broken-image sign.
+
 ## v0.7.0 — 2026-10-24
 
 - Stack page: the logins made for you (qBittorrent, ruTorrent, Deluge, Jellyfin) each have a *Change* button to set your own password (or make a random one). The app takes it straight away, and Sonarr, Radarr, Lidarr, Prowlarr and GoatMediaStackarr itself are given the new one, so nothing loses its connection.
