@@ -211,7 +211,7 @@ class ScreensTest {
         // A show's episodes have their story, and a missing one can be searched for.
         tap("Library"); waitFor("Paper Moon")
         compose.onAllNodesWithText("Paper Moon").onFirst().performClick(); waitFor("Search now")
-        scrollTo("Season 3"); tap("Season 3"); waitFor("The storm cuts")
+        scrollTo("Season 3"); tap("Season 3"); waitFor("The storm cuts"); waitFor("Search season")
         scrollTo("5. Chapter 21"); tap("5. Chapter 21"); waitFor("Choose a release"); shot("33-episodes")
         back()
         tap("Downloads"); waitFor("Every category"); waitFor("Add a link"); shot("34-downloads-categories")

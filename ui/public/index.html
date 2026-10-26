@@ -741,7 +741,7 @@ function codeView(ticket){
     try{await api('/api/login/2fa','POST',{ticket,code:e.target.code.value.trim()});start()}
     catch(x){$('#e').textContent=x.message;if(/start again|expired|too many/i.test(x.message))setTimeout(()=>authView(false,false),1500)}};
 }
-const ICONS={goat:'<path d="M12 3 3 7.5l9 4.5 9-4.5L12 3zM3 12l9 4.5 9-4.5M3 16.5 12 21l9-4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>',ext:'<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+const ICONS={rel:'<path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',goat:'<path d="M12 3 3 7.5l9 4.5 9-4.5L12 3zM3 12l9 4.5 9-4.5M3 16.5 12 21l9-4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>',ext:'<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
  mb:'<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
  sub:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 11h3M13 11h4M7 15h5M15 15h2"/>',
  nzb:'<path d="M7 18a4 4 0 0 1-.6-7.96A6 6 0 0 1 18 9a4.5 4.5 0 0 1-.5 9H7z"/><path d="M12 11v6m0 0-2.5-2.5M12 17l2.5-2.5"/>',
@@ -1938,7 +1938,7 @@ async function seriesDialog(s,x,cb){
   const row=e=>`<div class="box row" style="padding:9px 0;margin:0;flex-wrap:wrap;row-gap:4px"><span class="mute" style="min-width:34px">${e.num}</span><div class="grow" style="min-width:0"><span style="word-break:break-word">${esc(e.title||'To be announced')}</span> <span class="mute">${e.date?esc(new Date(e.date).toLocaleDateString()):''}${e.runtime?' · '+e.runtime+' min':''}</span></div>
     ${e.has?`<span class="pill ok">${esc(e.quality||'Downloaded')}</span>`:e.aired?'<span class="pill bad">Missing</span>':'<span class="pill">Not aired</span>'}
     <label class="tgl" title="Monitor this episode"><input type="checkbox" data-em="${e.id}" ${e.monitored?'checked':''} ${canAdd?'':'disabled'} aria-label="Monitor episode ${e.num}"></label>
-    ${canAdd?`<button class="icon" data-es="${e.id}" aria-label="Search for episode ${e.num}" title="Search for this episode">${ic('find')}</button>`:'<span style="width:34px"></span>'}
+    ${canAdd?`<button class="icon" data-es="${e.id}" aria-label="Search for episode ${e.num}" title="Search for this episode">${ic('find')}</button><button class="icon" data-ei="${e.id}" aria-label="${T('Choose a release')}: ${e.num}" title="${T('Choose a release (interactive search)')}">${ic('rel')}</button>`:'<span style="width:34px"></span>'}
     ${e.overview?`<div class="mute epo" data-eo title="Tap to read all of it" style="flex-basis:100%;padding-left:42px;margin-top:0">${esc(e.overview)}</div>`:''}</div>`;
   const draw=()=>{
     const tot=d.episodes.length,have=d.episodes.filter(q=>q.has).length;
@@ -1950,7 +1950,7 @@ async function seriesDialog(s,x,cb){
       <h3 style="margin:18px 0 8px">Seasons</h3>${nums.map(n=>{const st=stat(n),se=seas(n),isOpen=open.has(n);
       return `<div class="panel" style="padding:0;margin-bottom:10px;overflow:hidden"><div class="row" data-sh="${n}" style="padding:12px 14px;cursor:pointer;gap:10px"><span class="chev ${isOpen?'o':''}">${ic('chev')}</span><b>${n===0?'Specials':'Season '+n}</b>
         <span class="mute">${st.have}/${st.total} episodes${st.size?', '+fmt(st.size):''}</span><span class="grow"></span>
-        <label class="tgl" title="Monitor this season"><input type="checkbox" data-sm="${n}" ${se.monitored?'checked':''} ${canAdd?'':'disabled'} aria-label="Monitor season ${n}"></label>${canAdd?`<button data-ss="${n}">Search season</button>`:''}</div>
+        <label class="tgl" title="Monitor this season"><input type="checkbox" data-sm="${n}" ${se.monitored?'checked':''} ${canAdd?'':'disabled'} aria-label="Monitor season ${n}"></label>${canAdd?`<button data-ss="${n}">Search season</button><button data-si="${n}" title="${T('Choose a season pack yourself from what your indexers have')}">${T('Choose a release')}</button>`:''}</div>
         ${isOpen?`<div style="border-top:1px solid var(--line);padding:2px 14px">${st.e.map(row).join('')||'<p class="mute">No episodes listed.</p>'}</div>`:''}</div>`}).join('')||'<p class="mute">No seasons found.</p>'}`;
   };
   draw();
@@ -1965,6 +1965,9 @@ async function seriesDialog(s,x,cb){
     const eo=e.target.closest('[data-eo]');if(eo){eo.classList.toggle('o');return}
     const sh=e.target.closest('[data-sh]');
     if(sh&&!e.target.closest('label,button')){const n=+sh.dataset.sh;open.has(n)?open.delete(n):open.add(n);draw();return}
+    const si=e.target.closest('[data-si]'),ei=e.target.closest('[data-ei]');
+    if(si){const n=+si.dataset.si;releasePicker(s.id,`id=${x.id}&season=${n}`,`${x.title} · ${n===0?'Specials':'Season '+n}`);return}
+    if(ei){const ep=d.episodes.find(q=>q.id===+ei.dataset.ei);releasePicker(s.id,`id=${ep.id}`,`${x.title} · S${z2(ep.season)}E${z2(ep.num)}`);return}
     const ss=e.target.closest('[data-ss]'),es=e.target.closest('[data-es]'),sa=e.target.closest('[data-sa]'),sx=e.target.closest('[data-sx]'),rm=e.target.closest('[data-rm]');
     if(ss){ss.disabled=true;try{await api('/api/auto','POST',{sid:s.id,id:x.id,scope:'season',season:+ss.dataset.ss});toast('Searching season '+ss.dataset.ss,'ok')}catch(ex){toast(ex.message,'bad')}ss.disabled=false}
     if(es){const ep=d.episodes.find(q=>q.id===+es.dataset.es);showDetail({title:x.title,sub:`S${z2(ep.season)}E${z2(ep.num)} ${ep.title}`,date:ep.date,poster:x.poster,overview:ep.overview,about:x.overview,sid:s.id,id:ep.id})}
@@ -2021,6 +2024,19 @@ function showDetail(x){
         try{const y=r[b.dataset.g];await api('/api/grab','POST',{sid:x.sid,guid:y.guid,indexerId:y.indexerId});b.textContent='Sent to downloader'}
         catch(e){b.disabled=false;b.textContent='Grab';st.textContent=e.message}});
     }catch(e){rl.innerHTML=`<div class="err">${esc(e.message)}</div>`}};
+}
+// Interactive search on its own page: what the indexers have for an episode, a whole season or a movie; Grab sends one to the downloader.
+function releasePicker(sid,query,title){
+  const o=modal(`<button class="pgback" data-x>${ic('back')}Back</button><h2 style="margin:4px 0 0">${T('Choose a release')}</h2><p class="mute" style="margin:2px 0 12px">${esc(title)}</p><div id="rl"><p class="mute">${T('Searching your indexers, this can take up to a minute…')}</p>${skel(3)}</div>`,true);
+  o.querySelector('[data-x]').onclick=o.close;
+  api(`/api/releases?sid=${encodeURIComponent(sid)}&${query}`).then(r=>{const rl=o.querySelector('#rl');if(!rl)return;
+    rl.innerHTML=r.map((y,i)=>`<div class="box rel"><div class="row" style="align-items:flex-start;gap:8px"><b class="grow" style="overflow-wrap:anywhere">${y.link?`<a href="${esc(y.link)}" target="_blank" rel="noopener noreferrer">${esc(y.title)}</a>`:esc(y.title)}</b></div>
+      <div class="chips" style="margin-top:6px"><span class="pill acc">${y.langs.length?esc(y.langs.join(', ')):T('Language unknown')}</span>${y.protocol?`<span class="pill">${y.protocol==='usenet'?'Usenet':'Torrent'}</span>`:''}${y.quality?`<span class="pill">${esc(y.quality)}</span>`:''}</div>
+      <div class="mute" style="margin-top:6px">${fmt(y.size)}${y.protocol==='usenet'?'':` · ${y.seeders} ${T('seeders')}`} · ${esc(y.indexer||'')}${y.group?' · '+esc(y.group):''} · ${y.age}d</div>
+      ${y.rejected?`<div style="color:var(--bad-t)">${esc(y.why||'Rejected')}</div>`:''}<button data-g="${i}" style="margin-top:6px">${T('Grab')}</button></div>`).join('')||`<p class="mute">${T('No releases found')}.</p>`;
+    rl.querySelectorAll('[data-g]').forEach(b=>b.onclick=async()=>{b.disabled=true;b.textContent=T('Sending…');
+      try{const y=r[b.dataset.g];await api('/api/grab','POST',{sid,guid:y.guid,indexerId:y.indexerId});b.textContent=T('Sent to downloader')}catch(e){b.disabled=false;b.textContent=T('Grab');toast(e.message,'bad')}});
+  }).catch(e=>{const rl=o.querySelector('#rl');if(rl)rl.innerHTML=`<div class="err">${esc(e.message)}</div>`});
 }
 const STAGE={pending:['Requested','warn'],approved:['Approved','acc'],searching:['Approved, looking for a download','acc'],downloading:['Downloading','acc'],importing:['Copying to the library','acc'],library:['In the library, waiting for Plex','acc'],partial:['Partly available','ok'],available:['Available','ok'],failed:['Download failed','bad'],declined:['Declined','bad']};
 const stagePill=x=>{const k=x.stage||x.status,st=STAGE[k]||[k,''],pct=k==='downloading'&&x.progress!=null?' '+Math.round(x.progress*100)+'%':'';

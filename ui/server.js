@@ -2909,7 +2909,10 @@ const goatServer = http.createServer(async (req, res) => {
     if (p === '/api/releases' && m === 'GET') {
       const q = new URL(req.url, 'http://x').searchParams, s = arr(db.services.find(x => x.id === q.get('sid')));
       if (!s || !+q.get('id')) return send(res, 400, { error: 'Bad request' });
-      const rel = await call(s, `/api/v3/release?${s.type === 'sonarr' ? 'episodeId' : 'movieId'}=${+q.get('id')}`, { signal: AbortSignal.timeout(90000) });
+      // A whole season (season packs) when a season number is given with the series; otherwise one episode or movie.
+      const season = q.get('season') != null && q.get('season') !== '' && Number.isInteger(+q.get('season')) && +q.get('season') >= 0 ? +q.get('season') : null;
+      const what = s.type === 'sonarr' ? (season != null ? `seriesId=${+q.get('id')}&seasonNumber=${season}` : `episodeId=${+q.get('id')}`) : `movieId=${+q.get('id')}`;
+      const rel = await call(s, `/api/v3/release?${what}`, { signal: AbortSignal.timeout(90000) });
       // A page about the release, if the indexer gives one. Links that carry a key or passkey are left out, so no secret ever reaches the browser.
       const page = x => { for (const v of [x.infoUrl, x.guid]) { try { const u = new URL(String(v || '')); if (/^https?:$/.test(u.protocol) && !/(api_?key|passkey|token|secret|pass|auth|rsskey|key)=/i.test(u.search) && !u.username && !u.password) return u.href.slice(0, 600); } catch {} } return ''; };
       return send(res, 200, rel.map(x => ({ guid: x.guid, indexerId: x.indexerId, title: x.title, size: x.size, seeders: x.seeders || 0, leechers: x.leechers || 0,

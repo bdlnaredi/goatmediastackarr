@@ -255,6 +255,14 @@ fun DetailScreen(sid: String, kind: String, id: Long) {
                             Spacer(Modifier.height(8.dp))
                             Bar(if (eps.isEmpty()) 0f else have.toFloat() / eps.size, color = if (have == eps.size) g.good else g.primary, height = 4.dp)
                             if (isOpen) {
+                                // The whole season: let Sonarr pick, or choose a season pack yourself.
+                                if (ctx.user.can("add") && aired > 0) Row(Modifier.padding(top = 4.dp)) {
+                                    androidx.compose.material3.TextButton(onClick = {
+                                        act("Searching season ${s.n}") { ctx.api.send("POST", "/api/auto", buildJsonObject { put("sid", sid); put("id", id); put("scope", "season"); put("season", s.n) }) }
+                                    }) { Icon(Icons.Rounded.Search, null, tint = g.primary, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text(com.bdlnaredi.goatstack.data.tr("Search season"), color = g.primary) }
+                                    androidx.compose.material3.TextButton(onClick = { ctx.releases(sid, id, "${x.title} · ${com.bdlnaredi.goatstack.data.tr("Season")} ${s.n}", s.n) }) {
+                                        Icon(Icons.Rounded.Search, null, tint = g.primary, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text(com.bdlnaredi.goatstack.data.tr("Choose a release"), color = g.primary) }
+                                }
                                 Spacer(Modifier.height(8.dp))
                                 eps.sortedBy { it.num }.forEach { e ->
                                     val epOpen = openEp[e.id] == true

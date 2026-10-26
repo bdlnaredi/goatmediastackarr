@@ -46,14 +46,14 @@ import kotlinx.serialization.json.put
  * [id] is the Radarr movie or the Sonarr episode.
  */
 @Composable
-fun ReleasesScreen(sid: String, id: Long, title: String) {
+fun ReleasesScreen(sid: String, id: Long, title: String, season: Int = -1) {
     val ctx = LocalCtx.current
     val g = LocalGoat.current
     val scope = rememberCoroutineScope()
     val toast = toaster()
     val uri = LocalUriHandler.current
     val sent = remember { mutableStateMapOf<String, String>() } // guid -> "sending" | "sent"
-    val data = rememberLoad(sid, id) { ctx.api.get<List<Release>>("/api/releases?sid=$sid&id=$id") }
+    val data = rememberLoad(sid, id, season) { ctx.api.get<List<Release>>("/api/releases?sid=$sid&id=$id" + if (season >= 0) "&season=$season" else "") }
     Column(Modifier.fillMaxSize()) {
         BackPage("Choose a release", title)
         LoadView(data, loading = {

@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- Interactive search for a whole season and for each episode, on the web page and in the app: each season has *Choose a release* (season packs your indexers have) next to *Search season*, and each episode has its own *Choose a release* button beside its search, instead of only inside the episode's page.
+
 ## v0.9.6 — 2026-10-26
 
 - Require two-step sign-in (Settings → Users): for nobody, admins or everyone, or for chosen profiles. Someone who has not set it up is asked to the next time they sign in, and nothing else opens until they do; it then cannot be turned off while it is required. People who sign in with Plex are left out, except admins.

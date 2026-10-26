@@ -75,7 +75,7 @@ class Ctx(val app: AppState, val me: Me, val user: User, val nav: NavHostControl
     fun back() { nav.popBackStack() }
     fun item(sid: String, kind: String, id: Long) = go("item/$sid/$kind/$id")
     /** Interactive search for one Radarr movie or Sonarr episode. */
-    fun releases(sid: String, id: Long, title: String) = go("releases/$sid/$id?t=${android.net.Uri.encode(title)}")
+    fun releases(sid: String, id: Long, title: String, season: Int = -1) = go("releases/$sid/$id?t=${android.net.Uri.encode(title)}&season=$season")
     /** The full page for a movie or show, by its TMDB number. */
     fun title(type: String, id: Long) = go("title/${if (type == "tv") "tv" else "movie"}/$id")
     /** An actor's page with everything they were in, by their TMDB number. */
@@ -265,9 +265,10 @@ private fun MainShell(state: AppState, me: Me, user: User) {
                     com.bdlnaredi.goatstack.ui.screens.PersonScreen(e.arguments?.getLong("id") ?: 0)
                 }
                 composable(
-                    "releases/{sid}/{id}?t={t}",
-                    arguments = listOf(navArgument("sid") { type = NavType.StringType }, navArgument("id") { type = NavType.LongType }, navArgument("t") { type = NavType.StringType; defaultValue = "" }),
-                ) { e -> val a = e.arguments!!; com.bdlnaredi.goatstack.ui.screens.ReleasesScreen(a.getString("sid").orEmpty(), a.getLong("id"), a.getString("t").orEmpty()) }
+                    "releases/{sid}/{id}?t={t}&season={season}",
+                    arguments = listOf(navArgument("sid") { type = NavType.StringType }, navArgument("id") { type = NavType.LongType }, navArgument("t") { type = NavType.StringType; defaultValue = "" },
+                        navArgument("season") { type = NavType.IntType; defaultValue = -1 }),
+                ) { e -> val a = e.arguments!!; com.bdlnaredi.goatstack.ui.screens.ReleasesScreen(a.getString("sid").orEmpty(), a.getLong("id"), a.getString("t").orEmpty(), a.getInt("season")) }
                 composable(
                     "item/{sid}/{kind}/{id}",
                     arguments = listOf(navArgument("sid") { type = NavType.StringType }, navArgument("kind") { type = NavType.StringType }, navArgument("id") { type = NavType.LongType }),
