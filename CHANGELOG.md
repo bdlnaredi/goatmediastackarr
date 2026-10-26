@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+## v0.9.6 — 2026-10-26
+
 - Require two-step sign-in (Settings → Users): for nobody, admins or everyone, or for chosen profiles. Someone who has not set it up is asked to the next time they sign in, and nothing else opens until they do; it then cannot be turned off while it is required. People who sign in with Plex are left out, except admins.
 - Email me when something is ready (Account): when something you asked for, or put on your watchlist, is in the library, you get an email; several at once come in one. Off unless you turn it on.
 - Library and Search open faster: a library is kept for a minute and shown at once when older while it is fetched again in the background; the same search is not asked again for ten minutes; anything you change makes them fresh straight away.
