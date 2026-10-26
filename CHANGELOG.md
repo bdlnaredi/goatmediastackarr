@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+## v0.9.7 — 2026-10-26
+
 - Interactive search for a whole season and for each episode, on the web page and in the app: each season has *Choose a release* (season packs your indexers have) next to *Search season*, and each episode has its own *Choose a release* button beside its search, instead of only inside the episode's page.
 
 ## v0.9.6 — 2026-10-26
