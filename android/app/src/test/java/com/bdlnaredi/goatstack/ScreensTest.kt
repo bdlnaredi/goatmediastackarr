@@ -231,6 +231,10 @@ class ScreensTest {
         compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("new notifications", substring = true)).onFirst().performClick()
         waitFor("VPN not active"); shot("47-notifications")
         tap("Ready to watch"); waitFor("Some signals"); back()
+        // Alerts: each channel's triggers, and the newsletters.
+        tap("More"); waitFor("Go to")
+        openFromMore("Alerts"); waitFor("Family"); waitFor("New request"); shot("75-alerts")
+        tap("Newsletters"); waitFor("Friday movie night"); shot("76-newsletters"); back()
         assertTrue("calls the pretend server does not know: ${fake.misses}", fake.misses.isEmpty())
     }
 

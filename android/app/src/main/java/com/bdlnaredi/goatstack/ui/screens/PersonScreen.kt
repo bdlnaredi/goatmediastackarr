@@ -112,10 +112,10 @@ fun MediaPoster(x: MediaCard, modifier: Modifier = Modifier, showRole: Boolean =
 
 /** "More like this": a sideways row of posters that open their own title page. */
 @Composable
-fun MoreLikeThis(items: List<MediaCard>, modifier: Modifier = Modifier) {
+fun MoreLikeThis(items: List<MediaCard>, modifier: Modifier = Modifier, title: String = "More like this") {
     if (items.isEmpty()) return
     Column(modifier) {
-        SectionTitle("More like this")
+        SectionTitle(title)
         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             items(items, key = { "${it.type}${it.id}" }) { x -> MediaPoster(x, Modifier.width(112.dp)) }
         }
@@ -133,7 +133,19 @@ fun TitleExtras(type: String, tmdb: Long, modifier: Modifier = Modifier) {
         CastRow(t.cast)
         if (t.cast.isNotEmpty() && t.similar.isNotEmpty()) Spacer(Modifier.height(8.dp))
         MoreLikeThis(t.similar)
+        MoreFromMaker(t, Modifier.padding(top = 8.dp))
     }
+}
+
+/** More from the same studio (movies) or network (shows). Shows nothing until it arrives, or when there is none. */
+@Composable
+fun MoreFromMaker(t: TitleInfo, modifier: Modifier = Modifier) {
+    val ctx = LocalCtx.current
+    val mk = t.maker ?: return
+    if (mk.id <= 0 || ctx.user.kids != null) return
+    val data = rememberLoad("maker", t.type, mk.id) { runCatching { ctx.api.get<List<MediaCard>>("/api/maker?type=${t.type}&id=${mk.id}&not=${t.id}") }.getOrDefault(emptyList()) }
+    val l = (data.state as? Load.Done)?.value ?: return
+    MoreLikeThis(l, modifier, "More from ${mk.name}")
 }
 
 private fun nice(d: String): String = runCatching { LocalDate.parse(d.take(10)).format(DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.getDefault())) }.getOrDefault(d)

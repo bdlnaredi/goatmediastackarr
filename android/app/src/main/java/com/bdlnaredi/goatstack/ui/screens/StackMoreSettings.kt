@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
@@ -285,6 +286,7 @@ fun MoreScreen() {
             Dest(Icons.Rounded.HealthAndSafety, "Health", "Problems and disk space") { ctx.go("health") },
             if (has("unraid")) Dest(Icons.Rounded.Storage, "Unraid", "Array, disks, containers") { ctx.go("unraid") } else null,
             Dest(Icons.Rounded.Group, "Users", "Who can sign in") { ctx.go("users") },
+            Dest(Icons.Rounded.Notifications, "Alerts", "Channels, triggers and newsletters") { ctx.go("alerts") },
             if (ctx.me.goat) Dest(Icons.Rounded.MoveDown, "Bring in your setup", "From the apps you use now") { ctx.go("import") } else null,
         ),
         "You" to listOf(

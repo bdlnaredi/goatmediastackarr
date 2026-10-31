@@ -250,6 +250,8 @@ private fun MainShell(state: AppState, me: Me, user: User) {
                     com.bdlnaredi.goatstack.ui.screens.ProfileScreen(e.arguments?.getString("uid"))
                 }
                 composable("devices") { com.bdlnaredi.goatstack.ui.screens.DevicesScreen() }
+                composable("alerts") { com.bdlnaredi.goatstack.ui.screens.AlertsScreen() }
+                composable("chats") { com.bdlnaredi.goatstack.ui.screens.ChatAppsScreen() }
                 composable("trackers") { com.bdlnaredi.goatstack.ui.screens.TrackersScreen() }
                 composable("notifications") { com.bdlnaredi.goatstack.ui.screens.NotificationsScreen() }
                 composable(

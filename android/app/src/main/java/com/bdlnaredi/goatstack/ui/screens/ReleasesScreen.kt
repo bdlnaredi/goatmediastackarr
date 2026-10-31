@@ -19,7 +19,11 @@ import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
@@ -27,6 +31,7 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
 import com.bdlnaredi.goatstack.data.Release
 import com.bdlnaredi.goatstack.ui.Badge
+import com.bdlnaredi.goatstack.ui.ChoiceRow
 import com.bdlnaredi.goatstack.ui.EmptyState
 import com.bdlnaredi.goatstack.ui.Format
 import com.bdlnaredi.goatstack.ui.GhostButton
@@ -54,6 +59,7 @@ fun ReleasesScreen(sid: String, id: Long, title: String, season: Int = -1) {
     val uri = LocalUriHandler.current
     val sent = remember { mutableStateMapOf<String, String>() } // guid -> "sending" | "sent"
     val data = rememberLoad(sid, id, season) { ctx.api.get<List<Release>>("/api/releases?sid=$sid&id=$id" + if (season >= 0) "&season=$season" else "") }
+    var sort by rememberSaveable { mutableStateOf("best") }
     Column(Modifier.fillMaxSize()) {
         BackPage("Choose a release", title)
         LoadView(data, loading = {
@@ -64,12 +70,21 @@ fun ReleasesScreen(sid: String, id: Long, title: String, season: Int = -1) {
         }) { list ->
             if (list.isEmpty()) EmptyState(Icons.Rounded.Search, "No releases found", "None of your indexers has this right now. Try again later, or add more indexers in Prowlarr.")
             else LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                item { Text("${list.size} found. The best matches for your quality settings are first; ones Sonarr or Radarr would not pick say why.", style = MaterialTheme.typography.labelMedium, color = g.muted) }
-                itemsIndexed(list, key = { i, r -> "$i${r.guid}" }) { _, r ->
+                item { Text("${list.size} found. The best matches for your quality settings (and your preferred audio language, marked ★) are first; ones Sonarr or Radarr would not pick say why.", style = MaterialTheme.typography.labelMedium, color = g.muted) }
+                item { ChoiceRow(listOf("best" to "Best match", "seed" to "Seeders", "size" to "Size", "idx" to "Indexer", "age" to "Newest"), sort, { sort = it }) }
+                val shown = when (sort) {
+                    "seed" -> list.sortedByDescending { if (it.protocol == "usenet") -1 else it.seeders }
+                    "size" -> list.sortedByDescending { it.size }
+                    "idx" -> list.sortedBy { it.indexer.lowercase() }
+                    "age" -> list.sortedBy { it.age }
+                    else -> list
+                }
+                itemsIndexed(shown, key = { i, r -> "$sort$i${r.guid}" }) { _, r ->
                     GoatCard(Modifier.fillMaxWidth(), padding = 14.dp) {
                         Text(r.title, style = MaterialTheme.typography.titleSmall, color = g.text)
                         Spacer(Modifier.height(8.dp))
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            if (r.pref > 0) Badge("★ ${r.prefLang}", g.good)
                             Badge(if (r.langs.isEmpty()) "Language unknown" else r.langs.joinToString(", "), g.accent)
                             if (r.quality.isNotEmpty()) Badge(r.quality, g.primary)
                             if (r.protocol.isNotEmpty()) Badge(if (r.protocol == "usenet") "Usenet" else "Torrent", g.muted)

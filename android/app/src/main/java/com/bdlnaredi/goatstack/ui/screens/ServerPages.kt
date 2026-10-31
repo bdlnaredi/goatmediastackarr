@@ -159,6 +159,8 @@ fun HealthScreen() {
                         }
                     }
                 }
+                // Every app's warnings, with a button that does what can be done from here.
+                item(key = "attention") { NeedsAttention() }
             }
         }
     }

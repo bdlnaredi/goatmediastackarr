@@ -57,6 +57,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.bdlnaredi.goatstack.data.LibItem
 import com.bdlnaredi.goatstack.data.SeriesDetail
+import com.bdlnaredi.goatstack.data.FileStatus
+import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
+import androidx.compose.ui.platform.LocalUriHandler
 import com.bdlnaredi.goatstack.ui.Backdrop
 import com.bdlnaredi.goatstack.ui.Badge
 import com.bdlnaredi.goatstack.ui.Bar
@@ -154,7 +158,13 @@ fun DetailScreen(sid: String, kind: String, id: Long) {
     val toast = toaster()
     val tv = kind == "tv"
     val item = rememberLoad(sid, id) { LibCache.get(ctx, sid).firstOrNull { it.id == id } ?: LibCache.get(ctx, sid, fresh = true).first { it.id == id } }
-    val series = rememberLoad(sid, id, tv) { if (tv) ctx.api.get<SeriesDetail>("/api/series/$sid/$id") else null }
+    var reload by remember { mutableStateOf(0) }
+    val series = rememberLoad(sid, id, tv, reload) { if (tv) ctx.api.get<SeriesDetail>("/api/series/$sid/$id") else null }
+    // Where the movie's file is saved (a show's folder comes with its seasons).
+    val file = rememberLoad(sid, id, tv, reload) { if (!tv) runCatching { ctx.api.get<FileStatus>("/api/filestatus?sid=$sid&id=$id") }.getOrNull() else null }
+    var delFile by remember { mutableStateOf<Triple<String, Long, String>?>(null) }  // kind, id (or season), what
+    val uri = LocalUriHandler.current
+    val svc = ctx.app.services.value.firstOrNull { it.id == sid }
     var monitored by remember { mutableStateOf<Boolean?>(null) }
     var remove by remember { mutableStateOf(false) }
     var withFiles by remember { mutableStateOf(false) }
@@ -199,6 +209,11 @@ fun DetailScreen(sid: String, kind: String, id: Long) {
                         if (x.profile.isNotEmpty()) Badge(x.profile, g.primary)
                         x.genres.take(3).forEach { Badge(it, g.muted) }
                     }
+                    val where = if (tv) series.value?.folder.orEmpty() else file.value?.file?.path?.ifEmpty { file.value?.file?.name.orEmpty() } ?: file.value?.folder.orEmpty()
+                    if (where.isNotEmpty()) Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.Top) {
+                        Icon(Icons.Rounded.Folder, null, tint = g.muted, modifier = Modifier.size(15.dp).padding(top = 1.dp)); Spacer(Modifier.width(6.dp))
+                        Text(where, style = MaterialTheme.typography.labelSmall.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace), color = g.muted)
+                    }
                     Spacer(Modifier.height(14.dp))
                     Text(x.overview, style = MaterialTheme.typography.bodyMedium, color = g.text.copy(alpha = 0.85f))
                     if (tv && x.next.isNotEmpty()) { Spacer(Modifier.height(10.dp)); Text("Next episode: ${Format.day(x.next)} ${Format.time(x.next)}", style = MaterialTheme.typography.labelLarge, color = g.primary) }
@@ -223,6 +238,15 @@ fun DetailScreen(sid: String, kind: String, id: Long) {
                                 act("Searching for it") { ctx.api.send("POST", "/api/bulk", buildJsonObject { put("sid", sid); put("action", "search"); put("ids", JsonArray(listOf(JsonPrimitive(id)))) }) }
                             })
                             if (ctx.user.admin) GhostButton("Remove", icon = Icons.Rounded.Delete, color = g.bad, modifier = Modifier.weight(1f), onClick = { remove = true })
+                        }
+                        // Admins: delete just the movie's file (it stays in the library), and open it in Radarr or Sonarr itself.
+                        if (ctx.user.admin) Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            if (!tv && file.value?.file?.id?.let { it > 0 } == true) GhostButton("Delete file", icon = Icons.Rounded.Delete, color = g.bad, modifier = Modifier.weight(1f), onClick = { delFile = Triple("movie", id, x.title) })
+                            if (svc != null) GhostButton(if (tv) "Sonarr" else "Radarr", icon = Icons.AutoMirrored.Rounded.OpenInNew, modifier = Modifier.weight(1f), onClick = {
+                                val base = (if (svc.managed) ctx.api.base + "/engines/${svc.type}" else svc.url).trimEnd('/')
+                                val slug = if (tv) series.value?.slug?.ifEmpty { x.slug } ?: x.slug else x.slug.ifEmpty { x.tmdb.toString() }
+                                runCatching { uri.openUri(base + (if (tv) "/series/" else "/movie/") + android.net.Uri.encode(slug)) }
+                            })
                         }
                         // Interactive search: pick the release yourself. For a show it is per episode (open a season, then an episode).
                         if (!tv) { Spacer(Modifier.height(10.dp)); GhostButton("Choose a release", icon = Icons.Rounded.Search, modifier = Modifier.fillMaxWidth(), onClick = { ctx.releases(sid, id, x.title) }) }
@@ -263,6 +287,8 @@ fun DetailScreen(sid: String, kind: String, id: Long) {
                                     androidx.compose.material3.TextButton(onClick = { ctx.releases(sid, id, "${x.title} · ${com.bdlnaredi.goatstack.data.tr("Season")} ${s.n}", s.n) }) {
                                         Icon(Icons.Rounded.Search, null, tint = g.primary, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text(com.bdlnaredi.goatstack.data.tr("Choose a release"), color = g.primary) }
                                 }
+                                if (ctx.user.admin && have > 0) androidx.compose.material3.TextButton(onClick = { delFile = Triple("season", s.n.toLong(), "season ${s.n}") }) {
+                                    Icon(Icons.Rounded.Delete, null, tint = g.bad, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Delete the season's files", color = g.bad) }
                                 Spacer(Modifier.height(8.dp))
                                 eps.sortedBy { it.num }.forEach { e ->
                                     val epOpen = openEp[e.id] == true
@@ -281,6 +307,9 @@ fun DetailScreen(sid: String, kind: String, id: Long) {
                                         if (e.overview.isNotBlank() && (epOpen || !ctx.prefs.spoilers)) Text(e.overview, style = MaterialTheme.typography.bodySmall, color = g.text.copy(alpha = 0.75f),
                                             maxLines = if (epOpen) Int.MAX_VALUE else 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 28.dp, top = 4.dp))
                                         else if (e.overview.isBlank() && epOpen) Text("No description for this episode yet.", style = MaterialTheme.typography.bodySmall, color = g.muted, modifier = Modifier.padding(start = 28.dp, top = 4.dp))
+                                        if (epOpen && e.path.isNotEmpty()) Text(e.path, style = MaterialTheme.typography.labelSmall.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace), color = g.muted, modifier = Modifier.padding(start = 28.dp, top = 4.dp))
+                                        if (epOpen && ctx.user.admin && e.has) androidx.compose.material3.TextButton(onClick = { delFile = Triple("episode", e.id, "episode ${e.num}") }, modifier = Modifier.padding(start = 20.dp)) {
+                                            Icon(Icons.Rounded.Delete, null, tint = g.bad, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Delete file", color = g.bad) }
                                         if (epOpen && ctx.user.can("add") && e.aired) Row(Modifier.padding(start = 20.dp, top = 2.dp)) {
                                             if (!e.has) androidx.compose.material3.TextButton(onClick = {
                                                 act("Searching for episode ${e.num}") { ctx.api.send("POST", "/api/auto", buildJsonObject { put("sid", sid); put("id", e.id); put("scope", "episode") }) }
@@ -297,6 +326,17 @@ fun DetailScreen(sid: String, kind: String, id: Long) {
             }
         }
         }
+        delFile?.let { (k, did, what) -> Confirm(
+            "Delete the file${if (k == "season") "s" else ""}?", "The downloaded file${if (k == "season") "s" else ""} of $what ${if (k == "season") "are" else "is"} deleted from the disk. It stays in the library${if (x.monitored) " and may be downloaded again while monitored" else ""}.", "Delete", danger = true,
+            onYes = {
+                delFile = null
+                act("Deleted") {
+                    ctx.api.send("DELETE", if (k == "season") "/api/files?sid=$sid&kind=season&id=$id&season=$did" else "/api/files?sid=$sid&kind=$k&id=$did")
+                    LibCache.lists.remove(sid); reload++
+                }
+            },
+            onNo = { delFile = null },
+        ) }
         if (remove) Confirm(
             "Remove ${x.title}?", "It is taken out of ${if (tv) "Sonarr" else "Radarr"} and will not be downloaded again.", "Remove", danger = true,
             extra = { CheckLine("Also delete its files from the disk", withFiles, danger = true) { withFiles = it } },

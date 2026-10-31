@@ -12,8 +12,10 @@ data class TitleInfo(
     val runtime: Int = 0, val genres: List<String> = emptyList(), val status: String = "", val studio: String = "",
     val cast: List<CastMember> = emptyList(), val seasons: List<TitleSeason> = emptyList(), val trailer: String = "",
     val seerr: String = "", val available: Int = 0, val library: LibLink? = null, val request: ReqState? = null,
-    val similar: List<MediaCard> = emptyList(), val watch: Boolean = false, val collection: CollRef? = null,
+    val similar: List<MediaCard> = emptyList(), val watch: Boolean = false, val collection: CollRef? = null, val maker: Maker? = null,
 )
+/** The studio (movies) or network (shows) a title comes from. */
+@Serializable data class Maker(val id: Long = 0, val name: String = "", val kind: String = "")
 @Serializable data class CollRef(val id: Long = 0, val name: String = "", val poster: String = "")
 
 // ---------- Watchlist, collections, "Because you watched", missing episodes ----------
@@ -132,6 +134,7 @@ object Versions {
     val guid: String = "", val indexerId: Int = 0, val title: String = "", val size: Long = 0, val seeders: Int = 0, val leechers: Int = 0,
     val indexer: String = "", val quality: String = "", val age: Int = 0, val rejected: Boolean = false, val why: String = "",
     val langs: List<String> = emptyList(), val link: String = "", val protocol: String = "", val group: String = "",
+    val pref: Int = 0, val prefLang: String = "",
 )
 
 /** The answer to downloading several RSS articles at once: how many were added, and the titles that had no link. */

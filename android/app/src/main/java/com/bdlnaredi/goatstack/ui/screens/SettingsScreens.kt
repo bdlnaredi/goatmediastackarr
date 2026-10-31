@@ -33,6 +33,7 @@ import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.Forum
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.material.icons.rounded.Security
@@ -265,6 +266,7 @@ fun SettingsScreen() {
                 SettingRow(Icons.Rounded.Security, "Two-step sign-in", if (ctx.user.twofa) "On" else if (hasPassword) "Off. Turn it on from the web page under Settings → Account." else "Plex looks after your sign-in")
                 SettingRow(Icons.Rounded.Notifications, "Phone messages", ctx.user.notify.ifEmpty { "Get told when a request is ready (ntfy, Gotify, or any web address)" }, onClick = { dialog = "notify" })
                 SettingRow(Icons.Rounded.Devices, "Signed-in devices", "See them, and sign out the ones you do not use", onClick = { ctx.go("devices") })
+                SettingRow(Icons.Rounded.Forum, "Chat apps", "Ask for movies and shows from Telegram or Discord", onClick = { ctx.go("chats") })
                 Spacer(Modifier.height(6.dp))
                 GhostButton("Sign out", icon = Icons.AutoMirrored.Rounded.Logout, color = g.bad, modifier = Modifier.fillMaxWidth(), onClick = { signOut = true })
             }

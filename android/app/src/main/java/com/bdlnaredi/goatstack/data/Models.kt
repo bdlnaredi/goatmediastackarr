@@ -94,12 +94,12 @@ data class LibItem(
     val overview: String = "", val size: Long = 0, val missing: Int = 0, val monitored: Boolean = false, val status: String = "",
     val genres: List<String> = emptyList(), val maker: String = "", val profile: String = "", val added: String = "",
     val rating: Double = 0.0, val runtime: Int = 0, val cert: String = "", val seasons: Int = 0, val have: Int = 0,
-    val total: Int = 0, val next: String = "", val tmdb: Long = 0,
+    val total: Int = 0, val next: String = "", val tmdb: Long = 0, val slug: String = "", val folder: String = "",
 )
 
 @Serializable
 data class SeriesDetail(
-    val id: Long = 0, val title: String = "", val monitored: Boolean = false,
+    val id: Long = 0, val title: String = "", val monitored: Boolean = false, val folder: String = "", val slug: String = "",
     val seasons: List<SeasonMon> = emptyList(), val episodes: List<Episode> = emptyList(),
 )
 @Serializable data class SeasonMon(val n: Int = 0, val monitored: Boolean = false)
@@ -107,7 +107,7 @@ data class SeriesDetail(
 data class Episode(
     val id: Long = 0, val season: Int = 0, val num: Int = 0, val title: String = "", val date: String = "",
     val monitored: Boolean = false, val has: Boolean = false, val quality: String = "", val size: Long = 0, val aired: Boolean = false,
-    val overview: String = "", val runtime: Int = 0,
+    val overview: String = "", val runtime: Int = 0, val path: String = "", val fileId: Long = 0,
 )
 
 @Serializable
@@ -181,3 +181,7 @@ data class Playing(
     val title: String = "", val sub: String = "", val kind: String = "", val progress: Double = 0.0, val thumb: String = "",
     val decision: String = "", val res: String = "",
 )
+
+// Where a movie's (or an episode's) file is saved (/api/filestatus).
+@Serializable data class FileStatus(val have: Boolean = false, val folder: String = "", val file: FileInfo? = null)
+@Serializable data class FileInfo(val path: String = "", val name: String = "", val id: Long = 0)

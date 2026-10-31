@@ -174,6 +174,7 @@ private fun TitleBody(t: TitleInfo, requested: Boolean, onAsk: (TitleInfo) -> Un
         if (t.type == "tv" && t.library != null || t.type == "tv" && t.available >= 4) item { MissingEpisodes(t, Modifier.offset(y = (-46).dp)) }
         if (t.cast.isNotEmpty()) item { CastRow(t.cast, Modifier.offset(y = (-40).dp)) }
         if (t.similar.isNotEmpty()) item { MoreLikeThis(t.similar, Modifier.offset(y = (-34).dp)) }
+        if (t.maker != null) item(key = "maker") { MoreFromMaker(t, Modifier.offset(y = (-34).dp).padding(top = 8.dp)) }
         if (t.date.isNotEmpty() || t.status.isNotEmpty()) item {
             Text(listOf(t.status, if (t.date.isNotEmpty()) (if (t.type == "tv") "First aired " else "Released ") + Format.day(t.date) else "").filter { it.isNotBlank() }.joinToString(" · "),
                 style = MaterialTheme.typography.labelSmall, color = g.muted, modifier = Modifier.padding(horizontal = 20.dp).offset(y = (-30).dp))

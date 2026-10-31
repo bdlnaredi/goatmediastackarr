@@ -100,3 +100,22 @@ data class ImportJob(
     val added: Int = 0, val skipped: Int = 0, val failed: List<ImportFail> = emptyList(), val error: String? = null,
 )
 @Serializable data class ImportFail(val name: String? = null, val error: String = "")
+
+// ---------- Every app's warnings (/api/warnings) ----------
+@Serializable data class Warning(val sid: String = "", val app: String = "", val type: String = "", val level: String = "warn", val text: String = "", val wiki: String = "", val fix: String = "")
+@Serializable data class WarnFixed(val done: String = "")
+
+// ---------- Alerts and newsletters ----------
+@Serializable data class AlertsInfo(val events: List<String> = emptyList(), val meta: Map<String, EventMeta> = emptyMap(), val channels: List<AlertChannel> = emptyList())
+@Serializable data class EventMeta(val name: String = "", val group: String = "")
+@Serializable data class AlertChannel(val id: String = "", val type: String = "", val name: String = "", val events: List<String> = emptyList(),
+    val tpl: Map<String, kotlinx.serialization.json.JsonElement> = emptyMap(), val conds: List<kotlinx.serialization.json.JsonElement> = emptyList())
+@Serializable data class Newsletters(val list: List<Newsletter> = emptyList())
+@Serializable data class Newsletter(val id: String = "", val name: String = "", val on: Boolean = false, val every: String = "week", val day: Int = 0, val hour: Int = 9, val days: Int = 7, val next: Long = 0)
+@Serializable data class SendResult(val sent: Int = 0, val empty: Boolean = false, val errors: List<String> = emptyList(), val results: List<SendOne> = emptyList())
+@Serializable data class SendOne(val ok: Boolean = false, val error: String? = null)
+
+// ---------- Chat apps (/api/me/chats) ----------
+@Serializable data class ChatState(val telegram: Boolean = false, val discord: Boolean = false, val bots: ChatBots = ChatBots())
+@Serializable data class ChatBots(val telegram: String = "", val discord: String = "")
+@Serializable data class ChatCode(val code: String = "", val minutes: Int = 15)
