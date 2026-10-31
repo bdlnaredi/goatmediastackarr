@@ -82,11 +82,19 @@ function create(opts = {}) {
     if (p === '/api/v3/system/status') return json(res, { version: '4.0.0.demo', appName: type });
     if (p === '/api/v3/health') return json(res, tv ? [{ type: 'warning', source: 'IndexerStatusCheck', message: 'Indexers unavailable due to failures: Broken Tracker' }] : []);
     if (p === '/api/v3/diskspace') return json(res, [{ path: '/tv', label: 'Media', freeSpace: 420e9, totalSpace: 4e12 }, { path: '/movies', label: 'Movies', freeSpace: 60e9, totalSpace: 2e12 }, { path: '/', freeSpace: 42e9, totalSpace: 53e9 }, { path: '/downloads', freeSpace: 900e9, totalSpace: 2e12 }]);
-    if (p === '/api/v3/qualityprofile') return json(res, st.profiles);
+    if (p === '/api/v3/language') return json(res, [{ id: 1, name: 'English' }, { id: 26, name: 'Hindi' }, { id: 2, name: 'French' }]);
+    { const cfs = st.cfs = st.cfs || { sonarr: [], radarr: [] }, l = cfs[type], cm = p.match(/^\/api\/v3\/customformat(?:\/(\d+))?$/);
+      if (cm) { if (m === 'GET') return json(res, l);
+        if (m === 'POST') { const x = { ...data, id: 100 + l.length + (st.cfN = (st.cfN || 0) + 1) }; l.push(x); return json(res, x); }
+        const i = l.findIndex(x => x.id === +cm[1]); if (i < 0) return json(res, { message: 'NotFound' }, 404);
+        if (m === 'PUT') { l[i] = { ...data, id: +cm[1] }; return json(res, l[i]); } if (m === 'DELETE') { l.splice(i, 1); return json(res, {}); } } }
+    { const qm = p.match(/^\/api\/v3\/qualityprofile\/(\d+)$/); if (qm && m === 'PUT') { const qp = (st.qp = st.qp || {}); (qp[type] = qp[type] || {})[qm[1]] = data; return json(res, data); } }
+    if (p === '/api/v3/qualityprofile') return json(res, st.profiles.map(x => ((st.qp || {})[type] || {})[x.id] || { language: type === 'radarr' ? { id: 1, name: 'English' } : undefined, formatItems: [], minFormatScore: 0, cutoffFormatScore: 0, ...x }));
     // Radarr's collections: one franchise with two films here and one not.
     if (!tv && p === '/api/v3/collection') return json(res, [{ id: 1, tmdbId: 10, title: 'Demo Saga', monitored: false, images: [], movies: [{ tmdbId: 5001, title: st.movies[0].title }, { tmdbId: 5002, title: st.movies[1].title }, { tmdbId: 6300, title: 'Demo Saga III' }] }]);
     if (p === '/api/v3/rootfolder') return json(res, [{ path: tv ? '/tv' : '/movies' }]);
-    if (p === '/api/v3/command' && m === 'POST') return json(res, { id: 1, name: data.name });
+    if (p === '/api/v3/indexer/testall' || p === '/api/v3/downloadclient/testall') { st.calls.push(type + ' ' + p); return json(res, []); }
+    if (p === '/api/v3/command' && m === 'POST') { st.calls.push(type + ' command ' + data.name); return json(res, { id: 1, name: data.name }); }
     if (p === '/api/v3/queue/details') return json(res, (st.queueDetails || []).filter(r => (q.get('movieId') && +r.movieId === +q.get('movieId')) || (q.get('seriesId') && +r.seriesId === +q.get('seriesId'))));
     if (p === '/api/v3/queue') return json(res, { records: [{ id: 1, title: 'Harbor.Lights.S04E06', size: 1.4e9, sizeleft: 5e8, timeleft: '00:12:00', status: 'downloading', trackedDownloadStatus: 'ok', series: { title: 'Harbor Lights' }, movie: { title: 'Glass Meridian' } },
       { id: 2, title: 'Stuck.Release.1080p', size: 2e9, sizeleft: 2e9, status: 'warning', trackedDownloadStatus: 'warning', statusMessages: [{ messages: ['No files found are eligible for import'] }], series: { title: 'Night Shift' } }].slice(0, tv ? 2 : 1).concat((st.importing || []).map((h, i) => ({ id: 90 + i, title: 'Importing', downloadId: h.toUpperCase(), trackedDownloadState: 'importPending' }))), totalRecords: 2 });

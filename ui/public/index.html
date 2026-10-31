@@ -1277,7 +1277,7 @@ const PERMS=[['add','Add downloads and things to the library'],['control','Pause
 const presetOf=u=>{if(!u.perms)return 'std';const v=PERMS.map(([k])=>u.perms[k]!==false);return v.every(Boolean)?'std':v.every(x=>!x)?'view':'custom'};
 
 async function stRules(){
-  const s=first('qbittorrent');if(!s){$('#m').innerHTML=`<div class="panel">Connect qBittorrent for the speed schedule and seeding limits.</div>`;seedGoalsPanel([]);return}
+  const s=first('qbittorrent');if(!s){$('#m').innerHTML=`<div class="panel">Connect qBittorrent for the speed schedule and seeding limits.</div>`;seedGoalsPanel([]);langPrefPanel();return}
   $('#m').innerHTML=skel(3);
   let sch,rules,meta;
   try{[sch,rules,meta]=await Promise.all([api(`/api/qb/${s.id}/schedule`),api('/api/seedrules'),api(`/api/qb/${s.id}/meta`)])}catch(x){$('#m').innerHTML=`<div class="err">${esc(x.message)}</div>`;return}
@@ -1306,9 +1306,34 @@ async function stRules(){
   $('#rl3').onclick=e=>{const d=e.target.closest('[data-d]');if(d)d.closest('[data-rr]').remove()};
   $('#sr3').onclick=async()=>{const list=[...document.querySelectorAll('[data-rr]')].map(r=>({sid:s.id,category:r.querySelector('[data-c]').value,ratio:r.querySelector('[data-r]').value,minutes:r.querySelector('[data-m]').value}));
     try{await api('/api/seedrules','PUT',{rules:list});toast('Rules saved. They apply within a minute.','ok')}catch(x){toast(x.message,'bad')}};
-  seedGoalsPanel(meta.categories.map(c=>c.name));
+  seedGoalsPanel(meta.categories.map(c=>c.name));langPrefPanel();
 }
 // Tracker seeding goals: each tracker's own rule (ratio, days, or both); finished movies and shows are removed once it is met.
+// Preferred audio languages: the order to prefer them in, set up in Radarr and Sonarr, and marked in interactive search.
+async function langPrefPanel(){
+  let d;try{d=await api('/api/langpref')}catch{return}
+  if(tab!=='set'||stSub!=='rules')return;
+  const old=$('#lpp');if(old)old.remove();
+  let sel=[...d.langs];
+  $('#m').insertAdjacentHTML('afterbegin',`<form class="panel" id="lpp" style="margin-bottom:16px"><h3 style="margin-top:0">Preferred audio language</h3>
+    <p class="mute" style="margin-top:0">Pick the languages you want, most wanted first (like <i>Hindi, then English</i>). Radarr and Sonarr then choose releases in them${d.apps.length?` (${esc(d.apps.join(', '))})`:''}, and interactive search lists them first with a ★.</p>
+    <div class="chips" id="lpo"></div>
+    <div class="row" style="gap:6px;margin-top:8px"><select id="lpa" aria-label="Add a language"><option value="">Add a language…</option>${d.all.map(l=>`<option>${esc(l)}</option>`).join('')}</select></div>
+    <label class="chk"><input type="checkbox" name="dual" ${d.dual?'checked':''}>Count "Dual audio" and "Multi" releases as the first language that is not English</label>
+    <label class="chk"><input type="checkbox" name="upgrade" ${d.upgrade?'checked':''}>Replace a file when a release in a more wanted language turns up</label>
+    <label class="chk"><input type="checkbox" name="only" ${d.only?'checked':''}>Only download releases in these languages <span class="mute">(nothing else, even when that is all there is)</span></label>
+    <div class="row"><button class="primary">Save and set up Radarr and Sonarr</button>${d.applied?`<span class="mute">Set up ${esc(fdt(d.applied.at))}</span>`:''}</div><div id="lpr" class="mute" style="font-size:13px"></div></form>`);
+  const f=$('#lpp'),draw=()=>{f.querySelector('#lpo').innerHTML=sel.length?sel.map((l,i)=>`<span class="pill acc lpc"><b>${i+1}</b> ${esc(l)}${i?`<button type="button" class="icon" data-up="${i}" aria-label="Prefer ${esc(l)} more">↑</button>`:''}<button type="button" class="icon" data-rm="${i}" aria-label="Remove ${esc(l)}">${ic('x')}</button></span>`).join(''):'<span class="mute">No preference: Radarr and Sonarr choose as they always did.</span>';
+    f.querySelector('#lpa').querySelectorAll('option').forEach(o=>{if(o.value)o.disabled=sel.includes(o.value)||sel.length>=4})};
+  draw();
+  f.querySelector('#lpa').onchange=e=>{const v=e.target.value;if(v&&!sel.includes(v)&&sel.length<4)sel.push(v);e.target.value='';draw()};
+  f.querySelector('#lpo').onclick=e=>{const u=e.target.closest('[data-up]'),r=e.target.closest('[data-rm]');
+    if(u){const i=+u.dataset.up;[sel[i-1],sel[i]]=[sel[i],sel[i-1]];draw()}if(r){sel.splice(+r.dataset.rm,1);draw()}};
+  f.onsubmit=async e=>{e.preventDefault();const b=f.querySelector('button.primary'),g=f.elements;b.disabled=true;$('#lpr').textContent='Setting up…';
+    try{const r=await api('/api/langpref','PUT',{langs:sel,dual:g.dual.checked,upgrade:g.upgrade.checked,only:g.only.checked});
+      $('#lpr').innerHTML=(r.results||[]).map(x=>`<div>${x.ok?'✓':'✗'} <b>${esc(x.app)}</b>: ${x.ok?esc(x.done.length+' changes'):esc(x.error)}</div>`).join('')||'Saved. Add Radarr or Sonarr to set them up.';toast('Saved','ok')}
+    catch(x){$('#lpr').textContent=x.message}b.disabled=false};
+}
 async function seedGoalsPanel(catNames){
   const box=document.createElement('div');box.className='panel';box.style.cssText='max-width:760px;margin-top:16px';$('#m').append(box);
   box.innerHTML=`<h3 style="margin-top:0">${T('Remove after the tracker’s seeding goal')}</h3>${skel(2)}`;
@@ -2072,7 +2097,7 @@ function relList(rl,r,sid,onErr){
     l.sort((a,b)=>{const p=k(a),q=k(b);const c=typeof p==='string'?p.localeCompare(q):p-q;return (desc?-c:c)||a[1]-b[1]});
     return l};
   const card=([y,i])=>`<div class="box rel"><div class="row" style="align-items:flex-start;gap:8px"><b class="grow" style="overflow-wrap:anywhere">${y.link?`<a href="${esc(y.link)}" target="_blank" rel="noopener noreferrer" title="Open the page for this release (opens in a new tab)">${esc(y.title)}</a>`:esc(y.title)}</b></div>
-      <div class="chips" style="margin-top:6px"><span class="pill acc" title="Language of the release">${y.langs.length?esc(y.langs.join(', ')):T('Language unknown')}</span>${y.protocol?`<span class="pill">${y.protocol==='usenet'?'Usenet':'Torrent'}</span>`:''}${y.quality?`<span class="pill">${esc(y.quality)}</span>`:''}</div>
+      <div class="chips" style="margin-top:6px">${y.pref?`<span class="pill ok" title="One of your preferred audio languages">★ ${esc(y.prefLang||'')}</span>`:''}<span class="pill acc" title="Language of the release">${y.langs.length?esc(y.langs.join(', ')):T('Language unknown')}</span>${y.protocol?`<span class="pill">${y.protocol==='usenet'?'Usenet':'Torrent'}</span>`:''}${y.quality?`<span class="pill">${esc(y.quality)}</span>`:''}</div>
       <div class="mute" style="margin-top:6px"><b>${fmt(y.size)}</b>${y.protocol==='usenet'?'':` · <b>${y.seeders}</b> ${T('seeders')}${y.leechers?', '+y.leechers+' leechers':''}`} · ${esc(y.indexer||'')}${y.group?' · '+esc(y.group):''} · ${y.age}d old</div>
       ${y.rejected?`<div style="color:var(--bad-t)">${esc(y.why||'Rejected')}</div>`:''}<button data-g="${i}" style="margin-top:6px">${T('Grab')}</button></div>`;
   const draw=()=>{
@@ -3250,14 +3275,27 @@ async function hlView(){
   // Every app reports the same disks, so they are shown once, with what each folder is for.
   const seen=new Set(),disks=l.flatMap(x=>x.disks||[]).filter(d=>{const k=d.path+'|'+d.total;if(seen.has(k))return false;seen.add(k);return true});
   const diskRow=d=>{const used=(1-d.free/d.total)*100;return `<div style="margin:10px 0"><div class="row" style="gap:4px 12px"><span class="grow"><b style="font-weight:560">${esc(d.label||d.path)}</b>${d.label?` <span class="mute">${esc(d.path)}</span>`:''}</span><span class="mute">${fmt(d.free)} free of ${fmt(d.total)} · ${used.toFixed(0)}% used</span></div><div class="bar" role="img" aria-label="${used.toFixed(0)} percent used"><i class="${used>90?'bad':''}" style="width:${used.toFixed(0)}%"></i></div></div>`};
-  $('#m').innerHTML=`<p class="mute">${total?`${total} thing${total===1?'':'s'} to look at.`:'Everything looks healthy.'}</p><div class="panel" id="heal" style="margin-bottom:14px"></div>`+(disks.length?`<div class="panel" style="margin-bottom:14px"><b style="font-size:16px">Disk space</b>${disks.map(diskRow).join('')}</div>`:'')+l.map(x=>{
+  $('#m').innerHTML=`<div class="panel" id="warns" style="margin-bottom:14px"><b style="font-size:16px">Needs attention</b><div class="mute" style="margin-top:6px">Asking every app…</div></div><div class="panel" id="heal" style="margin-bottom:14px"></div>`+(disks.length?`<div class="panel" style="margin-bottom:14px"><b style="font-size:16px">Disk space</b>${disks.map(diskRow).join('')}</div>`:'')+l.map(x=>{
     const n=x.issues.length+x.queue.length+(x.ok?0:1);
     return `<div class="panel" style="margin-bottom:14px"><div class="row"><b style="font-size:16px">${esc(x.name)}</b>${String(TYPES[x.type]||x.type).toLowerCase()===String(x.name).toLowerCase()?'':`<span class="mute">${esc(TYPES[x.type]||x.type)}</span>`}<span class="grow"></span>${x.missing!=null?`<span class="mute">${x.missing} missing</span>`:''}<span class="pill ${!x.ok?'bad':n?'warn':'ok'}">${!x.ok?'Not reachable':n?n+' to check':'Healthy'}</span></div>
       ${!x.ok?`<div class="err">${esc(x.error||'')}</div>`:''}
       ${x.issues.map(i=>`<div class="box row" style="margin-top:8px"><span class="pill ${i.level==='bad'?'bad':'warn'}">${i.level==='bad'?'Error':'Warning'}</span><span class="grow" style="word-break:break-word">${esc(i.text)}</span></div>`).join('')}
       ${x.queue.length?`<div class="mute" style="margin-top:12px">Downloads that are stuck</div>${x.queue.map(i=>`<div class="box"><b style="word-break:break-word">${esc(i.title)}</b><div class="mute">${esc(i.message)}</div></div>`).join('')}`:''}
       </div>`}).join('');
-  healPanel();
+  healPanel();warnPanel();
+}
+// Every app's warnings in one list (Sonarr, Radarr, Prowlarr, Bazarr, SABnzbd, qBittorrent, and any app that stopped
+// answering), errors first, with a button that does what can be done from here.
+const FIXN={indexers:'Test indexers again',clients:'Test download clients',recheck:'Check again',restart:'Restart it'};
+async function warnPanel(){
+  const el=$('#warns');if(!el)return;let l;
+  try{l=await api('/api/warnings')}catch(x){el.innerHTML=`<b style="font-size:16px">Needs attention</b><div class="err">${esc(x.message)}</div>`;return}
+  if(!document.contains(el))return;
+  el.innerHTML=`<div class="row"><b style="font-size:16px" class="grow">Needs attention</b><span class="pill ${l.some(x=>x.level==='bad')?'bad':l.length?'warn':'ok'}">${l.length?l.length+' from '+new Set(l.map(x=>x.app)).size+' app'+(new Set(l.map(x=>x.app)).size>1?'s':''):'Nothing'}</span><button class="ghost" id="wrf" title="Ask again">${ic('refresh')}</button></div>
+    ${l.length?l.map((x,i)=>`<div class="box wrow"><span class="pill ${x.level==='bad'?'bad':'warn'}">${x.level==='bad'?'Error':'Warning'}</span><div class="grow" style="min-width:0"><b>${esc(x.app)}</b> <span style="word-break:break-word">${esc(x.text)}</span>${x.wiki?` <a href="${esc(x.wiki)}" target="_blank" rel="noopener noreferrer" class="mute">What this means ${ic('ext')}</a>`:''}</div>${x.fix?`<button data-wf="${i}">${FIXN[x.fix]||'Fix'}</button>`:''}</div>`).join(''):'<p class="mute" style="margin:6px 0 0">No app reports a problem.</p>'}`;
+  $('#wrf').onclick=warnPanel;
+  el.querySelectorAll('[data-wf]').forEach(b=>b.onclick=async()=>{const x=l[b.dataset.wf];b.disabled=true;
+    try{const r=await api('/api/warnings/fix','POST',{sid:x.sid,fix:x.fix});toast(r.done||'Done','ok');setTimeout(warnPanel,4000)}catch(y){toast(y.message,'bad');b.disabled=false}});
 }
 if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
 start();

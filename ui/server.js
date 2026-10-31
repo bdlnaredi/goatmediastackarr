@@ -8,7 +8,7 @@ const http = require('http'), fs = require('fs'), path = require('path'), crypto
 const DATA = process.env.DATA_DIR || '/data', FILE = path.join(DATA, 'db.json');
 fs.mkdirSync(DATA, { recursive: true });
 const tclients = require('./lib/torrentclients');
-const totp = require('./lib/totp'), channels = require('./lib/channels'), AL = require('./lib/alerts'), listsLib = require('./lib/lists');
+const totp = require('./lib/totp'), channels = require('./lib/channels'), AL = require('./lib/alerts'), LP = require('./lib/langpref'), listsLib = require('./lib/lists');
 const PORT = +process.env.PORT || 5080, DEMO = /^(1|true|yes)$/i.test(process.env.DEMO || ''), DAY = 864e5;
 const demo = DEMO ? require('./lib/demo').create({ streams: 2 }) : null;
 // Inside the container the release number comes from the image (GOAT_VERSION); otherwise from package.json.
@@ -3175,7 +3175,9 @@ const goatServer = http.createServer(async (req, res) => {
       return send(res, 200, rel.map(x => ({ guid: x.guid, indexerId: x.indexerId, title: x.title, size: x.size, seeders: x.seeders || 0, leechers: x.leechers || 0,
         indexer: x.indexer, quality: ((x.quality || {}).quality || {}).name, age: x.age, rejected: !!x.rejected, why: (x.rejections || []).slice(0, 2).join('; '),
         langs: (x.languages || []).map(l => cut(l && l.name, 30)).filter(Boolean).slice(0, 6), link: page(x), protocol: x.protocol === 'usenet' ? 'usenet' : x.protocol === 'torrent' ? 'torrent' : '', group: cut(x.releaseGroup, 40) }))
-        .sort((a, b) => a.rejected - b.rejected || b.seeders - a.seeders).slice(0, 40));
+        // Releases in a preferred audio language (Settings → Download rules) come first, the most preferred first.
+        .map(x => { const pr = LP.rank(x, LP.clean({}, db.settings.langPref || {})); return pr ? { ...x, pref: pr, prefLang: (db.settings.langPref || {}).langs[pr - 1] } : x; })
+        .sort((a, b) => a.rejected - b.rejected || (a.pref || 99) - (b.pref || 99) || b.seeders - a.seeders).slice(0, 40));
     }
     if (p === '/api/grab' && m === 'POST') {
       if (deny('add', 'grab releases')) return;
@@ -3333,6 +3335,34 @@ const goatServer = http.createServer(async (req, res) => {
     if (p === '/api/weekly/preview' && m === 'GET') { const n = await newsData(); return send(res, 200, { text: newsText(n), html: newsHtml(n, baseUrl()) }); }
     if ((r = p.match(/^\/api\/reports\/(\w+)\/resolve$/)) && m === 'POST') {
       const x = db.reports.find(y => y.id === r[1]); if (!x) return send(res, 404, { error: 'Not found' }); x.status = 'done'; save(); return send(res, 200, {});
+    }
+    // Every app's warnings in one list, errors first, each with what can be done about it from here.
+    const ARRV = { sonarr: 'v3', radarr: 'v3', lidarr: 'v1', readarr: 'v1', prowlarr: 'v1' };
+    const warnFix = (type, t) => !ARRV[type] ? '' : /indexer/i.test(t) && /unavailable|fail|error/i.test(t) ? 'indexers' : /download client/i.test(t) ? 'clients' : 'recheck';
+    if (p === '/api/warnings' && m === 'GET') {
+      const out = [], add = (sv, level, text, extra = {}) => out.push({ sid: sv.id, app: sv.name, type: sv.type, level, text: cut(text, 400), ...extra });
+      await Promise.all(db.services.map(async sv => { try {
+        if (health[sv.id] && !health[sv.id].ok) return add(sv, 'bad', `${sv.name} is not answering.`, { fix: sv.managed ? 'restart' : '' });
+        if (ARRV[sv.type]) for (const x of await ext(sv, `/api/${ARRV[sv.type]}/health`)) add(sv, x.type === 'error' ? 'bad' : 'warn', x.message || x.source, { wiki: /^https:\/\//.test(x.wikiUrl || '') ? cut(x.wikiUrl, 300) : '', fix: warnFix(sv.type, x.message || x.source) });
+        else if (sv.type === 'bazarr') { const d = await ext(sv, '/api/system/health'); for (const x of (d && d.data) || []) add(sv, 'warn', [x.object, x.issue].filter(Boolean).join(': ')); }
+        else if (sv.type === 'sabnzbd') { const d = await sabGet(sv, 'mode=warnings'); for (const x of ((d && d.warnings) || []).slice(-5)) add(sv, /error/i.test(x.type || '') ? 'bad' : 'warn', typeof x === 'string' ? x : x.text || ''); }
+        else if (sv.type === 'qbittorrent') { const d = await qb(sv, '/api/v2/transfer/info'); if (d && d.connection_status === 'firewalled') add(sv, 'warn', 'qBittorrent is firewalled: other people cannot connect to it, so torrents are slower. Open the incoming port (or turn on port forwarding in the VPN).');
+          else if (d && d.connection_status === 'disconnected') add(sv, 'bad', 'qBittorrent has no connection to the internet.'); }
+      } catch {} }));
+      const ord = { bad: 0, warn: 1 };
+      return send(res, 200, out.sort((a, b) => ord[a.level] - ord[b.level] || a.app.localeCompare(b.app)));
+    }
+    if (p === '/api/warnings/fix' && m === 'POST') {
+      const b = await readBody(req), sv = db.services.find(x => x.id === b.sid); if (!sv) return send(res, 404, { error: 'Not found' });
+      const v = ARRV[sv.type];
+      if (b.fix === 'restart' && sv.managed) { const r2 = await goatControl({ cmd: 'restart', engine: sv.managed }); audit(me.name, 'Restarted an app', sv.name); return send(res, r2.ok ? 200 : 500, r2.ok ? { done: 'Restarting ' + sv.name } : { error: r2.error }); }
+      if (!v) return send(res, 400, { error: 'Nothing to do for this one here' });
+      if (b.fix === 'indexers') await ext(sv, `/api/${v}/indexer/testall`, { method: 'POST', body: '{}' }).catch(() => null);
+      else if (b.fix === 'clients') await ext(sv, `/api/${v}/downloadclient/testall`, { method: 'POST', body: '{}' }).catch(() => null);
+      else if (b.fix !== 'recheck') return send(res, 400, { error: 'Bad request' });
+      await ext(sv, `/api/${v}/command`, { method: 'POST', body: JSON.stringify({ name: 'CheckHealth' }) }).catch(() => null);
+      audit(me.name, 'Checked app warnings again', sv.name);
+      return send(res, 200, { done: b.fix === 'indexers' ? 'Indexers tested again; failing ones are tried now' : b.fix === 'clients' ? 'Download clients tested again' : 'Checking again' });
     }
     if (p === '/api/libhealth' && m === 'GET') {
       const out = await Promise.all(db.services.filter(x => ['sonarr', 'radarr', 'lidarr', 'readarr', 'prowlarr'].includes(x.type)).map(async sv => {
@@ -3652,6 +3682,19 @@ const goatServer = http.createServer(async (req, res) => {
     if (p === '/api/watchlist/settings' && m === 'PUT') {
       const b = await readBody(req); db.settings.watchlist = { ...(db.settings.watchlist || {}), auto: !!b.auto }; save();
       audit(me.name, 'Changed watchlists', db.settings.watchlist.auto ? 'request automatically' : 'do not request'); return send(res, 200, { auto: db.settings.watchlist.auto });
+    }
+    if (p === '/api/langpref' && m === 'GET') return send(res, 200, { ...LP.clean({}, db.settings.langPref || {}), all: LP.LANGS, apps: db.services.filter(x => ['sonarr', 'radarr'].includes(x.type)).map(x => x.name) });
+    if ((p === '/api/langpref' && m === 'PUT') || (p === '/api/langpref/apply' && m === 'POST')) {
+      const b = p.endsWith('/apply') ? {} : await readBody(req), o = db.settings.langPref || {}, c = LP.clean(b, o);
+      db.settings.langPref = c; save();
+      if (!p.endsWith('/apply') && b.apply === false) return send(res, 200, c);
+      const results = [];
+      for (const sv of db.services.filter(x => ['sonarr', 'radarr'].includes(x.type))) {
+        try { const r2 = await LP.apply(sv.type, (pth, opt = {}) => ext(sv, pth, opt), c); results.push({ app: sv.name, ok: true, done: r2.done }); c.applied = { at: Date.now(), only: c.only, low: r2.low }; }
+        catch (e) { results.push({ app: sv.name, ok: false, error: cut(e.message, 200) }); }
+      }
+      db.settings.langPref = c; save(); audit(me.name, 'Set preferred audio languages', c.langs.join(', ') || 'none');
+      return send(res, 200, { ...c, results });
     }
     if (p === '/api/heal' && m === 'GET') return send(res, 200, { cfg: healCfg(), log: db.healLog || [] });
     if (p === '/api/heal' && m === 'PUT') {

@@ -381,3 +381,7 @@ button.sm{min-height:30px;padding:4px 10px;font-size:13px}
 @media(max-width:860px){
  .side{z-index:8!important;background:var(--bg)!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important;box-shadow:0 6px 18px rgba(0,0,0,.22)}
 }
+
+/* Needs attention */
+.wrow{display:flex;gap:10px;align-items:flex-start;margin-top:8px;flex-wrap:wrap}.wrow>.pill{flex:none;margin-top:1px}.wrow>button{flex:none}
+.lpc{display:inline-flex;align-items:center;gap:4px;padding-right:2px}.lpc .icon{width:24px;height:24px;min-height:0;padding:0}.lpc .icon svg{width:13px;height:13px}

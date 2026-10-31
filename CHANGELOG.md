@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- Preferred audio language (Settings → Download rules): pick the languages you want, most wanted first (like Hindi, then English). Radarr and Sonarr get a custom format for each, scored in every quality profile, so they choose those releases and can replace a file when a better-language release turns up; "Dual audio" releases can count too, and you can allow only those languages. Interactive search lists them first with a ★.
+- Health: *Needs attention* lists every app's warnings in one place (Sonarr, Radarr, Lidarr, Prowlarr, Bazarr, SABnzbd, qBittorrent, and any app that stopped answering), errors first, with a link to what it means and a button that does what can be done from here: test the indexers or download clients again, check again, or restart a built-in app.
 - Opening Tautulli from the Stack page went to 127.0.0.1:8181 instead of your server's address: Tautulli answers with its inside address when it sends you on to its home page. Such redirects from the built-in apps now stay on your server's address.
 
 ## v1.0.5 — 2026-10-31
