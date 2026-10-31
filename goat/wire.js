@@ -263,7 +263,29 @@ async function wirePlex(on) {
     await http('POST', `${PLEX}/library/sections?${q}`, { headers: h });
     out[name] = 'added';
   }
+  try { const n = await plexNetwork(h); if (n) out.network = n; } catch (e) { out.network = 'not set: ' + e.message; }
   return { out, token: p.token };
+}
+// Inside Docker, Plex only knows the container's own address (172.17.x.x) and tells plex.tv that one, so TVs and
+// phones at home cannot reach it directly and go through Plex's relay ("Indirect", lower quality), and their streams
+// count as remote. Plex is told the server's real address (Custom server access URLs) and the home network
+// (LAN Networks), from the address people open GoatMediaStackarr with. Filled in when empty, or when it is still what
+// was filled in last time; anything you set yourself in Plex stays.
+async function plexNetwork(h) {
+  const L = links(); let u; try { u = new URL(L.base); } catch { return ''; }
+  const host = u.hostname, ip4 = /^\d+\.\d+\.\d+\.\d+$/.test(host) ? host : '';
+  if (!host || isLocal(host)) return '';
+  const urls = [...new Set([`http://${host}:${E.ENGINES.plex.port}`, ...(L.plex && !/:32400\/?$/.test(L.plex) ? [String(L.plex).replace(/\/+$/, '')] : [])])].join(',');
+  const lan = ip4 && /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(ip4) ? ip4.split('.').slice(0, 3).join('.') + '.0/24' : '';
+  const prefs = ((((await http('GET', `${PLEX}/:/prefs`, { headers: h })).data || {}).MediaContainer || {}).Setting || []);
+  const val = id => String((prefs.find(x => x.id === id) || {}).value || '');
+  const mf = `${C}/goat/plex-network.json`, last = readJSON(mf, {}) || {}, set = {};
+  if (urls && (!val('customConnections') || val('customConnections') === last.customConnections) && val('customConnections') !== urls) set.customConnections = urls;
+  if (lan && (!val('LanNetworks') || val('LanNetworks') === last.LanNetworks) && val('LanNetworks') !== lan) set.LanNetworks = lan;
+  if (!Object.keys(set).length) return 'already set';
+  await http('PUT', `${PLEX}/:/prefs?${new URLSearchParams(set)}`, { headers: h });
+  writeJSON(mf, { ...last, ...set });
+  return Object.entries(set).map(([k, v]) => `${k} ${v}`).join(', ');
 }
 
 // ---------- Seerr ----------

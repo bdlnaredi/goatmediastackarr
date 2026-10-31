@@ -4,6 +4,7 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- Built-in Plex is told your server's real address (*Custom server access URLs*) and your home network (*LAN Networks*), from the address you open GoatMediaStackarr with. Inside Docker it only knew the container's own address, so TVs and phones at home could end up on Plex's relay ("Indirect", lower quality) and their streams counted as remote. Filled in when empty; anything you set yourself in Plex stays.
 - Built-in apps open on your server's address, never 127.0.0.1: the Apps list and the dashboard show and open them through GoatMediaStackarr's own address (or Jellyfin, Seerr, Plex, ruTorrent and Deluge on their own ports of that address), and are marked *Built in* instead of offering an address to edit that would be put back on every start.
 - Seerr's *Open in Sonarr/Radarr* and *Play on Jellyfin* links use your server's address (or the one set for outside your home) instead of 127.0.0.1; the apps still talk to each other inside the container. An address or link you change in Seerr yourself is kept, and Sonarr or Radarr is no longer added a second time when you do.
 

@@ -23,7 +23,10 @@ test('Plex is linked, gets libraries, and Seerr and Tautulli use it', async () =
   const a = init.run(process.env);
   fs.mkdirSync(path.join(root, 'config/seerr'), { recursive: true });
 
-  const plex = { libs: [], claims: 0 };
+  const plex = { libs: [], claims: 0, prefs: { customConnections: '', LanNetworks: '' }, puts: 0 };
+  // The address people open GoatMediaStackarr with (written by its page): Plex is told it, and the home network.
+  fs.mkdirSync(path.join(root, 'config/ui'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'config/ui/links.json'), JSON.stringify({ base: 'http://192.168.1.10:2806', plex: 'http://192.168.1.10:32400' }));
   const prefs = E.PLEX_PREFS();
   const plexSrv = http.createServer(async (req, res) => {
     const u = new URL(req.url, 'http://x'), p = u.pathname;
@@ -37,6 +40,8 @@ test('Plex is linked, gets libraries, and Seerr and Tautulli use it', async () =
     }
     if (req.headers['x-plex-token'] !== 'plextok') return json(res, 401, {});
     if (p === '/library/sections' && req.method === 'GET') return json(res, 200, { MediaContainer: { Directory: plex.libs } });
+    if (p === '/:/prefs' && req.method === 'GET') return json(res, 200, { MediaContainer: { Setting: Object.entries(plex.prefs).map(([id, value]) => ({ id, value })) } });
+    if (p === '/:/prefs' && req.method === 'PUT') { plex.puts++; for (const [k, v] of u.searchParams) plex.prefs[k] = v; return json(res, 200, {}); }
     if (p === '/library/sections' && req.method === 'POST') {
       plex.libs.push({ title: u.searchParams.get('name'), type: u.searchParams.get('type'), agent: u.searchParams.get('agent'), Location: [{ path: u.searchParams.get('location') }] });
       return json(res, 201, {});
@@ -96,6 +101,11 @@ test('Plex is linked, gets libraries, and Seerr and Tautulli use it', async () =
     assert.ok(st2.steps.plex.ok);
     assert.equal(plex.claims, 1);
     assert.equal(plex.libs.length, 2);
+    assert.equal(plex.prefs.customConnections, `http://192.168.1.10:${ports.plex}`, 'Plex is told the server address');
+    assert.equal(plex.prefs.LanNetworks, '192.168.1.0/24');
+    assert.equal(plex.puts, 1, 'only once');
+    // Changed in Plex by hand: kept.
+    plex.prefs.LanNetworks = '192.168.0.0/16'; await wire.run(); assert.equal(plex.prefs.LanNetworks, '192.168.0.0/16'); assert.equal(plex.puts, 1);
     init.run(process.env);
     const t = fs.readFileSync(path.join(root, 'config/tautulli/config.ini'), 'utf8');
     assert.match(t, /pms_token = plextok/); assert.match(t, /pms_identifier = mid-1/); assert.match(t, /first_run_complete = 1/);
