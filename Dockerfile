@@ -189,6 +189,13 @@ RUN --mount=type=secret,id=GITHUB_TOKEN,env=GITHUB_TOKEN \
     fetch-release userdocs/qbittorrent-nox-static "${QBITTORRENT_TAG}" "^${a}-qbittorrent-nox$" /usr/local/bin/qbittorrent-nox /opt/goat/versions/qbittorrent && \
     chmod +x /usr/local/bin/qbittorrent-nox
 
+# File Browser: the media and downloads folders in the browser (one small program).
+ARG FILEBROWSER_VERSION=latest
+RUN --mount=type=secret,id=GITHUB_TOKEN,env=GITHUB_TOKEN \
+    a=$([ "$TARGETARCH" = arm64 ] && echo arm64 || echo amd64) && \
+    fetch-release filebrowser/filebrowser "${FILEBROWSER_VERSION}" "^linux-${a}-filebrowser\.tar\.gz$" /tmp/fb.tar.gz /opt/goat/versions/filebrowser && \
+    mkdir -p /opt/filebrowser && tar -xzf /tmp/fb.tar.gz -C /opt/filebrowser filebrowser && rm /tmp/fb.tar.gz && chmod +x /opt/filebrowser/filebrowser
+
 # Bazarr and SABnzbd, built in the python stage above.
 COPY --from=python /opt/bazarr /opt/bazarr
 COPY --from=python /opt/sabnzbd /opt/sabnzbd

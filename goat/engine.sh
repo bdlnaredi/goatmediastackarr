@@ -10,7 +10,9 @@ in_list() { [[ ",${2// /}," == *",$1,"* ]]; }
 
 # ruTorrent and Deluge each have a second service for their web page; it is on when the app is.
 app="${name%-web}"
-if [[ "$name" != ui && "$name" != wire && "$name" != sitefetch ]] && ! in_list "$app" "${GOAT_ENGINES,,}"; then
+# File Browser is always there (it is small), unless GOAT_FILEBROWSER=false.
+if [[ "$name" == filebrowser && "${GOAT_FILEBROWSER:-true}" == false ]]; then echo "[goat] File Browser is turned off (GOAT_FILEBROWSER)."; exec sleep infinity; fi
+if [[ "$name" != ui && "$name" != wire && "$name" != sitefetch && "$name" != filebrowser ]] && ! in_list "$app" "${GOAT_ENGINES,,}"; then
   echo "[goat] $name is turned off (GOAT_ENGINES)."
   exec sleep infinity
 fi
@@ -149,6 +151,19 @@ case "$name" in
     cd /opt/goat/ui || exit 1
     export HOME=/config/ui PORT=2806 DATA_DIR=/config/ui GOAT_MANAGED=/config/goat/managed.json GOAT_RUN=/run/goat GOAT_WIRED=/config/goat/wired.json
     cmd=(/usr/local/bin/node server.js) ;;
+  filebrowser)
+    # File Browser: your media and downloads folders in the browser (upload, download, rename, move, delete). It opens
+    # through GoatMediaStackarr at /engines/filebrowser/ for admins only, so it has no sign-in of its own.
+    export HOME=/config/filebrowser
+    fb=/opt/filebrowser/filebrowser db=/config/filebrowser/filebrowser.db
+    mkdir -p /config/filebrowser /files && chown "$PUID:$PGID" /config/filebrowser
+    ln -sfn "${MEDIA_DIR:-/media}" /files/media; ln -sfn "${DOWNLOADS_DIR:-/downloads}" /files/downloads
+    as() { s6-applyuidgid -u "$PUID" -g "$PGID" -G "$PGID" "$@"; }
+    opts=(--address 127.0.0.1 --port "${GOAT_PORT_FILEBROWSER:-8095}" --root /files --baseurl /engines/filebrowser --auth.method=noauth)
+    if [[ ! -f "$db" ]]; then
+      as "$fb" -d "$db" config init "${opts[@]}" >/dev/null && as "$fb" -d "$db" users add goat "$(head -c 24 /dev/urandom | base64 | tr -dc A-Za-z0-9)" --perm.admin >/dev/null
+    else as "$fb" -d "$db" config set "${opts[@]}" >/dev/null; fi
+    cmd=("$fb" -d "$db") ;;
   sitefetch)
     export HOME=/config/goat SITEFETCH_PORT=8899
     cmd=(/usr/local/bin/node /opt/goat/bin/sitefetch.js) ;;

@@ -160,6 +160,10 @@ jobs:
           code=$(curl -s -o /dev/null -w '%{http_code}' -b /tmp/ck -H "$J" -H "Origin: $B" -d '{"engine":"nope"}' $B/api/goat/restart)
           [ "$code" = 500 ] || { echo "::error::Unknown app was not refused ($code)"; exit 1; }
           curl -fsS -b /tmp/ck -H "Origin: $B" -o /dev/null $B/engines/sonarr/
+          # File Browser opens through the page, with the media and downloads folders in it.
+          ok=""; for i in $(seq 1 20); do curl -fsS -b /tmp/ck -o /dev/null $B/engines/filebrowser/ && { ok=1; break; }; sleep 3; done
+          [ -n "$ok" ] || { echo "::error::File Browser did not open at /engines/filebrowser/"; docker logs goat 2>&1 | grep -i filebrowser | tail -20; exit 1; }
+          docker exec goat sh -c 'ls /files' | grep -q media || { echo "::error::File Browser has no media folder"; exit 1; }
           echo "::notice::Stack page controls work: status, restart, refusal, engine page"
           # New passwords for the logins made for you: each app takes it, and Sonarr's download clients still work.
           for a in qbittorrent rutorrent deluge jellyfin; do

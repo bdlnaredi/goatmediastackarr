@@ -302,7 +302,8 @@ function run(env = process.env) {
     plex: svc('plex', { apiKey: (plex && plex.token) || (managed.services || []).find(x => x.key === 'plex')?.apiKey || '' }),
   };
   // Apps the interface has no screen of its own for (FlareSolverr) are listed separately, for the Stack page.
-  const extras = on.filter(k => !want[k]).map(k => ({ key: k, name: E.ENGINES[k].name }));
+  const extras = [...new Set([...on, ...(String(env.GOAT_FILEBROWSER || 'true').toLowerCase() === 'false' ? [] : ['filebrowser'])])]
+    .filter(k => !want[k] && E.ENGINES[k]).map(k => ({ key: k, name: E.ENGINES[k].name }));
   managed = { version: 1, services: on.map(k => want[k]).filter(Boolean), extras, vpn: { enabled: vpn.length > 0, apps: vpn } };
   fs.writeFileSync(mf, JSON.stringify(managed, null, 1), { mode: 0o600 });
 

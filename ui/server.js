@@ -385,9 +385,12 @@ if (GOAT_MANAGED) setTimeout(() => goatLinks(), 20000).unref();
 // Admins can open each built-in engine's own page at /engines/<name>/ (the "Advanced" pages), signed in through
 // GoatMediaStackarr. The engines themselves listen only inside the container, so this is the only way in.
 // Seerr has no setting for living under a sub-path, and Jellyfin has its own port, so they are not proxied.
-const GOAT_PROXIED = ['sonarr', 'radarr', 'lidarr', 'prowlarr', 'bazarr', 'qbittorrent', 'sabnzbd', 'tautulli'];
+const GOAT_PROXIED = ['sonarr', 'radarr', 'lidarr', 'prowlarr', 'bazarr', 'qbittorrent', 'sabnzbd', 'tautulli', 'filebrowser'];
 const goatTarget = rawUrl => {
   const m = String(rawUrl || '').match(/^\/engines\/([a-z]+)(\/.*)?$/); if (!m || !GOAT_PROXIED.includes(m[1])) return null;
+  // File Browser has no app entry of its own (nothing else talks to it): it is on when the container lists it.
+  if (m[1] === 'filebrowser') return GOAT_MANAGED && ((goatRead(GOAT_MANAGED) || {}).extras || []).some(x => x.key === 'filebrowser')
+    ? { key: 'filebrowser', name: 'File Browser', port: +process.env.GOAT_PORT_FILEBROWSER || 8095, path: '/engines/filebrowser' + (m[2] || '/'), bare: !m[2] } : null;
   const s = db.services.find(x => x.managed === m[1]); if (!s) return null;
   let u; try { u = new URL(s.url); } catch { return null; }
   if (!['127.0.0.1', 'localhost'].includes(u.hostname)) return null;

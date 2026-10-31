@@ -15,7 +15,8 @@ test('FlareSolverr becomes a tagged Prowlarr proxy, once', async () => {
     GOAT_ENGINES: 'prowlarr,flaresolverr', GOAT_WIRE_PAUSE: '10' });
   const init = require('../goat/init');
   const a = init.run(process.env);
-  assert.deepEqual(a.managed.extras, [{ key: 'flaresolverr', name: 'FlareSolverr' }]);
+  assert.deepEqual(a.managed.extras, [{ key: 'flaresolverr', name: 'FlareSolverr' }, { key: 'filebrowser', name: 'File Browser' }], 'File Browser is always listed');
+  assert.deepEqual(init.run({ ...process.env, GOAT_FILEBROWSER: 'false' }).managed.extras.map(x => x.key), ['flaresolverr'], 'unless turned off');
   const st = { tags: [], proxies: [] };
   const fsSrv = http.createServer((q, s) => { s.writeHead(200, { 'Content-Type': 'application/json' }); s.end('{"msg":"FlareSolverr is ready!"}'); });
   const pr = http.createServer(async (req, res) => {

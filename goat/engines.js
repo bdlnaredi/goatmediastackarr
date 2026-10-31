@@ -32,6 +32,8 @@ const ENGINES = {
   rutorrent:   { name: 'ruTorrent',   port: 8090, base: '', rpc: 5000 },
   // Deluge's Web UI; its daemon (deluged) listens on 127.0.0.1:58846, only inside the container.
   deluge:      { name: 'Deluge',      port: 8112, base: '', daemon: 58846 },
+  // Always there unless GOAT_FILEBROWSER=false: the media and downloads folders in the browser, for admins.
+  filebrowser: { name: 'File Browser', port: 8095, base: '/engines/filebrowser' },
 };
 
 // Tests run fake engines on spare ports: GOAT_PORT_SONARR=12345 and so on.

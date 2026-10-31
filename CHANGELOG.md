@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- File Browser is part of the stack: the media and downloads folders in the browser (upload, download, rename, move, delete), opened from the Stack page through GoatMediaStackarr, for admins only. `GOAT_FILEBROWSER=false` turns it off. Its settings are in the stack backups.
+
 ## v0.9.8 — 2026-10-31
 
 - Request options: when an admin (or a profile that can add things) asks for a movie or show, a short form asks for the quality, the folder, what to monitor (a whole show, future episodes, the first or latest season…), and for movies when they count as available. Quality and folder go to Seerr; monitoring and availability are set in Radarr or Sonarr once Seerr has added it. The last choices are remembered. Web page and app.

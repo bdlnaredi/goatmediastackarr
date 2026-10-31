@@ -32,6 +32,7 @@ const PARTS = {
   jellyfin: { name: 'Jellyfin', dir: 'jellyfin', skip: ['cache', 'log', 'tmp', 'data/metadata', 'data/transcodes', 'data/subtitles', 'data/keyframes', 'data/attachments'] },
   seerr: { name: 'Seerr', dir: 'seerr', skip: ['logs', 'cache'] },
   tautulli: { name: 'Tautulli', dir: 'tautulli', skip: ['logs', 'cache', 'backups', 'newsletters'] },
+  filebrowser: { name: 'File Browser', dir: 'filebrowser', skip: [] },
   plex: { name: 'Plex', dir: 'plex', skip: ['pms', 'tmp', 'Library/Application Support/Plex Media Server/Cache', 'Library/Application Support/Plex Media Server/Metadata',
     'Library/Application Support/Plex Media Server/Media', 'Library/Application Support/Plex Media Server/Logs', 'Library/Application Support/Plex Media Server/Crash Reports',
     'Library/Application Support/Plex Media Server/Codecs', 'Library/Application Support/Plex Media Server/Updates', 'Library/Application Support/Plex Media Server/Drivers',
@@ -39,7 +40,7 @@ const PARTS = {
 };
 // The services that keep files open in each part, stopped while it is put back.
 const SERVICES = { sonarr: ['sonarr'], radarr: ['radarr'], lidarr: ['lidarr'], prowlarr: ['prowlarr'], bazarr: ['bazarr'], qbittorrent: ['qbittorrent'],
-  rutorrent: ['rutorrent', 'rutorrent-web'], deluge: ['deluge', 'deluge-web'], sabnzbd: ['sabnzbd'], jellyfin: ['jellyfin'], seerr: ['seerr'], tautulli: ['tautulli'],
+  rutorrent: ['rutorrent', 'rutorrent-web'], deluge: ['deluge', 'deluge-web'], sabnzbd: ['sabnzbd'], jellyfin: ['jellyfin'], seerr: ['seerr'], tautulli: ['tautulli'], filebrowser: ['filebrowser'],
   plex: ['plex'], vpn: ['goat-vpn'], goat: [], ui: ['goat-ui'] };
 
 const sh = (file, args, opt = {}) => new Promise((resolve, reject) =>

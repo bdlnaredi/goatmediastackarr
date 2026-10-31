@@ -123,6 +123,7 @@ The menu has four groups. In the Cinema style they are drop-downs on the bar acr
 ### Server
 
 - **Stack** (admins): everything about the container. The VPN (on or off, PIA with a region list or your provider's file, which apps use it, port forwarding, a leak test); every app's health and version with **Restart**, **Stop**, **Start** and its own page; what changed after an update; **Logins made for you** (Jellyfin, qBittorrent, ruTorrent, Deluge) with **Change** to set your own password, which Sonarr, Radarr, Lidarr and Prowlarr are given too; the outside addresses for the Open buttons; linking Plex; and the connections, with a button to run them again.
+- **File Browser** (admins): the media and downloads folders in the browser, opened from the Stack page: upload, download, rename, move and delete files.
 - **Health**: problems the apps report, stuck downloads, and disk space per folder. **Fix problems by itself** (on by default) removes, blocks and searches again for downloads that failed or have not moved for a day, and restarts a built-in app that stops answering; every fix is listed here.
 - **Unraid**: the array, disks and containers, if you add your Unraid server. **Stats**: what gets watched, from Tautulli.
 - **Settings**: *Account* (password, two-step sign-in, Sign in with Plex, devices), *Appearance*, *Apps*, *Discover lists*, *Users* (what each profile can see and do), *Limits* (streaming per month and disk space per person), *Status pages*, *Alerts* (email, ntfy, Discord, Telegram, Pushover, Gotify or any webhook, each with its own list of what it hears about), *Download rules*, *Backup* and *Activity*.
@@ -259,6 +260,7 @@ What is kept in `appdata/goatmediastackarr/`: each app's own folder; `goat/secre
 | `PUID` / `PGID` | `99` / `100` | User and group that own the files (Unraid's nobody/users) |
 | `TZ` | `Etc/UTC` | Time zone |
 | `UMASK` | `002` | New files are group-writable |
+| `GOAT_FILEBROWSER` | `true` | File Browser: your media and downloads folders in the browser (Stack page → File Browser, admins only). `false` turns it off |
 | `TORRENT_PORT` | `50413` | qBittorrent's incoming port (6881 is blocked by many trackers) |
 
 ## Troubleshooting
