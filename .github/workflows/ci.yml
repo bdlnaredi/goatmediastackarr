@@ -164,6 +164,7 @@ jobs:
           ok=""; for i in $(seq 1 20); do curl -fsS -b /tmp/ck -o /dev/null $B/engines/filebrowser/ && { ok=1; break; }; sleep 3; done
           [ -n "$ok" ] || { echo "::error::File Browser did not open at /engines/filebrowser/"; docker logs goat 2>&1 | grep -i filebrowser | tail -20; exit 1; }
           docker exec goat sh -c 'ls /files' | grep -q media || { echo "::error::File Browser has no media folder"; exit 1; }
+          docker exec goat sh -c 'test -s /opt/goat/bin/pia-regions.json' || echo "::warning::The PIA region list is not built into the image"
           echo "::notice::Stack page controls work: status, restart, refusal, engine page"
           # New passwords for the logins made for you: each app takes it, and Sonarr's download clients still work.
           for a in qbittorrent rutorrent deluge jellyfin; do

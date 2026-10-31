@@ -237,6 +237,9 @@ COPY ui /opt/goat/ui
 COPY CHANGELOG.md /opt/goat/CHANGELOG.md
 COPY goat /opt/goat/bin
 COPY rootfs /
+# PIA's list of regions, built in so the VPN page shows them at once without asking PIA's site.
+RUN curl -fsSL --retry 4 --retry-all-errors https://serverlist.piaservers.net/vpninfo/servers/v6 | head -n 1 > /opt/goat/bin/pia-regions.json && \
+    jq -e '.regions | length > 20' /opt/goat/bin/pia-regions.json >/dev/null || { echo 'PIA region list not fetched; the VPN page will ask PIA instead'; rm -f /opt/goat/bin/pia-regions.json; }
 RUN chmod +x /opt/goat/bin/*.sh /opt/goat/bin/*.js && \
     find /etc/s6-overlay/s6-rc.d \( -name run -o -name finish \) -exec chmod +x {} + && \
     echo "${VERSION}" > /opt/goat/VERSION && \

@@ -841,13 +841,14 @@ function render(){
   const navBtn=([k,n])=>`<button class="nv ${tab===k?'on':''}" data-t="${k}" title="${T(n)}"${tab===k?' aria-current="page"':''}>${ic(k)}<span>${n}</span></button>`;
   const dockIds=['dash','lib','dl','rq','disc','up'].filter(k=>tabs.some(x=>x[0]===k)).slice(0,4),dockHtml=`<nav class="dock" aria-label="Main">${dockIds.map(k=>`<button data-t="${k}" class="${tab===k?'on':''}"${tab===k?' aria-current="page"':''}>${ic(k)}<span>${(tabs.find(x=>x[0]===k)||[,k])[1]}</span></button>`).join('')}<button id="dm" class="${dockIds.includes(tab)?'':'on'}" aria-haspopup="dialog">${ic('more')}<span>More</span></button></nav>`;
   const fresh=whatsNewDot();
-  $('#app').innerHTML=`<a class="skip" href="#m">Skip to content</a><div class="shell"><nav class="side" aria-label="Main"><div class="brand"><span class="logo">${LOGO}</span><span class="t">GoatMediaStackarr</span><span class="mtools"><button class="ghost" id="wn2" aria-label="What's new">${ic('new')}${fresh?'<i class="ndot"></i>':''}</button><button class="ghost" id="qs2" aria-label="Quick search">${ic('find')}</button><button class="ghost" id="ap3" aria-label="Appearance">${ic('pal')}</button></span><button class="ghost" id="rl" aria-label="Shrink or expand the menu" title="Shrink or expand the menu">${ic('chev')}</button></div>
+  $('#app').innerHTML=`<a class="skip" href="#m">Skip to content</a><div class="shell"><nav class="side" aria-label="Main"><div class="brand"><a href="#" class="home" id="home" title="Home" aria-label="GoatMediaStackarr, go to Home"><span class="logo">${LOGO}</span><span class="t">GoatMediaStackarr</span></a><span class="mtools"><button class="ghost" id="wn2" aria-label="What's new">${ic('new')}${fresh?'<i class="ndot"></i>':''}</button><button class="ghost" id="qs2" aria-label="Quick search">${ic('find')}</button><button class="ghost" id="ap3" aria-label="Appearance">${ic('pal')}</button></span><button class="ghost" id="rl" aria-label="Shrink or expand the menu" title="Shrink or expand the menu">${ic('chev')}</button></div>
     <button class="qs" id="qs" aria-label="Quick search">${ic('find')}<span>Quick search</span><kbd>Ctrl K</kbd></button>
     <div class="nav">${groups.map(([g,l])=>`<div class="ng${l.some(x=>x[0]===tab)?' on':''}" role="group" aria-label="${T(g)}"><div class="ngh" tabindex="-1">${g}</div><div class="ngl">${l.map(navBtn).join('')}</div></div>`).join('')}</div>
     <button class="nv wn" id="wn" title="What's new">${ic('new')}<span>What's new</span>${fresh?'<i class="ndot" aria-label="New"></i>':''}</button>
     <div class="who"><span class="av">${esc((me.name[0]||'?').toUpperCase())}</span><span class="nm">${esc(me.name)}</span><button class="ghost" id="ap" aria-label="Appearance" title="Appearance">${ic('pal')}</button><button id="out" class="ghost" aria-label="Sign out" title="Sign out">${ic('out')}</button></div><div class="ver" title="GoatMediaStackarr version, see Settings, About">GoatMediaStackarr ${esc(VER)}${APPMODE?' · Android app':''}</div></nav>
     <main>${DEMO?'<div class="demo" role="note">Demo mode: the apps here are pretend and nothing is saved. Risky settings are locked.</div>':''}<div class="ph">${pg[0]?`<div class="phg">${navGroupOf(tab)?`<span class="phk">${navGroupOf(tab)}</span>`:''}<h1>${pg[0]}</h1><p class="mute">${pg[1]}</p></div>`:''}</div><div id="m" tabindex="-1"></div></main>${dockHtml}</div>`;
   document.querySelectorAll('.nv[data-t],.dock [data-t]').forEach(b=>b.onclick=()=>{tab=b.dataset.t;render()});
+  document.querySelectorAll('#home,.tbrand').forEach(b=>b.onclick=e=>{e.preventDefault();tab='dash';render();window.scrollTo&&window.scrollTo(0,0)});
   const so=async()=>{liveStop();await api('/api/logout','POST');me=null;start()};$('#out').onclick=so;
   $('#ap').onclick=appearance;$('#ap3').onclick=appearance;$('#qs2').onclick=quick;$('#wn').onclick=whatsNew;$('#wn2').onclick=whatsNew;
   $('#dm').onclick=()=>{const o=modal(`<div class="row" style="width:100%"><h2 style="margin:0;flex:1">Menu</h2><button data-x>Close</button></div>${groups.map(([g,l])=>{const rest=l.filter(x=>!dockIds.includes(x[0]));return rest.length?`<div class="mg"><div class="ngh">${g}</div><div class="more">${rest.map(([k,n])=>`<button data-t="${k}" class="${tab===k?'on':''}">${ic(k)}<span>${n}</span></button>`).join('')}</div></div>`:''}).join('')}
@@ -1052,7 +1053,7 @@ function dashView(){
   checks();upt();slow();attn();rq();
   timer=[tick(fallback,4000),setInterval(glide,1000),tick(slow,60000),tick(attn,60000),tick(rq,60000),tick(upt,300000),tick(()=>{if(!LIVE.ok)checks()},30000)];
 }
-const ST_SECTIONS=[['acct','Account',false,'Your password, sign-in and devices','usr','You'],['look','Appearance',false,'Theme, colours and layout','pal','You'],['apps','Apps',true,'The apps GoatMediaStackarr connects to','svc','Server'],['lists','Discover lists',true,'Keys for the Trakt, TMDB and TheTVDB lists','find','Server'],['users','Users',true,'Profiles and what each can do','usr','Server'],['limits','Limits',true,'How much each person may stream and keep, and who is using what','dl','Server'],['links','Status pages',true,'Public pages that show if your server is up','eye','Server'],['alerts','Alerts',true,'Email, phone messages and reports','al','Care'],['rules','Download rules',true,'Speed schedule and stream throttling','dl','Care'],['backup','Backup',true,'Save and restore your setup','pw','Care'],['audit','Activity',true,'Who did what, and when','hl','Care'],['about','About',false,'Version and where you are connected','eye','You']];
+const ST_SECTIONS=[['acct','Account',false,'Your password, sign-in and devices','usr','You'],['look','Appearance',false,'Theme, colours and layout','pal','You'],['apps','Apps',true,'The apps GoatMediaStackarr connects to','svc','Server'],['lists','Discover lists',true,'Keys for the Trakt, TMDB and TheTVDB lists','find','Server'],['users','Users',true,'Profiles and what each can do','usr','Server'],['limits','Limits',true,'How much each person may stream and keep, and who is using what','dl','Server'],['alerts','Alerts',true,'Email, phone messages and reports','al','Care'],['rules','Download rules',true,'Speed schedule and stream throttling','dl','Care'],['backup','Backup',true,'Save and restore your setup','pw','Care'],['audit','Activity',true,'Who did what, and when','hl','Care'],['about','About',false,'Version and where you are connected','eye','Help']];
 function setView(){
   const admin=me.role==='admin',secs=ST_SECTIONS.filter(s=>admin||!s[2]);
   if(!secs.some(s=>s[0]===stSub))stSub='acct';
@@ -1064,7 +1065,7 @@ function setView(){
   mm.insertAdjacentHTML('beforebegin',`<div class="sxt"><h2>${cur[1]}</h2><p class="mute">${cur[3]}</p></div>`);
   $('#sn').onclick=e=>{const b=e.target.closest('[data-k]');if(!b)return;stSub=b.dataset.k;render()};
   const ob=$('#sn .on');if(ob&&ob.scrollIntoView)ob.scrollIntoView({inline:'center',block:'nearest'});
-  ({limits:stLimits,acct:stAcct,look:stLook,apps:svcView,lists:stLists,users:usrView,alerts:alView,links:linksView,rules:stRules,backup:stBackup,audit:stAudit,about:stAbout})[stSub]();
+  ({limits:stLimits,acct:stAcct,look:stLook,apps:svcView,lists:stLists,users:usrView,alerts:alView,rules:stRules,backup:stBackup,audit:stAudit,about:stAbout})[stSub]();
 }
 async function stLimits(month){
   let d,users=[];try{[d,users]=await Promise.all([api('/api/streaming'+(month?'?month='+month:'')),api('/api/users')])}catch(x){$('#m').innerHTML=`<div class="panel err">${esc(x.message)}</div>`;return}
@@ -1425,9 +1426,25 @@ async function autoBackups(){
 }
 async function stAudit(){
   $('#m').innerHTML=skel(5);
-  try{const l=await api('/api/audit');if(tab!=='set'||stSub!=='audit')return;
-    $('#m').innerHTML=l.length?`<div class="panel" style="padding:4px 18px">${l.map(e=>`<div class="srow" style="grid-template-columns:150px 110px 1fr"><span class="mute">${esc(fdt(e.at))}</span><b>${esc(e.user)}</b><span>${esc(e.action)}${e.detail?` <span class="mute">${esc(e.detail)}</span>`:''}</span></div>`).join('')}</div>`:empty('Nothing yet','Sign-ins and changes will show up here.')}
-  catch(x){$('#m').innerHTML=`<div class="err">${esc(x.message)}</div>`}
+  let l;try{l=await api('/api/audit')}catch(x){$('#m').innerHTML=`<div class="err">${esc(x.message)}</div>`;return}
+  if(tab!=='set'||stSub!=='audit')return;
+  if(!l.length){$('#m').innerHTML=empty('Nothing yet','Sign-ins and changes will show up here.');return}
+  let q='',who='',n=60;
+  const ppl=[...new Set(l.map(e=>e.user))].sort();
+  $('#m').innerHTML=`<div class="row aud-f"><input id="aq" type="search" placeholder="Filter" aria-label="Filter activity"><select id="aw" aria-label="Person"><option value="">Everyone</option>${ppl.map(p=>`<option>${esc(p)}</option>`).join('')}</select><span class="mute" id="ac"></span></div><div class="panel aud" id="al"></div>`;
+  const day=t=>new Date(t).toLocaleDateString(undefined,{weekday:'short',day:'numeric',month:'short',year:new Date(t).getFullYear()===new Date().getFullYear()?undefined:'numeric'});
+  const tm=t=>new Date(t).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'});
+  function draw(){
+    const ql=q.toLowerCase(),f=l.filter(e=>(!who||e.user===who)&&(!ql||(e.user+' '+e.action+' '+(e.detail||'')).toLowerCase().includes(ql)));
+    let last='',h='';
+    for(const e of f.slice(0,n)){const d=day(e.at);if(d!==last){h+=`<div class="aud-d">${esc(d)}</div>`;last=d}
+      h+=`<div class="aud-r"><span class="mute">${tm(e.at)}</span><b>${esc(e.user)}</b><span>${esc(e.action)}${e.detail?` <span class="mute">${esc(e.detail)}</span>`:''}</span></div>`}
+    $('#al').innerHTML=(h||'<p class="mute" style="margin:8px 0">Nothing matches.</p>')+(f.length>n?`<button class="ghost" id="amore" style="margin:6px 0">Show more</button>`:'');
+    $('#ac').textContent=f.length+' of '+l.length;
+    const m=$('#amore');if(m)m.onclick=()=>{n+=100;draw()};
+  }
+  $('#aq').oninput=e=>{q=e.target.value;n=60;draw()};$('#aw').onchange=e=>{who=e.target.value;n=60;draw()};
+  draw();
 }
 async function usrView(){
   try{users=await api('/api/users')}catch(x){$('#m').innerHTML=`<div class="err">${esc(x.message)}</div>`;return}
@@ -1935,7 +1952,7 @@ function openLibItem(s,x,cb){
   // The show or movie gets its own address while it is open, so it can be bookmarked or shared; Back closes it.
   if(s&&x&&x.id!=null)NEXT_LAYER_URL=`/library/${s.type==='sonarr'?'tv':'movies'}/${encodeURIComponent(s.id)}/${encodeURIComponent(x.id)}`;
   if(s.type==='sonarr')return seriesDialog(s,x,cb);
-  showDetail({title:x.title,sub:String(x.year||''),poster:x.poster,fanart:x.fanart,overview:x.overview,meta:libMeta(x,false),sid:s.id,id:x.id,scope:'',del:me.role==='admin',onremove:cb.onRemove,
+  showDetail({title:x.title,sub:String(x.year||''),poster:x.poster,fanart:x.fanart,overview:x.overview,meta:libMeta(x,false),sid:s.id,id:x.id,scope:'',del:me.role==='admin',onremove:cb.onRemove,arr:arrBtn(s,arrHref(s,x.slug,x.tmdb||x.id)),fkind:'movie',onfiles:cb.onChange,
     mon:{sid:s.id,kind:'movie',id:x.id,monitored:x.monitored,onChange:v=>{x.monitored=v;if(cb.onChange)cb.onChange()}}});
 }
 async function seriesDialog(s,x,cb){
@@ -1951,19 +1968,20 @@ async function seriesDialog(s,x,cb){
   const row=e=>`<div class="box row" style="padding:9px 0;margin:0;flex-wrap:wrap;row-gap:4px"><span class="mute" style="min-width:34px">${e.num}</span><div class="grow" style="min-width:0"><span style="word-break:break-word">${esc(e.title||'To be announced')}</span> <span class="mute">${e.date?esc(new Date(e.date).toLocaleDateString()):''}${e.runtime?' · '+e.runtime+' min':''}</span></div>
     ${e.has?`<span class="pill ok">${esc(e.quality||'Downloaded')}</span>`:e.aired?'<span class="pill bad">Missing</span>':'<span class="pill">Not aired</span>'}
     <label class="tgl" title="Monitor this episode"><input type="checkbox" data-em="${e.id}" ${e.monitored?'checked':''} ${canAdd?'':'disabled'} aria-label="Monitor episode ${e.num}"></label>
-    ${canAdd?`<button class="icon" data-es="${e.id}" aria-label="Search for episode ${e.num}" title="Search for this episode">${ic('find')}</button><button class="icon" data-ei="${e.id}" aria-label="${T('Choose a release')}: ${e.num}" title="${T('Choose a release (interactive search)')}">${ic('rel')}</button>`:'<span style="width:34px"></span>'}
+    ${canAdd?`<button class="icon" data-es="${e.id}" aria-label="Search for episode ${e.num}" title="Search for this episode">${ic('find')}</button><button class="icon" data-ei="${e.id}" aria-label="${T('Choose a release')}: ${e.num}" title="${T('Choose a release (interactive search)')}">${ic('rel')}</button>`:'<span style="width:34px"></span>'}${admin&&e.has?`<button class="icon" data-ed="${e.id}" aria-label="Delete the file of episode ${e.num}" title="Delete this episode's file from disk">${ic('trash')}</button>`:''}
+    ${e.path?`<div class="mute fpath" style="flex-basis:100%;padding-left:42px" title="Where the file is saved">${ic('dl')}<span>${esc(e.path)}</span></div>`:''}
     ${e.overview?`<div class="mute epo" data-eo title="Tap to read all of it" style="flex-basis:100%;padding-left:42px;margin-top:0">${esc(e.overview)}</div>`:''}</div>`;
   const draw=()=>{
     const tot=d.episodes.length,have=d.episodes.filter(q=>q.has).length;
     o.querySelector('#sd').innerHTML=`<div class="row" style="align-items:flex-start;gap:16px">${x.poster?`<img src="${esc(x.poster)}" alt="" style="width:120px;border-radius:10px;aspect-ratio:2/3;object-fit:cover">`:''}
-      <div class="grow" style="min-width:240px"><div class="mute">${esc([x.year,LSTAT[x.status],x.maker,x.profile].filter(Boolean).join(', '))}</div><div class="mute">${have} of ${tot} episodes downloaded${x.size?', '+fmt(x.size):''}</div>${idChips(d.ids)}
+      <div class="grow" style="min-width:240px"><div class="mute">${esc([x.year,LSTAT[x.status],x.maker,x.profile].filter(Boolean).join(', '))}</div><div class="mute">${have} of ${tot} episodes downloaded${x.size?', '+fmt(x.size):''}</div>${d.folder?`<div class="mute fpath" title="Where the episodes are saved">${ic('dl')}<span>${esc(d.folder)}</span></div>`:''}${idChips(d.ids,arrBtn(s,arrHref(s,d.slug||x.slug,x.id)))}
       <p style="margin:8px 0">${esc(x.overview||'No description available.')}</p>
       <div class="row" style="gap:12px"><label class="tgl"><input type="checkbox" data-mon ${d.monitored?'checked':''} ${canAdd?'':'disabled'}><span>Monitor this series</span></label>
       ${canAdd?`<button data-sa="1">Monitor all seasons</button><button data-sa="0">Unmonitor all</button><button data-sx>${ic('find')}Search missing</button>`:''}${admin?'<button class="danger" data-rm>Remove</button>':''}</div></div></div>
       <h3 style="margin:18px 0 8px">Seasons</h3>${nums.map(n=>{const st=stat(n),se=seas(n),isOpen=open.has(n);
       return `<div class="panel" style="padding:0;margin-bottom:10px;overflow:hidden"><div class="row" data-sh="${n}" style="padding:12px 14px;cursor:pointer;gap:10px"><span class="chev ${isOpen?'o':''}">${ic('chev')}</span><b>${n===0?'Specials':'Season '+n}</b>
         <span class="mute">${st.have}/${st.total} episodes${st.size?', '+fmt(st.size):''}</span><span class="grow"></span>
-        <label class="tgl" title="Monitor this season"><input type="checkbox" data-sm="${n}" ${se.monitored?'checked':''} ${canAdd?'':'disabled'} aria-label="Monitor season ${n}"></label>${canAdd?`<button data-ss="${n}">Search season</button><button data-si="${n}" title="${T('Choose a season pack yourself from what your indexers have')}">${T('Choose a release')}</button>`:''}</div>
+        <label class="tgl" title="Monitor this season"><input type="checkbox" data-sm="${n}" ${se.monitored?'checked':''} ${canAdd?'':'disabled'} aria-label="Monitor season ${n}"></label>${canAdd?`<button data-ss="${n}">Search season</button><button data-si="${n}" title="${T('Choose a season pack yourself from what your indexers have')}">${T('Choose a release')}</button>`:''}${admin&&st.have?`<button class="icon" data-sd="${n}" aria-label="Delete the files of ${n===0?'Specials':'season '+n}" title="Delete this season's files from disk">${ic('trash')}</button>`:''}</div>
         ${isOpen?`<div style="border-top:1px solid var(--line);padding:2px 14px">${st.e.map(row).join('')||'<p class="mute">No episodes listed.</p>'}</div>`:''}</div>`}).join('')||'<p class="mute">No seasons found.</p>'}`;
   };
   draw();
@@ -1981,6 +1999,14 @@ async function seriesDialog(s,x,cb){
     const si=e.target.closest('[data-si]'),ei=e.target.closest('[data-ei]');
     if(si){const n=+si.dataset.si;releasePicker(s.id,`id=${x.id}&season=${n}`,`${x.title} · ${n===0?'Specials':'Season '+n}`);return}
     if(ei){const ep=d.episodes.find(q=>q.id===+ei.dataset.ei);releasePicker(s.id,`id=${ep.id}`,`${x.title} · S${z2(ep.season)}E${z2(ep.num)}`);return}
+    const ed=e.target.closest('[data-ed]'),sd=e.target.closest('[data-sd]');
+    if(ed||sd){const n=sd?+sd.dataset.sd:0,ep=ed&&d.episodes.find(q=>q.id===+ed.dataset.ed);
+      const what=ep?`S${z2(ep.season)}E${z2(ep.num)}`:(n===0?'Specials':'season '+n);
+      if(!confirm(`Delete the downloaded file${ep?'':'s'} of ${what} from disk? ${ep?'The episode stays':'The episodes stay'} in the library${d.monitored?' and may be downloaded again while monitored':''}.`))return;
+      (ed||sd).disabled=true;
+      try{const r=await api(ep?`/api/files?sid=${encodeURIComponent(s.id)}&kind=episode&id=${ep.id}`:`/api/files?sid=${encodeURIComponent(s.id)}&kind=season&id=${x.id}&season=${n}`,'DELETE');
+        d.episodes.forEach(q=>{if(ep?q.id===ep.id:q.season===n){q.has=false;q.size=0;q.quality='';q.path='';q.fileId=0}});toast(r.deleted===1?'File deleted':r.deleted+' files deleted','ok');draw();if(cb.onChange)cb.onChange()}
+      catch(ex){(ed||sd).disabled=false;toast(ex.message,'bad')}return}
     const ss=e.target.closest('[data-ss]'),es=e.target.closest('[data-es]'),sa=e.target.closest('[data-sa]'),sx=e.target.closest('[data-sx]'),rm=e.target.closest('[data-rm]');
     if(ss){ss.disabled=true;try{await api('/api/auto','POST',{sid:s.id,id:x.id,scope:'season',season:+ss.dataset.ss});toast('Searching season '+ss.dataset.ss,'ok')}catch(ex){toast(ex.message,'bad')}ss.disabled=false}
     if(es){const ep=d.episodes.find(q=>q.id===+es.dataset.es);showDetail({title:x.title,sub:`S${z2(ep.season)}E${z2(ep.num)} ${ep.title}`,date:ep.date,poster:x.poster,overview:ep.overview,about:x.overview,sid:s.id,id:ep.id})}
@@ -1991,13 +2017,17 @@ async function seriesDialog(s,x,cb){
     if(rm){if(!confirm('Remove "'+x.title+'" from your library?'))return;const files=confirm('Also delete the downloaded files from disk?\n\nOK = delete the files, Cancel = keep the files');
       try{await api(`/api/library/${s.id}/${x.id}?files=${files?1:0}`,'DELETE');o.close();if(cb.onRemove)cb.onRemove()}catch(ex){toast(ex.message,'bad')}}});
 }
+// The page of a movie or show inside Radarr or Sonarr itself (admins only).
+const arrHref=(s,slug,id)=>{if(me.role!=='admin'||!s)return '';const b=String(svcOpen(s)||'').replace(/\/+$/,'');if(!b)return '';return b+(s.type==='sonarr'?'/series/'+encodeURIComponent(slug||''):'/movie/'+encodeURIComponent(slug||id))};
+const arrBtn=(s,h)=>h?`<a class="pill acc" href="${esc(h)}" target="_blank" rel="noopener noreferrer" title="Open it in ${s.type==='sonarr'?'Sonarr':'Radarr'} (opens in a new tab)">${s.type==='sonarr'?'Sonarr':'Radarr'} ${ic('ext')}</a>`:'';
 // IMDb, TMDB and TVDB numbers as links. Radarr and Sonarr do not keep Trakt's own number, so the Trakt link looks the title up by its IMDb or TMDB number.
-function idChips(i){if(!i)return '';const L=(n,v,u,t)=>`<a class="pill" href="${esc(u)}" target="_blank" rel="noopener noreferrer" title="${t}">${n} ${esc(v)}</a>`,tv=i.type==='tv',o=[];
+function idChips(i,extra){if(!i&&!extra)return '';i=i||{};const L=(n,v,u,t)=>`<a class="pill" href="${esc(u)}" target="_blank" rel="noopener noreferrer" title="${t}">${n} ${esc(v)}</a>`,tv=i.type==='tv',o=[];
   if(i.imdb)o.push(L('IMDb',i.imdb,'https://www.imdb.com/title/'+i.imdb+'/','Open on IMDb'));
   if(i.tmdb)o.push(L('TMDB',i.tmdb,`https://www.themoviedb.org/${tv?'tv':'movie'}/${i.tmdb}`,'Open on TMDB'));
   if(i.tvdb)o.push(L('TVDB',i.tvdb,'https://thetvdb.com/?tab=series&id='+i.tvdb,'Open on TheTVDB'));
   const tk=i.imdb?'https://trakt.tv/search/imdb/'+i.imdb:i.tmdb?`https://trakt.tv/search/tmdb/${i.tmdb}?id_type=${tv?'show':'movie'}`:'';
   if(tk)o.push(`<a class="pill" href="${esc(tk)}" target="_blank" rel="noopener noreferrer" title="Find it on Trakt (opens in a new tab)">Trakt ${ic('ext')}</a>`);
+  if(extra)o.push(extra);
   return o.length?`<div class="chips" style="margin-top:6px">${o.join('')}</div>`:''}
 function showDetail(x){
   const o=document.createElement('div');o.className='ov pg';
@@ -2014,8 +2044,10 @@ function showDetail(x){
   document.body.append(o);const q=s=>o.querySelector(s),st=q('#st');q('#cl').onclick=close;q('#bk').onclick=close;q('#bk').focus();
   pageBg(o,x.fanart||x.poster);
   if(q('#fs'))api(`/api/filestatus?sid=${encodeURIComponent(x.sid)}&id=${x.id}`).then(f=>{const b=q('#fs');if(!b)return;
-    if(f.have){const fl=f.file||{};b.innerHTML=`<span class="pill ok">File available</span>${fl.quality?`<span class="pill">${esc(fl.quality)}</span>`:''}${fl.codec?`<span class="pill">${esc(fl.codec)}</span>`:''}${(fl.langs||[]).length?`<span class="pill">${esc(fl.langs.join(', '))}</span>`:''}${fl.size?`<span class="pill">${fmt(fl.size)}</span>`:''}${fl.name?`<div class="mute" style="flex-basis:100%;overflow-wrap:anywhere;font-size:12.5px">${esc(fl.name)}</div>`:''}`}
-    else b.innerHTML=!f.released?'<span class="pill">Not released yet</span>':`<span class="pill bad">No file yet</span><span class="mute">${f.monitored?'Monitored, waiting for a download.':'Not monitored, so nothing will be downloaded.'}</span>`;if(f.ids){b.insertAdjacentHTML('afterend',idChips(f.ids));if(f.ids.tmdb)loadExtras(q('#cx'),f.ids.type,f.ids.tmdb)}}).catch(()=>{const b=q('#fs');if(b)b.remove()});
+    if(f.have){const fl=f.file||{};b.innerHTML=`<span class="pill ok">File available</span>${fl.quality?`<span class="pill">${esc(fl.quality)}</span>`:''}${fl.codec?`<span class="pill">${esc(fl.codec)}</span>`:''}${(fl.langs||[]).length?`<span class="pill">${esc(fl.langs.join(', '))}</span>`:''}${fl.size?`<span class="pill">${fmt(fl.size)}</span>`:''}${fl.path||fl.name?`<div class="mute fpath" title="Where the file is saved">${ic('dl')}<span>${esc(fl.path||fl.name)}</span></div>`:''}${me.role==='admin'&&fl.id?`<button class="danger sm" id="dfile" style="flex-basis:auto">${ic('trash')}Delete file</button>`:''}`}
+    else b.innerHTML=!f.released?'<span class="pill">Not released yet</span>':`<span class="pill bad">No file yet</span><span class="mute">${f.monitored?'Monitored, waiting for a download.':'Not monitored, so nothing will be downloaded.'}</span>`;if(!f.have&&f.folder)b.insertAdjacentHTML('beforeend',`<div class="mute fpath" title="Where it will be saved">${ic('dl')}<span>${esc(f.folder)}</span></div>`);
+    const df=q('#dfile');if(df)df.onclick=async()=>{if(!confirm('Delete the downloaded file of "'+x.title+'" from disk? It stays in the library'+(f.monitored?' and is monitored, so it may be downloaded again.':'.')))return;df.disabled=true;
+      try{await api(`/api/files?sid=${encodeURIComponent(x.sid)}&kind=${f.kind==='movie'?'movie':'episode'}&id=${x.id}`,'DELETE');toast('File deleted','ok');b.innerHTML='<span class="pill bad">File deleted</span>';if(x.onfiles)x.onfiles()}catch(e){df.disabled=false;toast(e.message,'bad')}};if(f.ids||x.arr){b.insertAdjacentHTML('afterend',idChips(f.ids,x.arr));if(f.ids&&f.ids.tmdb)if(f.ids.tmdb)loadExtras(q('#cx'),f.ids.type,f.ids.tmdb)}}).catch(()=>{const b=q('#fs');if(b)b.remove()});
   if(q('#mon'))q('#mon').onchange=async e=>{const t=e.target,v=t.checked;t.disabled=true;
     try{await api('/api/monitor','POST',{sid:x.mon.sid,kind:x.mon.kind,id:x.mon.id,monitored:v});x.mon.monitored=v;if(x.mon.onChange)x.mon.onChange(v);toast(v?'Now monitored':'No longer monitored','ok')}
     catch(ex){t.checked=!v;st.textContent=ex.message}t.disabled=!can('add')};
@@ -2028,27 +2060,35 @@ function showDetail(x){
     catch(e){st.textContent=e.message}b.disabled=false};
   if(q('#in'))q('#in').onclick=async()=>{const rl=q('#rl');st.textContent='';rl.innerHTML='<p class="mute">Searching your indexers, this can take up to a minute…</p>';
     try{const r=await api(`/api/releases?sid=${x.sid}&id=${x.id}`);
-      rl.innerHTML=r.map((y,i)=>`<div class="box rel"><div class="row" style="align-items:flex-start;gap:8px"><b class="grow" style="overflow-wrap:anywhere">${y.link?`<a href="${esc(y.link)}" target="_blank" rel="noopener noreferrer" title="Open the page for this release">${esc(y.title)}</a>`:esc(y.title)}</b>
-        ${y.link?`<a class="relx" href="${esc(y.link)}" target="_blank" rel="noopener noreferrer" aria-label="Open the ${y.protocol==='usenet'?'release':'torrent'} page for ${esc(y.title)}" title="Open the ${y.protocol==='usenet'?'release':'torrent'} page (opens in a new tab)">${ic('ext')}</a>`:''}</div>
-        <div class="chips" style="margin-top:6px"><span class="pill acc" title="Language of the release">${y.langs.length?esc(y.langs.join(', ')):'Language unknown'}</span>${y.protocol?`<span class="pill">${y.protocol==='usenet'?'Usenet':'Torrent'}</span>`:''}${y.quality?`<span class="pill">${esc(y.quality)}</span>`:''}</div>
-        <div class="mute" style="margin-top:6px">${fmt(y.size)}${y.protocol==='usenet'?'':` · ${y.seeders} seeders${y.leechers?', '+y.leechers+' leechers':''}`} · ${esc(y.indexer||'')}${y.group?' · '+esc(y.group):''} · ${y.age}d old</div>
-        ${y.rejected?`<div style="color:var(--bad-t)">${esc(y.why||'Rejected')}</div>`:''}<button data-g="${i}" style="margin-top:6px">Grab</button></div>`).join('')||'<p class="mute">No releases found.</p>';
-      rl.querySelectorAll('[data-g]').forEach(b=>b.onclick=async()=>{b.disabled=true;b.textContent='Sending…';
-        try{const y=r[b.dataset.g];await api('/api/grab','POST',{sid:x.sid,guid:y.guid,indexerId:y.indexerId});b.textContent='Sent to downloader'}
-        catch(e){b.disabled=false;b.textContent='Grab';st.textContent=e.message}});
+      relList(rl,r,x.sid,m=>{st.textContent=m});
     }catch(e){rl.innerHTML=`<div class="err">${esc(e.message)}</div>`}};
+}
+// What the indexers have, with a sort bar (best match, seeders, size, indexer, age); Grab sends one to the downloader.
+const REL_SORT=[['best','Best match'],['seed','Seeders'],['size','Size'],['idx','Indexer'],['age','Newest']];
+function relList(rl,r,sid,onErr){
+  let by=UI.relSort||'best',desc=UI.relDesc!==false;
+  const ord=()=>{const l=r.map((y,i)=>[y,i]);if(by==='best')return l;
+    const k={seed:([y])=>y.protocol==='usenet'?-1:+y.seeders||0,size:([y])=>+y.size||0,idx:([y])=>String(y.indexer||'').toLowerCase(),age:([y])=>-(+y.age||0)}[by];
+    l.sort((a,b)=>{const p=k(a),q=k(b);const c=typeof p==='string'?p.localeCompare(q):p-q;return (desc?-c:c)||a[1]-b[1]});
+    return l};
+  const card=([y,i])=>`<div class="box rel"><div class="row" style="align-items:flex-start;gap:8px"><b class="grow" style="overflow-wrap:anywhere">${y.link?`<a href="${esc(y.link)}" target="_blank" rel="noopener noreferrer" title="Open the page for this release (opens in a new tab)">${esc(y.title)}</a>`:esc(y.title)}</b></div>
+      <div class="chips" style="margin-top:6px"><span class="pill acc" title="Language of the release">${y.langs.length?esc(y.langs.join(', ')):T('Language unknown')}</span>${y.protocol?`<span class="pill">${y.protocol==='usenet'?'Usenet':'Torrent'}</span>`:''}${y.quality?`<span class="pill">${esc(y.quality)}</span>`:''}</div>
+      <div class="mute" style="margin-top:6px"><b>${fmt(y.size)}</b>${y.protocol==='usenet'?'':` · <b>${y.seeders}</b> ${T('seeders')}${y.leechers?', '+y.leechers+' leechers':''}`} · ${esc(y.indexer||'')}${y.group?' · '+esc(y.group):''} · ${y.age}d old</div>
+      ${y.rejected?`<div style="color:var(--bad-t)">${esc(y.why||'Rejected')}</div>`:''}<button data-g="${i}" style="margin-top:6px">${T('Grab')}</button></div>`;
+  const draw=()=>{
+    rl.innerHTML=r.length?`<div class="row relsort"><span class="mute">${r.length} ${r.length===1?'release':'releases'} · Sort by</span><div class="seg" role="group" aria-label="Sort releases">${REL_SORT.map(([k,n])=>`<button data-rs="${k}" class="${by===k?'on':''}" aria-pressed="${by===k}">${n}${by===k&&k!=='best'?(desc?' ↓':' ↑'):''}</button>`).join('')}</div></div>${ord().map(card).join('')}`:`<p class="mute">${T('No releases found')}.</p>`;
+    rl.querySelectorAll('[data-rs]').forEach(b=>b.onclick=()=>{const k=b.dataset.rs;if(k===by&&k!=='best')desc=!desc;else{by=k;desc=k!=='idx'}UI.relSort=by;UI.relDesc=desc;saveUI();draw()});
+    rl.querySelectorAll('[data-g]').forEach(b=>b.onclick=async()=>{b.disabled=true;b.textContent=T('Sending…');
+      try{const y=r[b.dataset.g];await api('/api/grab','POST',{sid,guid:y.guid,indexerId:y.indexerId});b.textContent=T('Sent to downloader')}catch(e){b.disabled=false;b.textContent=T('Grab');onErr(e.message)}});
+  };
+  draw();
 }
 // Interactive search on its own page: what the indexers have for an episode, a whole season or a movie; Grab sends one to the downloader.
 function releasePicker(sid,query,title){
   const o=modal(`<button class="pgback" data-x>${ic('back')}Back</button><h2 style="margin:4px 0 0">${T('Choose a release')}</h2><p class="mute" style="margin:2px 0 12px">${esc(title)}</p><div id="rl"><p class="mute">${T('Searching your indexers, this can take up to a minute…')}</p>${skel(3)}</div>`,true);
   o.querySelector('[data-x]').onclick=o.close;
   api(`/api/releases?sid=${encodeURIComponent(sid)}&${query}`).then(r=>{const rl=o.querySelector('#rl');if(!rl)return;
-    rl.innerHTML=r.map((y,i)=>`<div class="box rel"><div class="row" style="align-items:flex-start;gap:8px"><b class="grow" style="overflow-wrap:anywhere">${y.link?`<a href="${esc(y.link)}" target="_blank" rel="noopener noreferrer">${esc(y.title)}</a>`:esc(y.title)}</b></div>
-      <div class="chips" style="margin-top:6px"><span class="pill acc">${y.langs.length?esc(y.langs.join(', ')):T('Language unknown')}</span>${y.protocol?`<span class="pill">${y.protocol==='usenet'?'Usenet':'Torrent'}</span>`:''}${y.quality?`<span class="pill">${esc(y.quality)}</span>`:''}</div>
-      <div class="mute" style="margin-top:6px">${fmt(y.size)}${y.protocol==='usenet'?'':` · ${y.seeders} ${T('seeders')}`} · ${esc(y.indexer||'')}${y.group?' · '+esc(y.group):''} · ${y.age}d</div>
-      ${y.rejected?`<div style="color:var(--bad-t)">${esc(y.why||'Rejected')}</div>`:''}<button data-g="${i}" style="margin-top:6px">${T('Grab')}</button></div>`).join('')||`<p class="mute">${T('No releases found')}.</p>`;
-    rl.querySelectorAll('[data-g]').forEach(b=>b.onclick=async()=>{b.disabled=true;b.textContent=T('Sending…');
-      try{const y=r[b.dataset.g];await api('/api/grab','POST',{sid,guid:y.guid,indexerId:y.indexerId});b.textContent=T('Sent to downloader')}catch(e){b.disabled=false;b.textContent=T('Grab');toast(e.message,'bad')}});
+    relList(rl,r,sid,m=>toast(m,'bad'));
   }).catch(e=>{const rl=o.querySelector('#rl');if(rl)rl.innerHTML=`<div class="err">${esc(e.message)}</div>`});
 }
 const STAGE={pending:['Requested','warn'],approved:['Approved','acc'],searching:['Approved, looking for a download','acc'],downloading:['Downloading','acc'],importing:['Copying to the library','acc'],library:['In the library, waiting for Plex','acc'],partial:['Partly available','ok'],available:['Available','ok'],failed:['Download failed','bad'],declined:['Declined','bad']};
@@ -2333,6 +2373,11 @@ function titleExtras(el,t){
   el.innerHTML=castRow(t.cast)+posterRow('More like this',t.similar);
   el.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>{const p=t.cast[b.dataset.p];if(p&&p.id)personPage(p.id,p)});
   el.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{const x=t.similar[b.dataset.t];titlePage(x.type,x.id,x)});
+  // More from the same studio (movies) or network (shows), fetched after the page is up.
+  if(t.maker&&t.maker.id&&!me.kids){const m=document.createElement('div');el.append(m);
+    api(`/api/maker?type=${t.type==='tv'?'tv':'movie'}&id=${t.maker.id}&not=${t.id}`).then(l=>{if(!document.contains(m)||!l.length)return;
+      m.innerHTML=posterRow('More from '+t.maker.name,l,t.type==='tv'?T('Shows on this network'):T('Movies from this studio'));
+      m.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{const x=l[b.dataset.t];titlePage(x.type,x.id,x)})}).catch(()=>{})}
 }
 // Fetches the title by its TMDB number, then fills el with its cast and similar titles.
 function loadExtras(el,type,tmdb){if(!el||!(tmdb>0))return;el.innerHTML='';api(`/api/title?type=${type==='tv'?'tv':'movie'}&id=${tmdb}`).then(t=>{if(document.contains(el))titleExtras(el,t)}).catch(()=>{})}
@@ -2736,60 +2781,6 @@ async function alView(){
     const ev=[...row.querySelectorAll('[data-ev]:checked')].map(x=>x.dataset.ev);
     try{await api('/api/alerts/channels/'+c.id,'PUT',{type:c.type,events:ev});c.events=ev;toast('Saved','ok')}catch(x){t.checked=!t.checked;toast(x.message,'bad')}};
 }
-async function linksView(){
-  let l=[];try{l=await api('/api/statuslinks')}catch(x){$('#m').innerHTML=`<div class="err">${esc(x.message)}</div>`;return}
-  if(tab!=='set'||stSub!=='links')return;
-  const K=window.StatusKit,SEC=[['apps','App status','Green or red for each app, with 48 hours of history'],['traffic','Speeds','Live download and upload speed'],['downloads','Downloads','What is downloading right now'],['upcoming','Coming up','Releases in the next week'],['watching','Watching now','How many people are watching, titles only, no names']],
-    LK=[['auto','Match device'],['dark','Dark'],['light','Light']];
-  let ed=null,f={name:'',note:'',look:'auto',scopes:{apps:1}},dev='phone',pst={},timer=null,reveal=null;
-  const q=()=>new URLSearchParams({...Object.fromEntries(SEC.map(([k])=>[k,f.scopes[k]?'1':'0'])),name:f.name,note:f.note,look:f.look}).toString();
-  async function prev(){const el=$('#spv');if(!el)return;try{const d=await api('/api/statuslinks/preview?'+q());pst.fresh=true;el.dataset.look=f.look;el.innerHTML=K.html(d,pst)}catch(x){el.innerHTML=`<div class="err">${esc(x.message)}</div>`}}
-  const later=()=>{clearTimeout(timer);timer=setTimeout(prev,250)};
-  function draw(){
-    const cards=l.map(x=>`<div class="lk${ed&&ed.id===x.id?' on':''}" data-l="${x.id}"><div class="lkh"><b>${esc(x.name)}</b><span class="mute">Opened ${x.used} ${x.used===1?'time':'times'}${x.lastUsed?', last '+ago(x.lastUsed):''}</span></div>
-      <div class="chips">${SEC.filter(([k])=>x.scopes[k]).map(([,n])=>`<span class="pill">${n}</span>`).join('')}</div>
-      ${reveal&&reveal.id===x.id?`<div class="box"><b>Copy this address now.</b> <span class="mute">For safety it is shown only once.</span><div class="addr">${esc(location.origin+'/s/'+reveal.token)}</div><button data-cp>Copy address</button></div>`:''}
-      <div class="row"><button data-e>Edit</button><button data-rg>New address</button><button class="danger" data-d>Remove</button></div></div>`).join('');
-    $('#m').innerHTML=`<div class="sbx"><div class="sbf panel"><h3 style="margin-top:0">${ed?'Edit '+esc(ed.name):'New status page'}</h3>
-      <p class="mute">A private address that shows a live, read-only view without signing in, for example on a wall tablet. Anyone with the address can see it, so share it carefully.</p>
-      <label>Name<input id="sbn" maxlength="60" value="${esc(f.name)}" placeholder="Living room tablet"></label>
-      <label>Message at the top <span class="mute">(optional)</span><input id="sm" maxlength="160" value="${esc(f.note)}" placeholder="Back online at 6 pm"></label>
-      <div class="mute" style="margin:12px 0 6px">What it shows</div>
-      <div class="tg">${SEC.map(([k,n,d])=>`<button type="button" class="tc${f.scopes[k]?' on':''}" data-k="${k}" aria-pressed="${f.scopes[k]?'true':'false'}"><b>${n}</b><span>${d}</span></button>`).join('')}</div>
-      <div class="mute" style="margin:12px 0 6px">Look</div>
-      <div class="seg" role="group" aria-label="Look">${LK.map(([k,n])=>`<button type="button" data-lk="${k}" class="${f.look===k?'on':''}" aria-pressed="${f.look===k}">${n}</button>`).join('')}</div>
-      <div class="row" style="margin-top:16px"><button class="primary" id="sv">${ed?'Save changes':'Create page'}</button>${ed?'<button id="sc">Cancel</button>':''}</div><div class="err" id="le"></div>
-      ${reveal&&!ed&&!l.some(x=>x.id===reveal.id)?'':''}</div>
-      <div class="sbp"><div class="row" style="justify-content:space-between"><b>Preview</b><div class="seg" role="group" aria-label="Preview size">${[['phone','Phone'],['tablet','Tablet'],['wall','Wall screen']].map(([k,n])=>`<button type="button" data-dv="${k}" class="${dev===k?'on':''}" aria-pressed="${dev===k}">${n}</button>`).join('')}</div></div>
-      <div class="pvw"><div class="pvf ${dev}"><div class="stx" id="spv" data-look="${f.look}"></div></div></div></div></div>
-      <div class="lks">${cards||empty('No status pages yet','Pick what to show on the left, then create one.')}</div>`;
-    K.attach($('#spv'));prev();
-  }
-  draw();
-  const m=$('#m');
-  m.oninput=e=>{if(e.target.id==='sbn')f.name=e.target.value;else if(e.target.id==='sm')f.note=e.target.value;else return;later()};
-  m.onclick=async e=>{
-    const t=e.target;let b;
-    if(b=t.closest('[data-k]')){f.scopes[b.dataset.k]=f.scopes[b.dataset.k]?0:1;b.classList.toggle('on');b.setAttribute('aria-pressed',f.scopes[b.dataset.k]?'true':'false');return later()}
-    if(b=t.closest('[data-lk]')){f.look=b.dataset.lk;m.querySelectorAll('[data-lk]').forEach(x=>{const o=x===b;x.classList.toggle('on',o);x.setAttribute('aria-pressed',o)});$('#spv').dataset.look=f.look;return later()}
-    if(b=t.closest('[data-dv]')){dev=b.dataset.dv;m.querySelectorAll('[data-dv]').forEach(x=>{const o=x===b;x.classList.toggle('on',o);x.setAttribute('aria-pressed',o)});$('.pvf').className='pvf '+dev;return}
-    if(t.closest('#sc')){ed=null;f={name:'',note:'',look:'auto',scopes:{apps:1}};return draw()}
-    if(t.closest('#sv')){$('#le').textContent='';const body={name:f.name,note:f.note,look:f.look,scopes:f.scopes};
-      if(!Object.values(f.scopes).some(Boolean)){$('#le').textContent='Turn on at least one section.';return}
-      try{if(ed){const r=await api('/api/statuslinks/'+ed.id,'PUT',body);l=await api('/api/statuslinks');toast('Saved');ed=null}
-        else{if(!f.name.trim()){$('#le').textContent='Give it a name.';return}const r=await api('/api/statuslinks','POST',{...body,...f.scopes});l=await api('/api/statuslinks');reveal={id:r.id,token:r.token}}
-        f={name:'',note:'',look:'auto',scopes:{apps:1}};draw()}catch(x){$('#le').textContent=x.message}return}
-    const row=t.closest('[data-l]');if(!row)return;const x=l.find(y=>y.id===row.dataset.l);if(!x)return;
-    if(t.closest('[data-cp]'))return copyText(location.origin+'/s/'+reveal.token);
-    if(t.closest('[data-e]')){ed=x;f={name:x.name,note:x.note||'',look:x.look||'auto',scopes:{...x.scopes}};reveal=null;draw();return scrollTo({top:0,behavior:'smooth'})}
-    if(t.closest('[data-rg]')){if(!confirm('Make a new address? The old one stops working right away.'))return;
-      try{const r=await api('/api/statuslinks/'+x.id+'/regenerate','POST');reveal={id:x.id,token:r.token};l=await api('/api/statuslinks');draw()}catch(y){toast(y.message,'bad')}return}
-    if(t.closest('[data-d]')&&confirm('Remove this page? Anything using its address stops working.')){try{await api('/api/statuslinks/'+x.id,'DELETE');if(ed&&ed.id===x.id){ed=null;f={name:'',note:'',look:'auto',scopes:{apps:1}}}l=await api('/api/statuslinks');draw()}catch(y){toast(y.message,'bad')}}
-  };
-}
-
-// ---------- Music and books (Lidarr, Readarr)
-let mbSel='',mbMode='lib',mbQ='';
 async function mbView(){
   const opts=services.filter(x=>['lidarr','readarr'].includes(x.type));
   if(!opts.length)return noSvc('Lidarr or Readarr');

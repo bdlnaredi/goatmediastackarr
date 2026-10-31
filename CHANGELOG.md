@@ -4,6 +4,15 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- Library: each movie and episode shows where its file is saved (and a show its folder), an admin can delete the file of a movie, an episode or a whole season (the title stays in the library), and an Open in Radarr or Sonarr button sits next to the IMDb and TMDB links.
+- Interactive search can be sorted by seeders, size, indexer or age, as well as best match.
+- Title pages show "More from" the studio (movies) or network (shows) under "More like this".
+- Requests go to the folder that holds your library: when most of it is in another root folder (after an import, say), Seerr's default folder moves there, once, and again after each import. A folder you choose later is kept.
+- "getaddrinfo EAI_AGAIN api.themoviedb.org" when asking for a movie: the network's DNS did not answer for TMDB. At every start GoatMediaStackarr now checks that TMDB can be looked up and, when it cannot, adds public DNS servers after your own. `GOAT_DNS` sets the servers yourself. Seerr also gets its DNS cache and IPv4 first.
+- PIA's regions are built into the image, so the VPN page lists them at once without asking PIA's site.
+- The logo and name in the menu go to Home.
+- Settings: About is last, the Activity list is compact (by day, with a filter), and Status pages are gone.
+
 ## v1.0.1 — 2026-10-31
 
 - Settings is more compact: smaller section buttons, panels and fields, so more fits on one screen.

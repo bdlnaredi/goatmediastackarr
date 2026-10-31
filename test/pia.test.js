@@ -48,6 +48,15 @@ test('PIA: regions, sign-in, a WireGuard file for the chosen region, and the for
     const list = await pia.regions();
     assert.deepEqual(list.map(r => r.id), ['swiss', 'uk_london'], 'offline regions are left out, the rest sorted by name');
     assert.equal(list.find(r => r.id === 'swiss').pf, true);
+    // The list built into the image is used for the VPN page without asking PIA, and when PIA cannot be reached.
+    const bf = path.join(dir, 'bundled.json');
+    fs.writeFileSync(bf, JSON.stringify({ regions: [{ id: 'nl', name: 'Netherlands', country: 'NL', port_forward: true, servers: { wg: [{ ip: '127.0.0.1', cn: 'srv' }] } }] }) + '\nSIGNATURE');
+    process.env.PIA_REGIONS_FILE = bf;
+    assert.deepEqual((await pia.regions({ local: true })).map(r => r.id), ['nl'], 'built-in list first');
+    assert.deepEqual((await pia.regions()).map(r => r.id), ['swiss', 'uk_london'], 'connecting asks PIA for the current servers');
+    const keep = process.env.PIA_SERVERLIST_URL; process.env.PIA_SERVERLIST_URL = 'http://127.0.0.1:1/none';
+    assert.deepEqual((await pia.regions()).map(r => r.id), ['nl'], 'PIA unreachable: the built-in list');
+    process.env.PIA_SERVERLIST_URL = keep; delete process.env.PIA_REGIONS_FILE;
 
     await assert.rejects(pia.token('p1234567', 'wrong'), /did not accept that username and password/);
     await assert.rejects(pia.token('', ''), /Enter your PIA username/);

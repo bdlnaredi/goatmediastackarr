@@ -39,7 +39,7 @@ if (fs.existsSync(FILE)) {
 }
 const defaults = d => {
   d.users = d.users || []; d.services = d.services || []; d.requests = d.requests || []; d.log = d.log || []; d.history = d.history || [];
-  d.seedRules = d.seedRules || []; d.reports = d.reports || []; d.statusLinks = d.statusLinks || []; d.invites = d.invites || []; d.settings = d.settings || {}; d.sites = d.sites || [];
+  d.seedRules = d.seedRules || []; d.reports = d.reports || []; d.statusLinks = []; /* status pages were removed, so old addresses stop working */ d.invites = d.invites || []; d.settings = d.settings || {}; d.sites = d.sites || [];
   return d;
 };
 // Turns the on-disk form (secrets encrypted) into the in-memory form, and upgrades the old single alert channel.
@@ -1178,6 +1178,31 @@ async function stageOf(x, cache) {
 }
 // The choices made when asking (monitoring, and when a movie counts as available), set in Sonarr or Radarr once Seerr
 // has added the title there. Tried for about two minutes, as Seerr adds it a moment after the request.
+// Seerr sends new requests to the folder set as its default for Radarr or Sonarr. After a library was imported into
+// another root folder, that default still pointed at the empty starting folder, so requests ended up there. This moves
+// Seerr's default to the root folder that holds most of the library. It runs after an import, and once on its own;
+// a folder chosen later in Seerr (or at request time) is left alone.
+async function seerrFolderFix(kinds = ['radarr', 'sonarr'], force = false) {
+  const done = (db.settings.seerrDir = db.settings.seerrDir || {}), out = {};
+  for (const sv of db.services.filter(x => x.type === 'seerr')) for (const kind of kinds) { try {
+    if (!force && done[sv.id + ':' + kind]) continue;
+    const list = await arrGet(sv, `/api/v1/settings/${kind}`);
+    const cur = (Array.isArray(list) ? list : []).find(x => x.isDefault && !x.is4k) || (Array.isArray(list) ? list : []).find(x => !x.is4k);
+    if (!cur) continue;
+    const local = ['127.0.0.1', 'localhost'].includes(String(cur.hostname));
+    const a = db.services.find(x => x.type === kind && (() => { try { const u = new URL(x.url); return +(u.port || (u.protocol === 'https:' ? 443 : 80)) === +cur.port && (u.hostname === cur.hostname || (local && x.managed)); } catch { return false; } })());
+    if (!a) continue;
+    const items = await arrGet(a, kind === 'sonarr' ? '/api/v3/series' : '/api/v3/movie'), n = {};
+    for (const x of Array.isArray(items) ? items : []) { const r = String(x.rootFolderPath || String(x.path || '').replace(/\/[^/]+\/?$/, '')).replace(/\/+$/, ''); if (r) n[r] = (n[r] || 0) + 1; }
+    const top = Object.keys(n).sort((p2, q) => n[q] - n[p2])[0], now = String(cur.activeDirectory || '').replace(/\/+$/, '');
+    done[sv.id + ':' + kind] = Date.now();
+    if (!top || top === now || n[top] <= (n[now] || 0)) { out[kind] = 'kept ' + now; continue; }
+    const r = await fetch(sv.url.replace(/\/+$/, '') + `/api/v1/settings/${kind}/${cur.id}`, { method: 'PUT', signal: AbortSignal.timeout(20000), headers: { 'X-Api-Key': sv.apiKey || '', 'Content-Type': 'application/json' }, body: JSON.stringify({ ...cur, activeDirectory: top }) });
+    if (!r.ok) throw new Error('Seerr returned ' + r.status);
+    out[kind] = 'moved to ' + top; audit('GoatMediaStackarr', 'Request folder changed', `${sv.name}, ${kind}: new requests go to ${top} (where most of the library is), not ${now || 'nothing'}`);
+  } catch (e) { out[kind] = 'skipped: ' + e.message; } }
+  save(); return out;
+}
 async function applyArrOpts(x) {
   const o = x.opts || {}, tv = x.mediaType === 'tv', kind = tv ? 'sonarr' : 'radarr';
   for (let i = 0; i < 12; i++) {
@@ -1954,11 +1979,11 @@ const goatServer = http.createServer(async (req, res) => {
     const adminOnly = () => me.role === 'admin' ? false : (send(res, 403, { error: 'Admins only' }), true);
     if (p === '/api/goat/status' && m === 'GET') { if (adminOnly()) return; return send(res, 200, { ...goatStatus(), counts: await goatCounts() }); }
     if (p === '/api/goat/import' && m === 'GET') { if (adminOnly()) return; return send(res, 200, goatImport || { state: 'idle' }); }
-    // PIA's regions, for picking one in the VPN settings (kept for an hour).
+    // PIA's regions, for picking one in the VPN settings: the list built into the image (kept for an hour).
     if (p === '/api/goat/pia/regions' && m === 'GET') {
       if (adminOnly()) return; if (!goatPia) return send(res, 404, { error: 'Not running inside GoatMediaStackarr' });
       if (!piaRegions || Date.now() - piaRegions.at > 3600e3) {
-        try { piaRegions = { at: Date.now(), list: (await goatPia.regions()).map(r => ({ id: r.id, name: r.name, country: r.country, pf: r.pf })) }; }
+        try { piaRegions = { at: Date.now(), list: (await goatPia.regions({ local: true })).map(r => ({ id: r.id, name: r.name, country: r.country, pf: r.pf })) }; }
         catch (e) { return send(res, 502, { error: e.message }); }
       }
       return send(res, 200, piaRegions.list);
@@ -2027,7 +2052,7 @@ const goatServer = http.createServer(async (req, res) => {
         goatImport = { state: 'running', kind, done: 0, total: 0, added: 0, skipped: 0, failed: [], at: Date.now() };
         audit(me.name, 'Started an import', kind + ' from ' + from.url);
         importer.run(kind, from, to, map, pr => { Object.assign(goatImport, pr); }, { settings: b.settings === true })
-          .then(r => { Object.assign(goatImport, r, { state: 'done', finished: Date.now() }); audit('GoatMediaStackarr', 'Import finished', `${kind}: ${r.added} added, ${r.skipped} already there, ${r.failed.length} failed${r.settings ? `; profiles ${r.settings.profiles.added} added, ${r.settings.profiles.updated} replaced; custom formats ${r.settings.formats.added} added, ${r.settings.formats.updated} replaced` : ''}`); })
+          .then(r => { Object.assign(goatImport, r, { state: 'done', finished: Date.now() }); if (kind === 'radarr' || kind === 'sonarr') seerrFolderFix([kind], true).catch(() => {}); audit('GoatMediaStackarr', 'Import finished', `${kind}: ${r.added} added, ${r.skipped} already there, ${r.failed.length} failed${r.settings ? `; profiles ${r.settings.profiles.added} added, ${r.settings.profiles.updated} replaced; custom formats ${r.settings.formats.added} added, ${r.settings.formats.updated} replaced` : ''}`); })
           .catch(e => { Object.assign(goatImport, { state: 'error', error: e.message }); });
         return send(res, 200, goatImport);
       }
@@ -2610,6 +2635,7 @@ const goatServer = http.createServer(async (req, res) => {
         poster: img(v('posterPath', 'poster_path'), 'w342'), backdrop: img(v('backdropPath', 'backdrop_path'), 'w780'), rating: Math.round((+v('voteAverage', 'vote_average') || 0) * 10) / 10, runtime: rt,
         genres: (d.genres || []).map(g => cut(g.name, 40)).filter(Boolean).slice(0, 6), status: cut(d.status, 40),
         studio: cut(((type === 'tv' ? d.networks : d.productionCompanies || d.production_companies) || [])[0] && ((type === 'tv' ? d.networks : d.productionCompanies || d.production_companies)[0].name), 80),
+        maker: (m => m && +m.id > 0 ? { id: +m.id, name: cut(m.name, 80), kind: type === 'tv' ? 'network' : 'studio' } : null)(((type === 'tv' ? d.networks : d.productionCompanies || d.production_companies) || [])[0]),
         cast: (credits.cast || []).slice(0, 20).map(c => ({ id: Math.round(+c.id) || 0, name: cut(c.name, 80), role: cut(c.character, 80), photo: img(pk(c, 'profilePath', 'profile_path'), 'w185') })),
         similar: (((rec && rec.results) || [])).map(x => mediaCard(x, idx, x.mediaType || x.media_type || type)).filter(x => x && kidCard(idx, x)).slice(0, 20).map(({ votes, date, ...x }) => x),
         seasons: type === 'tv' ? (d.seasons || []).filter(x => +pk(x, 'seasonNumber', 'season_number') > 0).map(x => ({ n: +pk(x, 'seasonNumber', 'season_number'), episodes: +pk(x, 'episodeCount', 'episode_count') || 0, name: cut(x.name, 80), date: String(pk(x, 'airDate', 'air_date') || '').slice(0, 10) })) : [],
@@ -2617,6 +2643,38 @@ const goatServer = http.createServer(async (req, res) => {
         watch: (db.watchlist || []).some(w => w.uid === me.id && w.type === type && w.id === id),
         collection: (c => c && +c.id > 0 ? { id: +c.id, name: cut(c.name, 120), poster: img(pk(c, 'posterPath', 'poster_path'), 'w342') } : null)(d.collection || d.belongs_to_collection),
         library: libSvc ? { sid: libSvc.id, id: inLib.id, kind: type } : null, request: reqs.length ? { status: reqs[reqs.length - 1].status, stage: reqs[reqs.length - 1].stage || reqs[reqs.length - 1].status } : null });
+    }
+    // More from one studio (movies) or one network (shows), through Seerr or a TMDB key.
+    if (p === '/api/maker' && m === 'GET') {
+      if (me.kids) return send(res, 403, { error: 'Not on a kids profile' });
+      const q = new URL(req.url, 'http://x').searchParams, type = q.get('type') === 'tv' ? 'tv' : 'movie', id = Math.round(+q.get('id'));
+      if (!(id > 0)) return send(res, 400, { error: 'Bad request' });
+      const sv = db.services.filter(allowed).find(x => x.type === 'seerr');
+      const d = await swr('maker:' + type + ':' + id, 6 * 3600e3, 24 * 3600e3, async () => {
+        let r2 = sv ? await call(sv, type === 'tv' ? `/api/v1/discover/tv/network/${id}` : `/api/v1/discover/movies/studio/${id}`).catch(() => null) : null;
+        if (!(r2 && (r2.results || []).length) && listKeys().tmdb) r2 = await lists.byMaker(type, id).catch(() => null);
+        if (!r2) throw new Error('none');
+        return r2;
+      }).catch(() => null);
+      if (!d) return send(res, 404, { error: sv ? 'Nothing found for it.' : 'This needs Seerr, or a TMDB key under Settings → Discover lists.' });
+      const idx = await libIndex().catch(() => null), self = Math.round(+q.get('not')) || 0;
+      return send(res, 200, ((d.results || [])).map(x => mediaCard(x, idx, x.mediaType || x.media_type || type)).filter(x => x && x.id !== self).slice(0, 20).map(({ votes, date, ...x }) => x));
+    }
+    // Deletes the downloaded file of a movie, an episode or a whole season; the title stays in the library.
+    if (p === '/api/files' && m === 'DELETE') {
+      if (me.role !== 'admin') return send(res, 403, { error: 'Admins only' });
+      const q = new URL(req.url, 'http://x').searchParams, s = arr(db.services.find(x => x.id === q.get('sid'))), kind = q.get('kind'), id = Math.round(+q.get('id'));
+      if (!s || !(id > 0) || !['movie', 'episode', 'season'].includes(kind) || (kind === 'movie') !== (s.type === 'radarr')) return send(res, 400, { error: 'Bad request' });
+      let ids = [], what = '';
+      if (kind === 'movie') { const x = await call(s, '/api/v3/movie/' + id); if (x.movieFile && x.movieFile.id) ids = [x.movieFile.id]; what = x.title; }
+      else if (kind === 'episode') { const x = await call(s, '/api/v3/episode/' + id); if (x.episodeFileId) ids = [x.episodeFileId]; what = 'episode ' + id; }
+      else { const n = Math.round(+q.get('season')); if (!(n >= 0)) return send(res, 400, { error: 'Bad request' });
+        const fl = await call(s, '/api/v3/episodefile?seriesId=' + id); ids = (Array.isArray(fl) ? fl : []).filter(f => f.seasonNumber === n).map(f => f.id); what = 'season ' + n + ' of series ' + id; }
+      if (!ids.length) return send(res, 404, { error: 'There is no file to delete.' });
+      for (const fid of ids) await call(s, `/api/v3/${kind === 'movie' ? 'moviefile' : 'episodefile'}/${fid}`, { method: 'DELETE' });
+      swrDrop('lib:' + s.id);
+      audit(me.name, 'Deleted files', s.name + ': ' + cut(what, 120) + ' (' + ids.length + ' file' + (ids.length === 1 ? '' : 's') + ')');
+      return send(res, 200, { deleted: ids.length });
     }
     if ((r = p.match(/^\/api\/requests\/(\w+)\/report$/)) && m === 'POST') {
       const x = db.requests.find(y => y.id === r[1]); if (!x || (me.role !== 'admin' && x.uid !== me.id)) return send(res, 404, { error: 'Not found' });
@@ -2646,7 +2704,7 @@ const goatServer = http.createServer(async (req, res) => {
         return { id: x.id, tmdb: +x.tmdbId > 0 ? +x.tmdbId : 0, title: x.title, year: x.year, poster: img.remoteUrl || x.remotePoster, fanart: mediaUrl(s, x, 'fanart').url, overview: (x.overview || '').slice(0, 600),
           size: tv ? st.sizeOnDisk || 0 : x.sizeOnDisk || 0, missing: tv ? Math.max(0, (st.episodeCount || 0) - (st.episodeFileCount || 0)) : (x.monitored && !x.hasFile ? 1 : 0),
           monitored: !!x.monitored, status: x.status || '', genres: (x.genres || []).slice(0, 6), maker: (tv ? x.network : x.studio) || '', profile: prof[x.qualityProfileId] || '',
-          added: x.added || '', rating, runtime: x.runtime || 0, cert: x.certification || '',
+          added: x.added || '', rating, runtime: x.runtime || 0, cert: x.certification || '', slug: cut(String(x.titleSlug || ''), 200), folder: cut(String(x.path || ''), 400),
           seasons: tv ? st.seasonCount || 0 : 0, have: tv ? st.episodeFileCount || 0 : (x.hasFile ? 1 : 0), total: tv ? st.episodeCount || 0 : 1, next: tv ? x.nextAiring || '' : '' };
       }));
     }
@@ -2655,10 +2713,10 @@ const goatServer = http.createServer(async (req, res) => {
       const q = new URL(req.url, 'http://x').searchParams, s = arr(db.services.find(x => x.id === q.get('sid'))), id = +q.get('id');
       if (!s || !Number.isInteger(id) || id < 1) return send(res, 404, { error: 'Not found' });
       const fileOf = f => f ? { name: cut(String(f.relativePath || f.path || '').split(/[\\/]/).pop(), 200), size: +f.size || 0, quality: cut(((f.quality || {}).quality || {}).name, 40), langs: (f.languages || []).map(l => cut(l && l.name, 30)).filter(Boolean).slice(0, 6),
-        codec: cut(((f.mediaInfo || {}).videoCodec) || '', 20), added: f.dateAdded || '' } : null;
+        codec: cut(((f.mediaInfo || {}).videoCodec) || '', 20), added: f.dateAdded || '', path: cut(String(f.path || ''), 600), id: +f.id || 0 } : null;
       if (s.type === 'radarr') {
         const x = await call(s, '/api/v3/movie/' + id);
-        return send(res, 200, { ids: idsOf(x, 'movie'), kind: 'movie', have: !!x.hasFile, monitored: !!x.monitored, released: x.isAvailable !== false, file: x.hasFile ? fileOf(x.movieFile) : null });
+        return send(res, 200, { ids: idsOf(x, 'movie'), kind: 'movie', folder: cut(String(x.path || ''), 400), have: !!x.hasFile, monitored: !!x.monitored, released: x.isAvailable !== false, file: x.hasFile ? fileOf(x.movieFile) : null });
       }
       const x = await call(s, '/api/v3/episode/' + id); let f = x.hasFile ? x.episodeFile : null;
       if (x.hasFile && !f && x.episodeFileId) f = await call(s, '/api/v3/episodefile/' + x.episodeFileId).catch(() => null);
@@ -2686,11 +2744,11 @@ const goatServer = http.createServer(async (req, res) => {
     if ((r = p.match(/^\/api\/series\/(\w+)\/(\d+)$/)) && m === 'GET') {
       const s = arr(db.services.find(x => x.id === r[1])); if (!s || s.type !== 'sonarr') return send(res, 404, { error: 'Not found' });
       const [sr, eps, files] = await Promise.all([call(s, `/api/v3/series/${r[2]}`), call(s, `/api/v3/episode?seriesId=${r[2]}`), call(s, `/api/v3/episodefile?seriesId=${r[2]}`).catch(() => [])]);
-      const fmap = {}; (Array.isArray(files) ? files : []).forEach(f => { fmap[f.id] = { q: ((f.quality || {}).quality || {}).name || '', size: f.size || 0 }; });
+      const fmap = {}; (Array.isArray(files) ? files : []).forEach(f => { fmap[f.id] = { q: ((f.quality || {}).quality || {}).name || '', size: f.size || 0, path: cut(String(f.path || f.relativePath || ''), 600) }; });
       const now = Date.now();
-      return send(res, 200, { ids: idsOf(sr, 'tv'), id: sr.id, title: sr.title, monitored: !!sr.monitored, seasons: (sr.seasons || []).map(x => ({ n: x.seasonNumber, monitored: !!x.monitored })),
+      return send(res, 200, { ids: idsOf(sr, 'tv'), id: sr.id, title: sr.title, folder: cut(String(sr.path || ''), 400), slug: cut(String(sr.titleSlug || ''), 200), monitored: !!sr.monitored, seasons: (sr.seasons || []).map(x => ({ n: x.seasonNumber, monitored: !!x.monitored })),
         episodes: (Array.isArray(eps) ? eps : []).map(e => { const dt = e.airDateUtc || e.airDate || '', f = fmap[e.episodeFileId] || {};
-          return { id: e.id, season: e.seasonNumber, num: e.episodeNumber, title: e.title || '', overview: cut(e.overview, 2000), runtime: +e.runtime || 0, date: dt, monitored: !!e.monitored, has: !!e.hasFile, quality: f.q || '', size: f.size || 0, aired: !!dt && Date.parse(dt) <= now }; })
+          return { id: e.id, season: e.seasonNumber, num: e.episodeNumber, title: e.title || '', overview: cut(e.overview, 2000), runtime: +e.runtime || 0, date: dt, monitored: !!e.monitored, has: !!e.hasFile, quality: f.q || '', size: f.size || 0, path: f.path || '', fileId: e.hasFile ? +e.episodeFileId || 0 : 0, aired: !!dt && Date.parse(dt) <= now }; })
           .sort((a, b) => a.season - b.season || a.num - b.num) });
     }
     if (p === '/api/monitor' && m === 'POST') {
@@ -3722,6 +3780,7 @@ goatServer.on('upgrade', (req, sock, head) => {
 });
 const MON_MS = Math.max(500, +process.env.MONITOR_MS || 30000), REQ_MS = process.env.REQ_REFRESH_MS != null ? +process.env.REQ_REFRESH_MS : 15000;
 setInterval(() => monitor().catch(() => {}), MON_MS);
+if (!DEMO) { const sf = () => seerrFolderFix().catch(() => {}); setTimeout(sf, +process.env.SEERR_DIR_MS || 90000).unref(); setInterval(sf, 6 * 3600e3).unref(); }
 setInterval(() => { for (const k in fails) if (Date.now() - fails[k].t > 600000) delete fails[k]; }, 600000).unref();
 for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => { console.log('GoatMediaStackarr stopping'); process.exit(0); });
 setTimeout(() => monitor().catch(() => {}), Math.min(3000, MON_MS));

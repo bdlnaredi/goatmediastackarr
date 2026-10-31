@@ -231,6 +231,20 @@ function tautulliConfig(existing, s, plex) {
 }
 
 // ---------- main ----------
+// Seerr looks up TMDB for nearly everything; a lookup that times out shows as "getaddrinfo EAI_AGAIN api.themoviedb.org".
+// Its DNS cache keeps answers for a while, so one slow answer from the network's DNS no longer fails a request, and
+// IPv4 first avoids waiting on IPv6 addresses most home networks cannot reach. Set once; a later change in Seerr stays.
+function seerrNetwork(file, done) {
+  if (fs.existsSync(done)) return 'kept';
+  const t = readText(file); if (!t) return 'no settings yet';
+  let j; try { j = JSON.parse(t); } catch { return 'unreadable'; }
+  const n = j.network = j.network || {};
+  n.forceIpv4First = true;
+  n.dnsCache = { forceMinTtl: 0, forceMaxTtl: -1, ...(n.dnsCache || {}), enabled: true };
+  writeText(file, JSON.stringify(j, null, 1)); writeText(done, new Date().toISOString() + '\n');
+  return 'set';
+}
+
 function run(env = process.env) {
   const C = E.CONFIG;
   const puid = Number(env.PUID || 99), pgid = Number(env.PGID || 100);
@@ -238,6 +252,7 @@ function run(env = process.env) {
   const vpn = E.vpnApps(env);
   const goatDir = `${C}/goat`;
   fs.mkdirSync(goatDir, { recursive: true });
+  seerrNetwork(`${C}/seerr/settings.json`, `${goatDir}/seerr-network.done`);
   const secFile = `${goatDir}/secrets.json`;
   const { secrets: s, changed } = loadSecrets(secFile);
   if (changed) fs.writeFileSync(secFile, JSON.stringify(s, null, 1), { mode: 0o600 });
@@ -370,4 +385,4 @@ if (require.main === module && process.argv[2] === 'tautulli') {
   }
 }
 
-module.exports = { run, rtorrentConfig, delugeCore, delugeWeb, delugeRead, plexPrefs, iniSet, xmlSet, xmlGet, qbitHash, arrConfig, qbitConfig, sabConfig, bazarrConfig, tautulliConfig, tautulliStart, iniGet, torrentPort, loadSecrets };
+module.exports = { run, seerrNetwork, rtorrentConfig, delugeCore, delugeWeb, delugeRead, plexPrefs, iniSet, xmlSet, xmlGet, qbitHash, arrConfig, qbitConfig, sabConfig, bazarrConfig, tautulliConfig, tautulliStart, iniGet, torrentPort, loadSecrets };

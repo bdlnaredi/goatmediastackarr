@@ -16,15 +16,25 @@ const WG_PORT = () => +process.env.PIA_WG_PORT || 1337, PF_PORT = () => +process
 
 const fail = msg => Object.assign(new Error(msg), { plain: true });
 
-/** Every PIA region: id, name, country, whether it allows port forwarding, and its servers. */
-async function regions() {
-  let text;
-  try { text = await (await fetch(SERVERLIST(), { signal: AbortSignal.timeout(15000) })).text(); }
-  catch (e) { throw fail('Could not get the list of PIA regions (' + ((e.cause && e.cause.code) || e.message) + ').'); }
-  let list; try { list = JSON.parse(text.split('\n')[0]).regions; } catch { throw fail('PIA sent a list of regions this does not understand.'); }
+// The region list that ships in the image (fetched when it was built), so the VPN page never waits on PIA's site.
+const BUNDLED = () => process.env.PIA_REGIONS_FILE || path.join(__dirname, 'pia-regions.json');
+const parse = text => {
+  let list; try { list = JSON.parse(String(text).split('\n')[0]).regions; } catch { throw fail('PIA sent a list of regions this does not understand.'); }
   return (list || []).filter(r => !r.offline && r.servers && (r.servers.wg || []).length)
     .map(r => ({ id: r.id, name: r.name, country: r.country, pf: !!r.port_forward, geo: !!r.geo, wg: r.servers.wg, meta: r.servers.meta || [] }))
     .sort((a, b) => a.name.localeCompare(b.name));
+};
+const bundled = () => { try { const l = parse(fs.readFileSync(BUNDLED(), 'utf8')); return l.length ? l : null; } catch { return null; } };
+
+/** Every PIA region: id, name, country, whether it allows port forwarding, and its servers.
+ *  { local: true } (for the list on the VPN page) uses the built-in list and only asks PIA when there is none;
+ *  otherwise (connecting) PIA is asked for the current servers, with the built-in list if PIA cannot be reached. */
+async function regions(o = {}) {
+  if (o.local) { const b = bundled(); if (b) return b; }
+  let text;
+  try { text = await (await fetch(SERVERLIST(), { signal: AbortSignal.timeout(15000) })).text(); }
+  catch (e) { const b = bundled(); if (b) return b; throw fail('Could not get the list of PIA regions (' + ((e.cause && e.cause.code) || e.message) + ').'); }
+  try { return parse(text); } catch (e) { const b = bundled(); if (b) return b; throw e; }
 }
 
 /** A sign-in token (valid for a day) from your PIA username and password. */
@@ -112,6 +122,6 @@ module.exports = { regions, token, pick, connect, port, keys };
 
 if (require.main === module) {
   const [cmd, a, b] = process.argv.slice(2);
-  const run = cmd === 'connect' ? connect(a, b) : cmd === 'port' ? port() : cmd === 'regions' ? regions().then(l => l.map(({ wg, meta, ...x }) => x)) : Promise.reject(fail('Use: pia.js connect|port|regions'));
+  const run = cmd === 'connect' ? connect(a, b) : cmd === 'port' ? port() : cmd === 'regions' ? regions({ local: a === '--local' }).then(l => l.map(({ wg, meta, ...x }) => x)) : Promise.reject(fail('Use: pia.js connect|port|regions'));
   run.then(x => { process.stdout.write(JSON.stringify(x) + '\n'); }, e => { process.stderr.write((e.plain ? e.message : 'PIA: ' + e.message) + '\n'); process.exit(1); });
 }

@@ -261,6 +261,7 @@ What is kept in `appdata/goatmediastackarr/`: each app's own folder; `goat/secre
 | `TZ` | `Etc/UTC` | Time zone |
 | `UMASK` | `002` | New files are group-writable |
 | `GOAT_FILEBROWSER` | `true` | File Browser: your media and downloads folders in the browser (Stack page → File Browser, admins only). `false` turns it off |
+| `GOAT_DNS` | *(automatic)* | DNS servers for the apps, like `1.1.1.1,8.8.8.8`. Left empty, GoatMediaStackarr checks at every start that TMDB can be looked up and, if your network's DNS fails it, adds public servers after your own. `off` leaves DNS alone |
 | `TORRENT_PORT` | `50413` | qBittorrent's incoming port (6881 is blocked by many trackers) |
 
 ## Troubleshooting

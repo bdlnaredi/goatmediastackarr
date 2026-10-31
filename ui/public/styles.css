@@ -340,3 +340,21 @@ main.sx #m :is(input:not([type=checkbox]):not([type=radio]):not([type=range]):no
 main.sx #m button{min-height:34px;padding:6px 12px}
 main.sx #m .box{padding:8px 10px}
 main.sx #m .opt{padding:10px 12px}
+
+/* Logo goes home */
+.brand a.home{display:flex;align-items:center;gap:inherit;gap:10px;min-width:0;flex:1;color:inherit;text-decoration:none;border-radius:10px}
+.brand a.home:hover .t{color:var(--acc)}
+/* Activity, compact */
+.aud-f{gap:8px;margin:0 0 10px}.aud-f input{max-width:240px;margin:0}.aud-f select{width:auto;margin:0}
+.panel.aud{padding:4px 14px}
+.aud-d{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--mute);padding:10px 0 4px;border-bottom:1px solid var(--line)}
+.aud-r{display:grid;grid-template-columns:52px 96px 1fr;gap:8px;font-size:13px;line-height:1.35;padding:4px 0;border-bottom:1px solid color-mix(in srgb,var(--line) 50%,transparent)}
+.aud-r b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media(max-width:560px){.aud-r{grid-template-columns:44px 1fr}.aud-r>span:last-child{grid-column:1/-1;padding-left:52px;margin-top:-2px}}
+
+/* Where a file is saved */
+.fpath{display:flex;gap:6px;align-items:flex-start;flex-basis:100%;font-size:12.5px;overflow-wrap:anywhere;margin-top:4px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.fpath svg{width:14px;height:14px;flex:none;margin-top:2px;opacity:.7}
+button.sm{min-height:30px;padding:4px 10px;font-size:13px}
+/* Sorting releases */
+.relsort{gap:8px;margin:0 0 10px;flex-wrap:wrap}.relsort .seg button{padding:5px 10px;font-size:13px}

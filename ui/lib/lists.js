@@ -165,7 +165,14 @@ function create(o) {
     return get(url, opt, 'TMDB');
   }
 
-  return { list, warm, enabled, details, person, collection, recommendations, LISTS, NAMES };
+  // Popular titles from one studio (movies) or one network (shows).
+  async function byMaker(kind, id) {
+    const tv = kind === 'tv';
+    const [url, opt] = tmdbAuth(`/discover/${tv ? 'tv' : 'movie'}`, { [tv ? 'with_networks' : 'with_companies']: String(posInt(id)), sort_by: 'popularity.desc' });
+    return get(url, opt, 'TMDB');
+  }
+
+  return { list, warm, enabled, details, person, collection, recommendations, byMaker, LISTS, NAMES };
 }
 
 module.exports = { create, LISTS, NAMES };
