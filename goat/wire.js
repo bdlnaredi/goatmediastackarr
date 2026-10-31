@@ -268,6 +268,29 @@ async function wirePlex(on) {
 
 // ---------- Seerr ----------
 const SEERR = E.url('seerr');
+// The addresses people use in their browser (the Unraid server's address, or one from outside the home), written by
+// GoatMediaStackarr's page once someone opened it. The apps still talk to each other inside the container (127.0.0.1);
+// these are only for the links they show: Seerr's "Open in Sonarr" and "Play on Jellyfin", say.
+const links = () => readJSON(`${C}/ui/links.json`, {}) || {};
+const isLocal = v => !v || /^(https?:\/\/)?(127\.0\.0\.1|localhost|0\.0\.0\.0)(:|\/|$)/i.test(String(v).trim());
+const arrLink = k => links().base ? `${String(links().base).replace(/\/+$/, '')}/engines/${k}` : '';
+// Seerr's links to the built-in apps: filled in when empty or pointing inside the container; your own address stays.
+async function seerrLinks(ch, on, out) {
+  const L = links(); if (!L.base) return;
+  for (const k of ['sonarr', 'radarr']) {
+    if (!on.includes(k)) continue;
+    for (const x of (await http('GET', `${SEERR}/api/v1/settings/${k}`, { headers: ch })).data || []) {
+      if (+x.port !== E.ENGINES[k].port || !(isLocal(x.externalUrl) || /\/engines\/(sonarr|radarr)\/?$/.test(x.externalUrl || '')) || x.externalUrl === arrLink(k)) continue;
+      await http('PUT', `${SEERR}/api/v1/settings/${k}/${x.id}`, { headers: ch, body: { ...x, externalUrl: arrLink(k) } }); out[k + 'Link'] = arrLink(k);
+    }
+  }
+  if (on.includes('jellyfin') && L.jellyfin) {
+    const j = (await http('GET', `${SEERR}/api/v1/settings/jellyfin`, { headers: ch }).catch(() => ({ data: null }))).data;
+    if (j && j.ip && isLocal(j.ip) && (isLocal(j.externalHostname) || /:8096\/?$/.test(j.externalHostname || '')) && j.externalHostname !== L.jellyfin) {
+      await http('POST', `${SEERR}/api/v1/settings/jellyfin`, { headers: ch, body: { ...j, externalHostname: L.jellyfin } }); out.jellyfinLink = L.jellyfin;
+    }
+  }
+}
 
 async function wireSeerr(s, keys, on) {
   const pub = await waitFor('Seerr', async () => (await http('GET', `${SEERR}/api/v1/settings/public`)).data);
@@ -307,6 +330,7 @@ async function wireSeerr(s, keys, on) {
     out.libraries = libs.length;
     out.mediaServer = server;
     for (const k of ['sonarr', 'radarr']) if (on.includes(k)) { await seerrAddArr(k, keys, ch); out[k] = 'connected'; }
+    try { await seerrLinks(ch, on, out); } catch (e) { out.links = 'not set: ' + e.message; }
     await http('POST', `${SEERR}/api/v1/settings/initialize`, { headers: ch });
     out.setup = 'done';
   } else {
@@ -320,12 +344,15 @@ async function wireSeerr(s, keys, on) {
       for (const k of ['sonarr', 'radarr']) {
         if (!on.includes(k)) continue;
         const list = (await http('GET', `${SEERR}/api/v1/settings/${k}`, { headers: ch })).data || [];
-        const mine = list.find(x => ['127.0.0.1', 'localhost'].includes(String(x.hostname)) && +x.port === E.ENGINES[k].port);
+        // Found by its port, whatever address it has: one you changed is kept, never added a second time.
+        const mine = list.find(x => ['127.0.0.1', 'localhost'].includes(String(x.hostname)) && +x.port === E.ENGINES[k].port)
+          || list.find(x => +x.port === E.ENGINES[k].port && (x.baseUrl || '') === E.ENGINES[k].base);
         if (!mine) { await seerrAddArr(k, keys, ch, !list.some(x => x.isDefault && !x.is4k)); out[k] = 'added again'; continue; }
         if (mine.apiKey === keys[k] && (mine.baseUrl || '') === E.ENGINES[k].base && !mine.useSsl) { out[k] = 'ok'; continue; }
         await http('PUT', `${SEERR}/api/v1/settings/${k}/${mine.id}`, { headers: ch, body: { ...mine, apiKey: keys[k], baseUrl: E.ENGINES[k].base, useSsl: false } });
         out[k] = 'updated';
       }
+      try { await seerrLinks(ch, on, out); } catch (e) { out.links = 'not set: ' + e.message; }
     }
   }
   const apiKey = (readJSON(settingsFile).main || {}).apiKey || '';
@@ -339,7 +366,7 @@ async function seerrAddArr(k, keys, headers, isDefault = true) {
   const api = arr(k, keys[k]); await api.ready();
   const [p] = await api.get('qualityprofile');
   await http('POST', `${SEERR}/api/v1/settings/${k}`, { headers, body: {
-    name: E.ENGINES[k].name, hostname: '127.0.0.1', port: E.ENGINES[k].port, apiKey: keys[k], useSsl: false,
+    name: E.ENGINES[k].name, hostname: '127.0.0.1', port: E.ENGINES[k].port, apiKey: keys[k], useSsl: false, externalUrl: arrLink(k),
     baseUrl: E.ENGINES[k].base, activeProfileId: p.id, activeProfileName: p.name, activeDirectory: dir,
     tags: [], is4k: false, isDefault, syncEnabled: true, preventSearch: false, tagRequests: false, overrideRule: [], ...extra } });
 }

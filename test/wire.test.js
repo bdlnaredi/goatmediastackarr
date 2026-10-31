@@ -89,6 +89,8 @@ function fakeSeerr(settingsFile) {
     }
     if (!ok) return json(res, 403, {});
     if (p === '/api/v1/settings/jellyfin/library/sync' && req.method === 'POST') return json(res, 200, st.libs);
+    if (p === '/api/v1/settings/jellyfin' && req.method === 'GET') return json(res, 200, st.jf || (st.jf = { ip: '127.0.0.1', port: 8096, externalHostname: '' }));
+    if (p === '/api/v1/settings/jellyfin' && req.method === 'POST') { st.jf = b; return json(res, 200, b); }
     const lm = p.match(/^\/api\/v1\/settings\/jellyfin\/library\/(\w+)$/);
     if (lm && req.method === 'PUT') { st.libs.find(l => l.id === lm[1]).enabled = b.enabled; st.enabled = st.libs.filter(l => l.enabled).map(l => l.id).join(','); return json(res, 200, {}); }
     const m = p.match(/^\/api\/v1\/settings\/(sonarr|radarr)$/);
@@ -114,6 +116,9 @@ test('wire connects every engine and running it again changes nothing', async ()
   const init = require('../goat/init');
   const a = init.run(process.env);
   fs.mkdirSync(path.join(root, 'config/seerr'), { recursive: true });
+  // The address people use in the browser, written by the page: the apps' own links use it, never 127.0.0.1.
+  fs.mkdirSync(path.join(root, 'config/ui'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'config/ui/links.json'), JSON.stringify({ base: 'http://192.168.1.10:2806', jellyfin: 'http://192.168.1.10:8096' }));
 
   const sonarr = fakeArr('/engines/sonarr', a.keys.sonarr, 'v3', 'sonarr');
   const radarr = fakeArr('/engines/radarr', a.keys.radarr, 'v3', 'radarr');
@@ -156,6 +161,8 @@ test('wire connects every engine and running it again changes nothing', async ()
     assert.equal(seerr.st.dvr.sonarr.apiKey, a.keys.sonarr);
     assert.equal(seerr.st.dvr.sonarr.activeDirectory, path.join(root, 'media/tv'));
     assert.equal(seerr.st.dvr.radarr.baseUrl, '/engines/radarr');
+    assert.equal(seerr.st.dvr.sonarr.externalUrl, 'http://192.168.1.10:2806/engines/sonarr', "Seerr's Open in Sonarr uses the server's address");
+    assert.equal(seerr.st.jf.externalHostname, 'http://192.168.1.10:8096', "and Play on Jellyfin too");
     assert.equal(seerr.st.dvr.radarr.activeProfileId, 4);
 
     const managed = JSON.parse(fs.readFileSync(path.join(root, 'config/goat/managed.json'), 'utf8'));
@@ -196,6 +203,12 @@ test('wire connects every engine and running it again changes nothing', async ()
     assert.equal(s4.steps.sonarr.result.qbittorrent, 'new password given');
     await wire.run();
     assert.deepEqual([sonarr, radarr, prowlarr].map((f, i) => (f.st.puts || 0) - puts[i]), [1, 1, 1], 'not again once they have it');
+    // Changed in Seerr by hand: an address and a link of your own are kept, and no second Sonarr is added.
+    seerr.st.dvr.sonarr = { ...seerr.st.dvr.sonarr, hostname: '192.168.1.10', externalUrl: 'https://sonarr.example.com' };
+    seerr.st.jf.externalHostname = 'https://jf.example.com';
+    const s5 = await wire.run(); assert.ok(s5.steps.seerr.ok, s5.steps.seerr.error);
+    assert.equal(seerr.st.dvr.sonarr.hostname, '192.168.1.10'); assert.equal(seerr.st.dvr.sonarr.externalUrl, 'https://sonarr.example.com');
+    assert.equal(seerr.st.jf.externalHostname, 'https://jf.example.com');
   } finally {
     await Promise.all(all.map(([f]) => new Promise(r => f.srv.close(r))));
   }

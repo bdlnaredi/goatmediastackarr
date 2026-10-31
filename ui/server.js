@@ -269,6 +269,22 @@ const goatSync = () => {
   if (gone.length) { db.services = db.services.filter(x => !gone.includes(x.id)); db.users.forEach(u => u.access = (u.access || []).filter(a => !gone.includes(a))); changed = true; }
   if (changed) save();
 };
+// The addresses people use in their browser, for the links the apps themselves show (Seerr's "Open in Sonarr" and
+// "Play on Jellyfin"): this page's own address (the Unraid server's), or the ones set for outside the home. The apps
+// keep talking to each other inside the container; only their links change. Written next to the database, and the
+// wiring runs again when they change.
+const goatLinks = () => {
+  if (!GOAT_MANAGED || DEMO) return;
+  const pu = baseUrl(); let u; try { u = new URL(pu); } catch { return; }
+  const o = (db.settings || {}).outside || {}, h = `${u.protocol}//${u.hostname}`;
+  const want = JSON.stringify({ base: pu, jellyfin: o.jellyfin || `${h}:8096`, seerr: o.seerr || `${h}:5055`, plex: o.plex || `${h}:32400` });
+  const f = path.join(DATA, 'links.json'); let old = ''; try { old = fs.readFileSync(f, 'utf8'); } catch {}
+  if (want === old) return;
+  try { fs.writeFileSync(f, want); } catch { return; }
+  // Changed, or the first time while the wiring is not running: run it again so the apps get the new links.
+  const w = goatRead(process.env.GOAT_WIRED || path.join(GOAT_CONFIG, 'goat', 'wired.json'));
+  if (old || (w && w.running === false)) goatControl({ cmd: 'rewire' }).catch(() => {});
+};
 const GOAT_CONFIG = process.env.GOAT_CONFIG_DIR || '/config', GOAT_SOCK = process.env.GOAT_CONTROL_SOCK || path.join(GOAT_RUN, 'control.sock');
 // The container's settings helper (goat/settings.js). Missing when the interface runs on its own, as plain MediaHub.
 // The PIA helper (the region list for the VPN settings), found the same way as the settings.
@@ -365,6 +381,7 @@ function goatVersionCheck() {
 }
 setTimeout(goatVersionCheck, Number(process.env.GOAT_VERSION_CHECK_MS) || 20000).unref();
 if (GOAT_MANAGED) setInterval(() => { goatSync(); goatOwnPlex(); }, Number(process.env.GOAT_SYNC_MS) || 15000).unref();
+if (GOAT_MANAGED) setTimeout(() => goatLinks(), 20000).unref();
 // Admins can open each built-in engine's own page at /engines/<name>/ (the "Advanced" pages), signed in through
 // GoatMediaStackarr. The engines themselves listen only inside the container, so this is the only way in.
 // Seerr has no setting for living under a sub-path, and Jellyfin has its own port, so they are not proxied.
@@ -1818,7 +1835,7 @@ const goatServer = http.createServer(async (req, res) => {
       return send(res, 200, {});
     }
     if (me.role === 'admin' && !process.env.PUBLIC_URL && !db.settings.publicUrl && !DEMO && req.headers.host) {
-      const host = (TRUST && req.headers['x-forwarded-host']) || req.headers.host; db.settings.publicUrl = (res.secure ? 'https://' : 'http://') + String(host).split(',')[0].trim(); save();
+      const host = (TRUST && req.headers['x-forwarded-host']) || req.headers.host; db.settings.publicUrl = (res.secure ? 'https://' : 'http://') + String(host).split(',')[0].trim(); save(); goatLinks();
     }
     const allowed = s => svcOk(me, s);
     // Anything that changes things (adding, removing, monitoring, requesting) makes the kept lists be fetched fresh next time.
@@ -1928,7 +1945,7 @@ const goatServer = http.createServer(async (req, res) => {
       if (p === '/api/goat/outside') {
         const b = await readBody(req), o = {};
         for (const k of ['jellyfin', 'seerr', 'plex', 'rutorrent', 'deluge']) { const v = String(b[k] || '').trim().replace(/\/+$/, ''); if (v && !/^https?:\/\/[^\s/]+(\/[^\s]*)?$/i.test(v)) return send(res, 400, { error: `The ${k} address must start with https:// (or http://)` }); if (v) o[k] = v.slice(0, 300); }
-        db.settings.outside = o; save(); return send(res, 200, o);
+        db.settings.outside = o; save(); goatLinks(); return send(res, 200, o);
       }
       if (p === '/api/goat/settings') {
         if (!goatSettings) return send(res, 404, { error: 'Not running inside GoatMediaStackarr' });
@@ -3274,7 +3291,7 @@ const goatServer = http.createServer(async (req, res) => {
       if (b.publicUrl != null && !process.env.PUBLIC_URL) {
         const v = cut(b.publicUrl, 200).trim().replace(/\/+$/, '');
         if (v && !/^https?:\/\/[^\s/]+$/i.test(v)) return send(res, 400, { error: 'Enter the address like https://media.example.com or http://192.168.1.10:5080' });
-        db.settings.publicUrl = v;
+        db.settings.publicUrl = v; setTimeout(goatLinks, 0);
       }
       save(); audit(me.name, 'Changed sign-in options', ''); return send(res, 200, {});
     }

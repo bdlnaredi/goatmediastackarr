@@ -949,7 +949,7 @@ function dashView(){
     dl:q?'<div id="dlnow"></div>':arrOn?'<h2 class="sec">Downloading now</h2><div id="dq"></div>':'',
     sab:sb?'<div id="sab"></div>':'',
     apps:services.length?`<h2 class="sec">Apps</h2><div class="panel" style="padding:4px 18px">${services.map(s=>`<div class="srow">${svcIcon(s.type,s.id)}<b>${esc(s.name)}</b>
-      <span class="mute">${esc(TYPES[s.type]||s.type)}</span><span class="mute" id="t${s.id}">Checking</span><span id="ub${s.id}" class="ubw"></span><a href="${esc(s.url)}" target="_blank" rel="noopener" aria-label="Open ${esc(s.name)}">Open</a></div>`).join('')}</div>`:'',
+      <span class="mute">${esc(TYPES[s.type]||s.type)}</span><span class="mute" id="t${s.id}">Checking</span><span id="ub${s.id}" class="ubw"></span>${svcOpen(s)?`<a href="${esc(svcOpen(s))}" target="_blank" rel="noopener" aria-label="Open ${esc(s.name)}">Open</a>`:'<span></span>'}</div>`).join('')}</div>`:'',
     up:arrOn?`${rowHead('Coming up')}<div class="strip" id="up"><span class="mute">Loading</span></div>`:'',
     hero:arrOn?'<div id="hero"><div class="cn-hero" style="min-height:420px"><div class="sk" style="position:absolute;inset:0;height:auto;border-radius:0"></div></div></div>':'',
     rails:arrOn?'<div id="rails"></div>':'',
@@ -1252,8 +1252,8 @@ function appDialog(existing,done){
 }
 function svcView(){
   $('#m').innerHTML=`<div class="row" style="margin-bottom:14px"><span class="mute grow">The apps GoatMediaStackarr talks to. Most pages only appear once the matching app is added.</span><button class="primary" id="aa">${ic('rq')}Add an app</button></div><div class="panel" style="padding:4px 18px" id="al3"></div>`;
-  const draw=()=>{$('#al3').innerHTML=services.map(s=>`<div class="srow" style="grid-template-columns:40px 1fr auto auto">${svcIcon(s.type,s.id)}<div style="min-width:0"><b>${esc(s.name)}</b> <span class="mute">${esc(TYPES[s.type]||s.type)}</span><div class="mute" style="word-break:break-all">${esc(s.url)}</div></div>
-      <span class="mute" id="t${s.id}">Checking</span><span class="row">${['rutorrent','deluge'].includes(s.type)&&!s.managed&&services.some(x=>['sonarr','radarr','lidarr'].includes(x.type))?`<button data-ua="${s.id}" title="Add it to Sonarr, Radarr and Lidarr as a download client">Use in Sonarr/Radarr</button>`:''}<button data-e="${s.id}">Edit</button><button class="danger" data-x="${s.id}">Remove</button></span></div>`).join('')||empty('No apps yet','Add Sonarr, Radarr, qBittorrent or any other app to get started.');
+  const draw=()=>{$('#al3').innerHTML=services.map(s=>`<div class="srow" style="grid-template-columns:40px 1fr auto auto">${svcIcon(s.type,s.id)}<div style="min-width:0"><b>${esc(s.name)}</b> <span class="mute">${esc(TYPES[s.type]||s.type)}</span>${s.managed?` <span class="pill">${T('Built in')}</span>`:''}<div class="mute" style="word-break:break-all">${svcOpen(s)?`<a href="${esc(svcOpen(s))}" target="_blank" rel="noopener">${esc(svcShown(s))}</a>`:esc(svcShown(s))}</div></div>
+      <span class="mute" id="t${s.id}">Checking</span><span class="row">${['rutorrent','deluge'].includes(s.type)&&!s.managed&&services.some(x=>['sonarr','radarr','lidarr'].includes(x.type))?`<button data-ua="${s.id}" title="Add it to Sonarr, Radarr and Lidarr as a download client">Use in Sonarr/Radarr</button>`:''}${s.managed?`<span class="mute" style="font-size:12px" title="${T('Built-in apps talk to each other inside the container; this is kept up to date by itself.')}">${T('Set up by the stack')}</span>`:`<button data-e="${s.id}">Edit</button><button class="danger" data-x="${s.id}">Remove</button>`}</span></div>`).join('')||empty('No apps yet','Add Sonarr, Radarr, qBittorrent or any other app to get started.');
     services.forEach(async s=>{let ok=false;try{ok=(await api('/api/status/'+s.id)).ok}catch{}const d=$('#d'+s.id);if(!d)return;d.className='dot '+(ok?'ok':'bad');$('#t'+s.id).textContent=ok?'Online':'Not reachable'})};
   draw();
   $('#aa').onclick=()=>appDialog(null,render);
@@ -2808,6 +2808,10 @@ const GOAT_VPNAPPS=[['qbittorrent','qBittorrent (and ruTorrent, Deluge)'],['sabn
 // are not reachable, so the address from outside the home is used when one is set.
 let GOAT_OUT={};
 const viaDomain=()=>!/^(localhost|\d+\.\d+\.\d+\.\d+|\[.*\]|.*\.local|.*\.lan|.*\.home|.*\.ts\.net)$/i.test(location.hostname);
+// Where a built-in app opens in the browser: through this page (/engines/…), or its own port on this server's
+// address (Jellyfin, Seerr, Plex, ruTorrent, Deluge). Never 127.0.0.1, which is inside the container.
+const svcOpen=s=>s.managed?goatOpen(s.managed):s.url;
+const svcShown=s=>{const u=svcOpen(s);if(!s.managed)return s.url;if(!u)return T('Inside the container, no page of its own');return /^\//.test(u)?location.origin+u:u};
 const goatOpen=k=>GOAT_PAGES[k]?`/engines/${k}/`:GOAT_OUT[k]&&viaDomain()?GOAT_OUT[k]+(k==='plex'&&!/\/web\b/.test(GOAT_OUT[k])?'/web/':'/'):k==='jellyfin'?`${location.protocol}//${location.hostname}:8096/`:k==='plex'?`${location.protocol}//${location.hostname}:32400/web/`:k==='seerr'?`${location.protocol}//${location.hostname}:5055/`:k==='rutorrent'?`${location.protocol}//${location.hostname}:8090/`:k==='deluge'?`${location.protocol}//${location.hostname}:8112/`:'';
 let goatPoll=0,goatQuiet=false;
 // A new password for one of the logins made for you (qBittorrent, ruTorrent, Deluge, Jellyfin).
