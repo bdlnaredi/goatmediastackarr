@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- Dashboard posters: the accent ring on hover is drawn inside the poster, so it is even on all four sides; before, a scrolling row cut it off on one side, and the sliding row's faded edges hid part of it.
+
 ## v1.0.6 — 2026-10-31
 
 - Android app: a movie or show shows where its files are saved, admins can delete the file of a movie, an episode or a whole season and open it in Radarr or Sonarr, *Choose a release* sorts by seeders, size, indexer or age and marks your preferred audio language with a ★, title pages show *More from* the studio or network, Health lists every app's warnings with a button to fix them, *Alerts* (under More) ticks what each channel is told about and turns newsletters on, off or sends one now, and Settings → *Chat apps* links Telegram or Discord.
