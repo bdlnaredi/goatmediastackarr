@@ -385,3 +385,4 @@ button.sm{min-height:30px;padding:4px 10px;font-size:13px}
 /* Needs attention */
 .wrow{display:flex;gap:10px;align-items:flex-start;margin-top:8px;flex-wrap:wrap}.wrow>.pill{flex:none;margin-top:1px}.wrow>button{flex:none}
 .lpc{display:inline-flex;align-items:center;gap:4px;padding-right:2px}.lpc .icon{width:24px;height:24px;min-height:0;padding:0}.lpc .icon svg{width:13px;height:13px}
+.chcode{display:inline-block;font-size:20px;letter-spacing:.08em;padding:8px 14px;border-radius:10px;background:var(--s2);user-select:all}

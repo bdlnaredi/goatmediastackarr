@@ -8,7 +8,7 @@ const http = require('http'), fs = require('fs'), path = require('path'), crypto
 const DATA = process.env.DATA_DIR || '/data', FILE = path.join(DATA, 'db.json');
 fs.mkdirSync(DATA, { recursive: true });
 const tclients = require('./lib/torrentclients');
-const totp = require('./lib/totp'), channels = require('./lib/channels'), AL = require('./lib/alerts'), LP = require('./lib/langpref'), listsLib = require('./lib/lists');
+const totp = require('./lib/totp'), channels = require('./lib/channels'), AL = require('./lib/alerts'), LP = require('./lib/langpref'), BOTS = require('./lib/bots'), listsLib = require('./lib/lists');
 const PORT = +process.env.PORT || 5080, DEMO = /^(1|true|yes)$/i.test(process.env.DEMO || ''), DAY = 864e5;
 const demo = DEMO ? require('./lib/demo').create({ streams: 2 }) : null;
 // Inside the container the release number comes from the image (GOAT_VERSION); otherwise from package.json.
@@ -111,6 +111,8 @@ const notifyUser = (u, title, body, kind = 'reqstatus', link = '') => {
   if (u) feed(u.id, kind, title, body, link);
   // "Ready for you" emails: what arrived is collected and sent together a few minutes later, not one email each.
   if (u && kind === 'ready' && u.readyMail && u.email) { (readyQ[u.id] = readyQ[u.id] || []).push({ title, body, link, at: Date.now() }); }
+  // A linked Telegram or Discord chat hears about its own requests too.
+  if (u && u.chats && ['reqstatus', 'ready'].includes(kind) && globalThis.__bots) for (const [k, id] of Object.entries(u.chats)) globalThis.__bots.tell(k, id, `${title}: ${body}`).catch(() => {});
   return u && u.notify ? pushTo(u.notify, title, body) : Promise.resolve(false);
 };
 const readyQ = {}, READY_MS = Math.max(200, +process.env.READY_MAIL_MS || 600000);
@@ -1952,7 +1954,7 @@ const goatServer = http.createServer(async (req, res) => {
     if (!me) return send(res, 401, { error: 'Sign in first' });
     // Two-step sign-in is required and not set up yet: only setting it up (and signing out) works until it is.
     if (need2fa(me) && !['/api/2fa/start', '/api/2fa/enable', '/api/changelog'].includes(p)) return send(res, 403, { error: 'Set up two-step sign-in first. It is required for your profile.', need2fa: true });
-    if (DEMO && m !== 'GET' && /^\/api\/(users|password|2fa|backups?|stack\/backups|restore|alerts|statuslinks|signin|services|weekly|throttle|me\/notify|me\/email|me\/weekly|me\/readymail|me\/avatar|plexsettings|listsettings)/.test(p)) return send(res, 403, { error: 'This is turned off in the demo' });
+    if (DEMO && m !== 'GET' && /^\/api\/(bots|users|password|2fa|backups?|stack\/backups|restore|alerts|statuslinks|signin|services|weekly|throttle|me\/notify|me\/email|me\/weekly|me\/readymail|me\/avatar|plexsettings|listsettings)/.test(p)) return send(res, 403, { error: 'This is turned off in the demo' });
 
     if (p === '/api/2fa/start' && m === 'POST') {
       if (me.totp && me.totp.on) return send(res, 400, { error: 'Two-step sign-in is already on' });
@@ -1975,6 +1977,14 @@ const goatServer = http.createServer(async (req, res) => {
       if (!ok) return send(res, 400, { error: 'That code is not right' });
       me.totp = undefined; save(); audit(me.name, 'Turned off two-step sign-in', ''); return send(res, 200, {});
     }
+    // Linking Telegram or Discord to this profile: a short code to send to the bot.
+    if (p === '/api/me/chats' && m === 'GET') { const st = bots.state(); return send(res, 200, { telegram: !!(me.chats || {}).telegram, discord: !!(me.chats || {}).discord, bots: { telegram: st.telegram.on ? ((db.settings.bots || {}).telegram || {}).name || 'on' : '', discord: st.discord.on ? ((db.settings.bots || {}).discord || {}).name || 'on' : '' } }); }
+    if (p === '/api/me/chats/code' && m === 'POST') {
+      for (const [k, v] of chatCodes) if (v.exp < Date.now() || v.uid === me.id) chatCodes.delete(k);
+      const code = crypto.randomBytes(4).toString('hex').toUpperCase().slice(0, 6); chatCodes.set(code, { uid: me.id, exp: Date.now() + 15 * 60000 });
+      return send(res, 200, { code, minutes: 15 });
+    }
+    { const cm = p.match(/^\/api\/me\/chats\/(telegram|discord)$/); if (cm && m === 'DELETE') { if (me.chats) delete me.chats[cm[1]]; save(); audit(me.name, 'Unlinked a chat', cm[1]); return send(res, 200, {}); } }
     if (p === '/api/me/readymail' && m === 'PUT') { me.readyMail = !!(await readBody(req)).on || undefined; save(); return send(res, 200, { readyMail: !!me.readyMail }); }
     if (p === '/api/me/weekly' && m === 'PUT') { me.noWeekly = !(await readBody(req)).on || undefined; save(); return send(res, 200, { weekly: !me.noWeekly }); }
     if (p === '/api/me/weekly' && m === 'GET') {
@@ -3098,7 +3108,7 @@ const goatServer = http.createServer(async (req, res) => {
     }
     if (p === '/api/sessions' && m === 'GET') {
       const all = me.role === 'admin' && new URL(req.url, 'http://x').searchParams.get('all') === '1';
-      return send(res, 200, [...sessions].filter(([, v]) => all || v.uid === me.id).map(([k, v]) => ({ id: k.slice(0, 16), user: (userOf(v.uid) || {}).name || '?', device: devLabel(v.ua), ip: v.ip, at: v.at, seen: v.seen, current: k === th(token) })).sort((a, b) => b.seen - a.seen));
+      return send(res, 200, [...sessions].filter(([, v]) => !v.bot && (all || v.uid === me.id)).map(([k, v]) => ({ id: k.slice(0, 16), user: (userOf(v.uid) || {}).name || '?', device: devLabel(v.ua), ip: v.ip, at: v.at, seen: v.seen, current: k === th(token) })).sort((a, b) => b.seen - a.seen));
     }
     if (p === '/api/sessions/revoke' && m === 'POST') {
       const b = await readBody(req);
@@ -3683,6 +3693,20 @@ const goatServer = http.createServer(async (req, res) => {
       const b = await readBody(req); db.settings.watchlist = { ...(db.settings.watchlist || {}), auto: !!b.auto }; save();
       audit(me.name, 'Changed watchlists', db.settings.watchlist.auto ? 'request automatically' : 'do not request'); return send(res, 200, { auto: db.settings.watchlist.auto });
     }
+    if (p === '/api/bots' && m === 'GET') { const c = db.settings.bots || {}, st = bots.state();
+      return send(res, 200, { telegram: { set: !!(c.telegram || {}).token, name: (c.telegram || {}).name || '', ...st.telegram }, discord: { set: !!(c.discord || {}).token, name: (c.discord || {}).name || '', ...st.discord }, linked: db.users.filter(u => u.chats && Object.keys(u.chats).length).map(u => ({ name: u.name, chats: Object.keys(u.chats) })) }); }
+    if (p === '/api/bots' && m === 'PUT') {
+      const b = await readBody(req), c = db.settings.bots || {};
+      for (const k of ['telegram', 'discord']) {
+        if (!(k in b)) continue; const t = String(b[k] || '').trim();
+        if (!t) { delete c[k]; continue; }
+        if (!(k === 'telegram' ? /^\d{5,15}:[\w-]{30,60}$/ : /^[\w-]{20,40}\.[\w-]{4,10}\.[\w-]{20,60}$/).test(t)) return send(res, 400, { error: `That does not look like a ${k === 'telegram' ? 'Telegram bot token (from @BotFather)' : 'Discord bot token (Developer Portal → Bot → Reset Token)'}` });
+        let name; try { name = await bots.check(k, t); } catch (e) { return send(res, 400, { error: `${k === 'telegram' ? 'Telegram' : 'Discord'} did not accept that token: ${cut(e.message, 160)}` }); }
+        c[k] = { token: t, name: cut(name, 60) };
+      }
+      db.settings.bots = c; save(); bots.sync(); audit(me.name, 'Changed the chat bots', Object.keys(c).join(', ') || 'none');
+      return send(res, 200, {});
+    }
     if (p === '/api/langpref' && m === 'GET') return send(res, 200, { ...LP.clean({}, db.settings.langPref || {}), all: LP.LANGS, apps: db.services.filter(x => ['sonarr', 'radarr'].includes(x.type)).map(x => x.name) });
     if ((p === '/api/langpref' && m === 'PUT') || (p === '/api/langpref/apply' && m === 'POST')) {
       const b = p.endsWith('/apply') ? {} : await readBody(req), o = db.settings.langPref || {}, c = LP.clean(b, o);
@@ -3968,6 +3992,23 @@ goatServer.on('upgrade', (req, sock, head) => {
 });
 const MON_MS = Math.max(500, +process.env.MONITOR_MS || 30000), REQ_MS = process.env.REQ_REFRESH_MS != null ? +process.env.REQ_REFRESH_MS : 15000;
 setInterval(() => monitor().catch(() => {}), MON_MS);
+// ---------- Chat bots (lib/bots.js): each one acts as the linked profile, through this same API ----------
+const botTok = {};
+async function botApi(u, method, pth, body) {
+  let t = botTok[u.id]; if (!t || !sessions.has(th(t))) { t = botTok[u.id] = crypto.randomBytes(24).toString('hex'); sessions.set(th(t), { uid: u.id, at: Date.now(), seen: Date.now(), ua: 'chat bot', ip: 'chat', bot: true }); }
+  const r = await fetch(`http://127.0.0.1:${PORT}${pth}`, { method, headers: { Cookie: 'sid=' + t, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(100000) });
+  return { status: r.status, data: await r.json().catch(() => ({})) };
+}
+const chatCodes = new Map();
+const bots = BOTS.create({ cfg: () => db.settings.bots || {}, log: t => console.log('[bots] ' + t), api: botApi,
+  userFor: (k, id) => db.users.find(u => u.chats && u.chats[k] === String(id)) || null,
+  link: async (k, id, code, name) => {
+    const c = chatCodes.get(String(code).toUpperCase()); if (!c || c.exp < Date.now()) return null;
+    chatCodes.delete(String(code).toUpperCase()); const u = userOf(c.uid); if (!u) return null;
+    for (const x of db.users) if (x.chats && x.chats[k] === String(id)) delete x.chats[k];
+    u.chats = { ...(u.chats || {}), [k]: String(id) }; save(); audit(u.name, 'Linked a chat', `${k}${name ? ' (' + cut(name, 40) + ')' : ''}`); return u;
+  } });
+globalThis.__bots = bots; if (!DEMO) bots.sync();
 if (!DEMO) { const sf = () => seerrFolderFix().catch(() => {}); setTimeout(sf, +process.env.SEERR_DIR_MS || 90000).unref(); setInterval(sf, 6 * 3600e3).unref(); }
 setInterval(() => { for (const k in fails) if (Date.now() - fails[k].t > 600000) delete fails[k]; }, 600000).unref();
 for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => { console.log('GoatMediaStackarr stopping'); process.exit(0); });
