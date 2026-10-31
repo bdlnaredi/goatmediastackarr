@@ -1324,6 +1324,60 @@ async function seerrFolderFix(kinds = ['radarr', 'sonarr'], force = false) {
   } catch (e) { out[kind] = 'skipped: ' + e.message; } }
   save(); return out;
 }
+// ---------- Importing finished downloads into the library (Sonarr's and Radarr's own Manual Import) ----------
+// What Sonarr or Radarr would do with the files of one download: the movie or episodes each file is, and why not.
+const IMPV = /\.(mkv|mp4|m4v|avi|ts|m2ts|wmv|mov|webm)$/i;
+async function importLook(sv, q) {
+  const l = await ext(sv, '/api/v3/manualimport?' + new URLSearchParams({ ...q, filterExistingFiles: 'true' }));
+  return (Array.isArray(l) ? l : []).filter(f => IMPV.test(f.path || f.name || '')).map(f => ({
+    path: String(f.path || ''), name: cut(f.relativePath || f.name || String(f.path || '').split('/').pop(), 300), size: +f.size || 0, downloadId: f.downloadId || q.downloadId || '',
+    quality: f.quality || null, languages: f.languages || [], releaseGroup: cut(f.releaseGroup, 60), q: cut(((f.quality || {}).quality || {}).name, 40),
+    match: sv.type === 'radarr' ? (f.movie ? { id: f.movie.id, title: cut(f.movie.title, 200), year: f.movie.year || '' } : null) : (f.series ? { id: f.series.id, title: cut(f.series.title, 200), year: f.series.year || '' } : null),
+    season: f.seasonNumber != null ? +f.seasonNumber : (f.episodes && f.episodes[0] ? f.episodes[0].seasonNumber : null),
+    episodes: (f.episodes || []).map(e => ({ id: e.id, season: e.seasonNumber, num: e.episodeNumber, title: cut(e.title, 120) })),
+    why: (f.rejections || []).map(x => cut(x.reason || x.message || x, 200)).filter(Boolean) }));
+}
+const importReady = f => f.match && !f.why.length && (f.episodes.length || f.season == null && f.match);
+// Tells Sonarr or Radarr to import these files. mode: copy (keeps a torrent seeding; a hardlink when it can) or move.
+async function importRun(sv, files, mode = 'copy') {
+  const tv = sv.type === 'sonarr';
+  const body = { name: 'ManualImport', importMode: mode === 'move' ? 'move' : 'copy', files: files.map(f => ({ path: f.path, ...(tv ? { seriesId: f.id, episodeIds: f.episodeIds } : { movieId: f.id }),
+    quality: f.quality, languages: f.languages, releaseGroup: f.releaseGroup || '', ...(f.downloadId ? { downloadId: f.downloadId } : {}) })) };
+  return ext(sv, '/api/v3/command', { method: 'POST', body: JSON.stringify(body) });
+}
+const arrHint = cat => /tv|show|series|sonarr|anime/i.test(cat || '') ? 'sonarr' : /movie|film|radarr/i.test(cat || '') ? 'radarr' : '';
+// Finished torrents that Sonarr and Radarr are not looking after: imported by themselves when every video file is a
+// clear match, otherwise noted so an admin can import them by hand (Downloads → the torrent → Import to library).
+async function autoImport() {
+  const cfg = db.settings.autoImport || (db.settings.autoImport = { on: true, since: Date.now() }); if (!cfg.on) return;
+  const arrs = db.services.filter(x => ['sonarr', 'radarr'].includes(x.type)); if (!arrs.length) return;
+  const done = db.importDone || (db.importDone = {}), tracked = new Set();
+  for (const a of arrs) { try { for (const r of ((await ext(a, '/api/v3/queue?page=1&pageSize=500&includeUnknownSeriesItems=true')) || {}).records || []) if (r.downloadId) tracked.add(String(r.downloadId).toUpperCase()); } catch { return; } }
+  for (const s of db.services.filter(x => x.type === 'qbittorrent')) {
+    let list; try { list = await qb(s, '/api/v2/torrents/info?filter=completed'); } catch { continue; }
+    for (const t of Array.isArray(list) ? list : []) {
+      const h = String(t.hash || '').toUpperCase();
+      if (!h || done[h] || tracked.has(h) || !(t.completion_on > 0) || t.completion_on * 1000 < (cfg.since || 0)) continue;
+      const hint = arrHint(t.category), order = arrs.slice().sort((a, b) => (b.type === hint) - (a.type === hint));
+      let best = null;
+      for (const a of order) { try { const f = await importLook(a, { folder: t.content_path || t.save_path }); if (f.length && (!best || f.filter(importReady).length > best.f.filter(importReady).length)) best = { a, f }; } catch {} }
+      if (best && best.f.length && best.f.every(importReady)) {
+        try {
+          await importRun(best.a, best.f.map(f => ({ ...f, id: f.match.id, episodeIds: f.episodes.map(e => e.id) })), 'copy');
+          done[h] = { at: Date.now(), state: 'imported', app: best.a.name, name: cut(t.name, 200) };
+          audit('GoatMediaStackarr', 'Imported a finished download', `${cut(t.name, 120)} → ${best.a.name}: ${best.f[0].match.title}`);
+          feed('@admins', 'info', 'Download imported', `${t.name} is now in ${best.a.name} as ${best.f[0].match.title}`, 'downloads');
+        } catch (e) { done[h] = { at: Date.now(), state: 'failed', name: cut(t.name, 200), error: cut(e.message, 200) }; }
+      } else {
+        done[h] = { at: Date.now(), state: 'needs', name: cut(t.name, 200), why: best ? cut((best.f.find(f => !importReady(f)) || {}).why?.join('; ') || 'not sure what it is', 200) : 'no video files Sonarr or Radarr know' };
+        if (best) feed('@admins', 'problem', 'A download needs importing', `${t.name}: ${done[h].why}. Open it under Downloads and press Import to library.`, 'downloads');
+      }
+      save();
+    }
+  }
+  for (const k of Object.keys(done)) if (Date.now() - done[k].at > 60 * DAY) delete done[k];
+}
+
 async function applyArrOpts(x) {
   const o = x.opts || {}, tv = x.mediaType === 'tv', kind = tv ? 'sonarr' : 'radarr';
   for (let i = 0; i < 12; i++) {
@@ -1619,6 +1673,7 @@ async function monitor() {
     if (mon.n % 10 === 0) uptSave();
     await safe(streamTick);
     if (mon.n % 4 === 0) await safe(recentWatch);
+    if (mon.n % 4 === 2) await safe(autoImport);
     await safe(nlTick);
     if (mon.n % 120 === 0 && !DEMO) await safe(latestRelease);
     if (++mon.n % 2 === 0) await safe(refreshRequests);
@@ -3358,6 +3413,46 @@ const goatServer = http.createServer(async (req, res) => {
     // Every app's warnings in one list, errors first, each with what can be done about it from here.
     const ARRV = { sonarr: 'v3', radarr: 'v3', lidarr: 'v1', readarr: 'v1', prowlarr: 'v1' };
     const warnFix = (type, t) => !ARRV[type] ? '' : /indexer/i.test(t) && /unavailable|fail|error/i.test(t) ? 'indexers' : /download client/i.test(t) ? 'clients' : 'recheck';
+    // Import a finished download by hand: what Sonarr and Radarr see in it, then import with the choices made.
+    if (p === '/api/import/look' && m === 'GET') {
+      const q = new URL(req.url, 'http://x').searchParams, arrs = db.services.filter(x => ['sonarr', 'radarr'].includes(x.type));
+      if (!arrs.length) return send(res, 400, { error: 'Add Sonarr or Radarr first' });
+      let look = {}, name = '', hint = '';
+      if (q.get('qb')) {
+        const s = db.services.find(x => x.id === q.get('qb') && x.type === 'qbittorrent'); if (!s || !/^[a-f0-9]{40}$/i.test(q.get('hash') || '')) return send(res, 400, { error: 'Bad request' });
+        const t = ((await qb(s, '/api/v2/torrents/info?hashes=' + q.get('hash'))) || [])[0]; if (!t) return send(res, 404, { error: 'That download is gone' });
+        look = { folder: t.content_path || t.save_path }; name = t.name; hint = arrHint(t.category);
+      } else if (q.get('downloadId')) { look = { downloadId: cut(q.get('downloadId'), 100) }; name = cut(q.get('name'), 200); }
+      else return send(res, 400, { error: 'Bad request' });
+      const apps = [];
+      for (const a of arrs.sort((x, y) => (y.type === hint) - (x.type === hint))) {
+        if (q.get('sid') && a.id !== q.get('sid')) continue;
+        try { apps.push({ sid: a.id, name: a.name, type: a.type, files: await importLook(a, look) }); } catch (e) { apps.push({ sid: a.id, name: a.name, type: a.type, files: [], error: cut(e.message, 200) }); }
+      }
+      return send(res, 200, { name, apps });
+    }
+    if (p === '/api/import' && m === 'POST') {
+      const b = await readBody(req), sv = db.services.find(x => x.id === b.sid && ['sonarr', 'radarr'].includes(x.type)); if (!sv) return send(res, 404, { error: 'Pick Sonarr or Radarr' });
+      const files = (Array.isArray(b.files) ? b.files : []).slice(0, 200);
+      if (!files.length || files.some(f => typeof f.path !== 'string' || !f.path.startsWith('/') || !(+f.id > 0))) return send(res, 400, { error: 'Say which movie or show each file is' });
+      const out = [];
+      if (sv.type === 'sonarr') {
+        // Episodes by season and number, looked up in the series.
+        const eps = {}; for (const id of [...new Set(files.map(f => +f.id))]) eps[id] = await ext(sv, '/api/v3/episode?seriesId=' + id);
+        for (const f of files) {
+          let ids = (Array.isArray(f.episodeIds) ? f.episodeIds : []).map(Number).filter(n => n > 0);
+          if (!ids.length && Number.isInteger(+f.season)) ids = (Array.isArray(f.episodes) ? f.episodes : [f.episode]).map(Number).map(n => ((eps[+f.id] || []).find(e => e.seasonNumber === +f.season && e.episodeNumber === n) || {}).id).filter(Boolean);
+          if (!ids.length) return send(res, 400, { error: `Say which episode ${String(f.path).split('/').pop()} is` });
+          out.push({ ...f, id: +f.id, episodeIds: ids });
+        }
+      } else files.forEach(f => out.push({ ...f, id: +f.id }));
+      await importRun(sv, out, b.mode === 'move' ? 'move' : 'copy');
+      if (b.hash && /^[a-f0-9]{40}$/i.test(b.hash)) { (db.importDone = db.importDone || {})[b.hash.toUpperCase()] = { at: Date.now(), state: 'imported', app: sv.name, name: cut(b.name, 200) }; save(); }
+      audit(me.name, 'Imported a download by hand', `${out.length} file${out.length === 1 ? '' : 's'} → ${sv.name}`);
+      return send(res, 200, { imported: out.length });
+    }
+    if (p === '/api/import/settings' && m === 'GET') { const c = db.settings.autoImport || { on: true }; return send(res, 200, { on: c.on !== false, recent: Object.entries(db.importDone || {}).map(([h, v]) => ({ hash: h, ...v })).sort((a, b) => b.at - a.at).slice(0, 15) }); }
+    if (p === '/api/import/settings' && m === 'PUT') { const b = await readBody(req), c = db.settings.autoImport || {}; db.settings.autoImport = { ...c, on: !!b.on, since: b.on && !c.on ? Date.now() : c.since || Date.now() }; save(); audit(me.name, 'Changed importing by itself', b.on ? 'on' : 'off'); return send(res, 200, {}); }
     if (p === '/api/warnings' && m === 'GET') {
       const out = [], add = (sv, level, text, extra = {}) => out.push({ sid: sv.id, app: sv.name, type: sv.type, level, text: cut(text, 400), ...extra });
       await Promise.all(db.services.map(async sv => { try {
@@ -3392,7 +3487,7 @@ const goatServer = http.createServer(async (req, res) => {
           o.issues = (Array.isArray(h) ? h : []).map(x => ({ level: x.type === 'error' ? 'bad' : 'warn', text: x.message || x.source }));
           o.disks = (Array.isArray(d) ? d : []).filter(x => x.totalSpace > 0).map(x => ({ path: x.path, label: DISK_NAMES[String(x.path).replace(/\/+$/, '') || '/'] || '', free: x.freeSpace, total: x.totalSpace }))
             .sort((p, q) => DISK_ORDER.indexOf(p.label) - DISK_ORDER.indexOf(q.label));
-          o.queue = ((q && q.records) || []).filter(x => ['warning', 'error'].includes(x.trackedDownloadStatus) || x.status === 'warning').slice(0, 10).map(x => ({ title: x.title, message: ((x.statusMessages || [])[0] || {}).messages ? x.statusMessages[0].messages[0] : x.errorMessage || 'Needs attention' }));
+          o.queue = ((q && q.records) || []).filter(x => ['warning', 'error'].includes(x.trackedDownloadStatus) || x.status === 'warning').slice(0, 10).map(x => ({ title: x.title, downloadId: x.downloadId || '', message: ((x.statusMessages || [])[0] || {}).messages ? x.statusMessages[0].messages[0] : x.errorMessage || 'Needs attention' }));
           o.missing = w && w.totalRecords != null ? w.totalRecords : null; o.ok = true;
         } catch (e) { o.ok = false; o.error = e.message; }
         return o;

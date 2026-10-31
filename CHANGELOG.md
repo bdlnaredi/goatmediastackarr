@@ -4,6 +4,7 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- Finished downloads into the library: a torrent Sonarr and Radarr did not grab themselves (from Trackers, RSS or added by hand) is imported when it finishes and every video file in it is a clear match; it is copied, so it keeps seeding. The rest wait under Settings → Download rules, and any finished torrent (Downloads → open it) or download stuck with "No files found are eligible for import" (Health) has *Import to library*: see what Sonarr or Radarr make of each file, say which movie, or which show, season and episode, and import. On by default; it only looks at downloads that finish from now on.
 ## v1.0.7 — 2026-10-31
 
 - Dashboard posters: the accent ring on hover is drawn inside the poster, so it is even on all four sides; before, a scrolling row cut it off on one side, and the sliding row's faded edges hid part of it.

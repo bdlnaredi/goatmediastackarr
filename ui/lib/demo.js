@@ -94,7 +94,15 @@ function create(opts = {}) {
     if (!tv && p === '/api/v3/collection') return json(res, [{ id: 1, tmdbId: 10, title: 'Demo Saga', monitored: false, images: [], movies: [{ tmdbId: 5001, title: st.movies[0].title }, { tmdbId: 5002, title: st.movies[1].title }, { tmdbId: 6300, title: 'Demo Saga III' }] }]);
     if (p === '/api/v3/rootfolder') return json(res, [{ path: tv ? '/tv' : '/movies' }]);
     if (p === '/api/v3/indexer/testall' || p === '/api/v3/downloadclient/testall') return json(res, []);
-    if (p === '/api/v3/command' && m === 'POST') return json(res, { id: 1, name: data.name });
+    if (p === '/api/v3/command' && m === 'POST') { if (data.name === 'ManualImport') (st.imports = st.imports || []).push({ app: type, ...data }); return json(res, { id: 1, name: data.name }); }
+    if (p === '/api/v3/manualimport' && m === 'GET') {
+      const where = String(q.get('folder') || q.get('downloadId') || ''), base = where.split('/').pop(), words = base.replace(/[._]+/g, ' ').toLowerCase();
+      const file = { path: where.replace(/\/$/, '') + '/' + base + '.mkv', relativePath: base + '.mkv', size: 1.2e9, quality: { quality: { id: 3, name: 'WEBDL-1080p' }, revision: { version: 1 } }, languages: [{ id: 1, name: 'English' }], releaseGroup: 'GRP', rejections: /sample/i.test(base) ? [{ reason: 'Sample', type: 'permanent' }] : [] };
+      if (tv) { const se = /S(\d+)E(\d+)/i.exec(base), sh = st.shows.find(x => words.startsWith(x.title.toLowerCase())), ep = sh && se && sh.eps.find(e => e.seasonNumber === +se[1] && e.episodeNumber === +se[2]);
+        return json(res, [{ ...file, series: sh ? { id: sh.id, title: sh.title, year: sh.year } : null, seasonNumber: se ? +se[1] : null, episodes: ep ? [{ id: ep.id, seasonNumber: ep.seasonNumber, episodeNumber: ep.episodeNumber, title: ep.title }] : [], rejections: sh ? file.rejections : [{ reason: 'Unknown Series' }] }]); }
+      const mv = st.movies.find(x => words.startsWith(x.title.toLowerCase()));
+      return json(res, [{ ...file, movie: mv ? { id: mv.id, title: mv.title, year: mv.year } : null, rejections: mv ? file.rejections : [{ reason: 'Unknown Movie' }] }]);
+    }
     if (p === '/api/v3/queue/details') return json(res, (st.queueDetails || []).filter(r => (q.get('movieId') && +r.movieId === +q.get('movieId')) || (q.get('seriesId') && +r.seriesId === +q.get('seriesId'))));
     if (p === '/api/v3/queue') return json(res, { records: [{ id: 1, title: 'Harbor.Lights.S04E06', size: 1.4e9, sizeleft: 5e8, timeleft: '00:12:00', status: 'downloading', trackedDownloadStatus: 'ok', series: { title: 'Harbor Lights' }, movie: { title: 'Glass Meridian' } },
       { id: 2, title: 'Stuck.Release.1080p', size: 2e9, sizeleft: 2e9, status: 'warning', trackedDownloadStatus: 'warning', statusMessages: [{ messages: ['No files found are eligible for import'] }], series: { title: 'Night Shift' } }].slice(0, tv ? 2 : 1).concat((st.importing || []).map((h, i) => ({ id: 90 + i, title: 'Importing', downloadId: h.toUpperCase(), trackedDownloadState: 'importPending' }))), totalRecords: 2 });
@@ -246,7 +254,7 @@ function create(opts = {}) {
       const cats = () => st.qbCats || { tv: { name: 'tv', savePath: '/downloads/tv' }, movies: { name: 'movies', savePath: '/downloads/movies' }, software: { name: 'software', savePath: '/downloads/sw' } };
       const wob = 0.85 + 0.3 * Math.sin(Date.now() / 4000);
       const live = () => st.torrents.map(x => x.progress < 1 ? { ...x, dlspeed: Math.round(x.dlspeed * wob * (st.altSpeed ? 0.2 : 1)), progress: Math.min(0.99, x.progress + ((Date.now() / 60000) % 0.2)) } : x);
-      if (sub === '/api/v2/torrents/info') return json(res, live());
+      if (sub === '/api/v2/torrents/info') { const hs = q.get('hashes'); return json(res, live().map(t => ({ content_path: (t.save_path || '/downloads') + '/' + t.name, ...t })).filter(t => !hs || hs.split('|').includes(t.hash))); }
       if (sub === '/api/v2/torrents/delete') { const hs = String(data.hashes || '').split('|'); st.calls.push('qb delete ' + data.hashes + ' files=' + data.deleteFiles); st.torrents = st.torrents.filter(t => !hs.includes(t.hash)); res.writeHead(200); return res.end(''); }
       if (sub.startsWith('/api/v2/sync/maindata')) return json(res, { server_state: { dl_info_speed: Math.round(2.4e6 * wob * (st.altSpeed ? 0.2 : 1)), up_info_speed: 3.5e5, dl_info_data: 4e10, up_info_data: 6e10, connection_status: 'connected', last_external_address_v4: '203.0.113.7',
         free_space_on_disk: 600e9, use_alt_speed_limits: st.altSpeed, dl_rate_limit: 0, up_rate_limit: 0 }, torrents: {}, categories: cats(), tags: st.qbTags || [] });

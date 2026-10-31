@@ -1292,7 +1292,7 @@ const PERMS=[['add','Add downloads and things to the library'],['control','Pause
 const presetOf=u=>{if(!u.perms)return 'std';const v=PERMS.map(([k])=>u.perms[k]!==false);return v.every(Boolean)?'std':v.every(x=>!x)?'view':'custom'};
 
 async function stRules(){
-  const s=first('qbittorrent');if(!s){$('#m').innerHTML=`<div class="panel">Connect qBittorrent for the speed schedule and seeding limits.</div>`;seedGoalsPanel([]);langPrefPanel();return}
+  const s=first('qbittorrent');if(!s){$('#m').innerHTML=`<div class="panel">Connect qBittorrent for the speed schedule and seeding limits.</div>`;seedGoalsPanel([]);langPrefPanel();importPanel();return}
   $('#m').innerHTML=skel(3);
   let sch,rules,meta;
   try{[sch,rules,meta]=await Promise.all([api(`/api/qb/${s.id}/schedule`),api('/api/seedrules'),api(`/api/qb/${s.id}/meta`)])}catch(x){$('#m').innerHTML=`<div class="err">${esc(x.message)}</div>`;return}
@@ -1321,7 +1321,7 @@ async function stRules(){
   $('#rl3').onclick=e=>{const d=e.target.closest('[data-d]');if(d)d.closest('[data-rr]').remove()};
   $('#sr3').onclick=async()=>{const list=[...document.querySelectorAll('[data-rr]')].map(r=>({sid:s.id,category:r.querySelector('[data-c]').value,ratio:r.querySelector('[data-r]').value,minutes:r.querySelector('[data-m]').value}));
     try{await api('/api/seedrules','PUT',{rules:list});toast('Rules saved. They apply within a minute.','ok')}catch(x){toast(x.message,'bad')}};
-  seedGoalsPanel(meta.categories.map(c=>c.name));langPrefPanel();
+  seedGoalsPanel(meta.categories.map(c=>c.name));langPrefPanel();importPanel();
 }
 // Tracker seeding goals: each tracker's own rule (ratio, days, or both); finished movies and shows are removed once it is met.
 // Preferred audio languages: the order to prefer them in, set up in Radarr and Sonarr, and marked in interactive search.
@@ -1348,6 +1348,55 @@ async function langPrefPanel(){
     try{const r=await api('/api/langpref','PUT',{langs:sel,dual:g.dual.checked,upgrade:g.upgrade.checked,only:g.only.checked});
       $('#lpr').innerHTML=(r.results||[]).map(x=>`<div>${x.ok?'✓':'✗'} <b>${esc(x.app)}</b>: ${x.ok?esc(x.done.length+' changes'):esc(x.error)}</div>`).join('')||'Saved. Add Radarr or Sonarr to set them up.';toast('Saved','ok')}
     catch(x){$('#lpr').textContent=x.message}b.disabled=false};
+}
+// Import a finished download into the library by hand: what Sonarr or Radarr make of each file, and you say what it is.
+async function importDialog(src){
+  const o=modal(`<button class="pgback" data-x>${ic('back')}Back</button><h2 style="margin:4px 0 0">Import to library</h2><p class="mute" style="margin:2px 0 12px;word-break:break-word">${esc(src.name||'')}</p><div id="imb">${skel(3)}</div>`,true);
+  o.querySelector('[data-x]').onclick=o.close;
+  const q=new URLSearchParams(src.qb?{qb:src.qb,hash:src.hash}:{downloadId:src.downloadId,name:src.name||'',...(src.sid?{sid:src.sid}:{})});
+  let d;try{d=await api('/api/import/look?'+q)}catch(x){o.querySelector('#imb').innerHTML=`<div class="err">${esc(x.message)}</div>`;return}
+  const apps=d.apps.filter(a=>a.files.length);let ai=0;const libs={};
+  const box=o.querySelector('#imb');
+  if(!apps.length){box.innerHTML=`<p class="mute">Neither Sonarr nor Radarr found a video file they could import here.${d.apps.map(a=>a.error?`<br>${esc(a.name)}: ${esc(a.error)}`:'').join('')}</p>`;return}
+  async function draw(){
+    const a=apps[ai],tv=a.type==='sonarr';
+    if(!libs[a.sid])try{libs[a.sid]=await api('/api/library?sid='+encodeURIComponent(a.sid))}catch{libs[a.sid]=[]}
+    const lib=libs[a.sid],label=x=>`${x.title}${x.year?' ('+x.year+')':''}`,first=a.files.find(f=>f.match);
+    box.innerHTML=`${apps.length>1?`<div class="seg" id="ima" style="margin-bottom:10px">${apps.map((x,i)=>`<button data-ai="${i}" class="${i===ai?'on':''}">${esc(x.name)}</button>`).join('')}</div>`:''}
+      <label class="mute blk">${tv?'Show':'Movie'}<input id="imt" list="iml" value="${esc(first?label(first.match):'')}" placeholder="Type to find it in ${esc(a.name)}"></label>
+      <datalist id="iml">${lib.map(x=>`<option value="${esc(label(x))}">`).join('')}</datalist>
+      ${a.files.map((f,i)=>`<div class="box imf"><label class="chk" style="margin:0"><input type="checkbox" data-fi="${i}" ${f.why.some(w=>/sample/i.test(w))?'':'checked'}><b style="word-break:break-all">${esc(f.name)}</b></label>
+        <div class="mute" style="font-size:13px">${fmt(f.size)}${f.q?' · '+esc(f.q):''}${f.match?` · <span style="color:var(--ok-t)">${esc(label(f.match))}${f.episodes.length?' '+f.episodes.map(e=>'S'+String(e.season).padStart(2,'0')+'E'+String(e.num).padStart(2,'0')).join(', '):''}</span>`:''}</div>
+        ${f.why.length?`<div style="color:var(--warn-t,var(--bad-t));font-size:13px">${esc(f.why.join('; '))}</div>`:''}
+        ${tv?`<div class="row" style="gap:8px;margin-top:6px"><label class="mute">Season <input type="number" min="0" max="200" data-se="${i}" value="${f.season??(f.episodes[0]||{}).season??''}" style="width:80px"></label><label class="mute">Episode <input data-ep="${i}" value="${esc(f.episodes.map(e=>e.num).join(', '))}" placeholder="3 or 3, 4" style="width:110px"></label></div>`:''}</div>`).join('')}
+      <div class="row" style="margin-top:10px"><label class="mute">How <select id="imm"><option value="copy">Copy (a torrent keeps seeding)</option><option value="move">Move</option></select></label></div>
+      <div class="row"><button class="primary" id="imgo">Import</button></div><div class="err" id="ime"></div>`;
+    const sw=box.querySelector('#ima');if(sw)sw.onclick=e=>{const b=e.target.closest('[data-ai]');if(b){ai=+b.dataset.ai;draw()}};
+    box.querySelector('#imgo').onclick=async()=>{const er=box.querySelector('#ime');er.textContent='';
+      const t=box.querySelector('#imt').value.trim(),hit=lib.find(x=>label(x)===t)||lib.find(x=>x.title.toLowerCase()===t.toLowerCase());
+      if(!hit){er.textContent=`Pick the ${tv?'show':'movie'} from the list (it has to be in ${a.name} already).`;return}
+      const files=a.files.map((f,i)=>({f,i})).filter(({i})=>box.querySelector(`[data-fi="${i}"]`).checked).map(({f,i})=>{
+        const keep=f.match&&f.match.id===hit.id&&f.episodes.length,se=tv?box.querySelector(`[data-se="${i}"]`).value:'',eps=tv?box.querySelector(`[data-ep="${i}"]`).value.split(/[,\s]+/).map(Number).filter(n=>n>0):[];
+        const sameEps=keep&&eps.join()===f.episodes.map(e=>e.num).join()&&+se===f.episodes[0].season;
+        return {path:f.path,id:hit.id,quality:f.quality,languages:f.languages,releaseGroup:f.releaseGroup,downloadId:f.downloadId,...(tv?(sameEps?{episodeIds:f.episodes.map(e=>e.id)}:{season:+se,episodes:eps}):{})}});
+      if(!files.length){er.textContent='Tick at least one file.';return}
+      const b=box.querySelector('#imgo');b.disabled=true;b.textContent='Importing…';
+      try{const r=await api('/api/import','POST',{sid:a.sid,mode:box.querySelector('#imm').value,files,hash:src.hash||'',name:src.name||''});toast(`${r.imported} file${r.imported===1?'':'s'} sent to ${a.name} to import`,'ok');o.close();if(src.after)src.after()}
+      catch(x){er.textContent=x.message;b.disabled=false;b.textContent='Import'}};
+  }
+  draw();
+}
+// Settings → Download rules: importing finished downloads by themselves, and the ones that wait for you.
+async function importPanel(){
+  let d;try{d=await api('/api/import/settings')}catch{return}
+  if(tab!=='set'||stSub!=='rules')return;
+  const old=$('#imp');if(old)old.remove();
+  const qbs=first('qbittorrent'),st={imported:['Imported','ok'],needs:['Needs you','warn'],failed:['Failed','bad']};
+  const lp=$('#lpp');(lp||$('#m')).insertAdjacentHTML(lp?'afterend':'afterbegin',`<div class="panel" id="imp" style="margin-bottom:16px"><div class="row"><h3 style="margin:0" class="grow">Import finished downloads</h3><label class="tgl"><input type="checkbox" id="imon" ${d.on?'checked':''} aria-label="Import by themselves"><span></span></label></div>
+    <p class="mute" style="margin:6px 0 0">A torrent Sonarr and Radarr did not grab themselves (from Trackers, RSS or added by hand) is imported into the library when it finishes and every video file in it is a clear match. The others wait here for you: press Import and say what they are. Torrents are copied, so they keep seeding.</p>
+    ${d.recent.length?d.recent.map(x=>`<div class="box row" style="gap:8px;margin-top:8px"><span class="pill ${(st[x.state]||['',''])[1]}">${(st[x.state]||[x.state])[0]}</span><div class="grow" style="min-width:0"><b style="word-break:break-all">${esc(x.name||x.hash)}</b><div class="mute" style="font-size:13px">${esc(x.state==='imported'?'into '+(x.app||''):x.why||x.error||'')} · ${esc(fdt(x.at))}</div></div>${x.state!=='imported'&&qbs?`<button data-ih="${esc(x.hash)}" data-in="${esc(x.name||'')}">Import</button>`:''}</div>`).join(''):''}</div>`);
+  $('#imon').onchange=async e=>{try{await api('/api/import/settings','PUT',{on:e.target.checked});toast('Saved','ok')}catch(x){toast(x.message,'bad')}};
+  $('#imp').onclick=e=>{const b=e.target.closest('[data-ih]');if(b)importDialog({qb:qbs.id,hash:b.dataset.ih.toLowerCase(),name:b.dataset.in,after:importPanel})};
 }
 async function seedGoalsPanel(catNames){
   const box=document.createElement('div');box.className='panel';box.style.cssText='max-width:760px;margin-top:16px';$('#m').append(box);
@@ -1767,7 +1816,7 @@ async function openTorrent(s,x,meta,after){
   const o=modal(`<div class="row"><h2 style="margin:0;flex:1;min-width:0;word-break:break-word">${esc(x.name)}</h2><button data-x>Close</button></div>
     <div class="seg" id="tb" style="margin:12px 0"><button class="on" data-k="g">General</button><button data-k="f">Files</button><button data-k="t">Trackers</button><button data-k="p">Peers</button></div>
     <div id="tc"><p class="mute">Loading…</p></div>
-    <div class="row" style="margin-top:14px">${!can('control')?'':[['force','Force start'],['recheck','Recheck'],['reannounce','Reannounce'],['top','Queue top'],['up','Queue up'],['down','Queue down'],['bottom','Queue bottom'],['rename','Rename']].map(([k,n])=>`<button data-a="${k}">${n}</button>`).join('')}${admin?'<button data-a="location">Move</button>':''}${can('remove')?'<button data-a="delete">Remove</button>':''}</div>
+    <div class="row" style="margin-top:14px">${!can('control')?'':[['force','Force start'],['recheck','Recheck'],['reannounce','Reannounce'],['top','Queue top'],['up','Queue up'],['down','Queue down'],['bottom','Queue bottom'],['rename','Rename']].map(([k,n])=>`<button data-a="${k}">${n}</button>`).join('')}${admin?'<button data-a="location">Move</button>':''}${can('remove')?'<button data-a="delete">Remove</button>':''}${admin&&x.progress>=1&&s.type==='qbittorrent'?`<button data-imp>${ic('lib')}Import to library</button>`:''}</div>
     <div class="err" id="te"></div>`);
   const $o=q=>o.querySelector(q),err=m=>{$o('#te').textContent=m||''};
   const tags=()=>x.tags?x.tags.split(',').map(g=>g.trim()).filter(Boolean):[];
@@ -1783,6 +1832,7 @@ async function openTorrent(s,x,meta,after){
     const c=$o('#tcat');if(c)c.onchange=async()=>{try{await act({action:'category',value:c.value});x.category=c.value;err();after()}catch(ex){err(ex.message)}}};
   const load=async()=>{try{info=await api(`/api/qb/${s.id}/info?hash=${x.hash}`);show()}catch(ex){$o('#tc').innerHTML='';err(ex.message)}};
   $o('[data-x]').onclick=o.close;
+  if($o('[data-imp]'))$o('[data-imp]').onclick=()=>importDialog({qb:s.id,hash:x.hash,name:x.name,after});
   $o('#tb').onclick=e=>{const b=e.target.closest('[data-k]');if(!b)return;cur=b.dataset.k;o.querySelectorAll('#tb [data-k]').forEach(z=>z.classList.toggle('on',z===b));if(cur==='p')load();else show()};
   o.addEventListener('click',async e=>{
     const rt=e.target.closest('[data-rt]');if(rt){e.preventDefault();try{await act({action:'rmtag',value:rt.dataset.rt});x.tags=tags().filter(g=>g!==rt.dataset.rt).join(', ');show();after()}catch(ex){err(ex.message)}return}
@@ -3342,9 +3392,10 @@ async function hlView(){
     return `<div class="panel" style="margin-bottom:14px"><div class="row"><b style="font-size:16px">${esc(x.name)}</b>${String(TYPES[x.type]||x.type).toLowerCase()===String(x.name).toLowerCase()?'':`<span class="mute">${esc(TYPES[x.type]||x.type)}</span>`}<span class="grow"></span>${x.missing!=null?`<span class="mute">${x.missing} missing</span>`:''}<span class="pill ${!x.ok?'bad':n?'warn':'ok'}">${!x.ok?'Not reachable':n?n+' to check':'Healthy'}</span></div>
       ${!x.ok?`<div class="err">${esc(x.error||'')}</div>`:''}
       ${x.issues.map(i=>`<div class="box row" style="margin-top:8px"><span class="pill ${i.level==='bad'?'bad':'warn'}">${i.level==='bad'?'Error':'Warning'}</span><span class="grow" style="word-break:break-word">${esc(i.text)}</span></div>`).join('')}
-      ${x.queue.length?`<div class="mute" style="margin-top:12px">Downloads that are stuck</div>${x.queue.map(i=>`<div class="box"><b style="word-break:break-word">${esc(i.title)}</b><div class="mute">${esc(i.message)}</div></div>`).join('')}`:''}
+      ${x.queue.length?`<div class="mute" style="margin-top:12px">Downloads that are stuck</div>${x.queue.map(i=>`<div class="box row" style="gap:8px"><div class="grow" style="min-width:0"><b style="word-break:break-word">${esc(i.title)}</b><div class="mute">${esc(i.message)}</div></div>${i.downloadId&&['sonarr','radarr'].includes(x.type)?`<button data-qi="${esc(x.id)}" data-qd="${esc(i.downloadId)}" data-qn="${esc(i.title)}">Import</button>`:''}</div>`).join('')}`:''}
       </div>`}).join('');
   healPanel();warnPanel();
+  const mm=$('#m');if(!mm.dataset.qi){mm.dataset.qi=1;mm.addEventListener('click',e=>{const b=e.target.closest('[data-qi]');if(b&&tab==='hl')importDialog({sid:b.dataset.qi,downloadId:b.dataset.qd,name:b.dataset.qn,after:hlView})})}
 }
 // Every app's warnings in one list (Sonarr, Radarr, Prowlarr, Bazarr, SABnzbd, qBittorrent, and any app that stopped
 // answering), errors first, with a button that does what can be done from here.
