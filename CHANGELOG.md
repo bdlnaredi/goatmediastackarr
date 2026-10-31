@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+## v0.9.8 — 2026-10-31
+
 - Request options: when an admin (or a profile that can add things) asks for a movie or show, a short form asks for the quality, the folder, what to monitor (a whole show, future episodes, the first or latest season…), and for movies when they count as available. Quality and folder go to Seerr; monitoring and availability are set in Radarr or Sonarr once Seerr has added it. The last choices are remembered. Web page and app.
 - Tracker websites load faster: pictures, styles, scripts and fonts are now kept even when the site sets a cookie with them (most trackers do on every answer, so before nothing was kept), for a day instead of six hours.
 - Adding an indexer: *Base URL* now lists the site's addresses (Prowlarr only gives them when asked).
