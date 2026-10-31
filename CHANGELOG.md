@@ -5,15 +5,18 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 ## Unreleased
 
 - Opening Tautulli from the Stack page went to 127.0.0.1:8181 instead of your server's address: Tautulli answers with its inside address when it sends you on to its home page. Such redirects from the built-in apps now stay on your server's address.
+
 ## v1.0.5 — 2026-10-31
 
 - The bar at the top (logo, Watch, Requests, Downloads, Server, and the phone's top bar) stays in place and is solid, so the page scrolls underneath it instead of showing through or over it.
-## v1.0.4 — 2026-10-31
 
-## v1.0.3 — 2026-10-31
+## v1.0.4 — 2026-10-31
 
 - Alerts work like Tautulli's. New triggers: playback starts, stops, pauses and resumes, watched (90%), transcoding starts, a new device, and recently added to Plex or Jellyfin. Each channel can give any trigger its own subject and text with {parameters} (user, title, player, quality, stream decision, progress and more; `<…>` parts drop out when empty), with a live preview and a test button, and conditions (like *user is not* admin, or *location is* wan) decide whether it is sent at all.
 - Newsletters, also like Tautulli's: besides the weekly one, add as many as you like, each with its own schedule (every day, week or month, at an hour), how many days it looks back, which libraries, movies and/or shows, what it shows (recently added with posters, coming up, numbers), a subject with {parameters}, words at the top, and who gets it (any alert channels and/or everyone's email). Preview it, send it now, and look at the ones already sent.
+
+## v1.0.3 — 2026-10-31
+
 - Library: each movie and episode shows where its file is saved (and a show its folder), an admin can delete the file of a movie, an episode or a whole season (the title stays in the library), and an Open in Radarr or Sonarr button sits next to the IMDb and TMDB links.
 - Interactive search can be sorted by seeders, size, indexer or age, as well as best match.
 - Title pages show "More from" the studio (movies) or network (shows) under "More like this".
