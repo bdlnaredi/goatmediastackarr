@@ -37,7 +37,12 @@ jobs:
         working-directory: android
         run: |
           set -o pipefail
-          if ! gradle --no-daemon --console=plain -PappVersion="${{ steps.v.outputs.name }}" -PappCode="$GITHUB_RUN_NUMBER" recordRoborazziDebug assembleRelease 2>&1 | tee /tmp/build.log; then
+          build() { gradle --no-daemon --console=plain -PappVersion="${{ steps.v.outputs.name }}" -PappCode="$GITHUB_RUN_NUMBER" recordRoborazziDebug assembleRelease 2>&1 | tee /tmp/build.log; }
+          ok=""; build && ok=1
+          # The screen tests drive a whole app on a shared runner and now and then miss a page that is still loading:
+          # a test failure gets one more try before the build counts as failed.
+          if [ -z "$ok" ] && grep -q "There were failing tests" /tmp/build.log; then echo "::warning::A screen test failed; trying once more"; build && ok=1; fi
+          if [ -z "$ok" ]; then
             set +e
             # Kotlin errors look like "e: file:///…/Foo.kt:12:5 Message": show each one on its file and line.
             grep -E '^e: ' /tmp/build.log | head -80 | while IFS= read -r line; do
