@@ -59,7 +59,7 @@ test('the status page is for admins only', async () => {
 test('engine pages open through the sign-in, including live updates', async () => {
   const http = require('node:http'), net = require('node:net');
   const seen = [];
-  const eng = http.createServer((req, res) => { seen.push({ url: req.url, host: req.headers.host, cookie: req.headers.cookie || '' }); res.writeHead(200, { 'X-Engine': 'yes' }); res.end('engine ' + req.url); });
+  const eng = http.createServer((req, res) => { seen.push({ url: req.url, host: req.headers.host, cookie: req.headers.cookie || '' }); if (req.url.endsWith('/go-home')) { res.writeHead(303, { Location: `http://127.0.0.1:${eng.address().port}/engines/sonarr/home?a=1` }); return res.end(); } if (req.url.endsWith('/go-out')) { res.writeHead(302, { Location: 'https://example.com/x' }); return res.end(); } res.writeHead(200, { 'X-Engine': 'yes' }); res.end('engine ' + req.url); });
   eng.on('upgrade', (req, sock) => { sock.write('HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n'); sock.end('hello ' + req.url); });
   await new Promise(r => eng.listen(0, '127.0.0.1', r));
   const port = eng.address().port;
@@ -83,6 +83,9 @@ test('engine pages open through the sign-in, including live updates', async () =
     assert.equal(r.headers.get('content-security-policy'), null, "the engine's own page is not held to the dashboard's rules");
     assert.equal(seen.at(-1).host, `127.0.0.1:${port}`);
     assert.equal(seen.at(-1).cookie, 'theme=dark', 'the dashboard sign-in cookie is not passed on');
+    // An app redirecting with its inside address (Tautulli does) stays on this server's address; others are left alone.
+    r = await get('/engines/sonarr/go-home'); assert.equal(r.status, 303); assert.equal(r.headers.get('location'), '/engines/sonarr/home?a=1');
+    r = await get('/engines/sonarr/go-out'); assert.equal(r.headers.get('location'), 'https://example.com/x');
 
     r = await get('/engines/qbittorrent/api/v2/app/version');
     assert.equal(await r.text(), 'engine /api/v2/app/version', 'qBittorrent has no sub-path, so it is removed');

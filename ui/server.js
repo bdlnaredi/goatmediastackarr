@@ -416,10 +416,15 @@ const goatHeaders = (req, t) => {
   h.cookie = String(h.cookie || '').split(/;\s*/).filter(c => c && !/^sid=/.test(c)).join('; '); if (!h.cookie) delete h.cookie;
   return h;
 };
+const goatLocal = (loc, port) => { try { const u = new URL(String(loc)); return ['127.0.0.1', 'localhost', '0.0.0.0', '[::1]'].includes(u.hostname) && (+u.port || (u.protocol === 'https:' ? 443 : 80)) === +port ? u.pathname + u.search + u.hash : String(loc); } catch { return String(loc); } };
 const goatProxy = (req, res, t) => {
   for (const k of ['Content-Security-Policy', 'X-Frame-Options', 'Permissions-Policy']) res.removeHeader(k);
   const up = http.request({ host: '127.0.0.1', port: t.port, method: req.method, path: t.path, headers: goatHeaders(req, t) }, r => {
-    res.writeHead(r.statusCode, r.headers); r.pipe(res);
+    // An app that redirects with its full inside address (Tautulli sends http://127.0.0.1:8181/engines/tautulli/home)
+    // would send the browser to 127.0.0.1. The address part is dropped, so the browser stays on this server's address.
+    const h = { ...r.headers };
+    if (h.location) h.location = goatLocal(h.location, t.port);
+    res.writeHead(r.statusCode, h); r.pipe(res);
   });
   up.on('error', () => { if (!res.headersSent) { res.writeHead(502, { 'Content-Type': 'text/html; charset=utf-8', 'Retry-After': '10' }); res.end(`<!doctype html><meta http-equiv="refresh" content="10"><title>${t.name}</title><p style="font:16px system-ui;margin:2rem">${t.name} is starting or restarting. This page tries again every 10 seconds.</p>`); } else res.destroy(); });
   req.pipe(up);

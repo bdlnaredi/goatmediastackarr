@@ -4,6 +4,7 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- Opening Tautulli from the Stack page went to 127.0.0.1:8181 instead of your server's address: Tautulli answers with its inside address when it sends you on to its home page. Such redirects from the built-in apps now stay on your server's address.
 ## v1.0.5 — 2026-10-31
 
 - The bar at the top (logo, Watch, Requests, Downloads, Server, and the phone's top bar) stays in place and is solid, so the page scrolls underneath it instead of showing through or over it.
