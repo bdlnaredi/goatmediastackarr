@@ -6,6 +6,7 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 - Built-in apps open on your server's address, never 127.0.0.1: the Apps list and the dashboard show and open them through GoatMediaStackarr's own address (or Jellyfin, Seerr, Plex, ruTorrent and Deluge on their own ports of that address), and are marked *Built in* instead of offering an address to edit that would be put back on every start.
 - Seerr's *Open in Sonarr/Radarr* and *Play on Jellyfin* links use your server's address (or the one set for outside your home) instead of 127.0.0.1; the apps still talk to each other inside the container. An address or link you change in Seerr yourself is kept, and Sonarr or Radarr is no longer added a second time when you do.
+
 ## v0.9.7 — 2026-10-26
 
 - Interactive search for a whole season and for each episode, on the web page and in the app: each season has *Choose a release* (season packs your indexers have) next to *Search season*, and each episode has its own *Choose a release* button beside its search, instead of only inside the episode's page.
