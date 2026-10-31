@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+## v1.0.4 — 2026-10-31
+
 ## v1.0.3 — 2026-10-31
 
 - Alerts work like Tautulli's. New triggers: playback starts, stops, pauses and resumes, watched (90%), transcoding starts, a new device, and recently added to Plex or Jellyfin. Each channel can give any trigger its own subject and text with {parameters} (user, title, player, quality, stream decision, progress and more; `<…>` parts drop out when empty), with a live preview and a test button, and conditions (like *user is not* admin, or *location is* wan) decide whether it is sent at all.
