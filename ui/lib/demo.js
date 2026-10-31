@@ -108,6 +108,7 @@ function create(opts = {}) {
       if (p === '/api/v3/series/lookup') return json(res, ['Harbor Lights', 'Paper Kingdoms', 'Hidden Valley', 'Hidden Figures Reloaded'].filter(t => t.toLowerCase().includes(String(q.get('term') || '').toLowerCase())).map((t, i) => ({ title: t, year: 2020 + i, overview: 'Demo result.', remotePoster: svg(t, i * 70), tvdbId: 1e5 + i, id: st.shows.find(s => s.title === t) ? st.shows.find(s => s.title === t).id : undefined })));
       if (p === '/api/v3/series' && m === 'GET') return json(res, a.map(sonarrOut));
       if (p === '/api/v3/series' && m === 'POST') return json(res, { id: 99 });
+      if (p === '/api/v3/seasonpass' && m === 'POST') { st.seasonpass = data; return json(res, {}); }
       if (p === '/api/v3/series/editor') {
         const ids = data.seriesIds || [];
         a.filter(s => ids.includes(s.id)).forEach(s => { if (m === 'PUT') { if ('monitored' in data) s.monitored = !!data.monitored; if (data.qualityProfileId) s.qualityProfileId = +data.qualityProfileId; } });
@@ -136,7 +137,7 @@ function create(opts = {}) {
       }
       const r = p.match(/^\/api\/v3\/movie\/(\d+)$/);
       if (r) { const s = a.find(x => x.id === +r[1]); if (!s) return json(res, { message: 'NotFound' }, 404);
-        if (m === 'PUT') { s.monitored = !!data.monitored; return json(res, data); }
+        if (m === 'PUT') { s.monitored = !!data.monitored; if (data.minimumAvailability) s.minimumAvailability = data.minimumAvailability; return json(res, data); }
         if (m === 'DELETE') { st.movies = st.movies.filter(x => x !== s); return json(res, {}); }
         return json(res, radarrOut(s)); }
     }
@@ -194,7 +195,7 @@ function create(opts = {}) {
   // Pretend indexer lists for Prowlarr and Jackett, so adding one can be tried without a real tracker.
   const PROWLARR_CATALOG = [
     { def: 'open-tracker', name: 'Open Tracker', privacy: 'public', fields: [{ name: 'baseUrl', label: 'Site address', type: 'select', value: 'https://open.example', selectOptions: [{ value: 'https://open.example', name: 'open.example' }, { value: 'https://mirror.example', name: 'mirror.example' }] }, { name: 'definitionFile', type: 'textbox', value: 'open-tracker', hidden: 'hidden' }] },
-    { def: 'club-tracker', name: 'Club Tracker', privacy: 'private', fields: [{ name: 'username', label: 'Username', type: 'textbox', value: '' }, { name: 'password', label: 'Password', type: 'password', value: '' }, { name: 'freeleech', label: 'Only freeleech', type: 'checkbox', value: false, helpText: 'Skip anything that counts against your ratio' }, { name: 'sort', label: 'Sort by', type: 'textbox', value: 'created', advanced: true }] },
+    { def: 'club-tracker', name: 'Club Tracker', privacy: 'private', urls: ['https://club.example/', 'https://club-mirror.example/'], fields: [{ name: 'baseUrl', label: 'Base Url', type: 'select', value: '', selectOptions: [], selectOptionsProviderAction: 'getUrls' }, { name: 'username', label: 'Username', type: 'textbox', value: '' }, { name: 'password', label: 'Password', type: 'password', value: '' }, { name: 'freeleech', label: 'Only freeleech', type: 'checkbox', value: false, helpText: 'Skip anything that counts against your ratio' }, { name: 'sort', label: 'Sort by', type: 'textbox', value: 'created', advanced: true }] },
     { def: 'night-index', name: 'Night Index', privacy: 'semiPrivate', fields: [{ name: 'apikey', label: 'API key', type: 'textbox', value: '' }] }
   ];
   const jk = { list: [{ id: 'open-tracker', name: 'Open Tracker', description: 'Pretend', type: 'public', configured: true, site_link: 'https://open.example/', language: 'en-US', last_error: '' }, { id: 'broken-tracker', name: 'Broken Tracker', description: 'Pretend', type: 'public', configured: true, site_link: 'https://broken.example/', language: 'en-US', last_error: 'Unable to connect to the tracker' }, { id: 'club-tracker', name: 'Club Tracker', description: 'Pretend private tracker', type: 'private', configured: false, site_link: 'https://club.example/', language: 'en-US', last_error: '' }, { id: 'night-index', name: 'Night Index', description: 'Pretend semi-private tracker', type: 'semi-private', configured: false, site_link: 'https://night.example/', language: 'en-US', last_error: '' }] };
@@ -330,6 +331,10 @@ function create(opts = {}) {
       if (mv) return json(res, { id: +mv[1], collection: +mv[1] === 5001 ? { id: 10, name: 'Demo Saga', posterPath: pic('Demo Saga') } : null, title: 'Demo movie ' + mv[1], releaseDate: '2025-04-11', overview: 'An invented movie for the demo.', tagline: 'Nothing here is real.', posterPath: '', backdropPath: '', voteAverage: 7.6, runtime: 118,
         genres: [{ name: 'Drama' }, { name: 'Sci-Fi' }], status: 'Released', productionCompanies: [{ name: 'Demo Pictures' }], credits: { cast }, relatedVideos: [{ type: 'Trailer', site: 'YouTube', key: 'dQw4w9WgXcQ' }], mediaInfo: { status: 0 } });
       if (r) return json(res, { id: +r[1], name: 'Demo show', overview: 'An invented show for the demo.', firstAirDate: '2022-05-01', voteAverage: 8.1, episodeRunTime: [44], genres: [{ name: 'Drama' }], networks: [{ name: 'Demo TV' }], credits: { cast }, numberOfSeasons: 3, seasons: [{ seasonNumber: 0, episodeCount: 2 }, { seasonNumber: 1, episodeCount: 8 }, { seasonNumber: 2, episodeCount: 10 }, { seasonNumber: 3, episodeCount: 6 }] });
+      { const sv = sub.match(/^\/api\/v1\/service\/(radarr|sonarr)(?:\/(\d+))?$/); if (sv) {
+        const server = { id: 0, name: sv[1] === 'radarr' ? 'Radarr' : 'Sonarr', is4k: false, isDefault: true, activeProfileId: 2, activeDirectory: sv[1] === 'radarr' ? '/media/movies' : '/media/tv', ...(sv[1] === 'radarr' ? { minimumAvailability: 'released' } : {}) };
+        if (!sv[2]) return json(res, [server]);
+        return json(res, { server, profiles: [{ id: 2, name: 'HD-1080p' }, { id: 3, name: 'Ultra-HD' }], rootFolders: [{ id: 1, path: server.activeDirectory, freeSpace: 6e11 }, { id: 2, path: server.activeDirectory + '-4k', freeSpace: 2e12 }] }); } }
       if (sub === '/api/v1/request' && m === 'POST') { const id = st.nextReq++; st.seerrReq[id] = data; st.calls.push('seerr request ' + JSON.stringify(data)); return json(res, { id }); }
       r = sub.match(/^\/api\/v1\/request\/(\d+)$/);
       if (r) return json(res, { id: +r[1], status: 2, media: { status: 3 } });
@@ -341,7 +346,7 @@ function create(opts = {}) {
       if (sub === '/api/v1/search') { const t = String(q.get('query') || 'Demo'); return json(res, [['IPTorrents', 2160, 412, 9.8e9], ['TorrentLeech', 1080, 230, 4.1e9], ['TorrentDay', 720, 61, 1.9e9]].map(([ix, r, se, sz], i) => ({ guid: 'g' + i, title: `${t}.2024.${r}p.WEB-DL.DDP5.1.x265-DEMO`, indexer: ix, indexerId: i + 1, size: sz, seeders: se, leechers: Math.round(se / 7), publishDate: new Date(Date.now() - i * 86400e3).toISOString(), infoUrl: `https://${ix.toLowerCase()}.example/details.php?id=${100 + i}`, magnetUrl: `magnet:?xt=urn:btih:${String(i).repeat(40)}&dn=${encodeURIComponent(t)}` }))); }
       if (sub === '/api/v1/health') return json(res, [{ type: 'warning', source: 'IndexerStatusCheck', message: 'Indexers unavailable due to failures: Broken Tracker' }]);
       if (sub === '/api/v1/appprofile') return json(res, [{ id: 1, name: 'Standard' }]);
-      if (sub === '/api/v1/indexer/schema') return json(res, PROWLARR_CATALOG.map(c => ({ id: 0, name: c.name, definitionName: c.def, implementation: 'Cardigann', protocol: 'torrent', privacy: c.privacy, language: 'en-US', description: 'A pretend tracker for the demo.', enable: false, fields: c.fields })));
+      if (sub === '/api/v1/indexer/schema') return json(res, PROWLARR_CATALOG.map(c => ({ id: 0, name: c.name, definitionName: c.def, implementation: 'Cardigann', protocol: 'torrent', privacy: c.privacy, language: 'en-US', description: 'A pretend tracker for the demo.', enable: false, indexerUrls: c.urls || [], fields: JSON.parse(JSON.stringify(c.fields)) })));
       if (sub === '/api/v1/indexer' && m === 'POST') {
         const bad = !q.get('forceSave') && (data.fields || []).find(f => f.name === 'password' && !String(f.value || '').trim());
         if (bad) return json(res, [{ propertyName: 'password', errorMessage: 'Password is required' }], 400);

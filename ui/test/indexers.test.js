@@ -32,7 +32,9 @@ test('jackett and prowlarr indexers: list, check, add, remove', async () => {
 
     // Prowlarr: catalog, form (advanced and hidden fields left out), add, refused add, forced add, remove
     const pc = (await a.get(`/api/prowlarr/${pid}/catalog`)).data; assert.deepEqual(pc.map(x => x.id), ['club-tracker', 'night-index', 'open-tracker']); assert.equal(pc[0].type, 'private');
-    const pf = (await a.get(`/api/prowlarr/${pid}/catalog/club-tracker/fields`)).data; assert.deepEqual(pf.fields.map(x => x.id), ['username', 'password', 'freeleech']); assert.equal(pf.fields[1].type, 'password'); assert.match(pf.fields[2].help, /ratio/);
+    const pf = (await a.get(`/api/prowlarr/${pid}/catalog/club-tracker/fields`)).data; assert.deepEqual(pf.fields.map(x => x.id), ['baseUrl', 'username', 'password', 'freeleech']);
+    assert.deepEqual(pf.fields[0].options, [['https://club.example/', 'https://club.example/'], ['https://club-mirror.example/', 'https://club-mirror.example/']], 'Base URL lists the site addresses');
+    assert.equal(pf.fields[0].value, 'https://club.example/'); assert.equal(pf.fields[2].type, 'password'); assert.match(pf.fields[3].help, /ratio/);
     assert.deepEqual((await a.get(`/api/prowlarr/${pid}/catalog/open-tracker/fields`)).data.fields[0].options.length, 2);
     assert.equal((await a.get(`/api/prowlarr/${pid}/catalog/nope/fields`)).status, 404);
     const before = (await a.get(`/api/prowlarr/${pid}/indexers`)).data.indexers.length;

@@ -465,8 +465,8 @@ const login = (res, user) => {
   send(res, 200, { user: pubUser(user) }, { 'Set-Cookie': `sid=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=2592000${res.secure ? '; Secure' : ''}` });
 };
 
-    const gql = async (s, query) => {
-      const x = await fetch(s.url.replace(/\/+$/, '') + '/graphql', { method: 'POST', signal: AbortSignal.timeout(10000),
+    const gql = async (s, query, ms = 10000) => {
+      const x = await fetch(s.url.replace(/\/+$/, '') + '/graphql', { method: 'POST', signal: AbortSignal.timeout(ms),
         headers: { 'Content-Type': 'application/json', 'x-api-key': s.apiKey }, body: JSON.stringify({ query }) });
       const d = await x.json().catch(() => ({}));
       if (!x.ok || d.errors) throw new Error((d.errors && d.errors[0].message) || 'Unraid returned ' + x.status);
@@ -699,7 +699,7 @@ if (DEMO) db.statusLinks.push({ id: 'demo-link', name: 'Living room tablet', has
 const sitesLib = require('./lib/sites');
 const siteTokens = new Map(); // token -> { site, uid, exp, last }
 const SITEFETCH = process.env.SITEFETCH_URL || 'http://127.0.0.1:8899';
-const siteCache = sitesLib.memCache({ maxBytes: (+process.env.SITE_CACHE_MB || 150) * 1e6 });
+const siteCache = sitesLib.memCache({ maxBytes: (+process.env.SITE_CACHE_MB || 250) * 1e6, ttl: 24 * 3600e3 });
 const pubSite = x => ({ id: x.id, name: x.name, url: x.url, vpn: !!x.vpn, category: x.category || '', signedIn: Object.values(x.jar || {}).some(c => Object.keys(c).length > 0) });
 const qbFirst = () => db.services.find(x => x.type === 'qbittorrent' && x.managed) || db.services.find(x => x.type === 'qbittorrent');
 // Is this address inside your home network? Looked up once every 10 minutes per name, not on every picture.
@@ -803,7 +803,9 @@ async function siteHandle(req, res, p) {
     const extra = disp ? { 'Content-Disposition': disp } : {};
     const torrentish = /bittorrent/i.test(ct) || /\.torrent/i.test(disp || '') || /\.torrent$/i.test(target.pathname);
     const html = /text\/html|application\/xhtml/i.test(ct), css = /text\/css/i.test(ct);
-    const keep = get && r.status === 200 && !cookies && sitesLib.cacheable(ct) && !/no-store/i.test(r.headers['cache-control'] || '');
+    // Pictures, styles, scripts and fonts are kept even when the site sets a cookie with them (most trackers do on
+    // every answer, which used to mean nothing was ever kept); the cookie itself is still saved above.
+    const keep = get && r.status === 200 && sitesLib.cacheable(ct) && !/no-store/i.test(r.headers['cache-control'] || '');
     if (torrentish || html || css) {
       const buf = await readAll(r.body);
       if (r.status === 200 && sitesLib.isTorrent(r.headers, target.pathname, buf)) {
@@ -1170,6 +1172,26 @@ async function stageOf(x, cache) {
   if (recs.length && recs.every(bad)) return { stage: 'failed' };
   if (have > 0) return { stage: (await onMediaServer(x)) ? 'partial' : 'library' };
   return { stage: 'searching' };
+}
+// The choices made when asking (monitoring, and when a movie counts as available), set in Sonarr or Radarr once Seerr
+// has added the title there. Tried for about two minutes, as Seerr adds it a moment after the request.
+async function applyArrOpts(x) {
+  const o = x.opts || {}, tv = x.mediaType === 'tv', kind = tv ? 'sonarr' : 'radarr';
+  for (let i = 0; i < 12; i++) {
+    await new Promise(r => setTimeout(r, i ? +process.env.REQ_OPTS_MS || 10000 : 1500));
+    for (const s of db.services.filter(y => y.type === kind)) { try {
+      const l = await arrGet(s, tv ? '/api/v3/series' : '/api/v3/movie'), it = (Array.isArray(l) ? l : []).find(y => +y.tmdbId === +x.mediaId);
+      if (!it) continue;
+      if (tv) { if (o.monitor) await ext(s, '/api/v3/seasonpass', { method: 'POST', body: JSON.stringify({ series: [{ id: it.id, monitored: o.monitor !== 'none' }], monitoringOptions: { monitor: o.monitor } }) }); }
+      else {
+        const mv = await arrGet(s, '/api/v3/movie/' + it.id);
+        if (o.monitor != null) mv.monitored = !!o.monitor; if (o.minAvail) mv.minimumAvailability = o.minAvail;
+        await ext(s, '/api/v3/movie/' + it.id, { method: 'PUT', body: JSON.stringify(mv) });
+      }
+      x.optsApplied = Date.now(); save(); return true;
+    } catch {} }
+  }
+  return false;
 }
 // Asks Sonarr for one episode: monitored, then searched for (an episode not out yet is grabbed when it airs).
 async function episodeAdd(sv, x) {
@@ -2289,8 +2311,16 @@ const goatServer = http.createServer(async (req, res) => {
         mediaType: kind(x), id: x.id, title: x.title || x.name, year: String(x.releaseDate || x.firstAirDate || '').slice(0, 4), overview: x.overview,
         poster: x.posterPath ? 'https://image.tmdb.org/t/p/w342' + x.posterPath : '', status: (x.mediaInfo || {}).status || 0 })));
     }
-    const seerrAdd = (s, x) => call(s, '/api/v1/request', { method: 'POST',
-      body: JSON.stringify({ mediaType: x.mediaType, mediaId: +x.mediaId, ...(x.mediaType === 'tv' ? { seasons: x.seasons && x.seasons.length ? x.seasons : 'all' } : {}) }) });
+    // A request can carry the choices made when asking (quality, folder, monitoring, when a movie counts as available).
+    // Quality and folder go to Seerr; monitoring and availability are set in Sonarr or Radarr once Seerr added it.
+    const seerrAdd = async (s, x) => {
+      const o = x.opts || {};
+      const r = await call(s, '/api/v1/request', { method: 'POST',
+        body: JSON.stringify({ mediaType: x.mediaType, mediaId: +x.mediaId, ...(x.mediaType === 'tv' ? { seasons: x.seasons && x.seasons.length ? x.seasons : 'all' } : {}),
+          ...(o.serverId != null ? { serverId: o.serverId } : {}), ...(o.profileId ? { profileId: o.profileId } : {}), ...(o.rootFolder ? { rootFolder: o.rootFolder } : {}) }) });
+      if (o.monitor != null || o.minAvail) applyArrOpts(x).catch(() => {});
+      return r;
+    };
     const researchRequest = async x => {
       const kind = x.mediaType === 'movie' ? 'radarr' : 'sonarr';
       for (const sv of db.services.filter(y => y.type === kind)) try {
@@ -2346,6 +2376,23 @@ const goatServer = http.createServer(async (req, res) => {
         return { season: y.seasonNumber, num: y.episodeNumber, title: cut(y.title, 120), date: dt, aired: !!dt && Date.parse(dt) <= now, has: !!y.hasFile, monitored: !!y.monitored, asked: asked.has(y.id) }; })
         .sort((a, b) => a.season - b.season || a.num - b.num));
     }
+    // What can be chosen when asking for something: Seerr's Sonarr or Radarr servers, their quality profiles and folders.
+    if (p === '/api/request/options' && m === 'GET') {
+      const q = new URL(req.url, 'http://x').searchParams, s = svcOf(q.get('sid'), 'seerr') || db.services.filter(allowed).find(x => x.type === 'seerr');
+      const kind = q.get('type') === 'tv' ? 'sonarr' : 'radarr';
+      if (!s) return send(res, 404, { error: 'Requests need Seerr' });
+      if (me.role !== 'admin' && !can('add')) return send(res, 200, { choose: false });
+      const servers = (await call(s, `/api/v1/service/${kind}`).catch(() => [])) || [];
+      const list = (Array.isArray(servers) ? servers : []).filter(x => !x.is4k).concat((Array.isArray(servers) ? servers : []).filter(x => x.is4k));
+      const out = [];
+      for (const sv of list.slice(0, 4)) { try {
+        const d = await call(s, `/api/v1/service/${kind}/${sv.id}`);
+        out.push({ id: sv.id, name: cut(sv.name, 60) + (sv.is4k ? ' (4K)' : ''), isDefault: !!sv.isDefault && !sv.is4k,
+          profiles: (d.profiles || []).map(x => ({ id: x.id, name: cut(x.name, 60) })), folders: (d.rootFolders || []).map(x => ({ path: x.path, free: +x.freeSpace || 0 })),
+          profileId: (d.server || sv).activeProfileId || 0, folder: (d.server || sv).activeDirectory || '', minAvail: (d.server || sv).minimumAvailability || 'released' });
+      } catch {} }
+      return send(res, 200, { choose: true, kind, servers: out });
+    }
     const makeRequest = async b => {
       const s = svcOf(b.sid, 'seerr') || (b.sid ? null : db.services.filter(allowed).find(x => x.type === 'seerr'));
       if (!s || !+b.mediaId || !['movie', 'tv'].includes(b.mediaType)) return [400, { error: 'Bad request' }];
@@ -2359,7 +2406,13 @@ const goatServer = http.createServer(async (req, res) => {
         if (sp && sp.bytes >= me.dataLimit * 1e9) return [429, { error: `What you asked for already takes ${gbText(sp.bytes)} of the ${me.dataLimit} GB an admin gave you. Ask an admin for more space.` }];
       }
       const seasons = b.mediaType === 'tv' && Array.isArray(b.seasons) ? [...new Set(b.seasons.map(Number).filter(n => Number.isInteger(n) && n >= 0 && n <= 200))].slice(0, 100) : [];
-      const x = { id: uid(), sid: s.id, uid: me.id, user: me.name, mediaType: b.mediaType, mediaId: +b.mediaId, title: String(b.title || '').slice(0, 200),
+      const MON_TV = ['all', 'future', 'missing', 'existing', 'pilot', 'firstSeason', 'lastSeason', 'none'], AVAIL = ['announced', 'inCinemas', 'released'], bo = b.opts || {};
+      const opts = (me.role === 'admin' || can('add')) && b.opts ? Object.fromEntries(Object.entries({
+        serverId: Number.isInteger(+bo.serverId) && bo.serverId !== '' && bo.serverId != null ? +bo.serverId : undefined, profileId: +bo.profileId > 0 ? +bo.profileId : undefined,
+        rootFolder: typeof bo.rootFolder === 'string' && /^\//.test(bo.rootFolder) ? cut(bo.rootFolder, 300) : undefined,
+        monitor: b.mediaType === 'tv' ? (MON_TV.includes(bo.monitor) ? bo.monitor : undefined) : (typeof bo.monitor === 'boolean' ? bo.monitor : undefined),
+        minAvail: b.mediaType === 'movie' && AVAIL.includes(bo.minAvail) ? bo.minAvail : undefined }).filter(([, v]) => v !== undefined)) : null;
+      const x = { id: uid(), sid: s.id, uid: me.id, user: me.name, mediaType: b.mediaType, mediaId: +b.mediaId, title: String(b.title || '').slice(0, 200), ...(opts && Object.keys(opts).length ? { opts } : {}),
         year: String(b.year || '').slice(0, 4), poster: String(b.poster || '').slice(0, 300), status: 'pending', at: Date.now(), ...(seasons.length ? { seasons } : {}), ...(b.via ? { via: b.via } : {}) };
       if (me.role === 'admin' || me.autoApprove) { const sr = await seerrAdd(s, x); x.seerrId = sr && sr.id; x.status = 'approved'; x.stage = 'approved'; }
       else { feed('@admins', 'request', 'New request', `${me.name} asked for ${x.title}${b.via === 'watchlist' ? ' (from their watchlist)' : ''}`, 'requests'); notify('requests', 'New request', `${me.name} requested ${x.title}`).catch(() => {}); }
@@ -2658,6 +2711,7 @@ const goatServer = http.createServer(async (req, res) => {
       audit(me.name, mon ? 'Started monitoring' : 'Stopped monitoring', `${s.name} ${b.kind}${id > 0 ? ' ' + id : ''}${b.season != null ? ' season ' + b.season : ''}${b.kind === 'episodes' ? ' (' + b.ids.length + ')' : ''}`);
       return send(res, 200, {});
     }
+    const plexMidCache = globalThis.__plexMid || (globalThis.__plexMid = {});
     const plex = async (s, pth) => {
       const x = await fetch(s.url.replace(/\/+$/, '') + pth, { signal: AbortSignal.timeout(8000), headers: { 'X-Plex-Token': s.apiKey, Accept: 'application/json' } });
       if (!x.ok) throw new Error('Plex returned ' + x.status); return x;
@@ -2673,9 +2727,11 @@ const goatServer = http.createServer(async (req, res) => {
       raw = pickRecent(raw, x => (x.addedAt || 0) * 1000);
       const th2 = x => x.grandparentThumb || x.parentThumb || x.thumb || '';
       const nm = x => x.type === 'episode' ? { title: x.grandparentTitle, sub: `S${pad2(x.parentIndex)}E${pad2(x.index)} ${x.title}` } : { title: x.title, sub: String(x.year || '') };
-      const mineS = mineOnly(me, sessions), recent = raw.map(x => ({ ...nm(x), thumb: th2(x) }));
+      const mineS = mineOnly(me, sessions), recent = raw.map(x => ({ ...nm(x), thumb: th2(x), key: String(x.ratingKey || '') }));
       grant(me, s.id, [...mineS.map(x => x.thumb), ...recent.map(x => x.thumb)]);
-      return send(res, 200, { sessions: mineS, recent });
+      // The server's ID, so a title can be opened in Plex's own page.
+      if (!plexMidCache[s.id]) try { plexMidCache[s.id] = (((await plex(s, '/identity').then(x => x.json())).MediaContainer) || {}).machineIdentifier || ''; } catch {}
+      return send(res, 200, { sessions: mineS, recent, machine: plexMidCache[s.id] || '' });
     }
     if ((r = p.match(/^\/api\/plex\/(\w+)\/img$/))) {
       const s = svcOf(r[1], 'plex'), pth = new URL(req.url, 'http://x').searchParams.get('p') || '';
@@ -2688,7 +2744,7 @@ const goatServer = http.createServer(async (req, res) => {
     if ((r = p.match(/^\/api\/jellyfin\/(\w+)\/now$/))) {
       const s = svcOf(r[1], 'jellyfin'); if (!s) return send(res, 404, { error: 'Not found' });
       const [sessions, b] = await Promise.all([jfSessions(s), jfGet(s, '/Items?SortBy=DateCreated&SortOrder=Descending&Recursive=true&IncludeItemTypes=Movie,Series&Fields=DateCreated&Limit=60').then(x => x.json())]);
-      const mineJ = mineOnly(me, sessions); grant(me, s.id, mineJ.map(x => x.thumb)); return send(res, 200, { sessions: mineJ, recent: ownNames(me) ? [] : pickRecent(b.Items || [], x => Date.parse(x.DateCreated)).map(x => ({ title: cut(x.Name, 120), sub: String(x.ProductionYear || ''), thumb: x.Id })) });
+      const mineJ = mineOnly(me, sessions); grant(me, s.id, mineJ.map(x => x.thumb)); return send(res, 200, { sessions: mineJ, recent: ownNames(me) ? [] : pickRecent(b.Items || [], x => Date.parse(x.DateCreated)).map(x => ({ title: cut(x.Name, 120), sub: String(x.ProductionYear || ''), thumb: x.Id, key: x.Id })), server: b.ServerId || ((b.Items || [])[0] || {}).ServerId || '' });
     }
     if ((r = p.match(/^\/api\/jellyfin\/(\w+)\/img$/))) {
       const s = svcOf(r[1], 'jellyfin'), id = new URL(req.url, 'http://x').searchParams.get('p') || '';
@@ -2768,6 +2824,16 @@ const goatServer = http.createServer(async (req, res) => {
         ? { id: x.id, title: (x.series || {}).title || x.title, sub: `S${z(x.seasonNumber)}E${z(x.episodeNumber)} ${x.title}`, date: x.airDateUtc, poster: poster(x.series || {}), overview: x.overview || '', about: (x.series || {}).overview || '' }
         : { id: x.id, title: x.title, sub: String(x.year || ''), date: x.digitalRelease || x.physicalRelease || x.inCinemas, poster: poster(x), overview: x.overview || '', about: '' }) });
     }
+    // Where a watched title is in the library (Sonarr or Radarr), matched by its name and year, so it can be opened.
+    const libLinks = async o => {
+      const items = (await Promise.all(db.services.filter(x => ['sonarr', 'radarr'].includes(x.type) && allowed(x)).map(sv => artItems(sv).catch(() => [])))).flat();
+      const nt = t => String(t || '').toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]/g, '');
+      const find = (title, year, tv) => { const n = nt(title); const c = items.filter(x => x.tv === tv && nt(x.title) === n); const it = c.find(x => !year || !x.year || Math.abs(+x.year - +year) <= 1) || c[0];
+        return it ? { sid: it.sid, id: it.id, kind: tv ? 'tv' : 'movie' } : null; };
+      o.movies.forEach(x => { x.lib = find(x.title, x.year, false); }); o.tv.forEach(x => { x.lib = find(x.title, '', true); });
+      o.history.forEach(x => { x.lib = x.type === 'episode' ? find(x.show, '', true) : x.type === 'movie' ? find(x.title, x.year, false) : null; });
+      return o;
+    };
     if ((r = p.match(/^\/api\/tautulli\/(\w+)\/stats$/))) {
       const s = svcOf(r[1], 'tautulli'); if (!s) return send(res, 404, { error: 'Not found' });
       const days = [7, 30, 90].includes(+new URL(req.url, 'http://x').searchParams.get('days')) ? +new URL(req.url, 'http://x').searchParams.get('days') : 30;
@@ -2784,8 +2850,8 @@ const goatServer = http.createServer(async (req, res) => {
         const top = (type, key) => { const g = new Map(); for (const x of rows.filter(y => y.media_type === type)) { const t = cut(x[key] || x.title, 120), e = g.get(t) || { title: t, plays: 0, thumb: im(x), year: x.year || '' }; e.plays++; g.set(t, e); } return [...g.values()].sort((a, b) => b.plays - a.plays).slice(0, 10); };
         const outS = { days, own: true, movies: top('movie', 'title'), tv: top('episode', 'grandparent_title'), users: [{ title: cut(who.friendly_name || who.username, 60), plays: rows.length, seconds: rows.reduce((a, x) => a + (+x.duration || 0), 0) }],
           totals: { plays: sm(plays), seconds: sm(dur) }, byDate: plays, byHour: ch(byHour), byPlatform: ch(byPlat),
-          history: ((hist || {}).data || []).slice(0, 14).map(x => ({ user: x.friendly_name || x.user, title: x.full_title || x.title, type: x.media_type, at: (x.date || 0) * 1000, player: x.player, pct: x.percent_complete, thumb: im(x) })) };
-        grant(me, s.id, [...outS.movies, ...outS.tv, ...outS.history].map(x => x.thumb)); return send(res, 200, outS);
+          history: ((hist || {}).data || []).slice(0, 14).map(x => ({ user: x.friendly_name || x.user, title: x.full_title || x.title, show: x.grandparent_title || '', year: x.year || '', type: x.media_type, at: (x.date || 0) * 1000, player: x.player, pct: x.percent_complete, thumb: im(x) })) };
+        grant(me, s.id, [...outS.movies, ...outS.tv, ...outS.history].map(x => x.thumb)); return send(res, 200, await libLinks(outS).catch(() => outS));
       }
       const soft = pr => pr.catch(() => null), img = x => { const v = x && (x.grandparent_thumb || x.thumb); return /^\/library\/[\w\/.-]+$/.test(v || '') && !v.includes('..') ? v : ''; };
       const [home, hist, byDate, byDur, byHour, byPlat] = await Promise.all([taut(s, 'get_home_stats', `&time_range=${days}&stats_count=10`), taut(s, 'get_history', '&length=14'),
@@ -2794,10 +2860,10 @@ const goatServer = http.createServer(async (req, res) => {
       const pick = id => ((home || []).find(x => x.stat_id === id) || {}).rows || [];
       const chart = (c, n = 6) => c && Array.isArray(c.categories) ? { categories: c.categories.map(x => cut(x, 40)), series: (c.series || []).slice(0, n).map(z => ({ name: cut(z.name, 30), data: (z.data || []).map(v => +v || 0) })) } : null;
       const sum = c => c ? c.series.reduce((a, z) => a + z.data.reduce((q, v) => q + v, 0), 0) : 0, dur = chart(byDur), plays = chart(byDate);
-      return send(res, 200, { days, movies: pick('top_movies').map(x => ({ title: x.title, plays: x.total_plays, thumb: img(x), year: x.year || '' })),
+      return send(res, 200, await libLinks({ days, movies: pick('top_movies').map(x => ({ title: x.title, plays: x.total_plays, thumb: img(x), year: x.year || '' })),
         tv: pick('top_tv').map(x => ({ title: x.title, plays: x.total_plays, thumb: img(x) })), users: pick('top_users').map(x => ({ title: x.friendly_name || x.user, plays: x.total_plays, seconds: x.total_duration || 0 })),
         totals: { plays: sum(plays), seconds: sum(dur) }, byDate: plays, byHour: chart(byHour), byPlatform: chart(byPlat),
-        history: ((hist || {}).data || []).map(x => ({ user: x.friendly_name || x.user, title: x.full_title || x.title, type: x.media_type, at: (x.date || 0) * 1000, player: x.player, pct: x.percent_complete, thumb: img(x) })) });
+        history: ((hist || {}).data || []).map(x => ({ user: x.friendly_name || x.user, title: x.full_title || x.title, show: x.grandparent_title || '', year: x.year || '', type: x.media_type, at: (x.date || 0) * 1000, player: x.player, pct: x.percent_complete, thumb: img(x) })) }));
     }
     if ((r = p.match(/^\/api\/tautulli\/(\w+)\/img$/))) {
       const s = svcOf(r[1], 'tautulli'), pth = new URL(req.url, 'http://x').searchParams.get('p') || '';
@@ -3143,6 +3209,15 @@ const goatServer = http.createServer(async (req, res) => {
     if ((r = p.match(/^\/api\/prowlarr\/(\w+)\/catalog\/([^/]+)\/fields$/)) && m === 'GET') {
       const sv = svcOf(r[1], 'prowlarr'); if (!sv) return send(res, 404, { error: 'Not found' });
       const it = (await prowSchema(sv)).find(x => prowKey(x) === decodeURIComponent(r[2])); if (!it) return send(res, 404, { error: 'That indexer is not in Prowlarr\'s list' });
+      // Some lists come from Prowlarr only when asked (the site's addresses for "Base URL", for one): fill them in.
+      for (const f of it.fields || []) if (f.type === 'select' && !(f.selectOptions || []).length) {
+        if (f.name === 'baseUrl' && Array.isArray(it.indexerUrls) && it.indexerUrls.length) f.selectOptions = it.indexerUrls.map(u => ({ value: u, name: u }));
+        else if (f.selectOptionsProviderAction) try {
+          const d = await ext(sv, '/api/v1/indexer/action/' + encodeURIComponent(f.selectOptionsProviderAction), { method: 'POST', body: JSON.stringify(it), signal: AbortSignal.timeout(20000) });
+          f.selectOptions = ((d && d.options) || []).map(o => ({ value: o.value, name: o.name || o.value }));
+        } catch {}
+        if (f.name === 'baseUrl' && (f.selectOptions || []).length && !f.value) f.value = f.selectOptions[0].value;
+      }
       return send(res, 200, { name: String(it.name || ''), fields: (it.fields || []).filter(f => !f.advanced && f.hidden !== 'hidden' && f.type !== 'info' && f.name && f.name !== 'definitionFile')
         .map(f => ({ id: String(f.name), type: ['password', 'checkbox', 'select', 'number'].includes(f.type) ? f.type : 'textbox', name: String(f.label || f.name).slice(0, 200), help: String(f.helpText || '').replace(/<[^>]*>/g, ' ').slice(0, 300),
           value: f.type === 'checkbox' ? !!f.value : Array.isArray(f.value) ? f.value.join(', ') : String(f.value == null ? '' : f.value).slice(0, 2000),
@@ -3183,9 +3258,17 @@ const goatServer = http.createServer(async (req, res) => {
     }
     if ((r = p.match(/^\/api\/unraid\/(\w+)\/docker$/)) && m === 'POST') {
       const b = await readBody(req), s = svcOf(r[1], 'unraid');
-      if (!s || !/^[\w:.\-]+$/.test(b.id || '') || !['start', 'stop', 'restart'].includes(b.action)) return send(res, 400, { error: 'Bad request' });
-      const run = a => gql(s, `mutation { docker { ${a}(id: ${JSON.stringify(b.id)}) { id } } }`);
-      if (b.action === 'restart') { await run('stop'); await run('start'); } else await run(b.action);
+      if (!s || !['start', 'stop', 'restart', 'update', 'updateAll'].includes(b.action) || (b.action !== 'updateAll' && !/^[\w:.\-]+$/.test(b.id || ''))) return send(res, 400, { error: 'Bad request' });
+      const run = (a, ms) => gql(s, `mutation { docker { ${a}(id: ${JSON.stringify(b.id)}) { id } } }`, ms);
+      // Updating pulls the new image and recreates the container, which can take a few minutes.
+      const old = e => /Cannot query field|Unknown (field|argument)/i.test(e.message) ? Object.assign(new Error('This Unraid cannot update containers from here yet. Update Unraid (7.2 or newer) or its Unraid Connect plugin, or use the Docker tab.'), { status: 400 }) : e;
+      try {
+        if (b.action === 'restart') { await run('stop'); await run('start'); }
+        else if (b.action === 'update') await run('updateContainer', 600000);
+        else if (b.action === 'updateAll') await gql(s, 'mutation { docker { updateAllContainers { id } } }', 1800000);
+        else await run(b.action);
+      } catch (e) { const x = old(e); if (x.status) return send(res, 400, { error: x.message }); throw x; }
+      if (/^update/.test(b.action)) audit(me.name, b.action === 'updateAll' ? 'Updated every container with an update' : 'Updated a container', s.name + (b.id ? ' ' + b.id : ''));
       return send(res, 200, {});
     }
     if (p === '/api/services' && m === 'POST') {

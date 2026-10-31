@@ -45,7 +45,7 @@ test('browsing a tracker: sign in once, links stay inside, magnet links and .tor
     }
     if (req.url === '/download.php?id=1') { if (!signed) { res.writeHead(403); return res.end(); }
       res.writeHead(200, { 'Content-Type': 'application/x-bittorrent', 'Content-Disposition': 'attachment; filename="Movie.2024.1080p.torrent"' }); return res.end('d8:announce3:urle'); }
-    if (req.url === '/poster.jpg') { res.writeHead(200, { 'Content-Type': 'image/jpeg' }); return res.end('JPEGDATA'); }
+    if (req.url === '/poster.jpg') { res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Set-Cookie': 'cf_bm=refresh; Path=/' }); return res.end('JPEGDATA'); }
     if (req.url === '/style.css') { res.writeHead(200, { 'Content-Type': 'text/css' }); return res.end('body{background:url(/bg.png)}\n' + '.row{padding:4px;margin:0}\n'.repeat(200)); }
     res.writeHead(200, { 'Content-Type': 'text/html' }); res.end('<form method="post" action="/login.php"><input name="user"></form>');
   });

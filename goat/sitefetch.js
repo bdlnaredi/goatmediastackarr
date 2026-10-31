@@ -40,3 +40,24 @@ http.createServer((req, res) => {
     }
   });
 }).listen(PORT, '127.0.0.1', () => console.log(`[sitefetch] ready on 127.0.0.1:${PORT}`));
+
+// ---------- DNS for the VPN apps when the container asks Docker's own resolver (127.0.0.11) ----------
+// On a Docker network of its own (docker compose, Docker Desktop) the apps ask 127.0.0.11. Their questions are sent
+// here instead (vpn.sh), and passed on to the VPN's DNS server: this process is a VPN app, so they go through the
+// tunnel. UDP and TCP, one question in, one answer back.
+const dgram = require('dgram'), net = require('net'), fs = require('fs');
+const DNS_PORT = +process.env.GOAT_DNS_PORT || 5335;
+const vpnDns = () => { try { return fs.readFileSync('/run/goat/vpn-dns', 'utf8').trim() || '1.1.1.1'; } catch { return '1.1.1.1'; } };
+const udp = dgram.createSocket('udp4');
+udp.on('message', (msg, from) => {
+  const up = dgram.createSocket('udp4'), t = setTimeout(() => up.close(), 6000);
+  up.on('message', ans => { clearTimeout(t); udp.send(ans, from.port, from.address); up.close(); });
+  up.on('error', () => { clearTimeout(t); try { up.close(); } catch {} });
+  up.send(msg, 53, vpnDns());
+});
+udp.on('error', e => console.error('[sitefetch] DNS (udp):', e.message));
+udp.bind(DNS_PORT, '127.0.0.1');
+net.createServer(c => {
+  const up = net.connect(53, vpnDns()); up.setTimeout(10000, () => up.destroy());
+  c.pipe(up).pipe(c); up.on('error', () => c.destroy()); c.on('error', () => up.destroy());
+}).on('error', e => console.error('[sitefetch] DNS (tcp):', e.message)).listen(DNS_PORT, '127.0.0.1');

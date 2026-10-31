@@ -1,6 +1,7 @@
 package com.bdlnaredi.goatstack.ui.screens
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
@@ -384,7 +385,7 @@ fun StatsScreen() {
                         item {
                             LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                 items(list) { m ->
-                                    Column(Modifier.width(104.dp)) {
+                                    Column(Modifier.width(104.dp).let { md -> m.lib?.let { l -> md.clickable { ctx.item(l.sid, l.kind, l.id) } } ?: md }) {
                                         Poster(img(m.thumb), m.title, Modifier.fillMaxWidth())
                                         Spacer(Modifier.height(6.dp))
                                         Text(m.title, style = MaterialTheme.typography.bodySmall, color = g.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -411,7 +412,7 @@ fun StatsScreen() {
                 if (s.history.isNotEmpty()) {
                     item { SectionTitle("Recently watched", Modifier.padding(top = 6.dp)) }
                     items(s.history) { h ->
-                        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Row(Modifier.fillMaxWidth().let { md -> h.lib?.let { l -> md.clickable { ctx.item(l.sid, l.kind, l.id) } } ?: md }.padding(horizontal = 20.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
                             Poster(img(h.thumb), h.title, Modifier.width(40.dp), corner = 8.dp)
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)) {
@@ -438,6 +439,7 @@ fun UnraidScreen() {
     val ur = services().firstOrNull { it.type == "unraid" }
     var busy by remember { mutableStateOf<String?>(null) }
     var stopping by remember { mutableStateOf<com.bdlnaredi.goatstack.data.Container?>(null) }
+    var updating by remember { mutableStateOf<com.bdlnaredi.goatstack.data.Container?>(null) }
     Column(Modifier.fillMaxSize()) {
         BackPage("Unraid", ur?.name)
         if (ur == null) { EmptyState(Icons.Rounded.Storage, "No Unraid", "Add your Unraid server on the web page (Settings → Apps) to see it here."); return@Column }
@@ -445,7 +447,7 @@ fun UnraidScreen() {
         fun act(c: com.bdlnaredi.goatstack.data.Container, action: String) {
             busy = c.id
             scope.launch {
-                try { ctx.api.send("POST", "/api/unraid/${ur.id}/docker", buildJsonObject { put("id", c.id); put("action", action) }); toast(when (action) { "start" -> "Started"; "stop" -> "Stopped"; else -> "Restarted" } + " ${c.name}"); data.reload() }
+                try { ctx.api.send("POST", "/api/unraid/${ur.id}/docker", buildJsonObject { put("id", c.id); put("action", action) }); toast(when (action) { "start" -> "Started"; "stop" -> "Stopped"; "update" -> "Updated"; else -> "Restarted" } + " ${c.name}"); data.reload() }
                 catch (e: Exception) { toast(e.message ?: "That did not work") }
                 busy = null
             }
@@ -500,6 +502,8 @@ fun UnraidScreen() {
                                 Text(c.name, style = MaterialTheme.typography.titleSmall, color = g.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 Text(c.state.lowercase(), style = MaterialTheme.typography.labelSmall, color = g.muted)
                             }
+                            if (ctx.user.admin && busy != c.id && u.updates[c.id] == true)
+                                androidx.compose.material3.TextButton(onClick = { updating = c }) { Text(com.bdlnaredi.goatstack.data.tr("Update"), color = g.primary) }
                             if (ctx.user.admin) {
                                 if (busy == c.id) Text("…", color = g.muted)
                                 else if (c.running) {
@@ -513,6 +517,7 @@ fun UnraidScreen() {
                 if (u.errors.isNotEmpty()) item { Text(u.errors.joinToString("\n"), style = MaterialTheme.typography.bodySmall, color = g.bad) }
             }
         }
+        updating?.let { c -> Confirm("Update ${c.name}?", "It is stopped, its new version downloaded, and started again. This can take a few minutes.", "Update", onYes = { updating = null; act(c, "update") }, onNo = { updating = null }) }
         stopping?.let { c -> Confirm("Stop ${c.name}?", "Whatever it runs is offline until you start it again.", "Stop", danger = true, onYes = { stopping = null; act(c, "stop") }, onNo = { stopping = null }) }
     }
 }

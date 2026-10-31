@@ -68,10 +68,11 @@ fun toaster(): (String) -> Unit {
 data class Ask(val mediaType: String, val mediaId: Long, val title: String, val year: String, val poster: String)
 
 /** Sends a request through the server (which applies the profile's request limit and approval rules). */
-suspend fun sendRequest(ctx: Ctx, seerr: Service, a: Ask, seasons: List<Int>): String {
+suspend fun sendRequest(ctx: Ctx, seerr: Service, a: Ask, seasons: List<Int>, opts: kotlinx.serialization.json.JsonObject? = null): String {
     val r = ctx.api.post<com.bdlnaredi.goatstack.data.MediaRequest>("/api/requests", buildJsonObject {
         put("sid", seerr.id); put("mediaType", a.mediaType); put("mediaId", a.mediaId); put("title", a.title); put("year", a.year); put("poster", a.poster)
         if (seasons.isNotEmpty()) put("seasons", JsonArray(seasons.map { JsonPrimitive(it) }))
+        if (opts != null) put("opts", opts)
     })
     return if (r.status == "approved") "Requested. It is on its way." else "Requested. An admin will look at it."
 }
@@ -91,6 +92,20 @@ fun RequestDialog(a: Ask, onDone: (String?) -> Unit) {
     var seasons by remember { mutableStateOf<List<Int>?>(null) }
     val picked = remember { mutableStateListOf<Int>() }
     var all by remember { mutableStateOf(true) }
+    // Choices for admins and profiles that can add things: quality, folder, monitoring, minimum availability.
+    var options by remember { mutableStateOf<com.bdlnaredi.goatstack.data.ReqOptions?>(null) }
+    var server by remember { mutableStateOf<com.bdlnaredi.goatstack.data.ReqServer?>(null) }
+    var profile by remember { mutableStateOf(0) }
+    var folder by remember { mutableStateOf("") }
+    var monitor by remember { mutableStateOf(if (a.mediaType == "tv") "all" else "1") }
+    var avail by remember { mutableStateOf("released") }
+    LaunchedEffect(a.mediaId, seerr?.id) {
+        if (seerr != null && (ctx.user.admin || ctx.user.can("add"))) {
+            val o = try { ctx.api.get<com.bdlnaredi.goatstack.data.ReqOptions>("/api/request/options?sid=${seerr.id}&type=${a.mediaType}") } catch (_: Exception) { null }
+            options = o
+            o?.servers?.let { l -> (l.firstOrNull { it.isDefault } ?: l.firstOrNull())?.let { sv -> server = sv; profile = sv.profileId; folder = sv.folder; avail = sv.minAvail } }
+        }
+    }
 
     LaunchedEffect(a.mediaId) {
         if (a.mediaType == "tv" && seerr != null) {
@@ -129,6 +144,19 @@ fun RequestDialog(a: Ask, onDone: (String?) -> Unit) {
                     }
                     else -> Text(if (ctx.user.admin || ctx.user.autoApprove) "It will be added and searched for right away." else "An admin will approve it first.", color = g.muted)
                 }
+                val sv = server
+                if (options?.choose == true && sv != null) {
+                    Spacer(Modifier.height(12.dp))
+                    val list = options!!.servers
+                    if (list.size > 1) { OptLabel("Server"); com.bdlnaredi.goatstack.ui.ChoiceRow(list.map { it to it.name }, sv, { s2 -> server = s2; profile = s2.profileId; folder = s2.folder; avail = s2.minAvail }, Modifier.padding(start = 0.dp)) }
+                    OptLabel("Quality"); com.bdlnaredi.goatstack.ui.ChoiceRow(sv.profiles.map { it.id to it.name }, profile, { profile = it })
+                    OptLabel("Folder"); com.bdlnaredi.goatstack.ui.ChoiceRow(sv.folders.map { it.path to it.path }, folder, { folder = it })
+                    OptLabel("Monitor")
+                    if (a.mediaType == "tv") com.bdlnaredi.goatstack.ui.ChoiceRow(listOf("all" to "All episodes", "future" to "Future episodes", "missing" to "Missing episodes", "existing" to "Existing episodes",
+                        "firstSeason" to "First season", "lastSeason" to "Latest season", "pilot" to "Pilot episode", "none" to "None"), monitor, { monitor = it })
+                    else com.bdlnaredi.goatstack.ui.ChoiceRow(listOf("1" to "Monitored", "0" to "Not monitored"), monitor, { monitor = it })
+                    if (a.mediaType != "tv") { OptLabel("Minimum availability"); com.bdlnaredi.goatstack.ui.ChoiceRow(listOf("announced" to "Announced", "inCinemas" to "In cinemas", "released" to "Released"), avail, { avail = it }) }
+                }
                 if (error != null) { Spacer(Modifier.height(10.dp)); Text(error!!, color = g.bad) }
             }
         },
@@ -137,7 +165,12 @@ fun RequestDialog(a: Ask, onDone: (String?) -> Unit) {
             TextButton(enabled = ok && !busy, onClick = {
                 busy = true; error = null
                 scope.launch {
-                    try { onDone(sendRequest(ctx, seerr!!, a, if (a.mediaType == "tv" && !all) picked.sorted() else emptyList())) }
+                    val sv = server
+                    val opts = if (options?.choose == true && sv != null) buildJsonObject {
+                        put("serverId", sv.id); if (profile > 0) put("profileId", profile); if (folder.isNotEmpty()) put("rootFolder", folder)
+                        if (a.mediaType == "tv") put("monitor", monitor) else { put("monitor", monitor == "1"); put("minAvail", avail) }
+                    } else null
+                    try { onDone(sendRequest(ctx, seerr!!, a, if (a.mediaType == "tv" && !all) picked.sorted() else emptyList(), opts)) }
                     catch (e: Exception) { error = e.message; busy = false }
                 }
             }) { Text(if (busy) "Sending…" else "Request", color = if (ok) g.primary else g.muted) }
@@ -167,4 +200,9 @@ fun CheckLine(text: String, checked: Boolean, danger: Boolean = false, onChange:
         Spacer(Modifier.width(4.dp))
         Text(text, color = g.text)
     }
+}
+
+@Composable
+private fun OptLabel(text: String) {
+    Text(com.bdlnaredi.goatstack.data.tr(text), style = MaterialTheme.typography.labelLarge, color = LocalGoat.current.muted, modifier = Modifier.padding(top = 10.dp, bottom = 4.dp))
 }

@@ -263,3 +263,7 @@ html.kids .rail .card, html.kids .rail .pc{min-width:160px}
 html.kids button, html.kids .btn{min-height:44px;font-size:1.05em;border-radius:16px}
 html.kids .mute.small, html.kids .meta{display:none}
 html.kids nav a, html.kids .nav a{font-size:1.1em}
+
+/* Request options */
+.rqo{display:grid;gap:10px}.rqo label{display:grid;gap:4px}.rqo select{width:100%}
+a.pc{color:inherit;text-decoration:none;display:block}

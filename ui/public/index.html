@@ -1900,7 +1900,8 @@ async function statsView(){
   $('#sd').onclick=e=>{const b=e.target.closest('[data-k]');if(!b)return;stDays=+b.dataset.k;statsView()};
   try{const d=await api(`/api/tautulli/${s.id}/stats?days=${stDays}`);if(tab!=='stats')return;
     const img=t=>t?`/api/tautulli/${s.id}/img?p=${encodeURIComponent(t)}`:'';
-    const grid=(t,l)=>`<h2 class="sec">${t}</h2>${l.length?`<div class="pgrid">${l.map((x,i)=>`<div class="pgc"><div class="pw">${x.thumb?`<img src="${img(x.thumb)}" alt="" loading="lazy">`:`<span class="pph">${esc(initials(x.title))}</span>`}<span class="rk">${i+1}</span><span class="bd">${x.plays} ${x.plays===1?'play':'plays'}</span></div><b>${esc(x.title)}</b></div>`).join('')}</div>`:'<p class="mute">Nothing watched in this period.</p>'}`;
+    const la=x=>x.lib?` data-ls="${esc(x.lib.sid)}" data-li="${x.lib.id}" data-lk="${x.lib.kind}" role="button" tabindex="0" title="${T('Open in library')}" style="cursor:pointer"`:'';
+    const grid=(t,l)=>`<h2 class="sec">${t}</h2>${l.length?`<div class="pgrid">${l.map((x,i)=>`<div class="pgc"${la(x)}><div class="pw">${x.thumb?`<img src="${img(x.thumb)}" alt="" loading="lazy">`:`<span class="pph">${esc(initials(x.title))}</span>`}<span class="rk">${i+1}</span><span class="bd">${x.plays} ${x.plays===1?'play':'plays'}</span></div><b>${esc(x.title)}</b></div>`).join('')}</div>`:'<p class="mute">Nothing watched in this period.</p>'}`;
     const plat=d.byPlatform?d.byPlatform.categories.map((n,i)=>({n,v:d.byPlatform.series.reduce((a,z)=>a+(z.data[i]||0),0)})).filter(x=>x.v>0).sort((a,b)=>b.v-a.v).slice(0,6):[];
     const pm=Math.max(1,...plat.map(x=>x.v)),um=Math.max(1,...d.users.map(x=>x.plays||0)),top=d.users[0],tp=plat[0];
     const tl=(l,v,sub)=>`<div class="tile"><div class="tl">${l}</div><b class="tv" style="word-break:break-word">${esc(v)}</b><div class="mute">${esc(sub||'')}</div></div>`;
@@ -1910,8 +1911,11 @@ async function statsView(){
       <div><h2 class="sec">Devices</h2><div class="panel">${plat.length?plat.map(x=>`<div style="margin:12px 0"><div class="row"><span class="grow" style="word-break:break-word">${esc(x.n)}</span><b>${x.v}</b></div><div class="hb"><i style="width:${x.v/pm*100}%"></i></div></div>`).join(''):'<p class="mute">No data.</p>'}</div></div></div>
       ${grid('Most watched movies',d.movies)}${grid('Most watched shows',d.tv)}
       <h2 class="sec">Most active viewers</h2><div class="panel">${d.users.map(x=>`<div class="row" style="margin:10px 0;flex-wrap:nowrap"><span class="av" aria-hidden="true">${esc(initials(x.title))}</span><div class="grow"><div class="row"><b class="grow">${esc(x.title)}</b><span class="mute">${x.plays} plays${x.seconds?', '+hrs(x.seconds):''}</span></div><div class="hb"><i style="width:${(x.plays||0)/um*100}%"></i></div></div></div>`).join('')||'<p class="mute">No viewers yet.</p>'}</div>
-      <h2 class="sec">Recent plays</h2><div class="panel" style="padding:4px 18px">${d.history.map(x=>`<div class="box row" style="flex-wrap:nowrap"><div class="hth">${x.thumb?`<img src="${img(x.thumb)}" alt="" loading="lazy">`:''}</div><div class="grow" style="min-width:0"><b style="word-break:break-word;font-weight:560">${esc(x.title)}</b><div class="mute">${esc(x.user||'')}${x.player?' on '+esc(x.player):''}${x.at?', '+ago(x.at):''}</div></div>${x.pct!=null?`<span class="pill ${x.pct>=90?'ok':''}">${Math.round(x.pct)}%</span>`:''}</div>`).join('')||'<p class="mute">No plays yet.</p>'}</div>`;
+      <h2 class="sec">Recent plays</h2><div class="panel" style="padding:4px 18px">${d.history.map(x=>`<div class="box row" style="flex-wrap:nowrap"${la(x)}><div class="hth">${x.thumb?`<img src="${img(x.thumb)}" alt="" loading="lazy">`:''}</div><div class="grow" style="min-width:0"><b style="word-break:break-word;font-weight:560">${esc(x.title)}</b><div class="mute">${esc(x.user||'')}${x.player?' on '+esc(x.player):''}${x.at?', '+ago(x.at):''}</div></div>${x.pct!=null?`<span class="pill ${x.pct>=90?'ok':''}">${Math.round(x.pct)}%</span>`:''}</div>`).join('')||'<p class="mute">No plays yet.</p>'}</div>`;
     const root=$('#sb2'),tip=tipEl();
+    // A watched title that is in the library opens there.
+    const openL=e=>{const t=e.target.closest('[data-ls]');if(t)openInLibrary({sid:t.dataset.ls,id:+t.dataset.li,kind:t.dataset.lk})};
+    root.onclick=openL;root.onkeydown=e=>{if(e.key==='Enter')openL(e)};
     root.onmousemove=e=>{const t=e.target.closest('[data-tip]');if(!t){tip.hidden=true;return}tip.textContent=t.dataset.tip;tip.hidden=false;tip.style.left=Math.max(8,Math.min(innerWidth-tip.offsetWidth-8,e.clientX+14))+'px';tip.style.top=(e.clientY+16)+'px'};
     root.onmouseleave=()=>{tip.hidden=true};
   }catch(x){$('#sb2').innerHTML=`<div class="err">${esc(x.message)}</div>`}
@@ -2251,18 +2255,23 @@ function urView(){
     const flt=c=>UR.f==='run'?run(c):UR.f==='stop'?!run(c):UR.f==='upd'?!!upd[c.id]:true;
     const list=d.containers.filter(c=>flt(c)&&(!q||c.name.toLowerCase().includes(q)||(mt[c.id]&&mt[c.id].image||'').toLowerCase().includes(q)));
     const cnt={all:d.containers.length,run:d.containers.filter(run).length,stop:d.containers.filter(c=>!run(c)).length,upd:Object.keys(upd).length};
-    if(!$('#cq')){$('#cl').innerHTML=`<div class="row" style="margin:6px 0 12px"><h2 class="sec" style="margin:0;flex:1">Containers</h2><input id="cq" type="search" placeholder="Find a container" aria-label="Find a container" value="${esc(UR.q)}" style="max-width:240px"><div class="seg" id="cf" role="group" aria-label="Show containers"></div></div><div class="ucg stg" id="cg"></div>`;
+    if(!$('#cq')){$('#cl').innerHTML=`<div class="row" style="margin:6px 0 12px"><h2 class="sec" style="margin:0;flex:1">Containers</h2><input id="cq" type="search" placeholder="Find a container" aria-label="Find a container" value="${esc(UR.q)}" style="max-width:240px"><div class="seg" id="cf" role="group" aria-label="Show containers"></div>${me.role==='admin'?`<button id="cua" hidden>${T('Update all')}</button>`:''}</div><div class="ucg stg" id="cg"></div>`;
+      if($('#cua'))$('#cua').onclick=async e=>{const b=e.target;if(!confirm(T('Update every container that has an update? Each one is stopped, its new version downloaded, and started again.')))return;b.disabled=true;b.textContent=T('Updating…');
+        try{await api(`/api/unraid/${s.id}/docker`,'POST',{action:'updateAll'});toast(T('Updated'),'ok')}catch(x){toast(x.message,'bad')}b.disabled=false;b.textContent=T('Update all');sig.c='';fb=0;full()};
       $('#cq').oninput=e=>{UR.q=e.target.value;sig.c='';full()};
       $('#cf').onclick=e=>{const b=e.target.closest('[data-f]');if(b){UR.f=b.dataset.f;sig.c='';full()}};
       $('#cg').onclick=async e=>{const b=e.target.closest('button');if(!b)return;
         if(b.dataset.l){try{const r=await api(`/api/unraid/${s.id}/logs?id=${encodeURIComponent(b.dataset.l)}`);
           const o=document.createElement('div');o.className='ov';o.innerHTML=`<div class="dlg" style="display:block;width:100%"><h2>${esc(b.dataset.n)} logs</h2><pre style="white-space:pre-wrap;max-height:60vh;overflow:auto;font-size:12px">${esc(r.text||'This container has not written any log lines yet.')}</pre><button class="primary" id="cl2">Close</button></div>`;
           o.onclick=ev=>{if(ev.target===o||ev.target.id==='cl2')o.remove()};document.body.append(o)}catch(x){toast(x.message,'bad')}return}
-        if(b.dataset.i){b.disabled=true;try{await api(`/api/unraid/${s.id}/docker`,'POST',{id:b.dataset.i,action:b.dataset.c});toast('Done','ok')}catch(x){toast(x.message,'bad')}sig.c='';fb=0;setTimeout(full,1200)}}}
+        if(b.dataset.i){if(b.dataset.c==='update'&&!confirm(T('Update this container? It is stopped, its new version downloaded, and started again.')))return;
+          const t0=b.textContent;b.disabled=true;if(b.dataset.c==='update')b.textContent=T('Updating…');
+          try{await api(`/api/unraid/${s.id}/docker`,'POST',{id:b.dataset.i,action:b.dataset.c});toast(b.dataset.c==='update'?T('Updated'):'Done','ok')}catch(x){toast(x.message,'bad');b.textContent=t0;b.disabled=false}sig.c='';fb=0;setTimeout(full,1200)}}}
+    if($('#cua'))$('#cua').hidden=!Object.keys(upd).length;
     $('#cf').innerHTML=[['all','All'],['run','Running'],['stop','Stopped'],['upd','Updates']].map(([k,n])=>`<button data-f="${k}" class="${UR.f===k?'on':''}" aria-pressed="${UR.f===k}">${n}<i>${cnt[k]}</i></button>`).join('');
     $('#cg').innerHTML=list.map((c,i)=>`<div class="uc ${run(c)?'on':''}" style="--i:${Math.min(i,14)}"><div class="row">${svcIcon('',null,c.name,(d.icons||{})[c.id])}<div class="grow" style="min-width:0"><b>${esc(c.name)}</b><div class="mute" style="font-size:12.5px;word-break:break-all">${esc((mt[c.id]&&mt[c.id].image)||'')}</div></div><span class="ucs"><i class="dot ${run(c)?'ok':'bad'}" style="margin:0"></i>${esc(String(c.state).toLowerCase())}</span></div>
       <div class="row ucm"><span class="mute grow">${esc((mt[c.id]&&mt[c.id].status)||'')}</span>${upd[c.id]?'<span class="pill acc">Update available</span>':''}</div>
-      ${me.role==='admin'?`<div class="row uca">${run(c)?`<button data-i="${esc(c.id)}" data-c="stop">Stop</button><button data-i="${esc(c.id)}" data-c="restart">Restart</button>`:`<button class="primary" data-i="${esc(c.id)}" data-c="start">Start</button>`}<button data-l="${esc(c.id)}" data-n="${esc(c.name)}">Logs</button></div>`:''}</div>`).join('')||empty('No containers match','Try another word or filter.');
+      ${me.role==='admin'?`<div class="row uca">${run(c)?`<button data-i="${esc(c.id)}" data-c="stop">Stop</button><button data-i="${esc(c.id)}" data-c="restart">Restart</button>`:`<button class="primary" data-i="${esc(c.id)}" data-c="start">Start</button>`}${upd[c.id]?`<button class="primary" data-i="${esc(c.id)}" data-c="update">${T('Update')}</button>`:''}<button data-l="${esc(c.id)}" data-n="${esc(c.name)}">Logs</button></div>`:''}</div>`).join('')||empty('No containers match','Try another word or filter.');
   };
   live();full();timer=[tick(live,1000),tick(full,15000)];
 }
@@ -2281,7 +2290,10 @@ async function vpnPill(s,sel){
 async function loadPlex(s){
   try{const d=await api(`/api/${s.type}/${s.id}/now`),el=$('#plx');if(!el||tab!=='dash')return;
     const img=t=>t?`/api/${s.type}/${s.id}/img?p=${encodeURIComponent(t)}`:'';
-    el.innerHTML=d.recent.length?`${rowHead(s.type==='plex'?'Recently added to Plex':'Recently added to Jellyfin',T('Ready to watch now'))}<div class="strip">${d.recent.map(x=>`<div class="pc" style="cursor:default"><div class="pw">${x.thumb?`<img src="${img(x.thumb)}" alt="" loading="lazy">`:''}</div><b>${esc(x.title)}</b><div class="mute">${esc(x.sub)}</div></div>`).join('')}</div>`:'';
+    // Each one opens in Plex (or Jellyfin) itself: the built-in one on this server's address, another one on its own page.
+    const plexBase=s.managed?goatOpen('plex'):'https://app.plex.tv/desktop/',jfBase=s.managed?goatOpen('jellyfin'):String(s.url||'').replace(/\/*$/,'/');
+    const href=x=>!x.key?'':s.type==='plex'?(d.machine?`${plexBase}#!/server/${d.machine}/details?key=${encodeURIComponent('/library/metadata/'+x.key)}`:''):`${jfBase}web/index.html#/details?id=${encodeURIComponent(x.key)}${d.server?'&serverId='+encodeURIComponent(d.server):''}`;
+    el.innerHTML=d.recent.length?`${rowHead(s.type==='plex'?'Recently added to Plex':'Recently added to Jellyfin',T('Ready to watch now'))}<div class="strip">${d.recent.map(x=>{const h=href(x);return `<a class="pc"${h?` href="${esc(h)}" target="_blank" rel="noopener" title="${T(s.type==='plex'?'Open in Plex':'Open in Jellyfin')}"`:' style="cursor:default"'}><div class="pw">${x.thumb?`<img src="${img(x.thumb)}" alt="" loading="lazy">`:''}</div><b>${esc(x.title)}</b><div class="mute">${esc(x.sub)}</div></a>`}).join('')}</div>`:'';
   }catch{}
 }
 const DS={src:'',kind:'movie',list:'trending'};let dsTok=0;
@@ -2402,7 +2414,7 @@ function titlePage(type,id,seed){
     const twl=o.querySelector('#twl');if(twl)twl.onclick=async()=>{twl.disabled=true;try{const on=!t.watch;const r=await wlToggle(t.type,t.id,on,t);t.watch=on;twl.classList.toggle('tog',on);twl.setAttribute('aria-pressed',on);twl.innerHTML=ic('wl')+(on?T('On your watchlist'):T('Watchlist'));
       if(r&&r.requested&&r.requested.error)toast(r.requested.error,'bad');else if(r&&r.requested)toast(r.requested==='approved'?T('Added, and requested'):T('Added, and sent for approval'),'ok');else toast(on?T('Added to your watchlist'):T('Taken off your watchlist'),'ok')}catch(x){toast(x.message,'bad')}twl.disabled=false};
     const tq=o.querySelector('#tq');if(tq)tq.onclick=async()=>{tq.disabled=true;tq.textContent=T('Sending…');
-      try{const r=await api('/api/requests','POST',{sid:t.seerr,mediaType:t.type,mediaId:t.id,title:t.title,year:t.year,poster:t.poster,seasons:[]});tq.outerHTML=`<span class="pill ok">${r.status==='approved'?T('Requested'):T('Sent for approval')}</span>${tv?` <span class="mute">${T('All seasons')}</span>`:''}`}
+      try{const r=await requestWith({sid:t.seerr,mediaType:t.type,mediaId:t.id,title:t.title,year:t.year,poster:t.poster,seasons:[]});if(!r){tq.disabled=false;tq.textContent=T('Request');return}tq.outerHTML=`<span class="pill ok">${r.status==='approved'?T('Requested'):T('Sent for approval')}</span>${tv?` <span class="mute">${T('All seasons')}</span>`:''}`}
       catch(e){tq.disabled=false;tq.textContent=T('Request');o.querySelector('#tqe').textContent=e.message}};
   }).catch(e=>{const b=o.querySelector('#tpb');if(b)b.innerHTML=`<div class="err">${esc(e.message)}</div>`});
   return o;
@@ -2445,6 +2457,35 @@ function personPage(id,seed){
   }).catch(e=>{const b=o.querySelector('#ppb');if(b)b.innerHTML=`<h2>${esc(seed.name||'')}</h2><div class="err">${esc(e.message)}</div>`});
   return o;
 }
+// Asking for something with choices: quality, folder, monitoring and (movies) when it counts as available.
+// Shown to admins and profiles that can add things; the last choices are remembered on this browser.
+async function reqChoices(sid,type){
+  let d;try{d=await api(`/api/request/options?sid=${encodeURIComponent(sid)}&type=${type==='tv'?'tv':'movie'}`)}catch{return undefined}
+  if(!d.choose||!d.servers||!d.servers.length)return undefined;
+  const key='req-'+d.kind;let last={};try{last=JSON.parse(localStorage.getItem(key)||'{}')}catch{}
+  const tv=type==='tv',GB=b=>b>0?` · ${(b/1e9).toFixed(b>1e11?0:1)} GB ${T('free')}`:'';
+  return new Promise(done=>{
+    const o=modal(`<h2 style="margin-top:0">${T('Request options')}</h2><form id="rqo" class="rqo">
+      ${d.servers.length>1?`<label class="mute">${T('Server')}<select name="server">${d.servers.map(v=>`<option value="${v.id}" ${(last.serverId!=null?last.serverId===v.id:v.isDefault)?'selected':''}>${esc(v.name)}</option>`).join('')}</select></label>`:''}
+      <label class="mute">${T('Quality')}<select name="profile"></select></label>
+      <label class="mute">${T('Folder')}<select name="folder"></select></label>
+      <label class="mute">${T('Monitor')}<select name="monitor">${tv?[['all','All episodes'],['future','Future episodes'],['missing','Missing episodes'],['existing','Existing episodes'],['firstSeason','First season'],['lastSeason','Latest season'],['pilot','Pilot episode'],['none','None']].map(([v,n])=>`<option value="${v}" ${(last.monitor||'all')===v?'selected':''}>${T(n)}</option>`).join(''):`<option value="1" ${last.monitor===false?'':'selected'}>${T('Monitored')}</option><option value="0" ${last.monitor===false?'selected':''}>${T('Not monitored')}</option>`}</select></label>
+      ${tv?'':`<label class="mute">${T('Minimum availability')}<select name="avail">${[['announced','Announced'],['inCinemas','In cinemas'],['released','Released']].map(([v,n])=>`<option value="${v}">${T(n)}</option>`).join('')}</select></label>`}
+      <div class="row" style="margin-top:6px"><button class="primary">${T('Request')}</button><button type="button" data-x>${T('Cancel')}</button></div></form>`);
+    const f=o.querySelector('#rqo'),sv=()=>d.servers.find(v=>String(v.id)===(f.server?f.server.value:String(d.servers[0].id)))||d.servers[0];
+    const fill=()=>{const v=sv(),same=last.serverId===v.id;
+      f.profile.innerHTML=v.profiles.map(p=>`<option value="${p.id}" ${(same&&last.profileId?last.profileId:v.profileId)===p.id?'selected':''}>${esc(p.name)}</option>`).join('');
+      f.folder.innerHTML=v.folders.map(x=>`<option value="${esc(x.path)}" ${(same&&last.rootFolder?last.rootFolder:v.folder)===x.path?'selected':''}>${esc(x.path)}${GB(x.free)}</option>`).join('');
+      if(f.avail)f.avail.value=same&&last.minAvail?last.minAvail:v.minAvail||'released'};
+    fill();if(f.server)f.server.onchange=fill;
+    let ok=false;o.querySelector('[data-x]').onclick=()=>o.close();
+    new MutationObserver((m,ob)=>{if(!document.contains(o)){ob.disconnect();if(!ok)done(null)}}).observe(document.body,{childList:true});
+    f.onsubmit=e=>{e.preventDefault();const v=sv(),r={serverId:v.id,profileId:+f.profile.value||undefined,rootFolder:f.folder.value||undefined,monitor:tv?f.monitor.value:f.monitor.value==='1',...(tv?{}:{minAvail:f.avail.value})};
+      try{localStorage.setItem(key,JSON.stringify(r))}catch{}ok=true;o.close();done(r)};
+  });
+}
+// Sends a request, asking for the choices first when this profile gets them. Null when cancelled.
+async function requestWith(body){const opts=await reqChoices(body.sid,body.mediaType);if(opts===null)return null;return api('/api/requests','POST',opts?{...body,opts}:body)}
 function discOpen(x){
   const sk=ofType('seerr')[0],tv=x.mediaType==='tv';
   const o=modal(`<button class="pgback" data-x>${ic('back')}Back</button><div class="row" style="align-items:flex-start;gap:16px;flex-wrap:wrap">${x.poster?`<img src="${esc(x.poster)}" alt="" style="width:140px;border-radius:10px;aspect-ratio:2/3;object-fit:cover">`:''}<div class="grow" style="min-width:220px"><h2 style="margin:0">${esc(x.title)} <span class="mute">${esc(x.year)}</span></h2><div class="mute">${tv?'TV show':'Movie'}${x.rating?', rated '+x.rating.toFixed(1):''}</div>${x.overview?`<p>${esc(x.overview)}</p>`:''}${idChips({type:x.mediaType,imdb:x.imdb,tmdb:x.tmdb,tvdb:x.tvdb})}<div id="rqs" style="margin-top:12px"></div></div></div><div id="cx" style="margin-top:8px"></div><div class="row" style="margin-top:14px"><button data-x>Close</button></div>`,true);
@@ -2455,7 +2496,7 @@ function discOpen(x){
   if(!can('request')){box.innerHTML='<span class="mute">Requests are off for your profile.</span>';return}
   const ask=m=>{box.innerHTML='<button class="primary" id="rq1">Request</button><div class="err" id="re"></div>';
     box.querySelector('#rq1').onclick=async e=>{const b=e.target;b.disabled=true;b.textContent='Sending…';
-      try{const r=await api('/api/requests','POST',{sid:sk.id,mediaType:x.mediaType,mediaId:m.id,title:m.title,year:m.year,poster:m.poster||x.poster,seasons:[]});box.innerHTML=`<span class="pill ok">${r.status==='approved'?'Requested':'Sent for approval'}</span>${tv?' <span class="mute">All seasons</span>':''}`}
+      try{const r=await requestWith({sid:sk.id,mediaType:x.mediaType,mediaId:m.id,title:m.title,year:m.year,poster:m.poster||x.poster,seasons:[]});if(!r){b.disabled=false;b.textContent='Request';return}box.innerHTML=`<span class="pill ok">${r.status==='approved'?'Requested':'Sent for approval'}</span>${tv?' <span class="mute">All seasons</span>':''}`}
       catch(er){b.disabled=false;b.textContent='Request';box.querySelector('#re').textContent=er.message}}};
   box.innerHTML='<span class="mute">Checking Seerr…</span>';
   api(`/api/seerr/search?sid=${sk.id}&term=${encodeURIComponent(x.title)}`).then(r=>{
@@ -2499,7 +2540,7 @@ function rqView(){
       <span class="pill ${x.status==='open'?'warn':'ok'}">${x.status==='open'?'Open':'Done'}</span>${admin&&x.status==='open'?`<button data-rd="${x.id}">Mark as done</button>`:''}</div>`).join('')}`:'';
     document.querySelectorAll('[data-rd]').forEach(b=>b.onclick=async()=>{try{await api(`/api/reports/${b.dataset.rd}/resolve`,'POST');loadR()}catch(x){toast(x.message,'bad')}})}catch{}};
   const send=async(x,seasons,b)=>{b.disabled=true;b.textContent='Sending…';
-    try{const r=await api('/api/requests','POST',{sid,mediaType:x.mediaType,mediaId:x.id,title:x.title,year:x.year,poster:x.poster,seasons});
+    try{const r=await requestWith({sid,mediaType:x.mediaType,mediaId:x.id,title:x.title,year:x.year,poster:x.poster,seasons});if(!r){b.disabled=false;b.textContent='Request';return}
       b.replaceWith(Object.assign(document.createElement('span'),{className:'pill ok',textContent:r.status==='approved'?'Requested':'Sent for approval'}));loadQ()}
     catch(e){b.disabled=false;b.textContent='Request';$('#e').textContent=e.message}};
   const pickSeasons=async(x,b)=>{let d;try{d=await api(`/api/seerr/tv?sid=${sid}&id=${x.id}`)}catch(e){send(x,[],b);return}

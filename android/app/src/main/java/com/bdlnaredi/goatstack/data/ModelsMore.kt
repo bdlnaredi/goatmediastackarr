@@ -28,7 +28,7 @@ data class Stats(
     val users: List<TopUser> = emptyList(), val totals: Totals = Totals(), val byDate: Chart? = null, val byHour: Chart? = null,
     val byPlatform: Chart? = null, val history: List<Watched> = emptyList(),
 )
-@Serializable data class TopItem(val title: String = "", val plays: Int = 0, val thumb: String = "", val year: JsonElement? = null)
+@Serializable data class TopItem(val title: String = "", val plays: Int = 0, val thumb: String = "", val year: JsonElement? = null, val lib: LibLink? = null)
 @Serializable data class TopUser(val title: String = "", val plays: Int = 0, val seconds: Long = 0)
 @Serializable data class Totals(val plays: Long = 0, val seconds: Long = 0)
 @Serializable data class Chart(val categories: List<String> = emptyList(), val series: List<Series> = emptyList()) {
@@ -37,7 +37,7 @@ data class Stats(
 }
 @Serializable data class Series(val name: String = "", val data: List<Double> = emptyList())
 @Serializable
-data class Watched(val user: String = "", val title: String = "", val type: String = "", val at: Long = 0, val player: String = "", val pct: Int = 0, val thumb: String = "")
+data class Watched(val user: String = "", val title: String = "", val type: String = "", val at: Long = 0, val player: String = "", val pct: Int = 0, val thumb: String = "", val lib: LibLink? = null)
 
 // ---------- Wanted ----------
 @Serializable data class WantedPage(val total: Int = 0, val items: List<WantedItem> = emptyList())
@@ -76,7 +76,7 @@ data class Unraid(
     val host: String = "", val arrayState: String = "", val used: Long = 0, val total: Long = 0, val cpu: Double = 0.0, val mem: Double = 0.0,
     val memTotal: Long = 0, val memUsed: Long = 0, val uptime: String = "", val cpuInfo: CpuInfo? = null,
     val containers: List<Container> = emptyList(), val disks: List<UnraidDisk> = emptyList(), val shares: List<Share> = emptyList(),
-    val errors: List<String> = emptyList(),
+    val errors: List<String> = emptyList(), val updates: Map<String, Boolean> = emptyMap(),
 )
 @Serializable data class CpuInfo(val brand: String = "", val cores: Int = 0, val threads: Int = 0, val ghz: Double = 0.0)
 @Serializable data class Container(val id: String = "", val name: String = "", val state: String = "") { val running get() = state.equals("running", true) }

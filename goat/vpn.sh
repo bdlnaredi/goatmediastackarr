@@ -46,6 +46,11 @@ set_dns() { # point the VPN apps' DNS at the tunnel's DNS server
   local dns="$1"
   iptables -w -t nat -F GOAT_DNS
   for p in udp tcp; do
+    # A container on its own Docker network (docker compose, Docker Desktop) asks Docker's resolver at 127.0.0.11.
+    # Sending that question straight into the tunnel would carry 127.0.0.1 as its sender, which Linux refuses to
+    # route anywhere but loopback, so every lookup failed. It goes to the small forwarder next to the site browser
+    # (sitefetch.js, a VPN app itself), which asks the VPN's DNS server through the tunnel.
+    iptables -w -t nat -A GOAT_DNS -m owner --gid-owner "$GID" --suppl-groups -d 127.0.0.0/8 -p "$p" --dport 53 -j DNAT --to-destination "127.0.0.1:${GOAT_DNS_PORT:-5335}"
     iptables -w -t nat -A GOAT_DNS -m owner --gid-owner "$GID" --suppl-groups -p "$p" --dport 53 -j DNAT --to-destination "$dns:53"
   done
   echo "$dns" > "$RUN/vpn-dns"

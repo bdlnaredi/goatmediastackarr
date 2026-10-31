@@ -142,3 +142,12 @@ object Versions {
 data class Changelog(val current: String = "", val versions: List<ChangeVersion> = emptyList())
 @Serializable
 data class ChangeVersion(val version: String = "", val date: String = "", val items: List<String> = emptyList(), val current: Boolean = false, val next: Boolean = false)
+
+// ---------- Choices when asking for something (/api/request/options) ----------
+@Serializable data class ReqOptions(val choose: Boolean = false, val kind: String = "", val servers: List<ReqServer> = emptyList())
+@Serializable data class ReqServer(
+    val id: Int = 0, val name: String = "", val isDefault: Boolean = false, val profiles: List<ReqProfile> = emptyList(), val folders: List<ReqFolder> = emptyList(),
+    val profileId: Int = 0, val folder: String = "", val minAvail: String = "released",
+)
+@Serializable data class ReqProfile(val id: Int = 0, val name: String = "")
+@Serializable data class ReqFolder(val path: String = "", val free: Long = 0)

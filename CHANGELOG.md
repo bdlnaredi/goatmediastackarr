@@ -4,6 +4,13 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- Request options: when an admin (or a profile that can add things) asks for a movie or show, a short form asks for the quality, the folder, what to monitor (a whole show, future episodes, the first or latest season…), and for movies when they count as available. Quality and folder go to Seerr; monitoring and availability are set in Radarr or Sonarr once Seerr has added it. The last choices are remembered. Web page and app.
+- Tracker websites load faster: pictures, styles, scripts and fonts are now kept even when the site sets a cookie with them (most trackers do on every answer, so before nothing was kept), for a day instead of six hours.
+- Adding an indexer: *Base URL* now lists the site's addresses (Prowlarr only gives them when asked).
+- Docker compose and Docker Desktop: the VPN apps (Prowlarr, qBittorrent…) could not look up any address with the VPN on, so adding indexers failed with a DNS error. On their own Docker network they ask Docker's resolver at 127.0.0.11, and that question could not be sent into the tunnel; it now goes through a small forwarder that asks the VPN's DNS server through the tunnel.
+- Unraid page: containers with an update have an *Update* button, and *Update all* updates every one (needs Unraid 7.2, or an up-to-date Unraid Connect plugin). Also in the app.
+- Stats: a movie or show that is in your library opens there when clicked (web page and app).
+- Dashboard: *Recently added to Plex* (and Jellyfin) open the title in Plex (or Jellyfin) itself.
 - Built-in Plex is told your server's real address (*Custom server access URLs*) and your home network (*LAN Networks*), from the address you open GoatMediaStackarr with. Inside Docker it only knew the container's own address, so TVs and phones at home could end up on Plex's relay ("Indirect", lower quality) and their streams counted as remote. Filled in when empty; anything you set yourself in Plex stays.
 - Built-in apps open on your server's address, never 127.0.0.1: the Apps list and the dashboard show and open them through GoatMediaStackarr's own address (or Jellyfin, Seerr, Plex, ruTorrent and Deluge on their own ports of that address), and are marked *Built in* instead of offering an address to edit that would be put back on every start.
 - Seerr's *Open in Sonarr/Radarr* and *Play on Jellyfin* links use your server's address (or the one set for outside your home) instead of 127.0.0.1; the apps still talk to each other inside the container. An address or link you change in Seerr yourself is kept, and Sonarr or Radarr is no longer added a second time when you do.
