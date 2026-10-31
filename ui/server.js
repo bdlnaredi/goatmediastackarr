@@ -8,7 +8,7 @@ const http = require('http'), fs = require('fs'), path = require('path'), crypto
 const DATA = process.env.DATA_DIR || '/data', FILE = path.join(DATA, 'db.json');
 fs.mkdirSync(DATA, { recursive: true });
 const tclients = require('./lib/torrentclients');
-const totp = require('./lib/totp'), channels = require('./lib/channels'), listsLib = require('./lib/lists');
+const totp = require('./lib/totp'), channels = require('./lib/channels'), AL = require('./lib/alerts'), listsLib = require('./lib/lists');
 const PORT = +process.env.PORT || 5080, DEMO = /^(1|true|yes)$/i.test(process.env.DEMO || ''), DAY = 864e5;
 const demo = DEMO ? require('./lib/demo').create({ streams: 2 }) : null;
 // Inside the container the release number comes from the image (GOAT_VERSION); otherwise from package.json.
@@ -865,16 +865,70 @@ const ruleDef = x => ({ enabled: !!x.enabled, mustContain: cut(x.mustContain, 50
   ...(x.torrentContentLayout ? { torrentContentLayout: cut(x.torrentContentLayout, 40) } : {}), ...(x.lastMatch ? { lastMatch: cut(x.lastMatch, 60) } : {}),
   ...(Array.isArray(x.previouslyMatchedEpisodes) ? { previouslyMatchedEpisodes: x.previouslyMatchedEpisodes.slice(0, 2000).map(e => cut(e, 60)) } : {}) });
 // What an alert channel can be told about. Each channel has its own list (like Tautulli's notification agents).
-const ALERT_EVENTS = ['finished', 'grabbed', 'requests', 'available', 'reports', 'offline', 'vpn', 'disk', 'streamLimit', 'update', 'appUpdates', 'backup', 'healed', 'weekly'];
+const ALERT_EVENTS = AL.KEYS, ALERT_QUIET = ['finished', 'grabbed', 'available', 'playStart', 'playStop', 'playPause', 'playResume', 'watched', 'transcode', 'newDevice', 'recentlyAdded'];
 // A channel saved before channels had their own list gets what the old shared switches said.
 const chanEvents = c => Array.isArray(c.events) ? c.events : (a => ALERT_EVENTS.filter(k => k === 'reports' || k === 'streamLimit' ? a[k] !== false : k === 'weekly' || k === 'update' || k === 'appUpdates' || k === 'backup' || k === 'healed' ? true : !!a[k]))(db.alerts || {});
-async function notify(kind, title, body, html) {
+// Sends one trigger to every channel that has it ticked and whose conditions hold, each in its own words.
+// params fill the {parameters} of the channel's text (see lib/alerts.js); title and body are {subject} and {message}.
+const alertParams = (kind, title, body, params = {}) => { const d = new Date();
+  return { subject: title, message: body, event: (AL.EVENTS[kind] || {}).name || kind, app_name: 'GoatMediaStackarr', datestamp: d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }), timestamp: d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }), ...params }; };
+const alertWants = kind => ((db.alerts || {}).channels || []).some(c => !channels.problem(c) && chanEvents(c).includes(kind));
+async function notify(kind, title, body, html, params) {
   const list = ((db.alerts || {}).channels || []).filter(c => !channels.problem(c) && chanEvents(c).includes(kind));
   if (!list.length) return false;
-  const res = await Promise.allSettled(list.map(c => channels.send(c, title, body, html)));
+  const pr = alertParams(kind, title, body, params), go = list.filter(c => AL.condsOk(c, pr));
+  if (!go.length) return false;
+  const res = await Promise.allSettled(go.map(c => { const m = AL.message(c, kind, pr); return channels.send(c, m.subject, m.body, m.custom ? undefined : html); }));
   const bad = res.filter(x => x.status === 'rejected');
   if (bad.length === res.length) throw bad[0].reason;
   return true;
+}
+// Playback triggers, from the same look at Plex and Jellyfin that counts streaming: started, stopped, paused,
+// resumed, watched (90%), changed to transcoding, and the first time someone uses a device.
+const playState = {};
+function playWatch(s, list) {
+  const want = k => alertWants(k), seen = new Set(), now = Date.now();
+  const devs = db.devices || (db.devices = { _seeded: false });
+  for (const x of list) {
+    if (!x.id) continue;
+    const k = s.id + ':' + x.id, p = AL.playParams(x, s.name), old = playState[k], st = x.state === 'paused' ? 'paused' : 'playing'; seen.add(k);
+    const send = (ev, t) => { if (want(ev)) notify(ev, t, '', undefined, p).catch(() => {}); };
+    if (!old) send('playStart', `${p.user} started ${p.full_title}`);
+    else {
+      if (old.st !== st) send(st === 'paused' ? 'playPause' : 'playResume', `${p.user} ${st === 'paused' ? 'paused' : 'resumed'} ${p.full_title}`);
+      if (old.dec !== 'transcode' && x.decision === 'transcode') send('transcode', `${p.user} is transcoding ${p.full_title}`);
+    }
+    const w = (old && old.w) || (x.progress >= 0.9 && (send('watched', `${p.user} watched ${p.full_title}`), true));
+    playState[k] = { st, dec: x.decision, w, p, at: now };
+    const dk = String(p.user).toLowerCase() + '|' + String(p.player).toLowerCase();
+    if (p.user && p.player && !devs[dk]) { devs[dk] = now; if (devs._seeded) send('newDevice', `New device for ${p.user}`); save(); }
+  }
+  for (const k of Object.keys(playState)) if (k.startsWith(s.id + ':') && !seen.has(k)) {
+    const o = playState[k]; delete playState[k];
+    if (alertWants('playStop')) notify('playStop', `${o.p.user} stopped ${o.p.full_title}`, '', undefined, o.p).catch(() => {});
+  }
+  if (!devs._seeded) { devs._seeded = true; save(); }
+}
+// Recently added: new titles in Plex or Jellyfin since the last look. The first look only notes where things stand.
+async function recentWatch() {
+  if (!alertWants('recentlyAdded')) return;
+  const at = db.settings.recentAt || (db.settings.recentAt = {});
+  for (const s of db.services.filter(isMS)) { try {
+    let items;
+    if (s.type === 'plex') items = ((await plexGet(s, '/library/recentlyAdded?X-Plex-Container-Start=0&X-Plex-Container-Size=40')).MediaContainer || {}).Metadata || [];
+    else items = (((await (await jfGet(s, '/Items?SortBy=DateCreated&SortOrder=Descending&Recursive=true&IncludeItemTypes=Movie,Episode&Limit=40&Fields=DateCreated,Overview')).json()) || {}).Items || [])
+      .map(x => ({ type: x.Type === 'Episode' ? 'episode' : 'movie', title: x.Name, grandparentTitle: x.SeriesName, parentIndex: x.ParentIndexNumber, index: x.IndexNumber, year: x.ProductionYear, addedAt: Date.parse(x.DateCreated) / 1000, summary: x.Overview, librarySectionTitle: '' }));
+    const t = x => (+x.addedAt || 0) * 1000, top = Math.max(0, ...items.map(t));
+    if (at[s.id] == null) { at[s.id] = top || Date.now(); save(); continue; }
+    const fresh = items.filter(x => t(x) > at[s.id] && ['movie', 'episode', 'season', 'show'].includes(x.type)).sort((a, b) => t(a) - t(b)).slice(-10);
+    for (const x of fresh) {
+      const ep = x.type === 'episode', show = ep ? x.grandparentTitle : x.type === 'season' ? x.parentTitle : '';
+      const full = ep ? `${show} S${pad2(x.parentIndex)}E${pad2(x.index)} ${x.title}` : x.type === 'season' ? `${show} ${x.title}` : x.title;
+      const p = { title: x.title || '', full_title: full, year: x.year || '', media_type: x.type, show_name: show || '', library: x.librarySectionTitle || '', summary: cut(x.summary, 400), server: s.name };
+      notify('recentlyAdded', 'Added: ' + full, '', undefined, p).catch(() => {});
+    }
+    if (top > at[s.id]) { at[s.id] = top; save(); }
+  } catch {} }
 }
 async function ext(s, path, opt = {}) {
   const r = await fetch(s.url.replace(/\/+$/, '') + path, { signal: AbortSignal.timeout(15000), ...opt, headers: { 'X-Api-Key': s.apiKey, 'Content-Type': 'application/json', ...(opt.headers || {}) } });
@@ -998,10 +1052,12 @@ const jkCoerce = (f, v) => JK_BOOL.includes(f.type) ? v === true : f.type === 'i
 const GB = n => (n / 1073741824).toFixed(n > 1e11 ? 0 : 1) + ' GB';
 const hx = t => String(t == null ? '' : t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 // Gathers everything the weekly newsletter talks about. Each part is optional: an app that is down just leaves its part out.
-async function newsData() {
-  const wk = Date.now() - 7 * DAY, hist = db.history.filter(h => h.at >= wk), rq = db.requests.filter(r => r.at >= wk), arr = db.services.filter(s => ['sonarr', 'radarr'].includes(s.type));
-  const added = (await Promise.all(arr.map(s => artItems(s).catch(() => [])))).flat().filter(x => x.added && Date.parse(x.added) >= wk).sort((a, b) => Date.parse(b.added) - Date.parse(a.added)).slice(0, 8);
-  const soon = [], from = new Date().toISOString().slice(0, 10), to = new Date(Date.now() + 7 * DAY).toISOString().slice(0, 10);
+// o (for the newsletters): days to look back, which Sonarr/Radarr (sids), movies and/or shows (kinds), how many titles (max).
+async function newsData(o = {}) {
+  const days = Math.min(90, Math.max(1, +o.days || 7)), wk = Date.now() - days * DAY, hist = db.history.filter(h => h.at >= wk), rq = db.requests.filter(r => r.at >= wk);
+  const kinds = o.kinds || { movie: true, tv: true }, arr = db.services.filter(s => ['sonarr', 'radarr'].includes(s.type) && (!(o.sids || []).length || o.sids.includes(s.id)) && (s.type === 'sonarr' ? kinds.tv !== false : kinds.movie !== false));
+  const added = (await Promise.all(arr.map(s => artItems(s).catch(() => [])))).flat().filter(x => x.added && Date.parse(x.added) >= wk).sort((a, b) => Date.parse(b.added) - Date.parse(a.added)).slice(0, Math.min(40, +o.max || 8));
+  const soon = [], from = new Date().toISOString().slice(0, 10), to = new Date(Date.now() + Math.min(days, 14) * DAY).toISOString().slice(0, 10);
   await Promise.all(arr.map(async s => { try {
     const tv = s.type === 'sonarr', d = await ext(s, `/api/v3/calendar?start=${from}&end=${to}&unmonitored=false` + (tv ? '&includeSeries=true' : ''));
     for (const x of Array.isArray(d) ? d : []) soon.push(tv ? { at: x.airDateUtc || x.airDate, title: cut((x.series || {}).title, 80), sub: `S${String(x.seasonNumber).padStart(2, '0')}E${String(x.episodeNumber).padStart(2, '0')}` }
@@ -1027,7 +1083,8 @@ function newsText(n) {
   return l.join('\n');
 }
 // The email version. Inline styles only and a single column, so it reads the same in Gmail, Outlook and on a phone.
-function newsHtml(n, link) {
+function newsHtml(n, link, o = {}) {
+  const days = +o.days || 7, wkly = days === 7, parts = { added: true, soon: true, stats: true, ...(o.parts || {}) };
   const F = 'font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif', h = t => `<h2 style="${F};font-size:15px;margin:26px 0 10px;color:#111">${hx(t)}</h2>`;
   const tile = x => { const img = /^https:\/\//.test(x.poster) ? `<img src="${hx(x.poster)}" width="104" height="156" alt="" style="display:block;width:104px;height:156px;object-fit:cover;border-radius:6px;background:#ddd">` : `<div style="width:104px;height:156px;border-radius:6px;background:#2b3245;color:#fff;${F};font-size:12px;text-align:center;line-height:156px">${x.tv ? 'TV' : 'Film'}</div>`;
     return `<td width="112" valign="top" style="padding:0 8px 12px 0">${img}<div style="${F};font-size:12px;font-weight:600;margin-top:6px;color:#111;width:104px">${hx(x.title)}</div><div style="${F};font-size:11px;color:#667">${x.year || ''}</div></td>`; };
@@ -1036,13 +1093,13 @@ function newsHtml(n, link) {
   const li = t => `<li style="${F};font-size:13px;color:#222;margin:4px 0">${t}</li>`;
   return `<!doctype html><html><body style="margin:0;background:#e9ecf2"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:20px 10px">
 <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#fff;border-radius:12px"><tr><td style="padding:26px 26px 8px">
-<div style="${F};font-size:12px;color:#667">${hx(when(Date.now()))}</div><div style="${F};font-size:24px;font-weight:700;color:#111;margin-top:2px">Your week on GoatMediaStackarr</div>
-${n.added.length ? h('Added this week') + `<table role="presentation" cellpadding="0" cellspacing="0">${rows}</table>` : ''}
-${n.soon.length ? h('Coming up') + `<ul style="margin:0;padding-left:18px">${n.soon.map(x => li(`<b>${hx(when(x.at))}</b> &nbsp;${hx(x.title)} <span style="color:#667">${hx(x.sub)}</span>`)).join('')}</ul>` : ''}
-${h('This week in numbers')}<table role="presentation" width="100%" cellpadding="0" cellspacing="6"><tr>${stat(n.hist, 'downloads finished')}${stat(n.made, 'requests made')}${stat(n.ready, 'ready to watch')}</tr></table>
-<ul style="margin:12px 0 0;padding-left:18px">${n.waiting ? li(`${n.waiting} request${n.waiting > 1 ? 's' : ''} waiting for approval`) : ''}${n.reports ? li(`${n.reports} open problem report${n.reports > 1 ? 's' : ''}`) : ''}${li(n.off.length ? 'Not responding: ' + hx(n.off.join(', ')) : 'All apps are responding')}${n.arrays.map(a => li(`${hx(a.name)} array is ${a.pct}% full`)).join('')}</ul>
+<div style="${F};font-size:12px;color:#667">${hx(when(Date.now()))}</div><div style="${F};font-size:24px;font-weight:700;color:#111;margin-top:2px">${hx(o.title || 'Your week on GoatMediaStackarr')}</div>${o.intro ? `<p style="${F};font-size:14px;color:#333;margin:10px 0 0;white-space:pre-line">${hx(o.intro)}</p>` : ''}
+${parts.added && n.added.length ? h(wkly ? 'Added this week' : days === 1 ? 'Added today' : `Added in the last ${days} days`) + `<table role="presentation" cellpadding="0" cellspacing="0">${rows}</table>` : ''}
+${parts.soon && n.soon.length ? h('Coming up') + `<ul style="margin:0;padding-left:18px">${n.soon.map(x => li(`<b>${hx(when(x.at))}</b> &nbsp;${hx(x.title)} <span style="color:#667">${hx(x.sub)}</span>`)).join('')}</ul>` : ''}
+${parts.stats ? h(wkly ? 'This week in numbers' : `The last ${days} day${days === 1 ? '' : 's'} in numbers`) + `<table role="presentation" width="100%" cellpadding="0" cellspacing="6"><tr>${stat(n.hist, 'downloads finished')}${stat(n.made, 'requests made')}${stat(n.ready, 'ready to watch')}</tr></table>
+<ul style="margin:12px 0 0;padding-left:18px">${n.waiting ? li(`${n.waiting} request${n.waiting > 1 ? 's' : ''} waiting for approval`) : ''}${n.reports ? li(`${n.reports} open problem report${n.reports > 1 ? 's' : ''}`) : ''}${li(n.off.length ? 'Not responding: ' + hx(n.off.join(', ')) : 'All apps are responding')}${n.arrays.map(a => li(`${hx(a.name)} array is ${a.pct}% full`)).join('')}</ul>` : ''}
 ${link ? `<p style="margin:26px 0 0"><a href="${hx(link)}" style="${F};display:inline-block;background:#4f7cff;color:#fff;text-decoration:none;font-size:14px;font-weight:600;padding:10px 18px;border-radius:8px">Open GoatMediaStackarr</a></p>` : ''}
-</td></tr><tr><td style="padding:22px 26px;${F};font-size:11px;color:#889">You get this because the weekly newsletter is on in GoatMediaStackarr, under Settings, Alerts.</td></tr></table></td></tr></table></body></html>`;
+</td></tr><tr><td style="padding:22px 26px;${F};font-size:11px;color:#889">${hx(o.foot || 'You get this because the weekly newsletter is on in GoatMediaStackarr, under Settings, Alerts.')}</td></tr></table></td></tr></table></body></html>`;
 }
 const sendNews = async (all = false) => { const n = await newsData(), w = db.settings.weekly || {}; if (w.on || all) await notify('weekly', 'GoatMediaStackarr weekly newsletter', newsText(n), newsHtml(n, baseUrl())); return w.everyone ? sendPersonal(n).catch(e => ({ sent: 0, error: e.message })) : { sent: 0 }; };
 // The weekly email for everyone (when the admin turns it on): what is new for them, their requests that came in,
@@ -1082,6 +1139,54 @@ ${link ? `<p style="margin:26px 0 0"><a href="${hx(link)}" style="${F};display:i
 </td></tr><tr><td style="padding:22px 26px;${F};font-size:11px;color:#889">To stop these emails, turn off <i>Weekly email</i> under Account${link ? ` (<a href="${hx(link)}/settings" style="color:#889">${hx(link)}/settings</a>)` : ''}.</td></tr></table></td></tr></table></body></html>`;
 }
 const personalFolk = () => db.users.filter(u => u.email && !u.noWeekly);
+// ---------- Newsletters, like Tautulli's: as many as you like, each with its own schedule, time frame, libraries, parts,
+// subject, words at the top and who gets it (alert channels and/or everyone's email). Sent ones are kept to look at again.
+const NL_EVERY = ['day', 'week', 'month'];
+const nlClean = (b, o = {}) => {
+  const ch = new Set(((db.alerts || {}).channels || []).map(c => c.id)), sv = new Set(db.services.filter(s => ['sonarr', 'radarr'].includes(s.type)).map(s => s.id));
+  const g = (k, d) => b[k] != null ? b[k] : o[k] != null ? o[k] : d, num = (v, lo, hi, d) => Number.isFinite(+v) ? Math.min(hi, Math.max(lo, Math.round(+v))) : d;
+  const every = NL_EVERY.includes(b.every) ? b.every : o.every || 'week', parts = g('parts', {}), kinds = g('kinds', {}), to = g('to', {});
+  return { id: o.id || uid(), name: cut(String(g('name', 'Newsletter')).trim() || 'Newsletter', 60), on: !!g('on', false), every,
+    day: num(g('day', every === 'month' ? 1 : 0), every === 'month' ? 1 : 0, every === 'month' ? 28 : 6, every === 'month' ? 1 : 0), hour: num(g('hour', 9), 0, 23, 9),
+    days: num(g('days', every === 'day' ? 1 : every === 'month' ? 30 : 7), 1, 90, 7), max: num(g('max', 12), 1, 40, 12),
+    parts: { added: parts.added !== false, soon: parts.soon !== false, stats: parts.stats !== false }, kinds: { movie: kinds.movie !== false, tv: kinds.tv !== false },
+    sids: (Array.isArray(g('sids', [])) ? g('sids', []) : []).filter(x => sv.has(x)).slice(0, 20),
+    to: { channels: (Array.isArray(to.channels) ? to.channels : []).filter(x => ch.has(x)).slice(0, 20), everyone: !!to.everyone },
+    subject: cut(String(g('subject', '{name}: {count} new since {since}')), 200), intro: cut(String(g('intro', '')), 1000), last: o.id ? o.last || 0 : Date.now(), archive: o.archive || [] };
+};
+const nlSubject = (nl, n) => AL.render(nl.subject || '{name}', { name: nl.name, date: when(Date.now()), days: nl.days, count: n.added.length, since: when(Date.now() - nl.days * DAY) }) || nl.name;
+const nlOpts = nl => ({ days: nl.days, title: nl.name, intro: nl.intro, parts: nl.parts, foot: `You get this because the "${nl.name}" newsletter is on in GoatMediaStackarr, under Settings, Alerts.` });
+// When it was last due: today (or the right weekday, or day of the month) at its hour, else the time before that.
+function nlDue(nl, now = Date.now()) {
+  const d = new Date(now); d.setHours(nl.hour, 0, 0, 0);
+  if (nl.every === 'day') { if (d.getTime() > now) d.setDate(d.getDate() - 1); }
+  else if (nl.every === 'week') { d.setDate(d.getDate() - ((d.getDay() - nl.day + 7) % 7)); if (d.getTime() > now) d.setDate(d.getDate() - 7); }
+  else { d.setDate(nl.day); if (d.getTime() > now) d.setMonth(d.getMonth() - 1); }
+  return d.getTime();
+}
+async function nlSend(nl) {
+  const n = await newsData({ days: nl.days, sids: nl.sids, kinds: nl.kinds, max: nl.max });
+  if (!n.added.length && !(nl.parts.soon && n.soon.length) && !nl.parts.stats) return { sent: 0, empty: true };
+  const subject = nlSubject(nl, n), html = newsHtml(n, baseUrl(), nlOpts(nl)), text = newsText(n).replace(/^GoatMediaStackarr weekly newsletter/, nl.name);
+  let sent = 0; const errors = [];
+  for (const c of ((db.alerts || {}).channels || []).filter(c => nl.to.channels.includes(c.id) && !channels.problem(c))) {
+    try { await channels.send(c, subject, text, html); sent++; } catch (e) { errors.push((c.name || c.type) + ': ' + e.message); } }
+  if (nl.to.everyone) { const c = mailer();
+    if (!c) errors.push('Everyone: no email channel');
+    else for (const u of personalFolk()) { const mine = { ...n, added: n.added.filter(x => kidsOk(u, x.cert)), soon: u.kids ? [] : n.soon };
+      if (!mine.added.length && !mine.soon.length) continue;
+      try { await require('./lib/smtp').sendMail({ host: c.host, port: c.port, secure: c.secure, user: c.user, pass: c.pass, from: c.from, insecure: !!c.insecure, to: u.email, subject, text: newsText(mine).replace(/^GoatMediaStackarr weekly newsletter/, nl.name), html: newsHtml(mine, baseUrl(), nlOpts(nl)) }); sent++; }
+      catch (e) { errors.push(u.name + ': ' + e.message); } } }
+  nl.archive = [{ at: Date.now(), subject, html, sent }, ...(nl.archive || [])].slice(0, 6);
+  if (errors.length) audit('system', 'Newsletter not sent to some', nl.name + ': ' + errors.slice(0, 3).join('; '));
+  save(); return { sent, errors };
+}
+async function nlTick() {
+  for (const nl of db.newsletters || []) {
+    if (!nl.on) continue; const due = nlDue(nl);
+    if ((nl.last || 0) < due && Date.now() - due < 6 * 3600e3) { nl.last = Date.now(); save(); await nlSend(nl).catch(e => audit('system', 'Newsletter failed', nl.name + ': ' + e.message)); }
+  }
+}
 async function sendPersonal(n) {
   if (!((db.settings.weekly || {}).everyone)) return { sent: 0 };
   const c = mailer(); if (!c) return { sent: 0, error: 'No email channel' };
@@ -1299,6 +1404,7 @@ async function streamTick() {
   let changed = false;
   for (const s of db.services.filter(isMS)) {
     let list; try { list = await mediaSessions(s); } catch { continue; }
+    try { playWatch(s, list); } catch {}
     const alive = new Set();
     for (const x of list) {
       if (!x.id) continue;
@@ -1496,6 +1602,8 @@ async function monitor() {
     for (const [k, v] of tickets) if (v.exp < Date.now()) tickets.delete(k);
     if (mon.n % 10 === 0) uptSave();
     await safe(streamTick);
+    if (mon.n % 4 === 0) await safe(recentWatch);
+    await safe(nlTick);
     if (mon.n % 120 === 0 && !DEMO) await safe(latestRelease);
     if (++mon.n % 2 === 0) await safe(refreshRequests);
     if (mon.n % 10 === 0) await safe(watchTick);
@@ -3366,8 +3474,8 @@ const goatServer = http.createServer(async (req, res) => {
     }
     if (p === '/api/alerts' && m === 'GET') {
       const a = db.alerts || {}, pub = c => ({ id: c.id, type: c.type, where: c.target ? (() => { try { return new URL(c.target).origin + '/…'; } catch { return '…'; } })() : '', chat: c.type === 'telegram' || c.type === 'pushover' ? c.chat : '',
-        host: c.host || '', port: c.port || '', secure: c.secure || '', user: c.user || '', from: c.from || '', to: c.to || '', hasSecret: !!(c.token || c.pass), name: c.name || '', events: chanEvents(c) });
-      return send(res, 200, { finished: !!a.finished, offline: !!a.offline, disk: !!a.disk, vpn: !!a.vpn, requests: !!a.requests, reports: a.reports !== false, diskPct: a.diskPct || 90, events: ALERT_EVENTS, channels: (a.channels || []).map(pub) });
+        host: c.host || '', port: c.port || '', secure: c.secure || '', user: c.user || '', from: c.from || '', to: c.to || '', hasSecret: !!(c.token || c.pass), name: c.name || '', events: chanEvents(c), tpl: c.tpl || {}, conds: c.conds || [], condMode: c.condMode === 'any' ? 'any' : 'all' });
+      return send(res, 200, { finished: !!a.finished, offline: !!a.offline, disk: !!a.disk, vpn: !!a.vpn, requests: !!a.requests, reports: a.reports !== false, diskPct: a.diskPct || 90, events: ALERT_EVENTS, meta: Object.fromEntries(ALERT_EVENTS.map(k => [k, { ...AL.EVENTS[k], params: AL.paramsOf(k) }])), ops: AL.OPS, channels: (a.channels || []).map(pub) });
     }
     if (p === '/api/alerts' && m === 'PUT') {
       const b = await readBody(req), o = db.alerts || { channels: [] };
@@ -3378,7 +3486,8 @@ const goatServer = http.createServer(async (req, res) => {
     }
     const chanFields = (b, o = {}) => { const g = k => b[k] != null && String(b[k]).trim() !== '' ? String(b[k]).trim().slice(0, 500) : o[k];
       return { id: o.id || uid(), type: b.type || o.type, target: g('target'), token: g('token'), chat: g('chat'), host: g('host'), port: g('port'), secure: ['ssl', 'starttls', 'none'].includes(b.secure) ? b.secure : o.secure || 'starttls', user: g('user'), pass: g('pass'), from: g('from'), to: g('to'),
-        name: b.name != null ? String(b.name).trim().slice(0, 60) : o.name || '', events: Array.isArray(b.events) ? ALERT_EVENTS.filter(k => b.events.includes(k)) : o.events || (o.id ? chanEvents(o) : ALERT_EVENTS.filter(k => !['finished', 'grabbed', 'available'].includes(k))) }; };
+        name: b.name != null ? String(b.name).trim().slice(0, 60) : o.name || '', events: Array.isArray(b.events) ? ALERT_EVENTS.filter(k => b.events.includes(k)) : o.events || (o.id ? chanEvents(o) : ALERT_EVENTS.filter(k => !ALERT_QUIET.includes(k))),
+        tpl: b.tpl != null ? AL.cleanTpl(b.tpl) : o.tpl || {}, conds: b.conds != null ? AL.cleanConds(b.conds) : o.conds || [], condMode: b.condMode != null ? (b.condMode === 'any' ? 'any' : 'all') : o.condMode || 'all' }; };
     if (p === '/api/alerts/channels' && m === 'POST') {
       const c = chanFields(await readBody(req)), why = channels.problem(c); if (why) return send(res, 400, { error: why });
       db.alerts = db.alerts || {}; (db.alerts.channels = db.alerts.channels || []).push(c); save(); audit(me.name, 'Added an alert channel', c.type); return send(res, 200, { id: c.id });
@@ -3389,11 +3498,42 @@ const goatServer = http.createServer(async (req, res) => {
       const c = chanFields(await readBody(req), list[i]), why = channels.problem(c); if (why) return send(res, 400, { error: why });
       list[i] = c; save(); audit(me.name, 'Edited an alert channel', c.type); return send(res, 200, {});
     }
+    // What a message would say, with made-up values for the trigger's parameters.
+    const SAMPLE = { user: 'Ravi', title: 'The Long Night', full_title: 'Harbor Lights S02E05 The Long Night', show_name: 'Harbor Lights', episode_name: 'The Long Night', season_num: 2, episode_num: 5, year: 2024,
+      media_type: 'episode', player: 'Living room TV', product: 'Plex for Android TV', quality: '1080p', stream_decision: 'direct play', bandwidth: '8.2 Mbps', location: 'lan', progress_percent: 42, duration: '52 min',
+      server: 'Plex', library: 'TV Shows', summary: 'A storm cuts the town off for a night.' };
+    if (p === '/api/alerts/preview' && m === 'POST') {
+      const b = await readBody(req), kind = AL.EVENTS[b.kind] ? b.kind : 'playStart';
+      const pr = alertParams(kind, 'Example subject', 'Example message', SAMPLE), r2 = AL.message({ tpl: AL.cleanTpl({ [kind]: { subject: b.subject, body: b.body } }) }, kind, pr);
+      return send(res, 200, { subject: r2.subject, body: r2.body, params: AL.paramsOf(kind) });
+    }
     if (p === '/api/alerts/test' && m === 'POST') {
       const b = await readBody(req), list = ((db.alerts || {}).channels || []).filter(c => !b.id || c.id === b.id);
+      if (b.kind && AL.EVENTS[b.kind]) {
+        if (!list.length) return send(res, 400, { error: 'Add a channel first' });
+        const pr = alertParams(b.kind, 'GoatMediaStackarr test', 'Alerts are working.', SAMPLE);
+        const results = await Promise.all(list.map(async c => { try { const mm = AL.message(c, b.kind, pr); await channels.send(c, mm.subject, mm.body); return { id: c.id, ok: true }; } catch (e) { return { id: c.id, ok: false, error: String(e.message).slice(0, 200) }; } }));
+        return send(res, 200, { results });
+      }
       if (!list.length) return send(res, 400, { error: 'Add a channel first' });
       const results = await Promise.all(list.map(async c => { try { await channels.send(c, 'GoatMediaStackarr test', 'Alerts are working.'); return { id: c.id, ok: true }; } catch (e) { return { id: c.id, ok: false, error: String(e.message).slice(0, 200) }; } }));
       return send(res, 200, { results });
+    }
+    const nlPub = nl => { const { archive, ...x } = nl; return { ...x, next: nl.on ? (() => { const d = new Date(nlDue(nl)); if (nl.every === 'day') d.setDate(d.getDate() + 1); else if (nl.every === 'week') d.setDate(d.getDate() + 7); else d.setMonth(d.getMonth() + 1); return d.getTime(); })() : 0, sentList: (archive || []).map((a, i) => ({ i, at: a.at, subject: a.subject, sent: a.sent })) }; };
+    if (p === '/api/newsletters' && m === 'GET') return send(res, 200, { list: (db.newsletters || []).map(nlPub), channels: ((db.alerts || {}).channels || []).map(c => ({ id: c.id, name: c.name || c.type, type: c.type })),
+      libs: db.services.filter(s => ['sonarr', 'radarr'].includes(s.type)).map(s => ({ id: s.id, name: s.name, type: s.type })), mail: !!mailer() });
+    if (p === '/api/newsletters' && m === 'POST') {
+      const nl = nlClean(await readBody(req)); (db.newsletters = db.newsletters || []).push(nl); save(); audit(me.name, 'Added a newsletter', nl.name); return send(res, 200, nlPub(nl));
+    }
+    if ((r = p.match(/^\/api\/newsletters\/(\w+)(?:\/(preview|send|archive)(?:\/(\d+))?)?$/))) {
+      const list = db.newsletters || [], i = list.findIndex(x => x.id === r[1]); if (i < 0) return send(res, 404, { error: 'Not found' });
+      const nl = list[i];
+      if (!r[2] && m === 'PUT') { list[i] = nlClean(await readBody(req), nl); save(); audit(me.name, 'Changed a newsletter', list[i].name); return send(res, 200, nlPub(list[i])); }
+      if (!r[2] && m === 'DELETE') { list.splice(i, 1); save(); audit(me.name, 'Removed a newsletter', nl.name); return send(res, 200, {}); }
+      if (r[2] === 'preview' && m === 'GET') { const n = await newsData({ days: nl.days, sids: nl.sids, kinds: nl.kinds, max: nl.max }); return send(res, 200, { subject: nlSubject(nl, n), html: newsHtml(n, baseUrl(), nlOpts(nl)), count: n.added.length }); }
+      if (r[2] === 'send' && m === 'POST') { if (!nl.to.channels.length && !nl.to.everyone) return send(res, 400, { error: 'Pick who gets it first' }); const out = await nlSend(nl); audit(me.name, 'Sent a newsletter', nl.name); return send(res, 200, out); }
+      if (r[2] === 'archive' && m === 'GET' && r[3] != null) { const a = (nl.archive || [])[+r[3]]; if (!a) return send(res, 404, { error: 'Not found' }); return send(res, 200, { subject: a.subject, at: a.at, html: a.html }); }
+      return send(res, 405, { error: 'Not allowed' });
     }
     const SCOPES = ['apps', 'traffic', 'downloads', 'upcoming', 'watching'], LOOKS = ['auto', 'dark', 'light'];
     const linkScopes = b => Object.fromEntries(SCOPES.map(k => [k, k === 'apps' ? b[k] !== false : !!b[k]]));

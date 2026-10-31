@@ -277,10 +277,10 @@ function create(opts = {}) {
         const movie = i % 2 === 1, off = 9e5 + (Date.now() % 6e5) + i * 7e5, mv = st.movies[i % st.movies.length], tc = movie;
         return { type: movie ? 'movie' : 'episode', ...(movie ? { title: mv.title, year: mv.year, thumb: '/library/metadata/' + mv.id + '/thumb' } : { grandparentTitle: st.shows[i % st.shows.length].title, parentIndex: 1, index: i + 2, title: 'Demo episode', grandparentThumb: '/library/metadata/' + (i + 1) + '/thumb' }),
           duration: movie ? 6.4e6 : 2.7e6, viewOffset: off, Session: { id: 's' + i, bandwidth: movie ? 4200 : 8200, location: movie ? 'wan' : 'lan' }, User: { title: ['alex', 'sam', 'jo'][i % 3] },
-          Player: { title: movie ? 'Phone' : 'Living Room TV', product: movie ? 'Plex for Android' : 'Plex for LG', state: 'playing' }, Media: [{ videoResolution: movie ? '1080' : '4k' }],
+          Player: { title: movie ? 'Phone' : 'Living Room TV', product: movie ? 'Plex for Android' : 'Plex for LG', state: (st.paused || [])[i] ? 'paused' : 'playing' }, Media: [{ videoResolution: movie ? '1080' : '4k' }],
           ...(tc ? { TranscodeSession: { videoDecision: 'transcode', audioDecision: 'copy' } } : {}) };
       }) } });
-      if (sub.startsWith('/library/recentlyAdded')) return json(res, { MediaContainer: { Metadata: Array.from({ length: 24 }, (_, i) => ({ type: 'movie', ratingKey: String(300 + i), title: 'New item ' + i, year: 2025, addedAt: Math.round(Date.now() / 1000) - (i < (st.fresh == null ? 3 : st.fresh) ? i * 3600 : (20 + i) * 86400), thumb: '/library/metadata/' + (300 + i) + '/thumb' })) } });
+      if (sub.startsWith('/library/recentlyAdded')) return json(res, { MediaContainer: { Metadata: [...(st.added || []), ...Array.from({ length: 24 }, (_, i) => ({ type: 'movie', ratingKey: String(300 + i), title: 'New item ' + i, year: 2025, addedAt: Math.round(Date.now() / 1000) - (i < (st.fresh == null ? 3 : st.fresh) ? i * 3600 : (20 + i) * 86400), thumb: '/library/metadata/' + (300 + i) + '/thumb' }))] } });
       if (sub.startsWith('/library/metadata/')) { res.writeHead(200, { 'Content-Type': 'image/svg+xml' }); const hue = [...sub].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 360, 7), t = decodeURIComponent(svg('Demo', hue).split(',')[1]); return res.end(t); }
       return json(res, { MediaContainer: {} });
     }

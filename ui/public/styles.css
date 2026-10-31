@@ -348,9 +348,9 @@ main.sx #m .opt{padding:10px 12px}
 .aud-f{gap:8px;margin:0 0 10px}.aud-f input{max-width:240px;margin:0}.aud-f select{width:auto;margin:0}
 .panel.aud{padding:4px 14px}
 .aud-d{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--mute);padding:10px 0 4px;border-bottom:1px solid var(--line)}
-.aud-r{display:grid;grid-template-columns:52px 96px 1fr;gap:8px;font-size:13px;line-height:1.35;padding:4px 0;border-bottom:1px solid color-mix(in srgb,var(--line) 50%,transparent)}
+.aud-r{display:grid;grid-template-columns:66px 110px 1fr;gap:8px;font-size:13px;line-height:1.35;padding:4px 0;border-bottom:1px solid color-mix(in srgb,var(--line) 50%,transparent)}
 .aud-r b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-@media(max-width:560px){.aud-r{grid-template-columns:44px 1fr}.aud-r>span:last-child{grid-column:1/-1;padding-left:52px;margin-top:-2px}}
+@media(max-width:560px){.aud-r{grid-template-columns:66px 1fr}.aud-r>span:last-child{grid-column:1/-1;padding-left:74px;margin-top:-2px}}
 
 /* Where a file is saved */
 .fpath{display:flex;gap:6px;align-items:flex-start;flex-basis:100%;font-size:12.5px;overflow-wrap:anywhere;margin-top:4px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
@@ -358,3 +358,17 @@ main.sx #m .opt{padding:10px 12px}
 button.sm{min-height:30px;padding:4px 10px;font-size:13px}
 /* Sorting releases */
 .relsort{gap:8px;margin:0 0 10px;flex-wrap:wrap}.relsort .seg button{padding:5px 10px;font-size:13px}
+
+/* Alerts like Tautulli: triggers by group, own text, conditions; newsletters */
+.chb{margin:10px 0}
+.evg{margin-top:10px}.evh{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--mute);margin-bottom:2px}
+.evl{display:flex;flex-wrap:wrap;gap:2px 14px}.evr{display:inline-flex;align-items:center;gap:2px}
+.evt{width:28px;height:28px;min-height:0;padding:0;opacity:.55}.evt svg{width:15px;height:15px}.evt.on{opacity:1;color:var(--acc)}
+.cnds{margin-top:10px;border-top:1px solid var(--line);padding-top:8px}.cnds summary{cursor:pointer;font-weight:600;font-size:14px}
+.cnd{gap:6px;margin:4px 0;flex-wrap:nowrap}.cnd select,.cnd input{margin:0;min-width:0}.cnd select{width:auto;flex:none}.cnd input{flex:1}
+@media(max-width:560px){.cnd{flex-wrap:wrap}.cnd input{flex-basis:100%}}
+.tpp{gap:6px}.tpp .pill{margin:0;min-height:0;padding:3px 8px;cursor:pointer;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
+.tpv{margin-top:12px;padding:10px 12px;border:1px dashed var(--line);border-radius:10px}
+.nlr{margin:10px 0}.nlf{width:100%;height:70vh;border:0;border-radius:10px;background:#e9ecf2}
+.nlform>label.mute,label.blk{display:block;margin:8px 0}.nlform>label.mute>input,.nlform>label.mute>textarea,label.blk>input,label.blk>textarea{display:block;width:100%;margin-top:4px}
+.nlform fieldset{border:1px solid var(--line);border-radius:10px;padding:6px 12px 10px;margin:10px 0}.nlform fieldset .chk{margin:4px 14px 0 0}

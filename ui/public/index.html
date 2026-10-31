@@ -784,7 +784,7 @@ const ICONS={rel:'<path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" fi
  wt:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>',stats:'<path d="M5 20V10M12 20V4M19 20v-7"/>',
  set:'<circle cx="12" cy="12" r="3"/><path d="M12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6 7 7m10 10 1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4"/>',
  tv:'<rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8M12 17v4"/>',film:'<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 4v16M16 4v16M4 9h4M4 15h4M16 9h4M16 15h4"/>',book:'<path d="M5 4h10a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h10"/>',box:'<path d="M3 7.5 12 3l9 4.5v9L12 21l-9-4.5z"/><path d="M3 7.5 12 12l9-4.5M12 12v9"/>',
- disc:'<circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/>',hist:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',trash:'<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>'};
+ disc:'<circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/>',hist:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',trash:'<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',edit:'<path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',x:'<path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'};
 const ic=k=>`<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${ICONS[k]}</svg>`;
 const LOGO='<img src="/icon-192.png" alt="" width="38" height="38">';
 const PAGES={dash:['',''],wl:['Watchlist','What you want to watch. You hear when each one is in the library.'],find:['Search','Find a show or movie and add it to Sonarr or Radarr.'],disc:['Discover','What is trending, popular and anticipated on Trakt, TMDB and TheTVDB.'],rq:['Requests','Ask for something new, or approve what others asked for.'],lib:['Library','Everything in Sonarr and Radarr, and what is still missing.'],
@@ -2743,22 +2743,91 @@ function chanDialog(c,done){
     catch(x){o.querySelector('#ce').textContent=x.message}};
 }
 const ALERT_NAMES={finished:'A download finishes',grabbed:'Something is added from Trackers',requests:'Someone makes a request',available:'A request is ready to watch',reports:'Someone reports a problem',offline:'An app goes offline or comes back',vpn:'The VPN stops working',disk:'The array is almost full',streamLimit:'Someone reaches their streaming limit',update:'A new version is out',appUpdates:'Apps inside the container are updated (weekly)',backup:'A backup or restore of the stack fails',healed:'Something was fixed by itself (a stuck download, an app restarted)',weekly:'The weekly newsletter'};
+// ---------- Alerts and newsletters, the way Tautulli does them
+let alTab='ch';
 async function alView(){
   let a={};try{a=await api('/api/alerts')}catch(x){$('#m').innerHTML=`<div class="err">${esc(x.message)}</div>`;return}
   if(tab!=='set'||stSub!=='alerts')return;
-  const sub=c=>c.type==='email'?esc(c.to):c.type==='telegram'||c.type==='pushover'?esc(c.chat):esc(c.where);
-  $('#m').innerHTML=`<div class="panel" style="max-width:640px"><div class="row" style="margin-bottom:6px"><h3 style="margin:0;flex:1">Where messages go</h3><button class="primary" id="ac">${ic('rq')}Add channel</button></div>
-    <p class="mute" style="margin-top:0">Each channel has its own list of what it is told about: tick what you want on each one. Changes are saved straight away. Needs internet access from the server.</p>
-    <div id="cl">${(a.channels||[]).map(c=>`<div class="box" data-c="${c.id}" style="margin:10px 0"><div class="row" style="gap:8px"><div class="grow" style="min-width:0"><b>${esc(c.name||CH_NAMES[c.type]||c.type)}</b>${c.name?` <span class="mute">${CH_NAMES[c.type]||esc(c.type)}</span>`:''} <span class="mute" style="word-break:break-all">${sub(c)}</span></div>
+  $('#m').innerHTML=`<div class="seg altab" role="tablist" style="margin-bottom:12px">${[['ch','Channels and triggers'],['nl','Newsletters']].map(([k,n])=>`<button role="tab" data-at="${k}" class="${alTab===k?'on':''}" aria-selected="${alTab===k}">${n}</button>`).join('')}</div><div id="alb"></div>`;
+  $('#m').querySelector('.altab').onclick=e=>{const b=e.target.closest('[data-at]');if(b){alTab=b.dataset.at;alView()}};
+  return alTab==='nl'?nlView(a):chView(a);
+}
+function chView(a){
+  const M=a.meta||{},sub=c=>c.type==='email'?esc(c.to):c.type==='telegram'||c.type==='pushover'?esc(c.chat):esc(c.where);
+  const groups=[...new Set((a.events||[]).map(k=>(M[k]||{}).group||'Other'))];
+  const evRow=(c,k)=>{const m=M[k]||{},on=(c.events||[]).includes(k),own=!!((c.tpl||{})[k]);
+    return `<span class="evr"><label class="chk" style="margin:0"><input type="checkbox" data-ev="${k}" ${on?'checked':''}>${esc(m.name||ALERT_NAMES[k]||k)}</label>${on?`<button type="button" class="icon evt${own?' on':''}" data-tx="${k}" title="${own?'This channel has its own text for this':'Write this channel’s own text for this'}" aria-label="Text for ${esc(m.name||k)}">${ic('edit')}</button>`:''}</span>`};
+  const condRow=(c,x,i)=>{const ps=[...new Set((c.events||[]).flatMap(k=>(M[k]||{}).params||[]))].sort();
+    return `<div class="row cnd" data-ci="${i}"><select data-cp aria-label="Parameter">${ps.concat(ps.includes(x.p)||!x.p?[]:[x.p]).map(p=>`<option ${p===x.p?'selected':''}>${esc(p)}</option>`).join('')}</select><select data-co aria-label="Condition">${Object.entries(a.ops||{}).map(([k,n])=>`<option value="${k}" ${k===x.op?'selected':''}>${esc(n)}</option>`).join('')}</select><input data-cv value="${esc(x.v||'')}" placeholder="value (several: a, b)" aria-label="Value"><button type="button" class="icon" data-cx aria-label="Remove this condition">${ic('x')}</button></div>`};
+  $('#alb').innerHTML=`<div class="panel" style="max-width:820px"><div class="row" style="margin-bottom:6px"><h3 style="margin:0;flex:1">Where messages go</h3><button class="primary" id="ac">${ic('rq')}Add channel</button></div>
+    <p class="mute" style="margin-top:0">Like Tautulli’s notification agents: tick what each channel is told about, give any trigger its own words with ${ic('edit')} (with {parameters} filled in), and add conditions to only send some of them. Changes save straight away.</p>
+    <div id="cl">${(a.channels||[]).map(c=>`<div class="box chb" data-c="${c.id}"><div class="row" style="gap:8px"><div class="grow" style="min-width:0"><b>${esc(c.name||CH_NAMES[c.type]||c.type)}</b>${c.name?` <span class="mute">${CH_NAMES[c.type]||esc(c.type)}</span>`:''} <span class="mute" style="word-break:break-all">${sub(c)}</span></div>
       <span class="row"><button data-ct>Test</button><button data-ce>Edit</button><button class="danger" data-cd>Remove</button></span></div><div class="err" data-r style="min-height:0"></div>
-      <div class="mute" style="margin-top:8px;font-size:13px">Tell this channel when</div>
-      <div class="row" style="gap:4px 14px;margin-top:4px">${(a.events||[]).map(k=>`<label class="chk" style="margin:0"><input type="checkbox" data-ev="${k}" ${(c.events||[]).includes(k)?'checked':''}>${esc(ALERT_NAMES[k]||k)}</label>`).join('')}</div></div>`).join('')||empty('No channels yet','Add ntfy, Discord, Telegram, Pushover, Gotify, a webhook or email.')}</div></div>
-    <form id="f" class="panel" style="max-width:640px;margin-top:16px"><h3 style="margin-top:0">When the array counts as full</h3>
+      ${groups.map(g=>`<div class="evg"><div class="evh">${esc(g)}</div><div class="evl">${(a.events||[]).filter(k=>((M[k]||{}).group||'Other')===g).map(k=>evRow(c,k)).join('')}</div></div>`).join('')}
+      <details class="cnds"${(c.conds||[]).length?' open':''}><summary>Conditions${(c.conds||[]).length?` <span class="pill acc">${c.conds.length}</span>`:''}</summary>
+        <p class="mute" style="margin:6px 0">Send only when <select data-cm aria-label="All or any"><option value="all" ${c.condMode!=='any'?'selected':''}>all</option><option value="any" ${c.condMode==='any'?'selected':''}>any</option></select> of these hold. A trigger without that parameter counts it as empty. Example: <i>user is not</i> <code>admin</code>, or <i>location is</i> <code>wan</code>.</p>
+        <div data-cl>${(c.conds||[]).map((x,i)=>condRow(c,x,i)).join('')}</div>
+        <div class="row" style="margin-top:6px"><button type="button" data-ca>${ic('rq')}Add condition</button><button type="button" class="primary" data-cs>Save conditions</button></div></details></div>`).join('')||empty('No channels yet','Add one to get messages on your phone, in Discord, by email and more.')}</div></div>
+    <form id="f" class="panel" style="max-width:820px;margin-top:16px"><h3 style="margin-top:0">When the array counts as full</h3>
     <label class="mute">At (%) <input name="diskPct" type="number" min="50" max="99" value="${a.diskPct||90}" style="width:80px"></label>
     <div class="row"><button class="primary">Save</button></div><div class="err" id="e"></div></form>`;
   const msg=(t,ok)=>{const m=$('#e');m.style.color=ok?'var(--ok-t)':'';m.textContent=t};
+  $('#ac').onclick=()=>chanDialog(null,alView);
+  const chOf=row=>a.channels.find(x=>x.id===row.dataset.c);
+  const readConds=row=>[...row.querySelectorAll('.cnd')].map(r=>({p:r.querySelector('[data-cp]').value,op:r.querySelector('[data-co]').value,v:r.querySelector('[data-cv]').value}));
+  $('#cl').onclick=async e=>{const row=e.target.closest('[data-c]');if(!row)return;const c=chOf(row);
+    if(e.target.closest('[data-ce]'))chanDialog(c,alView);
+    if(e.target.closest('[data-cd]')&&confirm('Remove this channel?')){try{await api('/api/alerts/channels/'+c.id,'DELETE');alView()}catch(x){toast(x.message,'bad')}}
+    if(e.target.closest('[data-ct]')){const r=row.querySelector('[data-r]');r.style.color='';r.textContent='Sending…';
+      try{const d=await api('/api/alerts/test','POST',{id:c.id}),x=d.results[0];r.style.color=x.ok?'var(--ok-t)':'';r.textContent=x.ok?'Test message sent':(x.error||'Failed')}catch(x){r.style.color='';r.textContent=x.message}}
+    const tx=e.target.closest('[data-tx]');if(tx)tplDialog(a,c,tx.dataset.tx);
+    if(e.target.closest('[data-ca]')){c.conds=readConds(row);c.conds.push({p:'user',op:'is',v:''});row.querySelector('[data-cl]').innerHTML=c.conds.map((x,i)=>condRow(c,x,i)).join('')}
+    const cx=e.target.closest('[data-cx]');if(cx){cx.closest('.cnd').remove()}
+    if(e.target.closest('[data-cs]')){const conds=readConds(row),condMode=row.querySelector('[data-cm]').value;
+      try{await api('/api/alerts/channels/'+c.id,'PUT',{type:c.type,conds,condMode});c.conds=conds;c.condMode=condMode;toast('Conditions saved','ok');alView()}catch(x){toast(x.message,'bad')}}};
+  $('#f').onsubmit=async e=>{e.preventDefault();const f=e.target.elements,o={...a,diskPct:f.diskPct.value};['channels','events','meta','ops'].forEach(k=>delete o[k]);
+    try{await api('/api/alerts','PUT',o);msg('Saved',true)}catch(x){msg(x.message)}};
+  $('#cl').onchange=async e=>{const t=e.target;if(!t.matches('[data-ev]'))return;const row=t.closest('[data-c]'),c=chOf(row);
+    const ev=[...row.querySelectorAll('[data-ev]:checked')].map(x=>x.dataset.ev);
+    try{await api('/api/alerts/channels/'+c.id,'PUT',{type:c.type,events:ev});c.events=ev;toast('Saved','ok');chView(a)}catch(x){t.checked=!t.checked;toast(x.message,'bad')}};
+}
+// One channel's own subject and text for one trigger, with its parameters to click in and a live preview.
+function tplDialog(a,c,k){
+  const m=(a.meta||{})[k]||{},t=((c.tpl||{})[k])||{};
+  const o=modal(`<h2 style="margin:0">${esc(m.name||k)}</h2><p class="mute" style="margin:2px 0 12px">${esc(c.name||CH_NAMES[c.type]||c.type)} · its own words for this trigger. Leave both empty to use the standard text.</p>
+    <label class="mute blk">Subject <input id="tps" value="${esc(t.subject||'')}" placeholder="${esc(m.subject||'{subject}')}"></label>
+    <label class="mute blk">Text <textarea id="tpb" rows="4" placeholder="${esc(m.body||'{message}')}">${esc(t.body||'')}</textarea></label>
+    <div class="mute" style="font-size:13px;margin:6px 0 4px">Parameters (click to put one in). <code>&lt;… {param} …&gt;</code> is left out when that parameter is empty; <code>\\n</code> starts a new line.</div>
+    <div class="chips tpp">${(m.params||[]).map(p=>`<button type="button" class="pill" data-pp="${esc(p)}">{${esc(p)}}</button>`).join('')}</div>
+    <div class="tpv" aria-live="polite"><div class="mute" style="font-size:12px">Preview, with made-up values</div><b id="tvs"></b><div id="tvb" style="white-space:pre-line"></div></div>
+    <div class="row" style="margin-top:12px"><button class="primary" id="tsv">Save</button><button id="ttt">Send a test</button><button id="trs">Use the standard text</button><button data-x>Cancel</button></div><div class="err" id="tpe"></div>`);
+  const q=x=>o.querySelector(x);let last=q('#tpb'),tm=null;
+  q('#tps').onfocus=e=>last=e.target;q('#tpb').onfocus=e=>last=e.target;
+  const prev=()=>{clearTimeout(tm);tm=setTimeout(async()=>{try{const r=await api('/api/alerts/preview','POST',{kind:k,subject:q('#tps').value,body:q('#tpb').value});q('#tvs').textContent=r.subject;q('#tvb').textContent=r.body}catch{}},250)};
+  q('#tps').oninput=prev;q('#tpb').oninput=prev;prev();
+  o.querySelector('.tpp').onclick=e=>{const b=e.target.closest('[data-pp]');if(!b)return;const el=last,ins='{'+b.dataset.pp+'}',st=el.selectionStart??el.value.length,en=el.selectionEnd??st;
+    el.value=el.value.slice(0,st)+ins+el.value.slice(en);el.focus();el.selectionStart=el.selectionEnd=st+ins.length;prev()};
+  const save=async tpl=>{try{await api('/api/alerts/channels/'+c.id,'PUT',{type:c.type,tpl});c.tpl=tpl;return true}catch(x){q('#tpe').textContent=x.message;return false}};
+  q('#tsv').onclick=async()=>{const tpl={...(c.tpl||{})},sv=q('#tps').value.trim(),bv=q('#tpb').value.trim();if(sv||bv)tpl[k]={subject:sv,body:bv};else delete tpl[k];if(await save(tpl)){o.close();toast('Saved','ok');alView()}};
+  q('#trs').onclick=async()=>{const tpl={...(c.tpl||{})};delete tpl[k];if(await save(tpl)){o.close();toast('Standard text again','ok');alView()}};
+  q('#ttt').onclick=async()=>{const tpl={...(c.tpl||{})},sv=q('#tps').value.trim(),bv=q('#tpb').value.trim();if(sv||bv)tpl[k]={subject:sv,body:bv};else delete tpl[k];
+    if(!await save(tpl))return;try{const d=await api('/api/alerts/test','POST',{id:c.id,kind:k}),x=d.results[0];x.ok?toast('Test sent','ok'):(q('#tpe').textContent=x.error||'Failed')}catch(x){q('#tpe').textContent=x.message}};
+  o.querySelector('[data-x]').onclick=o.close;
+}
+// Newsletters: the weekly one, and any number more, each with its own schedule, time frame, libraries and recipients.
+const WD=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+async function nlView(a){
+  let d;try{d=await api('/api/newsletters')}catch(x){$('#alb').innerHTML=`<div class="err">${esc(x.message)}</div>`;return}
+  if(tab!=='set'||stSub!=='alerts'||alTab!=='nl')return;
+  const when=n=>n.every==='day'?`Every day at ${String(n.hour).padStart(2,'0')}:00`:n.every==='week'?`Every ${WD[n.day]} at ${String(n.hour).padStart(2,'0')}:00`:`On day ${n.day} of each month at ${String(n.hour).padStart(2,'0')}:00`;
+  $('#alb').innerHTML=`<div id="nlw"></div>
+    <div class="panel" style="max-width:720px;margin-top:16px"><div class="row" style="margin-bottom:6px"><h3 style="margin:0;flex:1">More newsletters</h3><button class="primary" id="nla">${ic('rq')}New newsletter</button></div>
+    <p class="mute" style="margin-top:0">Like Tautulli’s: each has its own schedule, how far back it looks, which libraries, what it shows and who gets it. Recently added titles come with posters in email.</p>
+    ${d.list.map(n=>`<div class="box nlr" data-n="${n.id}"><div class="row" style="gap:8px"><div class="grow" style="min-width:0"><b>${esc(n.name)}</b> ${n.on?'<span class="pill ok">On</span>':'<span class="pill">Off</span>'}<div class="mute" style="font-size:13px">${when(n)} · last ${n.days} day${n.days===1?'':'s'} · to ${[n.to.channels.length?n.to.channels.length+' channel'+(n.to.channels.length>1?'s':''):'',n.to.everyone?'everyone':''].filter(Boolean).join(' and ')||'<b>nobody yet</b>'}${n.next?` · next ${esc(fdt(n.next))}`:''}</div></div>
+      <span class="row"><button data-np>Preview</button><button data-ns>Send now</button><button data-ne>Edit</button><button class="danger" data-nd>Remove</button></span></div>
+      ${n.sentList.length?`<div class="mute" style="font-size:13px;margin-top:6px">Sent: ${n.sentList.map(x=>`<a href="#" data-nv="${x.i}">${esc(fdt(x.at))}</a>`).join(' · ')}</div>`:''}</div>`).join('')||'<p class="mute">None yet.</p>'}</div>`;
   let wk={on:false,day:0,hour:9};try{wk=await api('/api/weekly')}catch{}
-  $('#m').insertAdjacentHTML('beforeend',`<form id="wf" class="panel" style="max-width:640px;margin-top:16px"><h3 style="margin-top:0">Weekly newsletter</h3>
+  $('#nlw').innerHTML=(`<form id="wf" class="panel" style="max-width:720px;margin-top:0"><h3 style="margin-top:0">Weekly newsletter</h3>
     <p class="mute" style="margin-top:0">One message a week to every alert channel: what was added to the library (with posters in email), what is coming up, downloads, requests, open problems and any app that is not responding.</p>
     <label class="chk"><input type="checkbox" name="on" ${wk.on?'checked':''}>Send the weekly newsletter</label>
     <label class="chk"><input type="checkbox" name="everyone" ${wk.everyone?'checked':''}>Also email everyone their own week</label>
@@ -2769,17 +2838,42 @@ async function alView(){
   $('#wf').onsubmit=async e=>{e.preventDefault();const f=e.target.elements;try{await api('/api/weekly','PUT',{on:f.on.checked,everyone:f.everyone.checked,day:+f.day.value,hour:+f.hour.value});toast('Saved','ok')}catch(x){$('#we').textContent=x.message}};
   $('#wp').onclick=async()=>{$('#we').textContent='';try{const d=await api('/api/weekly/preview');$('#wo').hidden=false;$('#wo').innerHTML=d.html}catch(x){$('#we').textContent=x.message}};
   $('#ws').onclick=async()=>{$('#we').textContent='';try{const r=await api('/api/weekly/send','POST');toast(r&&r.sent?`Sent (and ${r.sent} personal email${r.sent>1?'s':''})`:'Sent','ok')}catch(x){$('#we').textContent=x.message}};
-  $('#ac').onclick=()=>chanDialog(null,alView);
-  $('#cl').onclick=async e=>{const row=e.target.closest('[data-c]');if(!row)return;const c=a.channels.find(x=>x.id===row.dataset.c);
-    if(e.target.closest('[data-ce]'))chanDialog(c,alView);
-    if(e.target.closest('[data-cd]')&&confirm('Remove this channel?')){try{await api('/api/alerts/channels/'+c.id,'DELETE');alView()}catch(x){toast(x.message,'bad')}}
-    if(e.target.closest('[data-ct]')){const r=row.querySelector('[data-r]');r.style.color='';r.textContent='Sending…';
-      try{const d=await api('/api/alerts/test','POST',{id:c.id}),x=d.results[0];r.style.color=x.ok?'var(--ok-t)':'';r.textContent=x.ok?'Test message sent':(x.error||'Failed')}catch(x){r.style.color='';r.textContent=x.message}}};
-  $('#f').onsubmit=async e=>{e.preventDefault();const f=e.target.elements,o={...a,diskPct:f.diskPct.value};delete o.channels;delete o.events;
-    try{await api('/api/alerts','PUT',o);msg('Saved',true)}catch(x){msg(x.message)}};
-  $('#cl').onchange=async e=>{const t=e.target;if(!t.matches('[data-ev]'))return;const row=t.closest('[data-c]'),c=a.channels.find(x=>x.id===row.dataset.c);
-    const ev=[...row.querySelectorAll('[data-ev]:checked')].map(x=>x.dataset.ev);
-    try{await api('/api/alerts/channels/'+c.id,'PUT',{type:c.type,events:ev});c.events=ev;toast('Saved','ok')}catch(x){t.checked=!t.checked;toast(x.message,'bad')}};
+  const nlOf=e=>{const r=e.target.closest('[data-n]');return r&&d.list.find(x=>x.id===r.dataset.n)};
+  const show=(title,html)=>{const o=modal(`<button class="pgback" data-x>${ic('back')}Back</button><h2 style="margin:4px 0 10px">${esc(title)}</h2><iframe class="nlf" title="${esc(title)}" sandbox></iframe>`,true);o.querySelector('iframe').srcdoc=html;o.querySelector('[data-x]').onclick=o.close};
+  $('#nla').onclick=()=>nlDialog(d,null);
+  $('#alb').querySelector('.panel:last-child').onclick=async e=>{const n=nlOf(e);if(!n)return;
+    if(e.target.closest('[data-ne]'))nlDialog(d,n);
+    if(e.target.closest('[data-nd]')&&confirm('Remove "'+n.name+'"?')){try{await api('/api/newsletters/'+n.id,'DELETE');alView()}catch(x){toast(x.message,'bad')}}
+    if(e.target.closest('[data-np]')){try{const r=await api(`/api/newsletters/${n.id}/preview`);show(r.subject,r.html)}catch(x){toast(x.message,'bad')}}
+    const b=e.target.closest('[data-ns]');if(b){b.disabled=true;try{const r=await api(`/api/newsletters/${n.id}/send`,'POST');toast(r.empty?'Nothing new to send':`Sent to ${r.sent}`+(r.errors&&r.errors.length?`, ${r.errors.length} failed`:''),r.errors&&r.errors.length?'bad':'ok');alView()}catch(x){toast(x.message,'bad')}b.disabled=false}
+    const v=e.target.closest('[data-nv]');if(v){e.preventDefault();try{const r=await api(`/api/newsletters/${n.id}/archive/${v.dataset.nv}`);show(r.subject,r.html)}catch(x){toast(x.message,'bad')}}};
+}
+function nlDialog(d,n){
+  const x=n||{name:'',on:true,every:'week',day:5,hour:18,days:7,max:12,parts:{added:true,soon:true,stats:false},kinds:{movie:true,tv:true},sids:[],to:{channels:[],everyone:false},subject:'{name}: {count} new since {since}',intro:''};
+  const hours=Array.from({length:24},(_,h)=>`<option value="${h}" ${h===x.hour?'selected':''}>${String(h).padStart(2,'0')}:00</option>`).join('');
+  const dayOpts=ev=>ev==='month'?Array.from({length:28},(_,i)=>`<option value="${i+1}" ${i+1===x.day?'selected':''}>${i+1}</option>`).join(''):WD.map((w,i)=>`<option value="${i}" ${i===x.day?'selected':''}>${w}</option>`).join('');
+  const o=modal(`<h2 style="margin:0 0 10px">${n?'Edit newsletter':'New newsletter'}</h2><form id="nlf" class="nlform">
+    <label class="mute">Name <input name="name" value="${esc(x.name)}" placeholder="Friday movie night" required maxlength="60"></label>
+    <label class="tgl"><input type="checkbox" name="on" ${x.on?'checked':''}><span>Send it on its schedule</span></label>
+    <div class="row"><label class="mute">Every <select name="every">${[['day','day'],['week','week'],['month','month']].map(([k,t])=>`<option value="${k}" ${k===x.every?'selected':''}>${t}</option>`).join('')}</select></label>
+      <label class="mute" id="nld"${x.every==='day'?' hidden':''}>on <select name="day">${dayOpts(x.every)}</select></label><label class="mute">at <select name="hour">${hours}</select></label></div>
+    <div class="row"><label class="mute">Looks back <input name="days" type="number" min="1" max="90" value="${x.days}" style="width:80px"> days</label><label class="mute">Up to <input name="max" type="number" min="1" max="40" value="${x.max}" style="width:70px"> titles</label></div>
+    <fieldset><legend class="mute">Shows</legend><label class="chk"><input type="checkbox" name="p_added" ${x.parts.added?'checked':''}>Recently added, with posters</label><label class="chk"><input type="checkbox" name="p_soon" ${x.parts.soon?'checked':''}>Coming up</label><label class="chk"><input type="checkbox" name="p_stats" ${x.parts.stats?'checked':''}>Numbers (downloads, requests)</label></fieldset>
+    <fieldset><legend class="mute">From</legend><label class="chk"><input type="checkbox" name="k_movie" ${x.kinds.movie?'checked':''}>Movies</label><label class="chk"><input type="checkbox" name="k_tv" ${x.kinds.tv?'checked':''}>Shows</label>
+      ${d.libs.length>1?`<div class="mute" style="font-size:13px;margin-top:4px">Only these (none ticked = all):</div>${d.libs.map(l=>`<label class="chk"><input type="checkbox" data-sid="${l.id}" ${x.sids.includes(l.id)?'checked':''}>${esc(l.name)}</label>`).join('')}`:''}</fieldset>
+    <fieldset><legend class="mute">Who gets it</legend>${d.channels.map(c=>`<label class="chk"><input type="checkbox" data-ch="${c.id}" ${x.to.channels.includes(c.id)?'checked':''}>${esc(c.name)} <span class="mute">${esc(CH_NAMES[c.type]||c.type)}</span></label>`).join('')||'<p class="mute" style="margin:0">No alert channels yet (Channels and triggers).</p>'}
+      <label class="chk"><input type="checkbox" name="everyone" ${x.to.everyone?'checked':''}>Everyone with an email address${d.mail?'':' <span class="mute">(needs an email channel)</span>'}</label></fieldset>
+    <label class="mute">Subject <input name="subject" value="${esc(x.subject)}" maxlength="200"></label><div class="mute" style="font-size:12px;margin-top:-4px">{name} {count} {since} {date} {days}</div>
+    <label class="mute">Words at the top <textarea name="intro" rows="2" maxlength="1000" placeholder="Optional">${esc(x.intro)}</textarea></label>
+    <div class="row" style="margin-top:10px"><button class="primary">Save</button><button type="button" data-x>Cancel</button></div><div class="err" id="nle"></div></form>`);
+  const f=o.querySelector('#nlf');
+  f.elements.every.onchange=e=>{const v=e.target.value;o.querySelector('#nld').hidden=v==='day';x.day=v==='month'?1:5;f.elements.day.innerHTML=dayOpts(v)};
+  o.querySelector('[data-x]').onclick=o.close;
+  f.onsubmit=async e=>{e.preventDefault();const g=f.elements;
+    const body={name:g.name.value,on:g.on.checked,every:g.every.value,day:+g.day.value,hour:+g.hour.value,days:+g.days.value,max:+g.max.value,
+      parts:{added:g.p_added.checked,soon:g.p_soon.checked,stats:g.p_stats.checked},kinds:{movie:g.k_movie.checked,tv:g.k_tv.checked},
+      sids:[...f.querySelectorAll('[data-sid]:checked')].map(i=>i.dataset.sid),to:{channels:[...f.querySelectorAll('[data-ch]:checked')].map(i=>i.dataset.ch),everyone:g.everyone.checked},subject:g.subject.value,intro:g.intro.value};
+    try{await api(n?'/api/newsletters/'+n.id:'/api/newsletters',n?'PUT':'POST',body);o.close();toast('Saved','ok');alView()}catch(y){o.querySelector('#nle').textContent=y.message}};
 }
 async function mbView(){
   const opts=services.filter(x=>['lidarr','readarr'].includes(x.type));
