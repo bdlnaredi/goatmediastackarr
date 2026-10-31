@@ -8,7 +8,7 @@ const http = require('http'), fs = require('fs'), path = require('path'), crypto
 const DATA = process.env.DATA_DIR || '/data', FILE = path.join(DATA, 'db.json');
 fs.mkdirSync(DATA, { recursive: true });
 const tclients = require('./lib/torrentclients');
-const totp = require('./lib/totp'), channels = require('./lib/channels'), AL = require('./lib/alerts'), LP = require('./lib/langpref'), BOTS = require('./lib/bots'), listsLib = require('./lib/lists');
+const totp = require('./lib/totp'), channels = require('./lib/channels'), AL = require('./lib/alerts'), LP = require('./lib/langpref'), BOTS = require('./lib/bots'), CLOUD = require('./lib/cloud'), listsLib = require('./lib/lists');
 const PORT = +process.env.PORT || 5080, DEMO = /^(1|true|yes)$/i.test(process.env.DEMO || ''), DAY = 864e5;
 const demo = DEMO ? require('./lib/demo').create({ streams: 2 }) : null;
 // Inside the container the release number comes from the image (GOAT_VERSION); otherwise from package.json.
@@ -300,7 +300,8 @@ let sbSeen = 0;
 const sbWatch = () => { const j = sbJob(); if (!j || j.running || !j.finished || j.finished <= sbSeen) return; sbSeen = j.finished; if (!db.settings.stackBackup) return;
   db.settings.stackBackup.lastResult = { ok: !!j.ok, at: j.finished, kind: j.kind, error: j.error || '', name: (j.result && (j.result.name || j.result.before)) || '' }; save();
   if (!j.ok) { feed('@admins', 'problem', j.kind === 'restore' ? 'Restore failed' : 'Backup failed', j.error || 'unknown problem', 'settings'); notify('backup', j.kind === 'restore' ? 'Restore failed' : 'Backup of the stack failed', j.error || 'unknown problem').catch(() => {}); }
-  else if (j.kind === 'backup' && j.auto) feed('@admins', 'info', 'Backup made', j.result && j.result.name || '', 'settings'); };
+  else if (j.kind === 'backup' && j.auto) feed('@admins', 'info', 'Backup made', j.result && j.result.name || '', 'settings');
+  if (j.ok && j.kind === 'backup' && j.result && j.result.name && goatSB) cloudCopy(path.join(goatSB.DIR(), j.result.name), j.result.name).catch(() => {}); };
 const goatSettings = (() => { for (const p of [process.env.GOAT_BIN && path.join(process.env.GOAT_BIN, 'settings.js'), path.join(__dirname, '..', 'bin', 'settings.js'), path.join(__dirname, '..', 'goat', 'settings.js')]) { try { if (p && fs.existsSync(p)) return require(p); } catch {} } return null; })();
 const goatRead = f => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; } };
 const goatVpnFiles = () => { try { return fs.readdirSync(path.join(GOAT_CONFIG, 'vpn')).filter(f => /\.(conf|ovpn)$/i.test(f) && f !== 'credentials.conf'); } catch { return []; } };
@@ -1208,14 +1209,22 @@ async function sendPersonal(n) {
   return { sent, errors };
 }
 const BK = path.join(DATA, 'backups'), BKRE = /^(auto|pre-restore)-\d{4}-\d{2}-\d{2}-\d{4}\.json$/;
-function backupNow(kind = 'auto') {
+function backupNow(kind = 'auto', toCloud = true) {
   fs.mkdirSync(BK, { recursive: true, mode: 0o700 });
   const d = new Date().toISOString(), name = `${kind}-${d.slice(0, 10)}-${d.slice(11, 13)}${d.slice(14, 16)}.json`;
   fs.writeFileSync(path.join(BK, name), dehydrate(db), { mode: 0o600 });
   const keep = (db.settings.backup && db.settings.backup.keep) || 7, all = fs.readdirSync(BK).filter(f => BKRE.test(f)).sort();
   for (const f of all.slice(0, Math.max(0, all.length - keep - 3))) try { fs.unlinkSync(path.join(BK, f)); } catch {}
   db.settings.backup = { ...(db.settings.backup || {}), last: Date.now() }; save();
+  if (toCloud) cloudCopy(path.join(BK, name), name).catch(() => {});
   return name;
+}
+// Copies a backup to the cloud storage set under Settings → Backup (S3-compatible or WebDAV), and remembers how it went.
+async function cloudCopy(file, name) {
+  const c = CLOUD.clean({}, db.settings.cloud || {}); if (!c.on || CLOUD.problem(c) || DEMO) return null;
+  try { const r = await CLOUD.send(c, file, name); db.settings.cloud = { ...db.settings.cloud, last: { at: Date.now(), ok: true, name } }; save(); return r; }
+  catch (e) { db.settings.cloud = { ...db.settings.cloud, last: { at: Date.now(), ok: false, name, error: cut(e.message, 200) } }; save();
+    feed('@admins', 'problem', 'Cloud backup failed', `${name}: ${e.message}`, 'settings'); notify('backup', 'Copying a backup to the cloud failed', `${name}: ${e.message}`).catch(() => {}); throw e; }
 }
 async function vpnStatus(s) {
   const c = vpnCache[s.id]; if (c && Date.now() - c.t < 60000) return c.r;
@@ -3692,6 +3701,23 @@ const goatServer = http.createServer(async (req, res) => {
     if (p === '/api/watchlist/settings' && m === 'PUT') {
       const b = await readBody(req); db.settings.watchlist = { ...(db.settings.watchlist || {}), auto: !!b.auto }; save();
       audit(me.name, 'Changed watchlists', db.settings.watchlist.auto ? 'request automatically' : 'do not request'); return send(res, 200, { auto: db.settings.watchlist.auto });
+    }
+    const cloudPub = () => { const c = CLOUD.clean({}, db.settings.cloud || {}); return { ...c, secret: '', pass: '', hasSecret: !!c.secret, hasPass: !!c.pass }; };
+    if (p === '/api/cloud' && m === 'GET') return send(res, 200, cloudPub());
+    if ((p === '/api/cloud' && m === 'PUT') || (p === '/api/cloud/test' && m === 'POST')) {
+      const b = await readBody(req), c = CLOUD.clean(b, db.settings.cloud || {}), bad = CLOUD.problem(c);
+      if (bad && (c.on || p.endsWith('/test'))) return send(res, 400, { error: bad });
+      if (p.endsWith('/test')) { try { await CLOUD.test(c); return send(res, 200, { ok: true }); } catch (e) { return send(res, 400, { error: cut(e.message, 300) }); } }
+      db.settings.cloud = c; save(); audit(me.name, 'Changed cloud backup', c.on ? c.type : 'off'); return send(res, 200, cloudPub());
+    }
+    if (p === '/api/cloud/now' && m === 'POST') {
+      const c = CLOUD.clean({}, db.settings.cloud || {}); if (!c.on) return send(res, 400, { error: 'Turn cloud backup on first' });
+      const name = backupNow('auto', false), out = [];
+      try { out.push((await cloudCopy(path.join(BK, name), name)).name); } catch (e) { return send(res, 502, { error: e.message }); }
+      // The newest backup of the whole stack goes along too.
+      const st = goatSB ? (goatSB.list() || []).sort((a, b) => String(b.name).localeCompare(String(a.name)))[0] : null;
+      if (st) { try { out.push((await cloudCopy(path.join(goatSB.DIR(), st.name), st.name)).name); } catch (e) { return send(res, 502, { error: e.message, sent: out }); } }
+      return send(res, 200, { sent: out });
     }
     if (p === '/api/bots' && m === 'GET') { const c = db.settings.bots || {}, st = bots.state();
       return send(res, 200, { telegram: { set: !!(c.telegram || {}).token, name: (c.telegram || {}).name || '', ...st.telegram }, discord: { set: !!(c.discord || {}).token, name: (c.discord || {}).name || '', ...st.discord }, linked: db.users.filter(u => u.chats && Object.keys(u.chats).length).map(u => ({ name: u.name, chats: Object.keys(u.chats) })) }); }

@@ -93,8 +93,8 @@ function create(opts = {}) {
     // Radarr's collections: one franchise with two films here and one not.
     if (!tv && p === '/api/v3/collection') return json(res, [{ id: 1, tmdbId: 10, title: 'Demo Saga', monitored: false, images: [], movies: [{ tmdbId: 5001, title: st.movies[0].title }, { tmdbId: 5002, title: st.movies[1].title }, { tmdbId: 6300, title: 'Demo Saga III' }] }]);
     if (p === '/api/v3/rootfolder') return json(res, [{ path: tv ? '/tv' : '/movies' }]);
-    if (p === '/api/v3/indexer/testall' || p === '/api/v3/downloadclient/testall') { st.calls.push(type + ' ' + p); return json(res, []); }
-    if (p === '/api/v3/command' && m === 'POST') { st.calls.push(type + ' command ' + data.name); return json(res, { id: 1, name: data.name }); }
+    if (p === '/api/v3/indexer/testall' || p === '/api/v3/downloadclient/testall') return json(res, []);
+    if (p === '/api/v3/command' && m === 'POST') return json(res, { id: 1, name: data.name });
     if (p === '/api/v3/queue/details') return json(res, (st.queueDetails || []).filter(r => (q.get('movieId') && +r.movieId === +q.get('movieId')) || (q.get('seriesId') && +r.seriesId === +q.get('seriesId'))));
     if (p === '/api/v3/queue') return json(res, { records: [{ id: 1, title: 'Harbor.Lights.S04E06', size: 1.4e9, sizeleft: 5e8, timeleft: '00:12:00', status: 'downloading', trackedDownloadStatus: 'ok', series: { title: 'Harbor Lights' }, movie: { title: 'Glass Meridian' } },
       { id: 2, title: 'Stuck.Release.1080p', size: 2e9, sizeleft: 2e9, status: 'warning', trackedDownloadStatus: 'warning', statusMessages: [{ messages: ['No files found are eligible for import'] }], series: { title: 'Night Shift' } }].slice(0, tv ? 2 : 1).concat((st.importing || []).map((h, i) => ({ id: 90 + i, title: 'Importing', downloadId: h.toUpperCase(), trackedDownloadState: 'importPending' }))), totalRecords: 2 });

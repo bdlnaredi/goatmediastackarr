@@ -20,7 +20,7 @@ test('warnings from every app, errors first, and fixing them', async () => {
     assert.ok(!r.data.some(x => x.app === 'Radarr'), 'Radarr has nothing to say');
     r = await a.post('/api/warnings/fix', { sid: son, fix: 'indexers' });
     assert.equal(r.status, 200);
-    assert.ok(fake.state.calls.some(c => c === 'sonarr /api/v3/indexer/testall')); assert.ok(fake.state.calls.some(c => c === 'sonarr command CheckHealth'));
+    assert.ok(fake.state.calls.some(c => /^sonarr POST \/api\/v3\/indexer\/testall/.test(c))); assert.ok(fake.state.calls.some(c => /^sonarr POST \/api\/v3\/command .*CheckHealth/.test(c)));
     assert.equal((await a.post('/api/warnings/fix', { sid: son, fix: 'rm -rf' })).status, 400);
     await a.post('/api/users', { name: 'u', password: 'useruser1', role: 'user' });
     const u = client(s.base); await u.post('/api/login', { name: 'u', password: 'useruser1' });

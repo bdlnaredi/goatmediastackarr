@@ -1388,9 +1388,10 @@ function stBackup(){
   $('#m').innerHTML=`${GOAT?'<div class="panel" style="max-width:760px;margin-bottom:16px" id="sbk"></div>':''}<div class="panel" style="max-width:560px"><h3 style="margin-top:0">${GOAT?'Back up GoatMediaStackarr only':'Back up'}</h3><p class="mute">Saves your apps, profiles, requests, alert settings and history to a file, locked with a passphrase. Keep the passphrase safe. Without it the file cannot be opened.</p>
     <form id="bf" style="margin:0"><input name="pass" type="password" placeholder="Passphrase (8+ characters)" autocomplete="new-password" required><div class="row"><button class="primary">${ic('dl')}Download backup</button></div><div class="err" id="be"></div></form></div>
     <div class="panel" style="max-width:560px;margin-top:16px" id="ab"></div>
+    <div class="panel" style="max-width:560px;margin-top:16px" id="cbk"></div>
     <div class="panel" style="max-width:560px;margin-top:16px"><h3 style="margin-top:0">Restore</h3><p class="mute">Replaces everything in GoatMediaStackarr with what is in the backup, and signs everyone out. Use it to move to a new server or recover.</p>
     <form id="rf2" style="margin:0"><input type="file" name="file" accept=".json,application/json" required><input name="pass" type="password" placeholder="Passphrase of that backup" autocomplete="off" required><div class="row"><button class="danger">Restore from backup</button></div><div class="err" id="re2"></div></form></div>`;
-  autoBackups();if(GOAT)stackBackups();
+  autoBackups();cloudPanel();if(GOAT)stackBackups();
   $('#bf').onsubmit=async e=>{e.preventDefault();$('#be').textContent='';
     try{const d=await api('/api/backup','POST',{passphrase:e.target.pass.value});const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(d)],{type:'application/json'}));
       a.download='mediahub-backup-'+new Date().toISOString().slice(0,10)+'.json';document.body.append(a);a.click();a.remove();toast('Backup downloaded','ok');e.target.reset()}catch(x){$('#be').textContent=x.message}};
@@ -1398,6 +1399,31 @@ function stBackup(){
     if(!confirm('Replace everything in GoatMediaStackarr with this backup? Everyone will be signed out.'))return;
     try{const txt=await e.target.file.files[0].text();let b;try{b=JSON.parse(txt)}catch{throw new Error('That file is not a GoatMediaStackarr backup')}
       await api('/api/restore','POST',{passphrase:e.target.pass.value,backup:b});toast('Restored. Please sign in again.','ok');me=null;setTimeout(start,600)}catch(x){$('#re2').textContent=x.message}};
+}
+
+// Cloud backup: every new backup (and the stack's) is copied to S3-compatible storage or a WebDAV folder.
+async function cloudPanel(){
+  const el=$('#cbk');if(!el)return;let c;try{c=await api('/api/cloud')}catch(x){el.innerHTML=`<div class="err">${esc(x.message)}</div>`;return}
+  if(!document.contains(el))return;
+  const v=(k,ph,t='text',auto='off')=>`<input name="${k}" type="${t}" value="${esc(c[k]||'')}" placeholder="${ph}" autocomplete="${auto}">`;
+  el.innerHTML=`<h3 style="margin-top:0">Copy backups to the cloud</h3>
+    <p class="mute" style="margin-top:0">A copy of every backup${GOAT?' (GoatMediaStackarr\'s own and the whole stack\'s)':''} is sent off the server, so a dead disk does not take your setup with it. The newest ones are kept there.</p>
+    <form id="cf" class="nlform"><label class="tgl"><input type="checkbox" name="on" ${c.on?'checked':''}><span>Copy each new backup</span></label>
+    <div class="seg" id="cty" style="margin:8px 0">${[['s3','S3-compatible'],['webdav','WebDAV']].map(([k,n])=>`<button type="button" data-ct="${k}" class="${c.type===k?'on':''}">${n}</button>`).join('')}</div>
+    <div data-for="s3"${c.type==='s3'?'':' hidden'}><p class="mute" style="font-size:13px;margin:0">Amazon S3, Backblaze B2 (10 GB free), Cloudflare R2, Wasabi, MinIO and the like. Make a bucket and a key that can write to it.</p>
+      <label class="mute">Address ${v('endpoint','https://s3.us-west-002.backblazeb2.com')}</label><div class="row"><label class="mute grow">Bucket ${v('bucket','my-backups')}</label><label class="mute">Region ${v('region','us-east-1')}</label></div>
+      <label class="mute">Access key ${v('access','Key ID')}</label><label class="mute">Secret ${`<input name="secret" type="password" placeholder="${c.hasSecret?'Saved. Type a new one to change it':'Secret key'}" autocomplete="new-password">`}</label></div>
+    <div data-for="webdav"${c.type==='webdav'?'':' hidden'}><p class="mute" style="font-size:13px;margin:0">Nextcloud, ownCloud, Synology, Koofr and others. For Nextcloud use its WebDAV address (Files → Settings) and an app password.</p>
+      <label class="mute">Address ${v('url','https://cloud.example.com/remote.php/dav/files/you')}</label><div class="row"><label class="mute grow">User ${v('user','you')}</label><label class="mute grow">Password ${`<input name="pass" type="password" placeholder="${c.hasPass?'Saved':'App password'}" autocomplete="new-password">`}</label></div></div>
+    <div class="row"><label class="mute grow">Folder ${v('prefix','goatmediastackarr')}</label><label class="mute">Keep the newest <input name="keep" type="number" min="1" max="60" value="${c.keep}" style="width:80px"></label></div>
+    <div class="row" style="margin-top:8px"><button class="primary">Save</button><button type="button" id="ctst">Test</button><button type="button" id="cnow"${c.on?'':' disabled'}>Back up to the cloud now</button></div>
+    ${c.last?`<div class="mute" style="font-size:13px">${c.last.ok?'Last copy':'Last try failed'} ${esc(fdt(c.last.at))}: ${esc(c.last.name)}${c.last.ok?'':' <span style="color:var(--bad-t)">'+esc(c.last.error||'')+'</span>'}</div>`:''}<div class="err" id="cfe"></div></form>`;
+  const f=$('#cf');let type=c.type;
+  f.querySelector('#cty').onclick=e=>{const b=e.target.closest('[data-ct]');if(!b)return;type=b.dataset.ct;f.querySelectorAll('[data-ct]').forEach(x=>x.classList.toggle('on',x===b));f.querySelectorAll('[data-for]').forEach(x=>x.hidden=x.dataset.for!==type)};
+  const body=()=>{const g=f.elements,o={type,on:g.on.checked};['endpoint','bucket','region','access','secret','url','user','pass','prefix','keep'].forEach(k=>{o[k]=g[k].value});return o};
+  f.onsubmit=async e=>{e.preventDefault();$('#cfe').textContent='';try{await api('/api/cloud','PUT',body());toast('Saved','ok');cloudPanel()}catch(x){$('#cfe').textContent=x.message}};
+  $('#ctst').onclick=async()=>{const b=$('#ctst');b.disabled=true;$('#cfe').textContent='';try{await api('/api/cloud/test','POST',body());toast('It works: a test file was written and removed','ok')}catch(x){$('#cfe').textContent=x.message}b.disabled=false};
+  $('#cnow').onclick=async()=>{const b=$('#cnow');b.disabled=true;b.textContent='Copying…';try{const r=await api('/api/cloud/now','POST');toast('Copied: '+r.sent.join(', '),'ok');cloudPanel()}catch(x){$('#cfe').textContent=x.message;b.disabled=false;b.textContent='Back up to the cloud now'}};
 }
 
 // ---------- Backups of the whole stack: every app's settings and databases, on a schedule, and putting them back.
