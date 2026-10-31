@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+## v1.0.7 — 2026-10-31
+
 - Dashboard posters: the accent ring on hover is drawn inside the poster, so it is even on all four sides; before, a scrolling row cut it off on one side, and the sliding row's faded edges hid part of it.
 
 ## v1.0.6 — 2026-10-31
