@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+## v1.0.5 — 2026-10-31
+
 - The bar at the top (logo, Watch, Requests, Downloads, Server, and the phone's top bar) stays in place and is solid, so the page scrolls underneath it instead of showing through or over it.
 ## v1.0.4 — 2026-10-31
 
