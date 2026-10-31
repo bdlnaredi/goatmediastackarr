@@ -233,7 +233,7 @@ class ScreensTest {
         tap("Ready to watch"); waitFor("Some signals"); back()
         // Alerts: each channel's triggers, and the newsletters. (Back from the notifications first.)
         back(); waitFor("Playing now")
-        tap("More"); waitFor("Go to")
+        tap("More"); waitFor("Health")
         openFromMore("Alerts"); waitFor("Family"); waitFor("New request"); shot("75-alerts")
         tap("Newsletters"); waitFor("Friday movie night"); shot("76-newsletters"); back()
         assertTrue("calls the pretend server does not know: ${fake.misses}", fake.misses.isEmpty())
