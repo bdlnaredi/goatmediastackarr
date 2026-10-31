@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- Settings is more compact: smaller section buttons, panels and fields, so more fits on one screen.
+- Appearance: 18 accent colours plus a colour picker for any colour you like, two new styles (Neon and Paper), and a running light: the accent colour runs around the screen, around every section, or around the section under the pointer, with a speed slider. It stays still when the device asks for reduced motion.
 - File Browser is part of the stack: the media and downloads folders in the browser (upload, download, rename, move, delete), opened from the Stack page through GoatMediaStackarr, for admins only. `GOAT_FILEBROWSER=false` turns it off. Its settings are in the stack backups.
 
 ## v0.9.8 — 2026-10-31

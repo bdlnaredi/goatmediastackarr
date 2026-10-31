@@ -443,8 +443,11 @@ let liveFns=[];
 const tick=(f,ms)=>{liveFns.push(f);return setInterval(()=>{if(!document.hidden)f()},ms)};
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)liveFns.forEach(f=>{try{f()}catch{}})});
 const UI=(()=>{try{return JSON.parse(localStorage.getItem('mh-ui'))||{}}catch{return{}}})();
-const ACC={Saffron:'#ffb938',Coral:'#ff7a66',Sky:'#5ab4ff',Violet:'#a78bfa',Rose:'#ff6fae',Mint:'#4ade9a'};
-function applyUI(){const r=document.documentElement;r.dataset.style=['cinema','dash','glass','compact'].includes(UI.style)?UI.style:'cinema';if(UI.theme)r.dataset.theme=UI.theme;else delete r.dataset.theme;if(UI.rail)r.dataset.rail='min';else delete r.dataset.rail;r.style.setProperty('--accent',UI.accent||ACC.Saffron)}
+const ACC={Saffron:'#ffb938',Amber:'#f59e0b',Orange:'#fb8c3c',Coral:'#ff7a66',Red:'#ef4444',Crimson:'#e11d48',Rose:'#ff6fae',Magenta:'#e04fd8',Violet:'#a78bfa',Indigo:'#6d7cff',Sky:'#5ab4ff',Cyan:'#22d3ee',Teal:'#2dd4bf',Mint:'#4ade9a',Emerald:'#10b981',Lime:'#a3e635',Gold:'#e6c35c',Slate:'#94a3b8'};
+const STYLE_IDS=['cinema','dash','glass','compact','neon','paper'];
+function applyUI(){const r=document.documentElement;r.dataset.style=STYLE_IDS.includes(UI.style)?UI.style:'cinema';
+  // The running light: around the screen, every section, or the one under the pointer; its speed is 1 (slow) to 10 (fast).
+  if(['edge','sections','hover'].includes(UI.run))r.dataset.run=UI.run;else delete r.dataset.run;r.style.setProperty('--rld',(13-Math.min(10,Math.max(1,+UI.runSpeed||5)))*0.9+'s');if(UI.theme)r.dataset.theme=UI.theme;else delete r.dataset.theme;if(UI.rail)r.dataset.rail='min';else delete r.dataset.rail;r.style.setProperty('--accent',UI.accent||ACC.Saffron)}
 const saveUI=()=>{try{localStorage.setItem('mh-ui',JSON.stringify(UI))}catch{}applyUI()};
 applyUI();
 
@@ -476,19 +479,25 @@ const skel=(n=4)=>Array.from({length:n},()=>'<div class="box"><div class="sk" st
 const fp=s=>String(s||'').replace(/\\/g,' / ');
 const empty=(t,hint)=>`<div class="empty"><span class="eic">${ic('find')}</span><b>${t}</b><div>${hint||''}</div></div>`;
 // The four looks. Each is a whole design (shapes, density, surfaces, artwork), and works with light, dark and every accent.
-const STYLES=[['cinema','Cinema','Dark and poster-first, like a streaming app: big artwork, quiet controls.'],['dash','Dashboard','Clean cards and clear lists, information first, like Unraid.'],['glass','Glass','Frosted panels floating over the artwork, soft and rounded.'],['compact','Compact','Flat and tight: more on every screen, light on older devices.']];
+const STYLES=[['cinema','Cinema','Dark and poster-first, like a streaming app: big artwork, quiet controls.'],['neon','Neon','Near-black with glowing accent edges, like a control room at night.'],['paper','Paper','Warm and calm, serif headings and thin lines, like a printed page.'],['dash','Dashboard','Clean cards and clear lists, information first, like Unraid.'],['glass','Glass','Frosted panels floating over the artwork, soft and rounded.'],['compact','Compact','Flat and tight: more on every screen, light on older devices.']];
 const styleOf=()=>STYLES.some(x=>x[0]===UI.style)?UI.style:'cinema';
 function appearHtml(){
   return `<h3>Style</h3><div class="stp" id="stp">${STYLES.map(([k,n,d])=>`<button type="button" class="stc ${styleOf()===k?'on':''}" data-st="${k}" aria-pressed="${styleOf()===k}"><span class="stv" data-v="${k}"><i></i><i></i><i></i><b></b></span><span class="stn">${n}</span><small>${d}</small></button>`).join('')}</div>
     <h3>Theme</h3><div class="seg" id="th">${[['','Match my device'],['light','Light'],['dark','Dark']].map(([k,n])=>`<button data-th="${k}" class="${(UI.theme||'')===k?'on':''}">${n}</button>`).join('')}</div>
-    <h3>Accent color</h3><div class="row" id="ac">${Object.entries(ACC).map(([n,c])=>`<button class="sw ${(UI.accent||ACC.Saffron)===c?'on':''}" data-ac="${c}" style="background:${c}" aria-label="${n}" title="${n}"></button>`).join('')}</div>
+    <h3>Accent color</h3><div class="row" id="ac" style="flex-wrap:wrap;gap:8px">${Object.entries(ACC).map(([n,c])=>`<button class="sw ${(UI.accent||ACC.Saffron)===c?'on':''}" data-ac="${c}" style="background:${c}" aria-label="${n}" title="${n}"></button>`).join('')}<label class="sw swc ${UI.accent&&!Object.values(ACC).includes(UI.accent)?'on':''}" title="${T('Your own colour')}"><input type="color" id="acc2" value="${esc(UI.accent||ACC.Saffron)}" aria-label="${T('Your own colour')}"></label></div>
+    <h3>${T('Running light')}</h3><p class="mute" style="margin:0 0 8px">${T('A line of the accent colour that runs around the screen or the sections.')}</p>
+    <div class="seg" id="rn">${[['','Off'],['edge','Around the screen'],['sections','Every section'],['hover','Section under the pointer']].map(([k,n])=>`<button data-rn="${k}" class="${(UI.run||'')===k?'on':''}">${T(n)}</button>`).join('')}</div>
+    <label class="mute" style="display:flex;align-items:center;gap:10px;margin-top:8px">${T('Speed')} <input type="range" id="rns" min="1" max="10" value="${+UI.runSpeed||5}" style="flex:1;max-width:260px" aria-label="${T('Speed of the running light')}"><span id="rnv">${+UI.runSpeed||5}</span></label>
     <h3>Menu</h3><label class="chk"><input type="checkbox" id="rm" ${UI.rail?'checked':''}>Use the compact menu (icons only)</label>
     <h3>Language</h3><select id="lg" aria-label="Language" data-i18n="no">${Object.entries(LANGS).map(([k,n])=>`<option value="${k}" ${k===LANG?'selected':''}>${n}</option>`).join('')}</select>`;
 }
 function bindAppear(o){
   o.querySelector('#stp').onclick=e=>{const b=e.target.closest('[data-st]');if(!b)return;UI.style=b.dataset.st;saveUI();o.querySelectorAll('#stp [data-st]').forEach(z=>{z.classList.toggle('on',z===b);z.setAttribute('aria-pressed',z===b)})};
   o.querySelector('#th').onclick=e=>{const b=e.target.closest('[data-th]');if(!b)return;UI.theme=b.dataset.th;saveUI();o.querySelectorAll('#th button').forEach(z=>z.classList.toggle('on',z===b))};
-  o.querySelector('#ac').onclick=e=>{const b=e.target.closest('[data-ac]');if(!b)return;UI.accent=b.dataset.ac;saveUI();o.querySelectorAll('#ac button').forEach(z=>z.classList.toggle('on',z===b))};
+  o.querySelector('#ac').onclick=e=>{const b=e.target.closest('[data-ac]');if(!b)return;UI.accent=b.dataset.ac;saveUI();o.querySelectorAll('#ac .sw').forEach(z=>z.classList.toggle('on',z===b))};
+  o.querySelector('#acc2').oninput=e=>{UI.accent=e.target.value;saveUI();o.querySelectorAll('#ac .sw').forEach(z=>z.classList.toggle('on',z.classList.contains('swc')))};
+  o.querySelector('#rn').onclick=e=>{const b=e.target.closest('[data-rn]');if(!b)return;UI.run=b.dataset.rn;saveUI();o.querySelectorAll('#rn button').forEach(z=>z.classList.toggle('on',z===b))};
+  o.querySelector('#rns').oninput=e=>{UI.runSpeed=+e.target.value;o.querySelector('#rnv').textContent=e.target.value;saveUI()};
   o.querySelector('#rm').onchange=e=>{UI.rail=e.target.checked;saveUI()};
   o.querySelector('#lg').onchange=async e=>{LANG=e.target.value;lsSet('mh_lang',LANG);o.close&&o.close();await loadLang();me?render():start()};
 }

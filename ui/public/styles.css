@@ -267,3 +267,76 @@ html.kids nav a, html.kids .nav a{font-size:1.1em}
 /* Request options */
 .rqo{display:grid;gap:10px}.rqo label{display:grid;gap:4px}.rqo select{width:100%}
 a.pc{color:inherit;text-decoration:none;display:block}
+
+/* ============================== NEON ============================== */
+/* Near-black with glowing accent edges. Always dark. */
+:root[data-style=neon]{--bg:#05060c;--s1:#0c0e19;--s2:#141729;--line:color-mix(in srgb,var(--accent) 24%,transparent);--glass:#0c0e19;--glass2:#0c0e19;--text:#e9ecff;--mute:#8b91b5;--r1:10px;--r2:14px;
+  --sh:0 0 0 1px color-mix(in srgb,var(--accent) 16%,transparent),0 10px 34px -14px color-mix(in srgb,var(--accent) 55%,transparent);--hl:none;color-scheme:dark}
+[data-style=neon] body{background:radial-gradient(1100px 620px at 8% -12%,color-mix(in srgb,var(--accent) 18%,transparent),transparent 62%),radial-gradient(900px 520px at 100% 110%,color-mix(in srgb,var(--accent) 10%,transparent),transparent 60%),var(--bg)}
+[data-style=neon] body::before,[data-style=neon] #amb{display:none}
+[data-style=neon] :is(.panel,.tile,.card,.uc,.dlg,.box.rel){border:1px solid var(--line);box-shadow:var(--sh);background:color-mix(in srgb,var(--s1) 92%,transparent)}
+[data-style=neon] :is(.ph h1,.gh,h2.sec,.sxt h2){text-transform:uppercase;letter-spacing:.07em}
+[data-style=neon] button.primary,[data-style=neon] .primary{box-shadow:0 0 22px -6px var(--accent)}
+[data-style=neon] .tile .tv{text-shadow:0 0 18px color-mix(in srgb,var(--accent) 65%,transparent)}
+[data-style=neon] .side{background:color-mix(in srgb,var(--s1) 94%,transparent);box-shadow:inset -1px 0 0 var(--line)}
+[data-style=neon] .nv.on{box-shadow:inset 0 0 0 1px var(--line),0 0 16px -6px var(--accent)}
+.stv[data-v=neon]{background:radial-gradient(70% 90% at 15% 0%,color-mix(in srgb,var(--accent) 45%,transparent),transparent),#05060c}
+.stv[data-v=neon] i{top:12px;height:50px;width:26%;border-radius:8px;border:1px solid var(--accent);box-shadow:0 0 12px -2px var(--accent)}
+.stv[data-v=neon] i:nth-child(1){left:7%}.stv[data-v=neon] i:nth-child(2){left:37%}.stv[data-v=neon] i:nth-child(3){left:67%}
+.stv[data-v=neon] b{display:none}
+
+/* ============================== PAPER ============================== */
+/* Warm, calm and flat: serif headings and thin lines. Light, or warm dark at night. */
+:root[data-style=paper]{--bg:#f5efe4;--s1:#fffcf6;--s2:#efe6d6;--line:#e2d6c2;--glass:#fffcf6;--glass2:#fffcf6;--text:#2a251f;--mute:#7a6f60;--r1:4px;--r2:6px;--sh:none;--hl:none;color-scheme:light}
+:root[data-style=paper][data-theme=dark]{--bg:#1c1915;--s1:#25211b;--s2:#2f2921;--line:#3a3329;--glass:#25211b;--glass2:#25211b;--text:#efe5d4;--mute:#a69883;color-scheme:dark}
+@media(prefers-color-scheme:dark){:root[data-style=paper]:not([data-theme=light]){--bg:#1c1915;--s1:#25211b;--s2:#2f2921;--line:#3a3329;--glass:#25211b;--glass2:#25211b;--text:#efe5d4;--mute:#a69883;color-scheme:dark}}
+[data-style=paper] body{background:var(--bg)}
+[data-style=paper] body::before,[data-style=paper] #amb{display:none}
+[data-style=paper] :is(h1,h2,h3,.gh,.sxt h2){font-family:Georgia,'Iowan Old Style','Palatino Linotype','Times New Roman',serif;font-weight:600;letter-spacing:0}
+[data-style=paper] :is(.panel,.tile,.card,.uc,.dlg,.np){box-shadow:none;border:1px solid var(--line);-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--s1)}
+[data-style=paper] .tile::before{display:none}
+[data-style=paper] .side{background:var(--s1);box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none;border-right:1px solid var(--line)}
+[data-style=paper] .pill{border-radius:3px}
+.stv[data-v=paper]{background:#f5efe4}
+.stv[data-v=paper] i{left:8%;right:8%;height:2px;background:#d8ccb7}
+.stv[data-v=paper] i:nth-child(1){top:34px}.stv[data-v=paper] i:nth-child(2){top:46px}.stv[data-v=paper] i:nth-child(3){top:58px;right:30%}
+.stv[data-v=paper] b{left:8%;top:12px;width:50%;height:12px;border-radius:2px;background:#2a251f}
+
+/* ============================== Accent picker ============================== */
+.swc{position:relative;overflow:hidden;background:conic-gradient(#ff5f6d,#ffc371,#47e891,#4facfe,#a78bfa,#ff5f6d)!important;cursor:pointer}
+.swc input{position:absolute;inset:-6px;width:calc(100% + 12px);height:calc(100% + 12px);opacity:0;cursor:pointer;border:0;padding:0}
+
+/* ============================== Running light ============================== */
+/* A short line of the accent colour runs around the edge of the screen, every section, or the section under the pointer. */
+@property --rl{syntax:'<angle>';inherits:true;initial-value:0deg}
+@keyframes rlspin{to{--rl:360deg}}
+html[data-run] .rlx,html[data-run=edge] body::after,html[data-run=sections] :is(.panel,.tile,.uc)::after,html[data-run=hover] :is(.panel,.tile,.uc,.card):hover::after{
+  content:'';position:absolute;inset:0;border-radius:inherit;padding:2px;pointer-events:none;z-index:3;
+  background:conic-gradient(from var(--rl),transparent 0 62%,color-mix(in srgb,var(--accent) 25%,transparent) 74%,var(--accent) 86%,#fff 88%,var(--accent) 90%,transparent 96%);
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);mask-composite:exclude;
+  animation:rlspin var(--rld,4.5s) linear infinite;filter:drop-shadow(0 0 6px var(--accent))}
+html[data-run=edge] body::after{position:fixed;border-radius:0;padding:3px;z-index:9999}
+html[data-run=sections] :is(.panel,.tile,.uc),html[data-run=hover] :is(.panel,.tile,.uc,.card){position:relative}
+html[data-run=sections] .tile::after{animation-delay:calc(var(--i,0) * -0.6s)}
+@media(prefers-reduced-motion:reduce){html[data-run] *::after{animation:none!important}}
+
+/* ============================== Settings, more compact ============================== */
+main.sx .sxn{gap:6px 16px;margin:0 0 12px;padding-bottom:10px}
+main.sx .sxg{gap:5px}
+main.sx .sxh{font-size:10.5px}
+main.sx .sxn button{padding:4px 11px;gap:6px}
+main.sx .sxn b{font-size:13px;font-weight:560}
+main.sx .sxn button .ic{width:15px;height:15px}
+main.sx .sxt{margin:0 0 10px}main.sx .sxt h2{font-size:19px}main.sx .sxt p{font-size:13px}
+main.sx #m .panel{padding:14px 16px}
+main.sx #m .panel[style*="margin-top:16px"]{margin-top:10px!important}
+main.sx #m .panel[style*="margin-bottom:16px"],main.sx #m .panel[style*="margin-bottom:14px"]{margin-bottom:10px!important}
+main.sx #m h3{margin:0 0 6px;font-size:15px}
+main.sx #m .panel>h3+p.mute,main.sx #m p.mute{margin-top:2px;margin-bottom:6px}
+main.sx #m .row{gap:8px}
+main.sx #m .row[style*="margin-top:14px"],main.sx #m .row[style*="margin-top:12px"]{margin-top:8px!important}
+main.sx #m label.chk{margin:3px 0}
+main.sx #m :is(input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]),select){min-height:34px;padding:6px 10px}
+main.sx #m button{min-height:34px;padding:6px 12px}
+main.sx #m .box{padding:8px 10px}
+main.sx #m .opt{padding:10px 12px}
