@@ -372,3 +372,12 @@ button.sm{min-height:30px;padding:4px 10px;font-size:13px}
 .nlr{margin:10px 0}.nlf{width:100%;height:70vh;border:0;border-radius:10px;background:#e9ecf2}
 .nlform>label.mute,label.blk{display:block;margin:8px 0}.nlform>label.mute>input,.nlform>label.mute>textarea,label.blk>input,label.blk>textarea{display:block;width:100%;margin-top:4px}
 .nlform fieldset{border:1px solid var(--line);border-radius:10px;padding:6px 12px 10px;margin:10px 0}.nlform fieldset .chk{margin:4px 14px 0 0}
+
+/* The top bar stays put: it is solid, so the page scrolls underneath it and never shows through or over it.
+   It sits above the page (8) and below pop-ups and dialogs (.ov is 9). */
+@media(min-width:861px){
+ [data-style=cinema] .side{z-index:8;background:var(--bg)!important;border-bottom:1px solid var(--line);box-shadow:0 8px 24px rgba(0,0,0,.28)}
+}
+@media(max-width:860px){
+ .side{z-index:8!important;background:var(--bg)!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important;box-shadow:0 6px 18px rgba(0,0,0,.22)}
+}
