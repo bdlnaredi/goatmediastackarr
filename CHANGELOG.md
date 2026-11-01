@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+## v1.0.10 — 2026-11-01
+
 - Seerr kept going offline and online within seconds: GoatMediaStackarr checked it with Seerr's status page, which asks GitHub for Seerr's newest version every time, so a slow or failing name lookup made Seerr look down for a moment. It is now checked with a question Seerr answers by itself, and any app only counts as offline after two missed checks in a row (about a minute), so one slow answer no longer flips it.
 - Discover marks what is already here, on the web page and in the app: *Available* when it is on your Plex (or Jellyfin) server or downloaded, *Partly available* for a show with some episodes, and *Requested* when someone asked for it, it is waiting in Seerr, or it is added to Sonarr or Radarr but not downloaded yet.
 ## v1.0.8 — 2026-10-31
