@@ -228,7 +228,7 @@ class ScreensTest {
         tap("Signed-in devices"); waitFor("Chrome on Windows"); shot("42-devices"); back()
         scrollTo("Notify me on this phone"); scrollTo("Finished downloads"); shot("46-settings-notifications"); back()
         tap("Home"); waitFor("Playing now")
-        compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("new notifications", substring = true)).onFirst().performClick()
+        compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("otifications", substring = true) and hasClickAction()).onFirst().performClick()
         waitFor("VPN not active"); shot("47-notifications")
         tap("Ready to watch"); waitFor("Some signals"); back()
         // Alerts: each channel's triggers, and the newsletters. (Back from the notifications first.)
