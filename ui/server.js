@@ -493,6 +493,9 @@ async function test(s) {
   if (s.type === 'sabnzbd') { const r = await fetch(`${u}/api?mode=version&output=json&apikey=${encodeURIComponent(s.apiKey || '')}`, t); return r.ok && !!((await r.json().catch(() => ({}))).version); }
   if (s.type === 'tautulli') { const r = await fetch(`${u}/api/v2?apikey=${encodeURIComponent(s.apiKey || '')}&cmd=arnold`, t); return r.ok && ((await r.json().catch(() => ({}))).response || {}).result === 'success'; }
   if (s.type === 'bazarr') return (await fetch(u + '/api/system/status', { ...t, headers: { 'X-API-KEY': s.apiKey || '' } })).ok;
+  // Seerr's /api/v1/status asks GitHub for its newest version every time, so a slow or failing name lookup (the
+  // "EAI_AGAIN api.github.com" in Seerr's log) made it look offline for a moment. Who-am-I answers from Seerr itself.
+  if (s.type === 'seerr') { const r = await fetch(u + '/api/v1/auth/me', { ...t, headers: { 'X-Api-Key': s.apiKey || '' } }); if (r.status !== 404) return r.ok; return (await fetch(u + '/api/v1/settings/public', t)).ok; }
   const p = { sonarr: '/api/v3/system/status', radarr: '/api/v3/system/status', lidarr: '/api/v1/system/status', readarr: '/api/v1/system/status',
     prowlarr: '/api/v1/system/status', seerr: '/api/v1/status' }[s.type];
   return (await fetch(u + p, { ...t, headers: { 'X-Api-Key': s.apiKey || '' } })).ok;
@@ -1660,9 +1663,10 @@ async function monitor() {
     });
     await Promise.all(db.services.map(async s => {
       let ok = false; try { ok = await test(s); } catch {}
-      health[s.id] = { ok, t: Date.now() };
-      uptNote(s.id, ok);
       const st = mon.up[s.id] || (mon.up[s.id] = { ok: true, n: 0 });
+      // One slow answer is not "offline": an app counts as down after two missed checks in a row (about a minute).
+      health[s.id] = { ok: ok || (st.ok && st.n < 1), t: Date.now() };
+      uptNote(s.id, ok);
       if (ok) st.everOk = true;
       if (ok) { if (!st.ok) { feed('@admins', 'problem', 'App back online', s.name + ' is reachable again', 'health'); await notify('offline', 'App back online', s.name + ' is reachable again').catch(() => {}); } st.ok = true; st.n = 0; }
       else if (++st.n >= 2 && st.ok) { st.ok = false; feed('@admins', 'problem', 'App offline', s.name + ' is not responding', 'health'); await notify('offline', 'App offline', s.name + ' is not responding').catch(() => {}); }

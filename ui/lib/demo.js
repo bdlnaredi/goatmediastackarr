@@ -329,6 +329,7 @@ function create(opts = {}) {
       if (sub.startsWith('/poster/')) { const t = decodeURIComponent(sub.slice(8)), hue = [...t].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 360, 7);
         res.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'max-age=3600' }); return res.end(decodeURIComponent(svg(t, hue).split(',')[1])); }
       if (sub === '/api/v1/status') return json(res, { version: '2.0.0.demo' });
+      if (sub === '/api/v1/auth/me') return json(res, { id: 1, displayName: 'Demo admin', permissions: 2 });
       if (sub === '/api/v1/search') return json(res, { results: ['Hidden Valley', 'Hidden Harbor', 'Paper Kingdoms'].filter(t => t.toLowerCase().includes(String(q.get('query') || '').toLowerCase())).map((t, i) => (i === 1 ? { mediaType: 'movie', id: 800 + i, title: t, releaseDate: '2024-03-01', overview: 'Demo result.', posterPath: '' } : { mediaType: 'tv', id: 800 + i, name: t, firstAirDate: '2022-05-01', overview: 'Demo result.', posterPath: '' })) });
       let r = sub.match(/^\/api\/v1\/tv\/(\d+)$/);
       const cast = [['Ana Reyes', 'Captain'], ['Tom Okafor', 'Doctor'], ['Lin Park', 'Pilot']].map(([name, character], i) => ({ id: 9001 + i, name, character, profilePath: pic(name) }));
