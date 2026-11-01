@@ -68,6 +68,7 @@ class FakeServer(private val server: MockWebServer) : Dispatcher() {
             p == "/api/alerts" -> json("""{"events":["playStart","requests"],"meta":{"playStart":{"name":"Playback starts","group":"Playback"},"requests":{"name":"New request","group":"Requests"}},"channels":[{"id":"c1","type":"discord","name":"Family","events":["requests"],"tpl":{},"conds":[]}]}""")
             p == "/api/newsletters" -> json("""{"list":[{"id":"n1","name":"Friday movie night","on":true,"every":"week","day":5,"hour":18,"days":7,"next":1893456000000}]}""")
             p == "/api/me/chats" -> json("""{"telegram":false,"discord":false,"bots":{"telegram":"@goat_bot","discord":""}}""")
+            p == "/api/traffic" -> json("""{"days":[${(6 downTo 0).joinToString(",") { i -> """{"date":"${java.time.LocalDate.now().minusDays(i.toLong())}","dl":${(8 + i * 3) * 1_000_000_000L},"ul":${(2 + i) * 1_000_000_000L},"usenet":0}""" }}],"total":{"dl":105000000000,"ul":35000000000},"usenetOn":false}""")
             p == "/api/unraid/u1" -> json(UNRAID)
             p == "/api/users" -> json("""[{"id":"u1","name":"Ann","role":"admin","twofa":true},{"id":"u2","name":"Ravi","role":"user","plex":{"name":"ravi"},"dataLimit":500,"avatar":"/img/p7.png"},{"id":"u3","name":"Mira","role":"user","plex":{"name":"mira"}},{"id":"u4","name":"Leo","role":"user"}]""")
             p == "/api/person" -> json(person())

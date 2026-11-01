@@ -256,9 +256,9 @@ function create(opts = {}) {
       const live = () => st.torrents.map(x => x.progress < 1 ? { ...x, dlspeed: Math.round(x.dlspeed * wob * (st.altSpeed ? 0.2 : 1)), progress: Math.min(0.99, x.progress + ((Date.now() / 60000) % 0.2)) } : x);
       if (sub === '/api/v2/torrents/info') { const hs = q.get('hashes'); return json(res, live().map(t => ({ content_path: (t.save_path || '/downloads') + '/' + t.name, ...t })).filter(t => !hs || hs.split('|').includes(t.hash))); }
       if (sub === '/api/v2/torrents/delete') { const hs = String(data.hashes || '').split('|'); st.calls.push('qb delete ' + data.hashes + ' files=' + data.deleteFiles); st.torrents = st.torrents.filter(t => !hs.includes(t.hash)); res.writeHead(200); return res.end(''); }
-      if (sub.startsWith('/api/v2/sync/maindata')) return json(res, { server_state: { dl_info_speed: Math.round(2.4e6 * wob * (st.altSpeed ? 0.2 : 1)), up_info_speed: 3.5e5, dl_info_data: 4e10, up_info_data: 6e10, connection_status: 'connected', last_external_address_v4: '203.0.113.7',
+      if (sub.startsWith('/api/v2/sync/maindata')) return json(res, { server_state: { dl_info_speed: Math.round(2.4e6 * wob * (st.altSpeed ? 0.2 : 1)), up_info_speed: 3.5e5, dl_info_data: st.dlData != null ? st.dlData : 4e10, up_info_data: st.ulData != null ? st.ulData : 6e10, connection_status: 'connected', last_external_address_v4: '203.0.113.7',
         free_space_on_disk: 600e9, use_alt_speed_limits: st.altSpeed, dl_rate_limit: 0, up_rate_limit: 0 }, torrents: {}, categories: cats(), tags: st.qbTags || [] });
-      if (sub === '/api/v2/transfer/info') return json(res, { dl_info_speed: Math.round(2.4e6 * wob * (st.altSpeed ? 0.2 : 1)), up_info_speed: Math.round(3.5e5 * (2 - wob)), dl_info_data: 4e10, up_info_data: 6e10, connection_status: 'connected' });
+      if (sub === '/api/v2/transfer/info') return json(res, { dl_info_speed: Math.round(2.4e6 * wob * (st.altSpeed ? 0.2 : 1)), up_info_speed: Math.round(3.5e5 * (2 - wob)), dl_info_data: st.dlData != null ? st.dlData : 4e10, up_info_data: st.ulData != null ? st.ulData : 6e10, connection_status: 'connected' });
       if (sub === '/api/v2/torrents/categories') return json(res, cats());
       if (sub === '/api/v2/torrents/createCategory') { const n = String(data.category || ''); if (!n || /^\//.test(n)) { res.writeHead(409); return res.end('Category name is invalid'); } st.qbCats = { ...cats(), [n]: { name: n, savePath: String(data.savePath || '') } }; res.writeHead(200); return res.end(''); }
       if (sub === '/api/v2/torrents/removeCategories') { const c = cats(); for (const n of String(data.categories || '').split('\n')) delete c[n]; st.qbCats = c; res.writeHead(200); return res.end(''); }
@@ -402,6 +402,8 @@ function create(opts = {}) {
       if (mode === 'version') return json(res, { version: '4.3.0-demo' });
       if (mode === 'get_config' && q.get('section') === 'servers') return json(res, { config: { servers: [{ name: 'news.example.net', displayname: 'Example Usenet', host: 'news.example.net', port: 563, ssl: 1, username: 'demo', password: '*****', connections: 30, enable: 1, priority: 0 }] } });
       if (mode === 'config' && q.get('name') === 'test_server') return json(res, { value: { result: true, message: 'Connection Successful!' } });
+      if (mode === 'server_stats') { const daily = {}; for (let i = 0; i < 10; i++) { const d = new Date(Date.now() - i * 864e5); daily[d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')] = (i + 1) * 1.5e9; }
+        return json(res, { total: 9e10, month: 4e10, week: 1e10, day: 1.5e9, servers: { 'news.example.com': { total: 9e10, daily } } }); }
       if (mode === 'queue') return json(res, { queue: { paused: false, status: 'Downloading', kbpersec: '5120', noofslots_total: 1, sizeleft: '2.1 GB', timeleft: '0:07:12', slots: [{ filename: 'Night.Shift.S06E01.1080p', percentage: '48', size: '3.1 GB', timeleft: '0:07:12' }] } });
       if (mode === 'history') {
         if (q.get('name') === 'delete') { st.sabHist = st.sabHist.filter(h => h.nzo_id !== q.get('value')); return json(res, { status: true }); }

@@ -119,3 +119,8 @@ data class ImportJob(
 @Serializable data class ChatState(val telegram: Boolean = false, val discord: Boolean = false, val bots: ChatBots = ChatBots())
 @Serializable data class ChatBots(val telegram: String = "", val discord: String = "")
 @Serializable data class ChatCode(val code: String = "", val minutes: Int = 15)
+
+// ---------- Data per day (/api/traffic) ----------
+@Serializable data class Traffic(val days: List<TrafficDay> = emptyList(), val total: TrafficTotal = TrafficTotal(), val usenetOn: Boolean = false)
+@Serializable data class TrafficDay(val date: String = "", val dl: Long = 0, val ul: Long = 0, val usenet: Long = 0)
+@Serializable data class TrafficTotal(val dl: Long = 0, val ul: Long = 0)

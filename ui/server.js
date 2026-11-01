@@ -10,6 +10,8 @@ fs.mkdirSync(DATA, { recursive: true });
 const tclients = require('./lib/torrentclients');
 const totp = require('./lib/totp'), channels = require('./lib/channels'), AL = require('./lib/alerts'), LP = require('./lib/langpref'), BOTS = require('./lib/bots'), CLOUD = require('./lib/cloud'), listsLib = require('./lib/lists');
 const PORT = +process.env.PORT || 5080, DEMO = /^(1|true|yes)$/i.test(process.env.DEMO || ''), DAY = 864e5;
+// A day as 2026-11-01, in the server's own time zone.
+const dayKey = (t = Date.now()) => { const d = new Date(t); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
 const demo = DEMO ? require('./lib/demo').create({ streams: 2 }) : null;
 // Inside the container the release number comes from the image (GOAT_VERSION); otherwise from package.json.
 const VERSION = (() => { const g = String(process.env.GOAT_VERSION || '').replace(/^v/, ''); if (g && g !== 'dev') return g; try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'))).version; } catch { return 'dev'; } })();
@@ -745,6 +747,7 @@ const uptBars = id => { const now = Math.floor(Date.now() / UPB) * UPB, m = new 
 const uptPct = id => { const a = uptime[id] || [], n = a.reduce((s, e) => s + e.n, 0); return n ? +(a.reduce((s, e) => s + e.ok, 0) / n * 100).toFixed(1) : null; };
 function uptSave() { if (DEMO) return; try { fs.writeFileSync(UPF + '.tmp', JSON.stringify(uptime)); fs.renameSync(UPF + '.tmp', UPF); } catch {} }
 if (DEMO) for (const x of db.services) uptime[x.id] = Array.from({ length: UPN }, (_, i) => ({ b: Math.floor(Date.now() / UPB) * UPB - (UPN - 1 - i) * UPB, n: 12, ok: (x.type === 'prowlarr' && i > 30 && i < 34) || (x.type === 'readarr' && i === 12) ? 5 : 12 }));
+if (DEMO && !db.traffic) { db.traffic = { last: {}, days: {} }; for (let i = 1; i < 10; i++) db.traffic.days[dayKey(Date.now() - i * 864e5)] = { d: Math.round((14 + 9 * Math.sin(i * 1.7)) * 1e9), u: Math.round((6 + 4 * Math.cos(i * 1.3)) * 1e9) }; }
 if (DEMO) db.statusLinks.push({ id: 'demo-link', name: 'Living room tablet', hash: th('demo-status-page-token-0001'), at: Date.now(), used: 0, scopes: { apps: true, traffic: true, downloads: true, upcoming: true, watching: true } });
 // ---------- Tracker sites: browsed through GoatMediaStackarr, with or without the VPN (lib/sites.js) ----------
 const sitesLib = require('./lib/sites');
@@ -1486,6 +1489,23 @@ async function watchTick() {
 // Every check (MONITOR_MS, 30 seconds) adds bitrate × time for each stream that is playing. A person over their monthly
 // limit has their streams stopped with a message saying why; it starts again on the 1st. Admins are never limited,
 // and a media-server account that matches no profile here is counted but not limited.
+// ---------- Data per day: how much was downloaded and uploaded each day ----------
+// qBittorrent counts bytes since it started; each look adds what is new to today's total (a restart of qBittorrent
+// starts its count again from zero, which is taken as all new). Usenet comes from SABnzbd's own day-by-day numbers.
+async function trafficTick() {
+  const tr = db.traffic || (db.traffic = { last: {}, days: {} }), k = dayKey();
+  let changed = false;
+  for (const s of db.services.filter(x => x.type === 'qbittorrent')) {
+    let ti; try { ti = await qb(s, '/api/v2/transfer/info'); } catch { continue; }
+    const d = +ti.dl_info_data || 0, u = +ti.up_info_data || 0, l = tr.last[s.id];
+    tr.last[s.id] = { d, u, at: Date.now() };
+    if (!l) { changed = true; continue; }   // the first look only notes where the counters are
+    const dd = d >= l.d ? d - l.d : d, du = u >= l.u ? u - l.u : u;
+    if (dd || du) { const e = tr.days[k] || (tr.days[k] = { d: 0, u: 0 }); e.d += dd; e.u += du; changed = true; }
+  }
+  const keys = Object.keys(tr.days).sort(); for (const x of keys.slice(0, Math.max(0, keys.length - 400))) delete tr.days[x];
+  if (changed && Date.now() - (tr.saved || 0) > 300000) { tr.saved = Date.now(); save(); }
+}
 const monthKey = (t = Date.now()) => { const d = new Date(t); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); };
 const streamCfg = () => { const c = db.settings.stream || {}; return { defaultGb: c.defaultGb == null ? 100 : +c.defaultGb, wanOnly: !!c.wanOnly }; };
 const limitGb = v => { const n = Math.round((+v || 0) * 1000) / 1000; return n > 0 ? Math.min(n, 1e6) : 0; };
@@ -1713,6 +1733,7 @@ async function monitor() {
     for (const [k, v] of tickets) if (v.exp < Date.now()) tickets.delete(k);
     if (mon.n % 10 === 0) uptSave();
     await safe(streamTick);
+    await safe(trafficTick);
     if (mon.n % 4 === 0) await safe(recentWatch);
     if (mon.n % 4 === 2) await safe(autoImport);
     await safe(nlTick);
@@ -2305,6 +2326,19 @@ const goatServer = http.createServer(async (req, res) => {
         dlspeed: x.dlspeed, upspeed: x.upspeed, size: x.size, added: x.added_on, eta: x.eta, ratio: x.ratio, seeds: x.num_seeds, peers: x.num_leechs, category: x.category || '',
         tags: x.tags || '', path: x.save_path, prio: x.priority })) };
       qbListCache[s.id] = { t: Date.now(), d: out }; return send(res, 200, out);
+    }
+    // The last days' downloads and uploads in bytes: torrents (qBittorrent) and Usenet (SABnzbd).
+    if (p === '/api/traffic' && m === 'GET') {
+      const qbs = db.services.filter(x => x.type === 'qbittorrent' && allowed(x)), sabs = db.services.filter(x => x.type === 'sabnzbd' && allowed(x));
+      if (!qbs.length && !sabs.length) return send(res, 404, { error: 'Needs qBittorrent or SABnzbd' });
+      const n = Math.min(90, Math.max(1, +new URL(req.url, 'http://x').searchParams.get('days') || 7)), days = [], t = db.traffic || { days: {} };
+      const usenet = {};
+      await Promise.all(sabs.map(async s => { try { const st = await sabGet(s, 'mode=server_stats');
+        for (const sv of Object.values((st && st.servers) || {})) for (const [dk, b] of Object.entries(sv.daily || {})) usenet[dk] = (usenet[dk] || 0) + (+b || 0); } catch {} }));
+      for (let i = n - 1; i >= 0; i--) { const d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() - i); const k = dayKey(d.getTime()), e = t.days[k] || {};
+        days.push({ date: k, dl: e.d || 0, ul: e.u || 0, usenet: usenet[k] || 0 }); }
+      const sum = f => days.reduce((a, x) => a + f(x), 0);
+      return send(res, 200, { days, total: { dl: sum(x => x.dl + x.usenet), ul: sum(x => x.ul) }, torrents: qbs.length > 0, usenetOn: sabs.length > 0, since: Object.keys(t.days).sort()[0] || dayKey() });
     }
     if ((r = p.match(/^\/api\/qb\/(\w+)\/act$/)) && m === 'POST') {
       delete qbListCache[r[1]];

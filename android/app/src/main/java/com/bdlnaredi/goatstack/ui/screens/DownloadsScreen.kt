@@ -10,6 +10,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.material.icons.rounded.ExpandLess
+import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -90,7 +95,62 @@ fun DownloadsScreen() {
         PageTitle("Downloads", cur?.name)
         if (cur == null) { EmptyState(Icons.Rounded.Download, "No download apps", "Your profile has no qBittorrent, ruTorrent, Deluge or SABnzbd to show."); return@Column }
         if (kinds.size > 1) { ChoiceRow(kinds, cur.id, { sel = it }); Spacer(Modifier.height(8.dp)) }
+        TrafficCard()
         if (cur.type in TORRENT_CLIENTS) Torrents(cur.id, cur.type == "qbittorrent") else Usenet(cur.id)
+    }
+}
+
+/** How many GB came in and went out: today and this week, and the last 7 days as bars when tapped. */
+@Composable
+private fun TrafficCard() {
+    val ctx = LocalCtx.current
+    val g = LocalGoat.current
+    var open by rememberSaveable { mutableStateOf(false) }
+    val data = rememberLoad("traffic") { runCatching { ctx.api.get<com.bdlnaredi.goatstack.data.Traffic>("/api/traffic?days=7") }.getOrNull() }
+    val t = data.value ?: return
+    if (t.days.isEmpty()) return
+    fun gb(b: Long): String { val v = b / 1e9; return if (v >= 100) "${v.toInt()} GB" else if (v >= 10) "%.1f GB".format(v) else if (v >= 0.01) "%.2f GB".format(v) else if (b > 0) "${maxOf(1, (b / 1e6).toInt())} MB" else "0 GB" }
+    val today = t.days.last()
+    GoatCard(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 8.dp), padding = 12.dp, onClick = { open = !open }) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Today", style = MaterialTheme.typography.labelSmall, color = g.muted)
+                Text("↓ ${gb(today.dl + today.usenet)}  ↑ ${gb(today.ul)}", style = MaterialTheme.typography.titleSmall, color = g.text)
+            }
+            Column(Modifier.weight(1f)) {
+                Text("This week", style = MaterialTheme.typography.labelSmall, color = g.muted)
+                Text("↓ ${gb(t.total.dl)}  ↑ ${gb(t.total.ul)}", style = MaterialTheme.typography.titleSmall, color = g.text)
+            }
+            Icon(if (open) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, if (open) "Hide the days" else "Show each day", tint = g.muted)
+        }
+        if (open) {
+            Spacer(Modifier.height(10.dp))
+            val mx = maxOf(1L, t.days.maxOf { maxOf(it.dl + it.usenet, it.ul) })
+            Row(Modifier.fillMaxWidth().height(110.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.Bottom) {
+                t.days.forEach { d ->
+                    Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                        androidx.compose.foundation.layout.Box(Modifier.width(9.dp).height((100f * (d.dl + d.usenet) / mx).coerceAtLeast(if (d.dl + d.usenet > 0) 2f else 0f).dp)
+                            .clip(RoundedCornerShape(3.dp)).background(g.primary))
+                        androidx.compose.foundation.layout.Box(Modifier.width(9.dp).height((100f * d.ul / mx).coerceAtLeast(if (d.ul > 0) 2f else 0f).dp)
+                            .clip(RoundedCornerShape(3.dp)).background(g.good))
+                    }
+                }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                t.days.forEachIndexed { i, d ->
+                    val day = runCatching { java.time.LocalDate.parse(d.date).dayOfWeek.getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale.getDefault()) }.getOrDefault("")
+                    Text(if (i == t.days.size - 1) "Today" else day, style = MaterialTheme.typography.labelSmall, color = g.muted)
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            t.days.reversed().forEach { d ->
+                Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+                    Text(runCatching { java.time.LocalDate.parse(d.date).format(java.time.format.DateTimeFormatter.ofPattern("EEE d MMM")) }.getOrDefault(d.date), style = MaterialTheme.typography.bodySmall, color = g.text, modifier = Modifier.weight(1f))
+                    Text("↓ ${gb(d.dl + d.usenet)}", style = MaterialTheme.typography.bodySmall, color = g.primary, modifier = Modifier.width(90.dp))
+                    Text("↑ ${gb(d.ul)}", style = MaterialTheme.typography.bodySmall, color = g.good, modifier = Modifier.width(80.dp))
+                }
+            }
+        }
     }
 }
 

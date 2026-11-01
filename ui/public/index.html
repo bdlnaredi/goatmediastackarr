@@ -1705,14 +1705,49 @@ function modal(html,page){
 }
 // A faded picture of the title behind its page.
 function pageBg(o,url){if(!url||!o)return;const b=document.createElement('div');b.className='pgbg';b.setAttribute('aria-hidden','true');b.style.backgroundImage='url("'+String(url).replace(/"/g,'%22')+'")';o.prepend(b)}
+// Downloads: how many GB came in and went out each day (torrents counted by GoatMediaStackarr, Usenet from SABnzbd).
+let trDays=7;
+const gbs=b=>{const g=b/1e9;return g>=100?Math.round(g)+' GB':g>=10?g.toFixed(1)+' GB':g>=0.01?g.toFixed(2)+' GB':b>0?Math.max(1,Math.round(b/1e6))+' MB':'0 GB'};
+function pairChart(days,W=720,H=190){
+  const pl=40,pb=24,iw=W-pl,ih=H-pb-10,n=days.length,mx=Math.max(1,...days.map(x=>Math.max(x.dl+x.usenet,x.ul)));
+  const top=(g=>{const p=10**Math.floor(Math.log10(g||1));return Math.max(1,Math.ceil(g/p)*p)})(mx/1e9),y=v=>10+ih-(v/1e9/top)*ih;
+  const bw=iw/n,gap=Math.max(2,bw*.22),w=Math.max(2,(bw-gap)/2-1),step=Math.ceil(n/10),lab=d=>{const t=new Date(d+'T12:00');return n<=7?t.toLocaleDateString(undefined,{weekday:'short'}):t.toLocaleDateString(undefined,{day:'numeric',month:'short'})};
+  let s=`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Downloaded and uploaded per day" class="ch">`;
+  for(const f of [0,.5,1]){const v=top*f;s+=`<line x1="${pl}" x2="${W}" y1="${y(v*1e9)}" y2="${y(v*1e9)}" style="stroke:var(--line)" stroke-width="1" ${f?'stroke-dasharray="3 5"':''}/><text x="${pl-6}" y="${y(v*1e9)+4}" text-anchor="end" class="ax">${v>=10||v===0?Math.round(v):v.toFixed(1)}</text>`}
+  days.forEach((x,i)=>{const x0=pl+i*bw+gap/2,h=v=>Math.max(v>0?1.5:0,(v/1e9/top)*ih),tor=h(x.dl),use=h(x.usenet),up=h(x.ul);
+    if(x.dl)s+=`<rect x="${x0.toFixed(1)}" y="${(y(0)-tor).toFixed(1)}" width="${w.toFixed(1)}" height="${tor.toFixed(1)}" rx="2" style="fill:var(--link)"/>`;
+    if(x.usenet)s+=`<rect x="${x0.toFixed(1)}" y="${(y(0)-tor-use).toFixed(1)}" width="${w.toFixed(1)}" height="${use.toFixed(1)}" rx="2" style="fill:var(--link);opacity:.5"/>`;
+    if(x.ul)s+=`<rect x="${(x0+w+2).toFixed(1)}" y="${(y(0)-up).toFixed(1)}" width="${w.toFixed(1)}" height="${up.toFixed(1)}" rx="2" style="fill:var(--ok-t)"/>`;
+    if(i%step===0||i===n-1)s+=`<text x="${(x0+w+1).toFixed(1)}" y="${H-6}" text-anchor="middle" class="ax">${esc(i===n-1?T('Today'):lab(x.date))}</text>`;
+    s+=`<rect x="${(pl+i*bw).toFixed(1)}" y="0" width="${bw.toFixed(1)}" height="${H-pb}" fill="transparent" data-tip="${esc(lab(x.date)+': '+gbs(x.dl+x.usenet)+' down'+(x.usenet?` (${gbs(x.usenet)} Usenet)`:'')+', '+gbs(x.ul)+' up')}"/>`});
+  return s+'</svg>';
+}
+async function trafficPanel(){
+  const el=$('#trf');if(!el)return;let d;
+  try{d=await api('/api/traffic?days='+trDays)}catch(x){el.remove();return}
+  if(!document.contains(el))return;
+  const t=d.days[d.days.length-1],y=d.days[d.days.length-2]||{dl:0,ul:0,usenet:0};
+  el.innerHTML=`<div class="row" style="gap:8px;align-items:center"><b class="grow" style="font-size:16px">Data per day</b><div class="seg" id="trd">${[[7,'Week'],[30,'Month']].map(([k,n])=>`<button data-v="${k}" class="${trDays===k?'on':''}" aria-pressed="${trDays===k}">${n}</button>`).join('')}</div></div>
+    <div class="trs"><div><span class="mute">Today</span><b style="color:var(--link)">↓ ${gbs(t.dl+t.usenet)}</b><b style="color:var(--ok-t)">↑ ${gbs(t.ul)}</b></div>
+      <div><span class="mute">Yesterday</span><b style="color:var(--link)">↓ ${gbs(y.dl+y.usenet)}</b><b style="color:var(--ok-t)">↑ ${gbs(y.ul)}</b></div>
+      <div><span class="mute">${trDays===7?'This week':'Last 30 days'}</span><b style="color:var(--link)">↓ ${gbs(d.total.dl)}</b><b style="color:var(--ok-t)">↑ ${gbs(d.total.ul)}</b></div></div>
+    <div class="lgd"><span><i style="background:var(--link)"></i>Downloaded${d.usenetOn?' (torrents)':''}</span>${d.usenetOn?'<span><i style="background:var(--link);opacity:.5"></i>Usenet</span>':''}<span><i style="background:var(--ok-t)"></i>Uploaded</span><span class="mute">GB</span></div>
+    ${pairChart(d.days)}
+    <details class="tbv"><summary>View as table</summary><div style="overflow:auto"><table class="tb"><thead><tr><th>Day</th><th>Downloaded</th>${d.usenetOn?'<th>of it Usenet</th>':''}<th>Uploaded</th></tr></thead><tbody>${d.days.slice().reverse().map(x=>`<tr><td>${esc(new Date(x.date+'T12:00').toLocaleDateString(undefined,{weekday:'short',day:'numeric',month:'short'}))}</td><td>${gbs(x.dl+x.usenet)}</td>${d.usenetOn?`<td>${gbs(x.usenet)}</td>`:''}<td>${gbs(x.ul)}</td></tr>`).join('')}</tbody></table></div></details>
+    ${d.torrents&&d.since===d.days[d.days.length-1].date?'<p class="mute" style="font-size:12.5px;margin:6px 0 0">Torrent totals are counted from today on; the days before fill in as they pass.</p>':''}`;
+  el.querySelector('#trd').onclick=e=>{const b=e.target.closest('[data-v]');if(b){trDays=+b.dataset.v;trafficPanel()}};
+  const tip=tipEl();el.onmousemove=e=>{const r=e.target.closest('[data-tip]');if(!r){tip.hidden=true;return}tip.textContent=r.dataset.tip;tip.hidden=false;tip.style.left=Math.max(8,Math.min(innerWidth-tip.offsetWidth-8,e.clientX+12))+'px';tip.style.top=(e.clientY-36)+'px'};
+  el.onmouseleave=()=>{tip.hidden=true};
+}
 function dlView(){
   const s=first('torrent');if(!s)return noSvc('qBittorrent, ruTorrent or Deluge');
   const QB=s.type==='qbittorrent';
   const admin=me.role==='admin',act=b=>api(`/api/qb/${s.id}/act`,'POST',b);
-  dlH.length=ulH.length=0;dlSel.clear();
+  dlH.length=ulH.length=0;dlSel.clear();setTimeout(trafficPanel,0);
   $('#m').innerHTML=`<div class="panel"><div class="row" style="gap:30px;align-items:flex-end"><div><div class="mute">Download</div><b id="dv" style="font-size:28px;letter-spacing:-.03em;color:var(--link)">–</b></div>
     <div><div class="mute">Upload</div><b id="uv" style="font-size:22px;color:var(--ok-t)">–</b></div><span class="mute" id="pk" style="margin-left:auto"></span><span class="mute" id="fr"></span><span class="pill" id="vp">VPN</span></div>
     <div id="gr" style="margin-top:10px"></div><div class="row mute" style="justify-content:space-between"><span>2 minutes ago</span><span>now</span></div></div>
+    <div class="panel" id="trf" style="margin-top:14px"></div>
     <div class="row" style="margin:14px 0">${QB?'<button id="alt">Speed limits</button>':''}<button id="pa">${ic('pause')}Pause all</button><button id="ra">${ic('play')}Resume all</button><button id="hs">${ic('hist')}History</button>
     ${admin&&QB?`<button id="lm">Speed limit settings</button><button id="cm">Categories and tags</button>`:''}${!QB?`<span class="mute" style="font-size:13px">${s.type==='deluge'?'Deluge':'ruTorrent'}: categories are its labels. Speed limits and schedules stay in its own page.</span>`:''}</div>
     <div class="row" style="margin-bottom:12px"><input id="sq" type="search" placeholder="Search torrents" aria-label="Search torrents" style="flex:1;min-width:150px">

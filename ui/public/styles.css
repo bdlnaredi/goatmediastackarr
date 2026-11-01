@@ -407,3 +407,7 @@ button.sm{min-height:30px;padding:4px 10px;font-size:13px}
 .cn-tkw:hover,.cn-tkw:focus-within{-webkit-mask-image:none;mask-image:none}
 /* Discover: available / requested on the poster */
 .card .cn-have.dh{top:10px;right:10px;bottom:auto;z-index:2;box-shadow:0 2px 8px rgba(0,0,0,.35)}
+.trs{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:10px 0 6px}.trs>div{display:flex;flex-direction:column;gap:2px;padding:10px 12px;border-radius:10px;background:var(--s2)}
+.trs b{font-size:17px;letter-spacing:-.01em}.trs .mute{font-size:12px}
+.trs{grid-template-columns:repeat(3,minmax(0,1fr))}#trf .lgd span{white-space:nowrap}
+@media(max-width:560px){.trs{gap:6px}.trs>div{padding:8px}.trs b{font-size:14px}}

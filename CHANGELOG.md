@@ -4,6 +4,7 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- Downloads shows *Data per day*: how many GB were downloaded and uploaded today, yesterday and this week, with a bar for each of the last 7 days (or 30) and a table. Torrents are counted by GoatMediaStackarr from qBittorrent from now on (a restart of qBittorrent does not lose any), Usenet comes from SABnzbd's own numbers. In the app, tap the line under the speeds to see each day.
 ## v1.0.10 — 2026-11-01
 
 - Seerr kept going offline and online within seconds: GoatMediaStackarr checked it with Seerr's status page, which asks GitHub for Seerr's newest version every time, so a slow or failing name lookup made Seerr look down for a moment. It is now checked with a question Seerr answers by itself, and any app only counts as offline after two missed checks in a row (about a minute), so one slow answer no longer flips it.
