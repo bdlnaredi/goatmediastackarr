@@ -196,6 +196,42 @@ function swr(key, freshMs, maxMs, fn) {
   return run();
 }
 const swrDrop = pre => { for (const k of swrMap.keys()) if (k.startsWith(pre)) { const e = swrMap.get(k); if (e) e.at = 0; } };
+// What Seerr knows about every title it has seen (requested, partly or fully on Plex/Jellyfin), kept 5 minutes.
+let seerrMedia = { t: 0, v: null, p: null };
+function seerrMediaMap() {
+  if (seerrMedia.v && Date.now() - seerrMedia.t < (+process.env.SEERR_MEDIA_MS || 300000)) return Promise.resolve(seerrMedia.v);
+  if (seerrMedia.p) return seerrMedia.p;
+  const pr = (async () => {
+    const out = { movie: new Map(), tv: new Map(), tvdb: new Map() };
+    for (const sv of db.services.filter(x => x.type === 'seerr')) { try {
+      for (let skip = 0, n = 0; n < 40; n++, skip += 100) {
+        const d = await arrGet(sv, `/api/v1/media?take=100&skip=${skip}&filter=all&sort=added`), l = (d && d.results) || [];
+        for (const x of l) { const k = x.mediaType === 'tv' ? 'tv' : 'movie', st = +x.status || 0;
+          if (+x.tmdbId > 0) out[k].set(+x.tmdbId, Math.max(st, out[k].get(+x.tmdbId) || 0));
+          if (k === 'tv' && +x.tvdbId > 0) out.tvdb.set(+x.tvdbId, Math.max(st, out.tvdb.get(+x.tvdbId) || 0)); }
+        if (l.length < 100) break;
+      }
+    } catch {} }
+    return out;
+  })().then(out => { seerrMedia = { t: Date.now(), v: out, p: null }; return out; },
+    () => { seerrMedia.p = null; return seerrMedia.v || { movie: new Map(), tv: new Map(), tvdb: new Map() }; });
+  seerrMedia.p = pr; return pr;
+}
+// Marks list items (Discover) as available (5), partly available (4) or requested (2): from Sonarr/Radarr (has files,
+// or added but not downloaded yet), from Seerr (on Plex or Jellyfin, or asked for) and from requests made here.
+async function markHave(items, kind) {
+  const [idx, sm] = await Promise.all([libIndex().catch(() => null), seerrMediaMap().catch(() => null)]), k = kind === 'tv' ? 'tv' : 'movie';
+  return items.map(x => {
+    const lib = idx && ((x.tmdb && idx[k].get(+x.tmdb)) || (k === 'tv' && x.tvdb && idx.tvdb.get(+x.tvdb))) || null;
+    const ss = sm ? Math.max((x.tmdb && sm[k].get(+x.tmdb)) || 0, (k === 'tv' && x.tvdb && sm.tvdb.get(+x.tvdb)) || 0) : 0;
+    const asked = db.requests.some(r => r.mediaType === k && x.tmdb && +r.mediaId === +x.tmdb && r.status !== 'declined');
+    let available = ss >= 4 ? ss : 0;
+    if (!available && lib) available = lib.size > 0 ? (k === 'tv' ? 4 : 5) : 2;
+    if (k === 'tv' && lib && lib.size > 0 && ss === 5) available = 5;
+    if (!available && (ss >= 2 || asked)) available = 2;
+    return available ? { ...x, available, ...(lib ? { lib: { sid: lib.sid, id: lib.id } } : {}) } : x;
+  });
+}
 const libIndex = () => {
   if (libIdx.v && Date.now() - libIdx.t < 300000) return Promise.resolve(libIdx.v);
   // An older index is used straight away while a new one is made.
@@ -204,13 +240,14 @@ const libIndex = () => {
 };
 function libIndexBuild() {
   if (!libIdx.p) libIdx.p = (async () => {
-    const out = { movie: new Map(), tv: new Map() };
+    const out = { movie: new Map(), tv: new Map(), tvdb: new Map() };
     await Promise.all(db.services.filter(s => s.type === 'radarr' || s.type === 'sonarr').map(async s => { try {
       const l = await arrGet(s, s.type === 'radarr' ? '/api/v3/movie' : '/api/v3/series'), k = s.type === 'radarr' ? 'movie' : 'tv';
       for (const x of Array.isArray(l) ? l : []) if (+x.tmdbId > 0) {
         const size = k === 'movie' ? +x.sizeOnDisk || 0 : +(x.statistics || {}).sizeOnDisk || 0, e = out[k].get(+x.tmdbId);
         if (e) e.size += size; else out[k].set(+x.tmdbId, { size, sid: s.id, id: x.id, cert: String(x.certification || '') });
       }
+      if (k === 'tv') for (const x of Array.isArray(l) ? l : []) if (+x.tvdbId > 0 && !out.tvdb.has(+x.tvdbId)) out.tvdb.set(+x.tvdbId, { size: +(x.statistics || {}).sizeOnDisk || 0, sid: s.id, id: x.id, tmdb: +x.tmdbId || 0 });
     } catch {} }));
     libIdx = { t: Date.now(), v: out, p: null }; return out;
   })().finally(() => { libIdx.p = null; });
@@ -2513,7 +2550,7 @@ const goatServer = http.createServer(async (req, res) => {
     }
     if (p === '/api/discover' && m === 'GET') {
       const q = new URL(req.url, 'http://x').searchParams;
-      try { return send(res, 200, await lists.list(q.get('src'), q.get('list'), q.get('kind'))); }
+      try { const l = await lists.list(q.get('src'), q.get('list'), q.get('kind')); return send(res, 200, await markHave(Array.isArray(l) ? l : [], q.get('kind'))); }
       catch (e) { if (e.status) return send(res, e.status, { error: e.message }); throw e; }
     }
     if (p === '/api/seerr/search' && m === 'GET') {
@@ -2631,7 +2668,7 @@ const goatServer = http.createServer(async (req, res) => {
         year: String(b.year || '').slice(0, 4), poster: String(b.poster || '').slice(0, 300), status: 'pending', at: Date.now(), ...(seasons.length ? { seasons } : {}), ...(b.via ? { via: b.via } : {}) };
       if (me.role === 'admin' || me.autoApprove) { const sr = await seerrAdd(s, x); x.seerrId = sr && sr.id; x.status = 'approved'; x.stage = 'approved'; }
       else { feed('@admins', 'request', 'New request', `${me.name} asked for ${x.title}${b.via === 'watchlist' ? ' (from their watchlist)' : ''}`, 'requests'); notify('requests', 'New request', `${me.name} requested ${x.title}`).catch(() => {}); }
-      db.requests.push(x); save(); audit(me.name, me.role !== 'admin' && me.autoApprove ? 'Requested (auto-approved)' : 'Requested', x.title + (b.via === 'watchlist' ? ' (watchlist)' : ''));
+      seerrMedia.t = 0; db.requests.push(x); save(); audit(me.name, me.role !== 'admin' && me.autoApprove ? 'Requested (auto-approved)' : 'Requested', x.title + (b.via === 'watchlist' ? ' (watchlist)' : ''));
       return [200, x];
     };
     if (p === '/api/requests' && m === 'POST') {

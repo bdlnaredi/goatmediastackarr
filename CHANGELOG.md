@@ -4,6 +4,7 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- Discover marks what is already here, on the web page and in the app: *Available* when it is on your Plex (or Jellyfin) server or downloaded, *Partly available* for a show with some episodes, and *Requested* when someone asked for it, it is waiting in Seerr, or it is added to Sonarr or Radarr but not downloaded yet.
 ## v1.0.8 — 2026-10-31
 
 - Finished downloads into the library: a torrent Sonarr and Radarr did not grab themselves (from Trackers, RSS or added by hand) is imported when it finishes and every video file in it is a clear match; it is copied, so it keeps seeding. The rest wait under Settings → Download rules, and any finished torrent (Downloads → open it) or download stuck with "No files found are eligible for import" (Health) has *Import to library*: see what Sonarr or Radarr make of each file, say which movie, or which show, season and episode, and import. On by default; it only looks at downloads that finish from now on.

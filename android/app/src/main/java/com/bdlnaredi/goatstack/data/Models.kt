@@ -84,7 +84,7 @@ data class MediaRequest(
 @Serializable
 data class DiscoverItem(
     val mediaType: String = "movie", val title: String = "", val year: String = "", val overview: String = "",
-    val poster: String = "", val rating: Double = 0.0, val tmdb: Long = 0, val tvdb: Long = 0,
+    val poster: String = "", val rating: Double = 0.0, val tmdb: Long = 0, val tvdb: Long = 0, val available: Int = 0,
 )
 
 // ---------- Library (Sonarr / Radarr) ----------

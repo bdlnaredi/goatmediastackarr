@@ -405,3 +405,5 @@ button.sm{min-height:30px;padding:4px 10px;font-size:13px}
 .cn-tkw{padding:12px 26px;-webkit-mask-image:linear-gradient(90deg,transparent,#000 22px,#000 calc(100% - 22px),transparent);mask-image:linear-gradient(90deg,transparent,#000 22px,#000 calc(100% - 22px),transparent)}
 /* While the pointer is on the sliding row, the edge fade goes, so a poster passing the edge shows whole, ring and all. */
 .cn-tkw:hover,.cn-tkw:focus-within{-webkit-mask-image:none;mask-image:none}
+/* Discover: available / requested on the poster */
+.card .cn-have.dh{top:10px;right:10px;bottom:auto;z-index:2;box-shadow:0 2px 8px rgba(0,0,0,.35)}

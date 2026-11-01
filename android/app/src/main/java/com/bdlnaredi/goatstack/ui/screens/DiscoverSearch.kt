@@ -106,7 +106,12 @@ fun DiscoverScreen() {
                         if (d.tmdb > 0) ctx.title(d.mediaType, d.tmdb)
                         else ctx.go("search")
                     }) {
-                        Poster(d.poster, d.title, Modifier.fillMaxWidth())
+                        androidx.compose.foundation.layout.Box {
+                            Poster(d.poster, d.title, Modifier.fillMaxWidth())
+                            // Already here: on Plex (or downloaded), partly, or asked for / added to Sonarr or Radarr.
+                            if (d.available > 0) Badge(when (d.available) { 5 -> "Available"; 4 -> "Partly available"; else -> "Requested" },
+                                if (d.available >= 4) g.good else g.warn, Modifier.align(Alignment.TopEnd).padding(6.dp), filled = true)
+                        }
                         Spacer(Modifier.height(6.dp))
                         Text(d.title, style = MaterialTheme.typography.bodySmall, color = g.text, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         Row(verticalAlignment = Alignment.CenterVertically) {
