@@ -3219,7 +3219,7 @@ async function goatView(){
     <div class="row"><button class="primary" id="gdone">${ic('check')}I'm done, hide this</button></div></div>`}
   <h2 class="sec">VPN</h2>
   <div class="panel" id="gvp">
-    <div class="row" style="gap:12px">${pill}${vpn.port?`<span class="pill">Port ${esc(vpn.port)}</span>`:''}<span class="grow"></span><button id="glt"${vpn.state==='up'?'':' disabled'}>${ic('eye')}Leak test</button></div>
+    <div class="row" style="gap:12px">${pill}${vpn.port?`<span class="pill">Port ${esc(vpn.port)}</span>`:''}<span class="grow"></span><button id="gspd"${vpn.state==='up'?'':' disabled'}>${ic('dl')}Speed test</button><button id="glt"${vpn.state==='up'?'':' disabled'}>${ic('eye')}Leak test</button></div><div id="gsp" class="gsp"></div>
     <div class="mute" id="gltr" style="margin:8px 0">${esc(vpn.message||'')}</div>
     <label class="row" style="gap:8px;margin:10px 0"><input type="checkbox" id="gvon"${vOn?' checked':''}> <b>Send the download apps through the VPN</b></label>
     <div id="gvset"${vOn?'':' hidden'}>
@@ -3232,7 +3232,7 @@ async function goatView(){
       </div>
       <div id="gvpia"${pia?'':' hidden'}>
         <div class="mute" style="margin:2px 0 6px">Sign in with your PIA username (it starts with p, like p1234567) and password. GoatMediaStackarr makes the WireGuard connection itself, so there is no file to download.</div>
-        <label class="mute">PIA region <select id="gvrg"><option value="">Fastest from here (picked automatically)</option>${V.region?`<option value="${esc(V.region)}" selected>${esc(V.region)}</option>`:''}</select></label>
+        <div class="row" style="gap:8px;align-items:center;flex-wrap:wrap"><label class="mute">PIA region <select id="gvrg"><option value="">Fastest from here (picked automatically)</option>${V.region?`<option value="${esc(V.region)}" selected>${esc(V.region)}</option>`:''}</select></label><button type="button" id="gvfast">${ic('find')}Find the fastest</button></div><div id="gvfl"></div>
         <div class="mute" id="gvrgm" style="font-size:13px;margin:2px 0 8px"></div>
       </div>
       <div id="govpn"${vType==='openvpn'||pia?'':' hidden'}><input id="gvu" placeholder="${pia?'PIA username (p1234567)':'OpenVPN username (if your provider uses one)'}" value="${esc(V.user||'')}" aria-label="VPN username"><input id="gvpw" type="password" placeholder="${V.pass?'Password saved (type to change)':pia?'PIA password':'OpenVPN password'}" aria-label="VPN password"></div>
@@ -3292,6 +3292,19 @@ async function goatView(){
       if($('#gvu'))vpnS.user=$('#gvu').value.trim();if($('#gvpw')&&$('#gvpw').value)vpnS.pass=$('#gvpw').value;
       await api('/api/goat/settings','POST',{vpn:vpnS});await api('/api/goat/apply-vpn','POST',{});toast('VPN settings applied','ok');setTimeout(()=>tab==='goat'&&goatView(),4000)}
     catch(x){$('#gve').textContent=x.message;idle(b)}};
+  // Speed test through the VPN and without it, and the last result.
+  const mb=b=>b>=1e7?Math.round(b/1e6):(b/1e6).toFixed(1);
+  const spShow=r=>{const el=$('#gsp');if(!el)return;if(!r){el.innerHTML='';return}
+    const one=(n,x)=>x.error?`<div><span class="mute">${n}</span> <span style="color:var(--bad-t)">${esc(x.error)}</span></div>`:`<div><span class="mute">${n}</span><b style="color:var(--link)">↓ ${mb(x.down)} Mbit/s</b><b style="color:var(--ok-t)">↑ ${mb(x.up)} Mbit/s</b><span class="mute">${x.ping} ms</span></div>`;
+    el.innerHTML=`${one('Through the VPN'+(r.country?' ('+esc(r.country)+')':''),r.vpn)}${one('Without the VPN',r.direct)}<div class="mute" style="font-size:12.5px">${esc(ago(r.at))}${!r.vpn.error&&!r.direct.error&&r.direct.down?` · the VPN gives ${Math.round(r.vpn.down/r.direct.down*100)}% of your download speed`:''}</div>`};
+  api('/api/goat/vpn/speed').then(spShow).catch(()=>{});
+  const spd=$('#gspd');if(spd)spd.onclick=async()=>{busy(spd,'Testing… (up to a minute)');try{spShow(await api('/api/goat/vpn/speed','POST',{}))}catch(x){$('#gsp').innerHTML=`<span style="color:var(--bad-t)">${esc(x.message)}</span>`}idle(spd)};
+  // PIA: the regions that answer quickest from here; pick one by tapping it.
+  const gf=$('#gvfast');if(gf)gf.onclick=async()=>{busy(gf,'Measuring…');const out=$('#gvfl');
+    try{await piaLoad();const pf=$('#gvpf').value==='pia',l=await api('/api/goat/pia/fastest'+(pf?'?pf=1':''));
+      out.innerHTML=l.length?`<div class="mute" style="font-size:13px;margin:6px 0 4px">Quickest to answer from here${pf?', with port forwarding':''}. Tap one to use it.</div><div class="chips">${l.map(r=>`<button type="button" class="pill" data-rg="${esc(r.id)}">${esc(r.name)} <span class="mute">${r.ms} ms</span>${r.pf?' · PF':''}</button>`).join('')}</div>`:'<div class="mute">No region answered.</div>';
+      out.onclick=e=>{const b=e.target.closest('[data-rg]');if(!b)return;const sel=$('#gvrg');if(![...sel.options].some(o=>o.value===b.dataset.rg))sel.insertAdjacentHTML('beforeend',`<option value="${esc(b.dataset.rg)}">${esc(b.dataset.rg)}</option>`);sel.value=b.dataset.rg;out.querySelectorAll('[data-rg]').forEach(x=>x.classList.toggle('acc',x===b));toast('Picked. Press Save and apply.','ok')}}
+    catch(x){out.innerHTML=`<div class="err">${esc(x.message)}</div>`}idle(gf)};
   const lt=$('#glt');if(lt)lt.onclick=async()=>{busy(lt,'Testing…');try{const r=await api('/api/goat/leaktest','POST',{});
     $('#gltr').innerHTML=`<span class="pill ${r.safe?'ok':'bad'}">${r.safe?'Safe':'Not hidden'}</span> ${esc(r.verdict)} <span class="mute">VPN apps: ${esc(r.vpn.ip||'none')}${r.vpn.country?' ('+esc(r.vpn.country)+')':''}. This server: ${esc(r.home.ip)}${r.home.country?' ('+esc(r.home.country)+')':''}.</span>`}catch(x){$('#gltr').textContent=x.message}idle(lt)};
   const gd=$('#gdone');if(gd)gd.onclick=async()=>{try{await api('/api/goat/settings','POST',{setup:{done:true}});goatView()}catch(x){toast(x.message,'bad')}};

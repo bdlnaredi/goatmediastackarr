@@ -417,3 +417,4 @@ button.sm{min-height:30px;padding:4px 10px;font-size:13px}
 .sbz{margin:6px 0 10px;padding:10px 12px;border:1px solid var(--line);border-radius:12px}.sbz b{display:inline-flex;gap:6px;align-items:center}.sbz b svg{width:18px;height:18px}
 .rqest{font-size:13px;margin-top:6px}.rqest:empty{display:none}
 .rrule{margin-bottom:8px}.rrg{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px 10px}.rrg .rrn{grid-column:1/-1}.rrg label.blk{display:flex;flex-direction:column;gap:4px;margin:0}.rrg input,.rrg select{width:100%;box-sizing:border-box}.rrw{gap:6px 14px;flex-wrap:wrap;align-items:center;margin-top:8px}.rrw .chk{margin:0}
+.gsp{display:flex;flex-direction:column;gap:4px;margin:8px 0}.gsp>div{display:flex;gap:12px;flex-wrap:wrap;align-items:baseline}.gsp:empty{display:none}

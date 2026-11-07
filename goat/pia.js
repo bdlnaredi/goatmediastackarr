@@ -50,7 +50,7 @@ async function token(user, pass) {
 
 /** How long a TCP connection to the region takes, in ms (or Infinity). */
 const latency = (ip, ms = 1200) => new Promise(ok => {
-  const t = Date.now(), s = net.connect({ host: ip, port: 443, timeout: ms });
+  const t = Date.now(), s = net.connect({ host: ip, port: +process.env.PIA_PING_PORT || 443, timeout: ms });
   const done = v => { s.destroy(); ok(v); };
   s.on('connect', () => done(Date.now() - t)); s.on('timeout', () => done(Infinity)); s.on('error', () => done(Infinity));
 });
@@ -118,7 +118,7 @@ async function port(env = process.env) {
   return { port: info.port, expires: info.expires_at, payload, signature };
 }
 
-module.exports = { regions, token, pick, connect, port, keys };
+module.exports = { regions, token, pick, connect, port, keys, latency };
 
 if (require.main === module) {
   const [cmd, a, b] = process.argv.slice(2);

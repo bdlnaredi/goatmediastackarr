@@ -1543,6 +1543,31 @@ async function watchTick() {
 // ---------- Data per day: how much was downloaded and uploaded each day ----------
 // qBittorrent counts bytes since it started; each look adds what is new to today's total (a restart of qBittorrent
 // starts its count again from zero, which is taken as all new). Usenet comes from SABnzbd's own day-by-day numbers.
+// Speed test: a small file for the delay, then 25 MB down and 8 MB up, through the VPN (the site helper, a VPN app) or not.
+const SPEED = () => (process.env.SPEEDTEST_URL || 'https://speed.cloudflare.com').replace(/\/+$/, '');
+async function speedRun(viaVpn) {
+  const get = async (url, o = {}) => { if (viaVpn) return siteFetch({ vpn: true }, url, o); const r = await fetch(url, { ...o, signal: AbortSignal.timeout(90000) }); return { status: r.status, body: r.body }; };
+  const ok = r => { if (r.status >= 400) throw new Error('The speed test site answered ' + r.status); return r; };
+  let t = Date.now(); await readAll(ok(await get(SPEED() + '/__down?bytes=0')).body); const ping = Date.now() - t;
+  t = Date.now(); const got = (await readAll(ok(await get(SPEED() + '/__down?bytes=25000000')).body)).length, ds = Math.max(0.001, (Date.now() - t) / 1000);
+  const up = Buffer.alloc(8e6, 97); t = Date.now(); await readAll(ok(await get(SPEED() + '/__up', { method: 'POST', body: up, headers: { 'Content-Type': 'application/octet-stream' } })).body); const us = Math.max(0.001, (Date.now() - t) / 1000);
+  return { ping, down: Math.round(got * 8 / ds), up: Math.round(up.length * 8 / us) };
+}
+// Port forwarding: when the VPN is up with port forwarding on, but qBittorrent is firewalled (or no port was given) for
+// three checks in a row, the admins hear about it; and again when it works.
+async function pfTick() {
+  if (!GOAT_MANAGED || !goatSettings) return;
+  const v = goatRead(path.join(GOAT_RUN, 'vpn.json')) || {}, pf = String(goatSettings.effectiveEnv().VPN_PORT_FORWARD || 'off').toLowerCase();
+  const st = mon.pf = mon.pf || { bad: 0, told: false };
+  if (!v.enabled || v.state !== 'up' || !['pia', 'natpmp'].includes(pf)) { st.bad = 0; return; }
+  const q = db.services.find(x => x.managed === 'qbittorrent'); if (!q) return;
+  const d = await qb(q, '/api/v2/transfer/info').catch(() => null); if (!d) return;
+  const broken = !v.port || d.connection_status === 'firewalled';
+  if (broken) {
+    if (++st.bad >= 3 && !st.told) { st.told = true; const why = !v.port ? 'The VPN did not give a forwarded port.' : `qBittorrent is firewalled on port ${v.port}: other people cannot connect to it, so torrents are slower.`;
+      feed('@admins', 'problem', 'Forwarded port not working', why, 'stack'); await notify('vpn', 'Forwarded port not working', why + ' Restarting the VPN on the Stack page usually gets a new one.'); }
+  } else { if (st.told) { feed('@admins', 'info', 'Forwarded port working again', `Port ${v.port}`, 'stack'); await notify('vpn', 'Forwarded port working again', `qBittorrent is reachable again on port ${v.port}.`); } st.bad = 0; st.told = false; }
+}
 async function trafficTick() {
   const tr = db.traffic || (db.traffic = { last: {}, days: {} }), k = dayKey();
   let changed = false;
@@ -1787,6 +1812,7 @@ async function monitor() {
     if (mon.n % 10 === 0) uptSave();
     await safe(streamTick);
     await safe(trafficTick);
+    if (mon.n % 4 === 1) await safe(pfTick);
     if (mon.n % 4 === 0) await safe(recentWatch);
     if (mon.n % 4 === 2) await safe(autoImport);
     await safe(nlTick);
@@ -2290,6 +2316,15 @@ const goatServer = http.createServer(async (req, res) => {
       }
       return send(res, 200, piaRegions.list);
     }
+    // PIA regions by how quickly they answer from here (the fastest first), to pick one by hand.
+    if (p === '/api/goat/pia/fastest' && m === 'GET') {
+      if (adminOnly()) return; if (!goatPia || !goatPia.latency) return send(res, 404, { error: 'Not running inside GoatMediaStackarr' });
+      const pf = new URL(req.url, 'http://x').searchParams.get('pf') === '1';
+      let list; try { list = (await goatPia.regions({ local: true })).filter(r => !pf || r.pf); } catch (e) { return send(res, 502, { error: e.message }); }
+      const t = await Promise.all(list.map(async r => ({ id: r.id, name: r.name, country: r.country, pf: r.pf, ms: await goatPia.latency(((r.meta || [])[0] || (r.wg || [])[0] || {}).ip) })));
+      return send(res, 200, t.filter(x => Number.isFinite(x.ms)).sort((a, b) => a.ms - b.ms).slice(0, 8));
+    }
+    if (p === '/api/goat/vpn/speed' && m === 'GET') { if (adminOnly()) return; return send(res, 200, (db.settings || {}).vpnSpeed || null); }
     if (p.startsWith('/api/goat/') && m === 'POST') {
       if (adminOnly()) return;
       if (DEMO) return send(res, 403, { error: 'This is turned off in the demo' });
@@ -2357,6 +2392,18 @@ const goatServer = http.createServer(async (req, res) => {
           .then(r => { Object.assign(goatImport, r, { state: 'done', finished: Date.now() }); if (kind === 'radarr' || kind === 'sonarr') seerrFolderFix([kind], true).catch(() => {}); audit('GoatMediaStackarr', 'Import finished', `${kind}: ${r.added} added, ${r.skipped} already there, ${r.failed.length} failed${r.settings ? `; profiles ${r.settings.profiles.added} added, ${r.settings.profiles.updated} replaced; custom formats ${r.settings.formats.added} added, ${r.settings.formats.updated} replaced` : ''}`); })
           .catch(e => { Object.assign(goatImport, { state: 'error', error: e.message }); });
         return send(res, 200, goatImport);
+      }
+      // Speed test: downloads and uploads a test file through the VPN (the way the download apps go) and without it.
+      if (p === '/api/goat/vpn/speed') {
+        if (mon.speedBusy) return send(res, 409, { error: 'A speed test is already running' });
+        mon.speedBusy = true;
+        try {
+          const vpn = await speedRun(true).catch(e => ({ error: e.message })), direct = await speedRun(false).catch(e => ({ error: e.message }));
+          if (vpn.error && direct.error) return send(res, 502, { error: vpn.error });
+          const v = goatRead(path.join(GOAT_RUN, 'vpn.json')) || {};
+          db.settings.vpnSpeed = { at: Date.now(), vpn, direct, country: v.country || '' }; save(); audit(me.name, 'VPN speed test', vpn.error ? vpn.error : `${Math.round(vpn.down / 1e6)} Mbit/s down through the VPN`);
+          return send(res, 200, db.settings.vpnSpeed);
+        } finally { mon.speedBusy = false; }
       }
       if (p === '/api/goat/leaktest') {
         const vpn = goatRead(path.join(GOAT_RUN, 'vpn.json')) || {};
