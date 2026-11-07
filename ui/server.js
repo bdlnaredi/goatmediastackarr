@@ -151,9 +151,12 @@ const lists = listsLib.create({ keys: listKeys, file: path.join(DATA, 'lists-cac
 // Two-step sign-in can be required: for everyone, for admins, or for chosen profiles. People who sign in with Plex
 // are left out (Plex's own sign-in protects them), except admins.
 const tfaPolicy = () => ['none', 'admins', 'everyone'].includes((db.settings || {}).require2fa) ? db.settings.require2fa : 'none';
+const WA = require('./lib/webauthn'), pkTickets = new Map();
+// The passkey's site: the address this page was opened at (no port), the way the browser sees it.
+const rpOf = req => String((TRUST && req.headers['x-forwarded-host']) || req.headers.host || 'localhost').split(',')[0].trim().replace(/:\d+$/, '').replace(/^\[|\]$/g, '').toLowerCase();
 const tfaRequired = u => !!u && (u.require2fa || tfaPolicy() === 'everyone' || (tfaPolicy() === 'admins' && u.role === 'admin')) && !(u.plex && u.role !== 'admin');
-const need2fa = u => tfaRequired(u) && !(u.totp && u.totp.on);
-const pubUser = u => ({ email: u.email || '', weekly: !u.noWeekly, readyMail: !!u.readyMail, need2fa: need2fa(u), require2fa: !!u.require2fa, tfaRequired: tfaRequired(u), twofa: !!(u.totp && u.totp.on), id: u.id, name: u.name, role: u.role, access: u.access, perms: u.perms || null, notify: u.notify || '', dash: u.dash || null, reqLimit: u.reqLimit || null, autoApprove: !!u.autoApprove, plex: u.plex ? { name: u.plex.name } : null, hide: cleanHide(u.hide), restr: u.plexRules ? Object.fromEntries(['contentRating', 'contentRating!', 'label', 'label!'].filter(k => (u.plexRules[k] || []).length).map(k => [k, u.plexRules[k]])) : null, libs: u.plex ? { n: ((u.plexLibs || {}).mine || []).length, of: ((u.plexLibs || {}).all || []).length, limited: libLimited(u) } : null, plexName: u.plexName || '', lists: lists.enabled(), avatar: u.avatar ? `/api/avatar/${u.id}?v=${u.avatar.v}` : '', dataLimit: u.dataLimit || 0, streamLimit: u.streamLimit == null ? null : u.streamLimit, kids: u.kids ? { age: u.kids.age } : null });
+const need2fa = u => tfaRequired(u) && !(u.totp && u.totp.on) && !(u.passkeys || []).length;
+const pubUser = u => ({ passkeys: (u.passkeys || []).length, email: u.email || '', weekly: !u.noWeekly, readyMail: !!u.readyMail, need2fa: need2fa(u), require2fa: !!u.require2fa, tfaRequired: tfaRequired(u), twofa: !!(u.totp && u.totp.on), id: u.id, name: u.name, role: u.role, access: u.access, perms: u.perms || null, notify: u.notify || '', dash: u.dash || null, reqLimit: u.reqLimit || null, autoApprove: !!u.autoApprove, plex: u.plex ? { name: u.plex.name } : null, hide: cleanHide(u.hide), restr: u.plexRules ? Object.fromEntries(['contentRating', 'contentRating!', 'label', 'label!'].filter(k => (u.plexRules[k] || []).length).map(k => [k, u.plexRules[k]])) : null, libs: u.plex ? { n: ((u.plexLibs || {}).mine || []).length, of: ((u.plexLibs || {}).all || []).length, limited: libLimited(u) } : null, plexName: u.plexName || '', lists: lists.enabled(), avatar: u.avatar ? `/api/avatar/${u.id}?v=${u.avatar.v}` : '', dataLimit: u.dataLimit || 0, streamLimit: u.streamLimit == null ? null : u.streamLimit, kids: u.kids ? { age: u.kids.age } : null });
 // What the folders the apps report mean, in words (these are the container's own folders).
 const DISK_NAMES = { '/media': 'Media library', '/data': 'Media library', '/downloads': 'Downloads', '/config': 'App data', '/': 'Container (Docker image)' };
 const DISK_ORDER = ['Media library', 'Downloads', '', 'App data', 'Container (Docker image)'];
@@ -2225,8 +2228,33 @@ const goatServer = http.createServer(async (req, res) => {
       if (!(u ? crypto.timingSafeEqual(Buffer.from(hash(b.password || '', u.salt)), Buffer.from(u.hash)) : (hash(b.password || '', 'x'), false)))
         { fl.n++; fl.t = Date.now(); fails[ip] = fl; audit(cut(b.name, 40) || '?', 'Failed sign-in', ip); return send(res, 401, { error: 'Wrong name or password' }); }
       delete fails[ip];
+      if (tfaRequired(u) && !(u.totp && u.totp.on) && (u.passkeys || []).length) return send(res, 401, { error: 'Sign in with your passkey: two-step sign-in is required for you, and your passkey is your second step.' });
       if (u.totp && u.totp.on) { const tk = crypto.randomBytes(16).toString('hex'); tickets.set(tk, { uid: u.id, exp: Date.now() + 300000, n: 0 }); return send(res, 200, { twofa: true, ticket: tk }); }
       audit(u.name, 'Signed in', res.info.ip);
+      return login(res, u);
+    }
+    // Passkeys: sign in with Face ID, a fingerprint, Windows Hello or a security key, no password. The browser picks the
+    // passkey (each one carries who it belongs to); a passkey stands in for the password and the two-step code.
+    if (p === '/api/passkeys/login/start' && m === 'POST') {
+      const rpId = rpOf(req), challenge = WA.b64u(crypto.randomBytes(32)), ticket = crypto.randomBytes(16).toString('hex');
+      for (const [k, v] of pkTickets) if (v.exp < Date.now()) pkTickets.delete(k);
+      if (pkTickets.size > 500) return send(res, 429, { error: 'Too many sign-ins at once. Try again in a minute.' });
+      pkTickets.set(ticket, { challenge, rpId, exp: Date.now() + 120000 });
+      return send(res, 200, { ticket, challenge, rpId });
+    }
+    if (p === '/api/passkeys/login/finish' && m === 'POST') {
+      const ip = ipOf(req), fl = fails[ip] || { n: 0, t: 0 };
+      if (Date.now() - fl.t > 600000) fl.n = 0;
+      if (fl.n >= 8) return send(res, 429, { error: 'Too many attempts. Try again in 10 minutes.' });
+      const b = await readBody(req), tk = pkTickets.get(String(b.ticket || '')); pkTickets.delete(String(b.ticket || ''));
+      if (!tk || tk.exp < Date.now()) return send(res, 401, { error: 'That sign-in timed out. Please try again.' });
+      const id = String(b.id || ''), u = db.users.find(x => (x.passkeys || []).some(k => k.id === id)), cred = u && u.passkeys.find(k => k.id === id);
+      try {
+        if (!cred) throw Object.assign(new Error('This passkey is not known here. Sign in with your password and add it under Account.'), { plain: true });
+        if (cred.rp !== tk.rpId) throw Object.assign(new Error(`This passkey was made for ${cred.rp}. Open GoatMediaStackarr at that address to use it.`), { plain: true });
+        const r = WA.verify(b, cred, tk); cred.count = r.count; cred.used = Date.now();
+      } catch (e) { fl.n++; fl.t = Date.now(); fails[ip] = fl; audit(u ? u.name : '?', 'Failed passkey sign-in', ip + ': ' + e.message); return send(res, 401, { error: e.plain ? e.message : 'That passkey did not work' }); }
+      delete fails[ip]; save(); audit(u.name, 'Signed in', res.info.ip + ' (passkey' + (cred.name ? ': ' + cred.name : '') + ')');
       return login(res, u);
     }
     if (p === '/api/login/2fa' && m === 'POST') {
@@ -2310,6 +2338,30 @@ const goatServer = http.createServer(async (req, res) => {
       me.totp = undefined; save(); audit(me.name, 'Turned off two-step sign-in', ''); return send(res, 200, {});
     }
     // Linking Telegram or Discord to this profile: a short code to send to the bot.
+    // Your passkeys: add one (the browser makes it), see them, remove one.
+    if (p === '/api/passkeys' && m === 'GET') return send(res, 200, (me.passkeys || []).map(k => ({ id: k.id, name: k.name, rp: k.rp, at: k.at, used: k.used || 0, here: k.rp === rpOf(req) })));
+    if (p === '/api/passkeys/register/start' && m === 'POST') {
+      const rpId = rpOf(req), challenge = WA.b64u(crypto.randomBytes(32)), ticket = crypto.randomBytes(16).toString('hex');
+      pkTickets.set(ticket, { challenge, rpId, uid: me.id, exp: Date.now() + 180000 });
+      return send(res, 200, { ticket, challenge, rp: { id: rpId, name: 'GoatMediaStackarr' }, user: { id: WA.b64u(Buffer.from(me.id)), name: me.name, displayName: me.name },
+        exclude: (me.passkeys || []).filter(k => k.rp === rpId).map(k => k.id) });
+    }
+    if (p === '/api/passkeys/register/finish' && m === 'POST') {
+      const b = await readBody(req), tk = pkTickets.get(String(b.ticket || '')); pkTickets.delete(String(b.ticket || ''));
+      if (!tk || tk.exp < Date.now() || tk.uid !== me.id) return send(res, 400, { error: 'That took too long. Please try again.' });
+      const id = String(b.id || ''); if (!/^[\w-]{16,400}$/.test(id)) return send(res, 400, { error: 'The passkey has no proper id' });
+      if (db.users.some(x => (x.passkeys || []).some(k => k.id === id))) return send(res, 400, { error: 'That passkey is already added' });
+      let k; try { k = WA.register(b, tk); } catch (e) { return send(res, 400, { error: e.plain ? e.message : 'The passkey could not be added' }); }
+      if ((me.passkeys || []).length >= 10) return send(res, 400, { error: 'Ten passkeys is the most. Remove one first.' });
+      const name = cut(String(b.name || '').trim(), 40) || 'Passkey ' + ((me.passkeys || []).length + 1);
+      (me.passkeys = me.passkeys || []).push({ id, ...k, rp: tk.rpId, name, at: Date.now() }); save(); audit(me.name, 'Added a passkey', name + ' (' + tk.rpId + ')');
+      return send(res, 200, { id, name });
+    }
+    const pkDel = m === 'DELETE' && p.match(/^\/api\/passkeys\/([\w-]{16,400})$/);
+    if (pkDel) { const r0 = pkDel;
+      const i = (me.passkeys || []).findIndex(k => k.id === r0[1]); if (i < 0) return send(res, 404, { error: 'Not found' });
+      const [k] = me.passkeys.splice(i, 1); save(); audit(me.name, 'Removed a passkey', k.name); return send(res, 200, {});
+    }
     if (p === '/api/me/chats' && m === 'GET') { const st = bots.state(); return send(res, 200, { telegram: !!(me.chats || {}).telegram, discord: !!(me.chats || {}).discord, bots: { telegram: st.telegram.on ? ((db.settings.bots || {}).telegram || {}).name || 'on' : '', discord: st.discord.on ? ((db.settings.bots || {}).discord || {}).name || 'on' : '' } }); }
     if (p === '/api/me/chats/code' && m === 'POST') {
       for (const [k, v] of chatCodes) if (v.exp < Date.now() || v.uid === me.id) chatCodes.delete(k);

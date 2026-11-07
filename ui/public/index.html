@@ -392,7 +392,7 @@ main.sx #m .panel{max-width:760px!important}
 /* Unraid page */
 .uh{margin-bottom:16px}.uhr{display:flex;align-items:center;gap:16px;flex-wrap:wrap}.uhr .si{width:52px;height:52px;border-radius:16px}.uhr .si .ic{width:26px;height:26px}
 .ugd{margin-top:10px;text-align:left}.ugd summary{cursor:pointer;font-size:13px;font-weight:650;color:var(--link);padding:6px 0;list-style-position:inside}.ugd summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}.ugdb{padding-top:6px}.kv{display:flex;justify-content:space-between;gap:12px;padding:5px 0;border-bottom:1px solid var(--line);font-size:13.5px}.kv:last-of-type{border-bottom:0}.thg{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:6px 12px;margin-top:10px}.th{display:grid;grid-template-columns:22px 1fr 34px;align-items:center;gap:6px;font-size:12px}.th .ubar{margin:0}.th b{text-align:right;font-weight:650}
-.orl{display:flex;align-items:center;gap:10px;color:#c9c8e0;font-size:13px}.orl::before,.orl::after{content:'';flex:1;height:1px;background:rgba(255,255,255,.2)}.login button.plexb{min-height:48px;border-radius:15px;font-weight:700;font-size:15.5px;background:rgba(229,160,13,.16);border-color:rgba(229,160,13,.7);color:#ffd36b}.login button.plexb:hover{background:rgba(229,160,13,.28)}.pxs{min-height:1.2em;font-size:13px;text-align:center}.pxs a{color:#ffd36b}
+.orl{display:flex;align-items:center;gap:10px;color:#c9c8e0;font-size:13px}.orl::before,.orl::after{content:'';flex:1;height:1px;background:rgba(255,255,255,.2)}.login button.pkb{min-height:48px;border-radius:15px;font-weight:650;font-size:15px;display:flex;align-items:center;justify-content:center;gap:8px;background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.28);color:#fff}.login button.plexb{min-height:48px;border-radius:15px;font-weight:700;font-size:15.5px;background:rgba(229,160,13,.16);border-color:rgba(229,160,13,.7);color:#ffd36b}.login button.plexb:hover{background:rgba(229,160,13,.28)}.pxs{min-height:1.2em;font-size:13px;text-align:center}.pxs a{color:#ffd36b}
 .relx{display:inline-grid;place-items:center;width:34px;height:34px;flex:none;border-radius:10px;border:1px solid var(--line);color:var(--link)}.relx:hover{border-color:var(--accent)}.relx .ic{width:18px;height:18px}.rel b a{color:inherit;text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:3px}.rel b a:hover{text-decoration-color:var(--accent)}
 .cpun{margin:0 0 8px;font-size:13.5px;overflow-wrap:anywhere}.uhr h2{margin:0 0 4px;font-size:26px;letter-spacing:-.03em}.chips{display:flex;gap:8px;flex-wrap:wrap}
 .btn{display:inline-flex;align-items:center;padding:9px 16px;border-radius:12px;background:var(--s2);color:var(--text);text-decoration:none;font-weight:600}.btn:hover{background:var(--line)}
@@ -641,6 +641,34 @@ async function plexSignIn(){
     if(!stop){done();err.textContent='That took too long. Please try again.'}
   }catch(x){if(!stop){done();st.textContent='';err.textContent=x.message}}
 }
+// Passkeys (WebAuthn): only on a secure page (https, or localhost) in a browser that has them.
+const PK_OK=!!(window.PublicKeyCredential&&window.isSecureContext&&navigator.credentials);
+const b64e=b=>btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+const b64d=s=>Uint8Array.from(atob(String(s).replace(/-/g,'+').replace(/_/g,'/').padEnd(Math.ceil(String(s).length/4)*4,'=')),c=>c.charCodeAt(0));
+async function pkSignIn(){
+  const o=await api('/api/passkeys/login/start','POST',{});
+  const c=await navigator.credentials.get({publicKey:{challenge:b64d(o.challenge),rpId:o.rpId,userVerification:'preferred',timeout:120000}});
+  const r=c.response;
+  return api('/api/passkeys/login/finish','POST',{ticket:o.ticket,id:c.id,clientDataJSON:b64e(r.clientDataJSON),authenticatorData:b64e(r.authenticatorData),signature:b64e(r.signature),userHandle:r.userHandle?b64e(r.userHandle):''});
+}
+async function pkAdd(name){
+  const o=await api('/api/passkeys/register/start','POST',{});
+  const c=await navigator.credentials.create({publicKey:{challenge:b64d(o.challenge),rp:o.rp,user:{id:b64d(o.user.id),name:o.user.name,displayName:o.user.displayName},
+    pubKeyCredParams:[{type:'public-key',alg:-7},{type:'public-key',alg:-257},{type:'public-key',alg:-8}],authenticatorSelection:{residentKey:'required',requireResidentKey:true,userVerification:'preferred'},
+    excludeCredentials:o.exclude.map(id=>({type:'public-key',id:b64d(id)})),attestation:'none',timeout:120000}});
+  const r=c.response;if(!r.getPublicKey||!r.getAuthenticatorData)throw new Error('This browser is too old for passkeys. Update it and try again.');
+  return api('/api/passkeys/register/finish','POST',{ticket:o.ticket,id:c.id,name,clientDataJSON:b64e(r.clientDataJSON),authenticatorData:b64e(r.getAuthenticatorData()),publicKey:b64e(r.getPublicKey()),alg:r.getPublicKeyAlgorithm()});
+}
+// Account → Passkeys: the ones you have, add one on this device, remove one.
+async function pkPanel(){
+  const el=$('#pkp');if(!el)return;let l=[];try{l=await api('/api/passkeys')}catch{}
+  if(!document.contains(el))return;
+  el.innerHTML=`<h3 style="margin-top:0">Passkeys</h3><p class="mute">Sign in with Face ID, a fingerprint, Windows Hello or a security key instead of your password${me.twofa||me.tfaRequired?' and code':''}. A passkey works only at the address it was made at.</p>
+    ${l.map(k=>`<div class="box row" style="gap:10px"><span class="grow"><b>${esc(k.name)}</b><span class="mute" style="display:block;font-size:13px">${esc(k.rp)} · added ${esc(new Date(k.at).toLocaleDateString())}${k.used?' · last used '+esc(ago(k.used)):''}</span></span><button data-pkd="${esc(k.id)}">Remove</button></div>`).join('')}
+    ${PK_OK?`<div class="row" style="margin-top:8px"><input id="pkn" placeholder="Name, like My phone" maxlength="40" style="max-width:220px"><button class="primary" id="pka">${ic('key')}Add a passkey</button></div>`:`<p class="mute" style="font-size:13px">To add one, open GoatMediaStackarr at an https address (your Cloudflare or Tailscale address, say) or at localhost. Browsers only allow passkeys there.</p>`}<div class="err" id="pke"></div>`;
+  const a=el.querySelector('#pka');if(a)a.onclick=async()=>{a.disabled=true;el.querySelector('#pke').textContent='';try{await pkAdd(el.querySelector('#pkn').value.trim());toast('Passkey added','ok');pkPanel()}catch(x){if(x.name!=='NotAllowedError'&&x.name!=='AbortError')el.querySelector('#pke').textContent=x.name==='InvalidStateError'?'This device already has a passkey here.':x.message;a.disabled=false}};
+  el.querySelectorAll('[data-pkd]').forEach(b=>b.onclick=async()=>{if(!confirm('Remove this passkey? You can still sign in with your password.'))return;try{await api('/api/passkeys/'+b.dataset.pkd,'DELETE');toast('Removed','ok');pkPanel()}catch(x){toast(x.message,'bad')}});
+}
 function authView(setup,needCode){
   Cinema.stopAmbient();Cinema.reset();showStage();
   $('#app').innerHTML=`<div class="gate"><form class="login box" id="f">
@@ -648,9 +676,10 @@ function authView(setup,needCode){
     ${setup&&needCode?'<input name="token" placeholder="Setup code (SETUP_TOKEN from your container settings)" aria-label="Setup code" autocomplete="off" required>':''}
     <input name="name" placeholder="Name" aria-label="Name" autocomplete="username" required>
     <div class="pwf"><input name="password" type="password" placeholder="Password (8+ characters)" aria-label="Password" autocomplete="${setup?'new-password':'current-password'}" required><button type="button" class="ghost" id="pwt" aria-label="Show password" aria-pressed="false">${ic('eye')}</button></div>
-    <button class="primary">${setup?'Create account':'Sign in'}</button>${!setup&&PLEXLOGIN?'<div class="orl"><span>or</span></div><button type="button" class="plexb" id="px">Sign in with Plex</button><div class="mute pxs" id="pxs" role="status"></div>':''}${setup?'':'<button type="button" class="lnk" id="fg">Forgot password?</button>'}<div class="err" id="e" role="alert"></div>${DEMO?'<p class="mute demo-hint">Demo with pretend apps. Sign in as <b>demo</b> with <b>demo-mediahub</b> (admin), or <b>guest</b> with <b>guest-mediahub</b> (regular profile).</p>':''}</form></div>`;
+    <button class="primary">${setup?'Create account':'Sign in'}</button>${!setup&&PK_OK?'<button type="button" class="pkb" id="pk1">'+ic('key')+'Sign in with a passkey</button>':''}${!setup&&PLEXLOGIN?'<div class="orl"><span>or</span></div><button type="button" class="plexb" id="px">Sign in with Plex</button><div class="mute pxs" id="pxs" role="status"></div>':''}${setup?'':'<button type="button" class="lnk" id="fg">Forgot password?</button>'}<div class="err" id="e" role="alert"></div>${DEMO?'<p class="mute demo-hint">Demo with pretend apps. Sign in as <b>demo</b> with <b>demo-mediahub</b> (admin), or <b>guest</b> with <b>guest-mediahub</b> (regular profile).</p>':''}</form></div>`;
   pwToggle();
   const fg=$('#fg');if(fg)fg.onclick=()=>forgotView(setup,needCode);
+  if($('#pk1'))$('#pk1').onclick=async()=>{const b=$('#pk1');b.disabled=true;$('#e').textContent='';try{await pkSignIn();start()}catch(x){if(x.name!=='NotAllowedError'&&x.name!=='AbortError')$('#e').textContent=x.message;b.disabled=false}};
   if($('#px'))$('#px').onclick=()=>plexSignIn();
   $('#f').onsubmit=async e=>{e.preventDefault();const btn=e.target.querySelector('.primary');btn.disabled=true;
     try{const r=await api(setup?'/api/setup':'/api/login','POST',Object.fromEntries(new FormData(e.target)));if(r&&r.twofa)return codeView(r.ticket);start()}
@@ -750,7 +779,7 @@ function codeView(ticket){
     try{await api('/api/login/2fa','POST',{ticket,code:e.target.code.value.trim()});start()}
     catch(x){$('#e').textContent=x.message;if(/start again|expired|too many/i.test(x.message))setTimeout(()=>authView(false,false),1500)}};
 }
-const ICONS={rel:'<path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',goat:'<path d="M12 3 3 7.5l9 4.5 9-4.5L12 3zM3 12l9 4.5 9-4.5M3 16.5 12 21l9-4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>',ext:'<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+const ICONS={key:'<circle cx="7.5" cy="15.5" r="4"/><path d="m10.5 12.5 9-9M16 7l3 3M13.5 9.5l2 2"/>',rel:'<path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',goat:'<path d="M12 3 3 7.5l9 4.5 9-4.5L12 3zM3 12l9 4.5 9-4.5M3 16.5 12 21l9-4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>',ext:'<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
  mb:'<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
  sub:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 11h3M13 11h4M7 15h5M15 15h2"/>',
  nzb:'<path d="M7 18a4 4 0 0 1-.6-7.96A6 6 0 0 1 18 9a4.5 4.5 0 0 1-.5 9H7z"/><path d="M12 11v6m0 0-2.5-2.5M12 17l2.5-2.5"/>',
@@ -1168,6 +1197,7 @@ async function stAcct(){
   $('#m').innerHTML=`<div class="panel" style="max-width:560px"><h3 style="margin-top:0">Password</h3><form id="pf" style="max-width:360px;margin:0">
       <input name="old" type="password" placeholder="Current password" autocomplete="current-password" required><input name="new" type="password" placeholder="New password (8+ characters)" autocomplete="new-password" required>
       <input name="again" type="password" placeholder="New password again" autocomplete="new-password" required><div class="row"><button class="primary">Change password</button></div><div class="err" id="pe"></div></form></div>
+    ${me.plex&&me.role!=='admin'?'':'<div class="panel" id="pkp" style="max-width:560px;margin-top:16px"></div>'}
     ${services.some(x=>x.type==='tautulli')?`<div class="panel row" style="max-width:560px;margin-top:16px;gap:10px"><div class="grow"><h3 style="margin:0">Year in review</h3><p class="mute" style="margin:4px 0 0">What you watched this year, your top shows and movies, and your requests.</p></div><button id="wrac">Open</button></div>`:''}
     <div class="panel" style="max-width:560px;margin-top:16px"><h3 style="margin-top:0">Phone messages for you</h3>
       <p class="mute">GoatMediaStackarr can message you when a request of yours is approved or ready to watch. Use an ntfy topic address (like https://ntfy.sh/my-topic) or a Discord webhook address.</p>
@@ -1189,6 +1219,7 @@ async function stAcct(){
   if($('#pll'))$('#pll').onclick=plexLink;
   if($('#plu'))$('#plu').onclick=async()=>{if(!confirm('Unlink your Plex account? You then sign in with your password only.'))return;try{me=await api('/api/me/plex','DELETE');stAcct()}catch(x){toast(x.message,'bad')}};
   if($('#wrac'))$('#wrac').onclick=()=>wrappedOpen();
+  pkPanel();
   $('#pf').onsubmit=async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target)),m=$('#pe');m.textContent='';
     if(f.new!==f.again){m.textContent='The new passwords do not match';return}
     try{await api('/api/password','POST',{old:f.old,new:f.new});e.target.reset();toast('Password changed','ok')}catch(x){m.textContent=x.message}};
