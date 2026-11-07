@@ -935,6 +935,31 @@ function upBars(u){
   const w=3,g=1,n=u.bars.length;
   return `<svg class="ub" viewBox="0 0 ${n*(w+g)} 16" width="${n*(w+g)}" height="16" role="img" aria-label="Uptime over the last 48 hours: ${u.pct==null?'no data yet':u.pct+'%'}"><title>${u.pct==null?'No history yet':u.pct+'% online in the last 48 hours'}</title>${u.bars.map((v,i)=>`<rect x="${i*(w+g)}" y="0" width="${w}" height="16" rx="1" style="fill:${v==null?'var(--line)':v>=.99?'var(--ok)':v>=.5?'var(--warn)':'var(--bad)'}"/>`).join('')}</svg>`;
 }
+// Year in review ("Wrapped"): a person's year in Plex (from Tautulli) and their requests; admins can look at anyone's, or everyone's.
+const wrapYear=()=>{const d=new Date();return d.getMonth()>=10?d.getFullYear():d.getFullYear()-1};
+async function wrappedOpen(year=wrapYear(),uid=me.id){
+  const o=modal(`<button class="pgback" data-x>${ic('back')}Back</button><div id="wrb">${skel(4)}</div>`,true);o.querySelector('[data-x]').onclick=o.close;
+  const draw=async()=>{const box=o.querySelector('#wrb');let d;try{d=await api(`/api/wrapped?year=${year}&uid=${encodeURIComponent(uid)}`)}catch(x){box.innerHTML=`<div class="err">${esc(x.message)}</div>`;return}
+    if(!document.contains(box))return;
+    const w=d.watch,hrs=w?Math.round(w.seconds/3600):0,img=t=>t&&d.sid?`/api/tautulli/${d.sid}/img?p=${encodeURIComponent(t)}`:'',ys=[];for(let y=new Date().getFullYear();y>=new Date().getFullYear()-4;y--)ys.push(y);
+    const hh=h=>h==null?'':new Date(2000,0,1,h).toLocaleTimeString(undefined,{hour:'numeric'}),dt=s=>new Date(s+'T12:00').toLocaleDateString(undefined,{day:'numeric',month:'long'});
+    const posters=(l,n)=>l.length?`<h3 class="wrh">${n}</h3><div class="wrp">${l.map((x,i)=>`<div class="wrc"><div class="wri">${img(x.thumb)?`<img src="${esc(img(x.thumb))}" alt="" loading="lazy">`:`<span>${esc(x.title.slice(0,1))}</span>`}<b>${i+1}</b></div><div class="wrt">${esc(x.title)}</div><div class="mute">${x.seconds>=3600?Math.round(x.seconds/3600)+' h':Math.round(x.seconds/60)+' min'} · ${x.plays} play${x.plays===1?'':'s'}</div></div>`).join('')}</div>`:'';
+    const mx=w?Math.max(1,...w.months):1,mon=w?`<h3 class="wrh">Month by month</h3><div class="wrm">${w.months.map((v,i)=>`<div title="${esc(new Date(2000,i,1).toLocaleDateString(undefined,{month:'long'})+': '+Math.round(v/60)+' h')}"><i style="height:${Math.max(2,Math.round(v/mx*80))}px"></i><span>${new Date(2000,i,1).toLocaleDateString(undefined,{month:'narrow'})}</span></div>`).join('')}</div>`:'';
+    const facts=w?[w.day?`${uid==='all'?'The busiest night was':'Your night was'} <b>${esc(w.day)}</b>${w.hour!=null?`, mostly around <b>${esc(hh(w.hour))}</b>`:''}.`:'',w.binge?`Longest binge: <b>${w.binge.episodes} episodes</b> of ${esc(w.binge.title)} on ${esc(dt(w.binge.date))}.`:'',w.first?`It started with ${esc(w.first.title)} on ${esc(dt(w.first.date))}.`:'',w.devices.length?`Watched most on ${esc(w.devices.join(', '))}.`:''].filter(Boolean):[];
+    const rq=d.requests;
+    box.innerHTML=`<div class="wrhero"><div class="row" style="gap:8px;flex-wrap:wrap;justify-content:flex-end"><select id="wry" aria-label="Year">${ys.map(y=>`<option ${y===year?'selected':''}>${y}</option>`).join('')}</select>${d.people?`<select id="wru" aria-label="Whose year"><option value="all" ${uid==='all'?'selected':''}>Everyone</option>${d.people.map(p=>`<option value="${esc(p.id)}" ${p.id===uid?'selected':''}>${esc(p.name)}</option>`).join('')}</select>`:''}</div>
+      <div class="wrk">${esc(String(d.year))} in review</div><h2 class="wrn">${uid==='all'?'Everyone on this server':esc(d.name)}</h2>
+      ${w?`<div class="wrbig"><div><b>${hrs.toLocaleString()}</b><span>hours watched</span></div><div><b>${w.episodes.toLocaleString()}</b><span>episodes</span></div><div><b>${w.movies.toLocaleString()}</b><span>movies</span></div></div>`:`<p class="mute">${esc(d.note||'Nothing watched yet this year.')}</p>`}</div>
+      ${facts.length?`<div class="wrf">${facts.map(f=>`<p>${f}</p>`).join('')}</div>`:''}
+      ${w?posters(w.topShows,'Top shows')+posters(w.topMovies,'Top movies'):''}${mon}
+      ${w&&w.people&&w.people.length?`<h3 class="wrh">Who watched the most</h3><div class="wrl">${w.people.map((p,i)=>`<div class="row"><b>${i+1}.</b><span class="grow">${esc(p.title)}</span><span class="mute">${Math.round(p.seconds/3600)} h</span></div>`).join('')}</div>`:''}
+      <h3 class="wrh">Requests</h3><p>${rq.made?`<b>${rq.made}</b> request${rq.made===1?'':'s'} (${rq.movies} movie${rq.movies===1?'':'s'}, ${rq.shows} show${rq.shows===1?'':'s'}), <b>${rq.ready}</b> ready to watch.`:'No requests this year.'}${rq.people&&rq.people.length?` Most asked by ${rq.people.slice(0,3).map(p=>`${esc(p.name)} (${p.n})`).join(', ')}.`:''}</p>
+      ${d.added?`<p class="mute">The library grew by ${d.added.movies} movie${d.added.movies===1?'':'s'} and ${d.added.shows} show${d.added.shows===1?'':'s'} this year.</p>`:''}`;
+    box.querySelector('#wry').onchange=e=>{year=+e.target.value;box.innerHTML=skel(4);draw()};
+    const wu=box.querySelector('#wru');if(wu)wu.onchange=e=>{uid=e.target.value;box.innerHTML=skel(4);draw()};
+  };
+  draw();
+}
 function dashView(){
   const hr=new Date().getHours(),g=T(hr<12?'Good morning':hr<18?'Good afternoon':'Good evening');
   const q=first('qbittorrent'),u=first('unraid'),sb=first('sabnzbd'),plx=services.filter(x=>x.type==='plex'||x.type==='jellyfin'),sk=first('seerr'),arrOn=services.some(s=>s.type==='sonarr'||s.type==='radarr'),arrNames=['radarr','sonarr'].filter(t=>services.some(s=>s.type===t)).map(t=>TYPES[t]||t).join(' '+T('and')+' ');
@@ -970,6 +995,7 @@ function dashView(){
     ${services.length?'':`<div class="panel"><b>Nothing connected yet</b><p class="mute">${me.role==='admin'?'Connect Sonarr, Radarr, qBittorrent or any other app to see it here.':'Ask the admin which apps you can use.'}</p>${me.role==='admin'?'<button class="primary" id="go">Connect an app</button>':''}</div>`}
     ${L.order.filter(k=>!L.hidden.includes(k)).map(k=>S[k]).join('')}`;
   $('#cz').onclick=dashCustomize;if(me.kids)$('#cz').hidden=true;
+  if([10,11,0].includes(new Date().getMonth())&&services.some(x=>x.type==='tautulli')){const h=$('#m').firstElementChild;if(h){h.insertAdjacentHTML('afterend',`<button class="wrban" id="wrgo"><span><small>${wrapYear()} in review</small><b>Your year in Plex: hours, top shows and movies, longest binge</b></span>${ic('chev')}</button>`);$('#wrgo').onclick=()=>wrappedOpen()}}
   forYou($('#fy'));
   if(arrOn)Cinema.load(api).then(art=>{
     if(tab!=='dash'||!art)return;
@@ -1142,6 +1168,7 @@ async function stAcct(){
   $('#m').innerHTML=`<div class="panel" style="max-width:560px"><h3 style="margin-top:0">Password</h3><form id="pf" style="max-width:360px;margin:0">
       <input name="old" type="password" placeholder="Current password" autocomplete="current-password" required><input name="new" type="password" placeholder="New password (8+ characters)" autocomplete="new-password" required>
       <input name="again" type="password" placeholder="New password again" autocomplete="new-password" required><div class="row"><button class="primary">Change password</button></div><div class="err" id="pe"></div></form></div>
+    ${services.some(x=>x.type==='tautulli')?`<div class="panel row" style="max-width:560px;margin-top:16px;gap:10px"><div class="grow"><h3 style="margin:0">Year in review</h3><p class="mute" style="margin:4px 0 0">What you watched this year, your top shows and movies, and your requests.</p></div><button id="wrac">Open</button></div>`:''}
     <div class="panel" style="max-width:560px;margin-top:16px"><h3 style="margin-top:0">Phone messages for you</h3>
       <p class="mute">GoatMediaStackarr can message you when a request of yours is approved or ready to watch. Use an ntfy topic address (like https://ntfy.sh/my-topic) or a Discord webhook address.</p>
       <form id="nf2" style="margin:0"><input name="url" value="${esc(me.notify||'')}" placeholder="https://ntfy.sh/my-topic"><div class="row"><button class="primary">Save</button><button type="button" id="nt">Send a test message</button></div></form></div>
@@ -1161,6 +1188,7 @@ async function stAcct(){
       ${me.role==='admin'?'<label class="chk" style="margin-top:10px"><input type="checkbox" id="sall">Show everyone\'s devices</label>':''}<div id="dv" style="margin-top:8px">${skel(2)}</div></div>`;
   if($('#pll'))$('#pll').onclick=plexLink;
   if($('#plu'))$('#plu').onclick=async()=>{if(!confirm('Unlink your Plex account? You then sign in with your password only.'))return;try{me=await api('/api/me/plex','DELETE');stAcct()}catch(x){toast(x.message,'bad')}};
+  if($('#wrac'))$('#wrac').onclick=()=>wrappedOpen();
   $('#pf').onsubmit=async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target)),m=$('#pe');m.textContent='';
     if(f.new!==f.again){m.textContent='The new passwords do not match';return}
     try{await api('/api/password','POST',{old:f.old,new:f.new});e.target.reset();toast('Password changed','ok')}catch(x){m.textContent=x.message}};
@@ -3082,23 +3110,25 @@ async function nlView(a){
 function nlDialog(d,n){
   const x=n||{name:'',on:true,every:'week',day:5,hour:18,days:7,max:12,parts:{added:true,soon:true,stats:false},kinds:{movie:true,tv:true},sids:[],to:{channels:[],everyone:false},subject:'{name}: {count} new since {since}',intro:''};
   const hours=Array.from({length:24},(_,h)=>`<option value="${h}" ${h===x.hour?'selected':''}>${String(h).padStart(2,'0')}:00</option>`).join('');
-  const dayOpts=ev=>ev==='month'?Array.from({length:28},(_,i)=>`<option value="${i+1}" ${i+1===x.day?'selected':''}>${i+1}</option>`).join(''):WD.map((w,i)=>`<option value="${i}" ${i===x.day?'selected':''}>${w}</option>`).join('');
+  const dayOpts=ev=>ev==='year'?Array.from({length:31},(_,i)=>`<option value="${i+1}" ${i+1===x.day?'selected':''}>December ${i+1}</option>`).join(''):ev==='month'?Array.from({length:28},(_,i)=>`<option value="${i+1}" ${i+1===x.day?'selected':''}>${i+1}</option>`).join(''):WD.map((w,i)=>`<option value="${i}" ${i===x.day?'selected':''}>${w}</option>`).join('');
   const o=modal(`<h2 style="margin:0 0 10px">${n?'Edit newsletter':'New newsletter'}</h2><form id="nlf" class="nlform">
     <label class="mute">Name <input name="name" value="${esc(x.name)}" placeholder="Friday movie night" required maxlength="60"></label>
     <label class="tgl"><input type="checkbox" name="on" ${x.on?'checked':''}><span>Send it on its schedule</span></label>
-    <div class="row"><label class="mute">Every <select name="every">${[['day','day'],['week','week'],['month','month']].map(([k,t])=>`<option value="${k}" ${k===x.every?'selected':''}>${t}</option>`).join('')}</select></label>
+    <div class="row"><label class="mute">Every <select name="every">${[['day','day'],['week','week'],['month','month'],['year','year (Year in review)']].map(([k,t])=>`<option value="${k}" ${k===x.every?'selected':''}>${t}</option>`).join('')}</select></label>
       <label class="mute" id="nld"${x.every==='day'?' hidden':''}>on <select name="day">${dayOpts(x.every)}</select></label><label class="mute">at <select name="hour">${hours}</select></label></div>
-    <div class="row"><label class="mute">Looks back <input name="days" type="number" min="1" max="90" value="${x.days}" style="width:80px"> days</label><label class="mute">Up to <input name="max" type="number" min="1" max="40" value="${x.max}" style="width:70px"> titles</label></div>
-    <fieldset><legend class="mute">Shows</legend><label class="chk"><input type="checkbox" name="p_added" ${x.parts.added?'checked':''}>Recently added, with posters</label><label class="chk"><input type="checkbox" name="p_soon" ${x.parts.soon?'checked':''}>Coming up</label><label class="chk"><input type="checkbox" name="p_stats" ${x.parts.stats?'checked':''}>Numbers (downloads, requests)</label></fieldset>
-    <fieldset><legend class="mute">From</legend><label class="chk"><input type="checkbox" name="k_movie" ${x.kinds.movie?'checked':''}>Movies</label><label class="chk"><input type="checkbox" name="k_tv" ${x.kinds.tv?'checked':''}>Shows</label>
+    <div class="row" data-ny${x.every==='year'?' hidden':''}><label class="mute">Looks back <input name="days" type="number" min="1" max="90" value="${x.days}" style="width:80px"> days</label><label class="mute">Up to <input name="max" type="number" min="1" max="40" value="${x.max}" style="width:70px"> titles</label></div>
+    <fieldset data-ny${x.every==='year'?' hidden':''}><legend class="mute">Shows</legend><label class="chk"><input type="checkbox" name="p_added" ${x.parts.added?'checked':''}>Recently added, with posters</label><label class="chk"><input type="checkbox" name="p_soon" ${x.parts.soon?'checked':''}>Coming up</label><label class="chk"><input type="checkbox" name="p_stats" ${x.parts.stats?'checked':''}>Numbers (downloads, requests)</label></fieldset>
+    <fieldset data-ny${x.every==='year'?' hidden':''}><legend class="mute">From</legend><label class="chk"><input type="checkbox" name="k_movie" ${x.kinds.movie?'checked':''}>Movies</label><label class="chk"><input type="checkbox" name="k_tv" ${x.kinds.tv?'checked':''}>Shows</label>
       ${d.libs.length>1?`<div class="mute" style="font-size:13px;margin-top:4px">Only these (none ticked = all):</div>${d.libs.map(l=>`<label class="chk"><input type="checkbox" data-sid="${l.id}" ${x.sids.includes(l.id)?'checked':''}>${esc(l.name)}</label>`).join('')}`:''}</fieldset>
     <fieldset><legend class="mute">Who gets it</legend>${d.channels.map(c=>`<label class="chk"><input type="checkbox" data-ch="${c.id}" ${x.to.channels.includes(c.id)?'checked':''}>${esc(c.name)} <span class="mute">${esc(CH_NAMES[c.type]||c.type)}</span></label>`).join('')||'<p class="mute" style="margin:0">No alert channels yet (Channels and triggers).</p>'}
       <label class="chk"><input type="checkbox" name="everyone" ${x.to.everyone?'checked':''}>Everyone with an email address${d.mail?'':' <span class="mute">(needs an email channel)</span>'}</label></fieldset>
-    <label class="mute">Subject <input name="subject" value="${esc(x.subject)}" maxlength="200"></label><div class="mute" style="font-size:12px;margin-top:-4px">{name} {count} {since} {date} {days}</div>
+    <label class="mute">Subject <input name="subject" value="${esc(x.subject)}" maxlength="200"></label><div class="mute" style="font-size:12px;margin-top:-4px">{name} {count} {since} {date} {days}, and {year} for Year in review</div>
     <label class="mute">Words at the top <textarea name="intro" rows="2" maxlength="1000" placeholder="Optional">${esc(x.intro)}</textarea></label>
     <div class="row" style="margin-top:10px"><button class="primary">Save</button><button type="button" data-x>Cancel</button></div><div class="err" id="nle"></div></form>`);
   const f=o.querySelector('#nlf');
-  f.elements.every.onchange=e=>{const v=e.target.value;o.querySelector('#nld').hidden=v==='day';x.day=v==='month'?1:5;f.elements.day.innerHTML=dayOpts(v)};
+  f.elements.every.onchange=e=>{const v=e.target.value;o.querySelector('#nld').hidden=v==='day';x.day=v==='year'?20:v==='month'?1:5;f.elements.day.innerHTML=dayOpts(v);
+    const sj=f.elements.subject;if(v==='year'&&/\{count\}/.test(sj.value))sj.value='{name}: {year} in review';else if(v!=='year'&&/\{year\}/.test(sj.value))sj.value='{name}: {count} new since {since}';
+    o.querySelectorAll('[data-ny]').forEach(el=>el.hidden=v==='year')};
   o.querySelector('[data-x]').onclick=o.close;
   f.onsubmit=async e=>{e.preventDefault();const g=f.elements;
     const body={name:g.name.value,on:g.on.checked,every:g.every.value,day:+g.day.value,hour:+g.hour.value,days:+g.days.value,max:+g.max.value,

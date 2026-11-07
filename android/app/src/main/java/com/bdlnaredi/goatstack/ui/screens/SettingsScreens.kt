@@ -34,6 +34,7 @@ import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Forum
+import androidx.compose.material.icons.rounded.Celebration
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.material.icons.rounded.Security
@@ -267,6 +268,7 @@ fun SettingsScreen() {
                 SettingRow(Icons.Rounded.Notifications, "Phone messages", ctx.user.notify.ifEmpty { "Get told when a request is ready (ntfy, Gotify, or any web address)" }, onClick = { dialog = "notify" })
                 SettingRow(Icons.Rounded.Devices, "Signed-in devices", "See them, and sign out the ones you do not use", onClick = { ctx.go("devices") })
                 SettingRow(Icons.Rounded.Forum, "Chat apps", "Ask for movies and shows from Telegram or Discord", onClick = { ctx.go("chats") })
+                if (services().any { it.type == "tautulli" }) SettingRow(Icons.Rounded.Celebration, "Year in review", "Your year in Plex: hours, top shows and movies", onClick = { ctx.go("wrapped") })
                 Spacer(Modifier.height(6.dp))
                 GhostButton("Sign out", icon = Icons.AutoMirrored.Rounded.Logout, color = g.bad, modifier = Modifier.fillMaxWidth(), onClick = { signOut = true })
             }

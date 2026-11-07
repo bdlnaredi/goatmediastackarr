@@ -247,7 +247,7 @@ function libIndexBuild() {
       const l = await arrGet(s, s.type === 'radarr' ? '/api/v3/movie' : '/api/v3/series'), k = s.type === 'radarr' ? 'movie' : 'tv';
       for (const x of Array.isArray(l) ? l : []) if (+x.tmdbId > 0) {
         const size = k === 'movie' ? +x.sizeOnDisk || 0 : +(x.statistics || {}).sizeOnDisk || 0, e = out[k].get(+x.tmdbId);
-        if (e) e.size += size; else out[k].set(+x.tmdbId, { size, sid: s.id, id: x.id, cert: String(x.certification || '') });
+        if (e) e.size += size; else out[k].set(+x.tmdbId, { size, sid: s.id, id: x.id, cert: String(x.certification || ''), added: x.added || '' });
       }
       if (k === 'tv') for (const x of Array.isArray(l) ? l : []) if (+x.tvdbId > 0 && !out.tvdb.has(+x.tvdbId)) out.tvdb.set(+x.tvdbId, { size: +(x.statistics || {}).sizeOnDisk || 0, sid: s.id, id: x.id, tmdb: +x.tmdbId || 0 });
     } catch {} }));
@@ -277,6 +277,55 @@ const watchOf = async u => {
   const l = await t('get_user_watch_time_stats', '&query_days=1,7,30,0&user_id=' + encodeURIComponent(who.user_id));
   return (Array.isArray(l) ? l : []).map(x => ({ days: +x.query_days || 0, plays: +x.total_plays || 0, seconds: +x.total_time || 0 }));
 };
+// ---------- Year in review ("Wrapped"): a person's year (or everyone's) from Tautulli's history and the requests.
+const tautOf = () => db.services.find(x => x.type === 'tautulli');
+const tautCmd = async (s, cmd, extra = '') => { const r = await fetch(`${s.url.replace(/\/+$/, '')}/api/v2?apikey=${encodeURIComponent(s.apiKey || '')}&cmd=${cmd}${extra}`, { signal: AbortSignal.timeout(20000) });
+  const d = await r.json().catch(() => null); if (!r.ok || !d || !d.response || d.response.result !== 'success') throw new Error('Tautulli did not answer'); return d.response.data; };
+const tautUserId = async (s, u) => { const names = [u.plex && u.plex.name, u.plexName, u.name].filter(Boolean).map(x => String(x).trim().toLowerCase());
+  const who = ((await tautCmd(s, 'get_users')) || []).find(x => names.includes(String(x.username || '').trim().toLowerCase()) || names.includes(String(x.friendly_name || '').trim().toLowerCase())); return who ? who.user_id : null; };
+async function yearRows(s, year, userId) {
+  const out = [];
+  for (let start = 0; start < 20000; start += 1000) {
+    const d = await tautCmd(s, 'get_history', `&after=${year - 1}-12-31&before=${year + 1}-01-01&length=1000&start=${start}${userId ? '&user_id=' + encodeURIComponent(userId) : ''}`);
+    const l = (d && d.data) || []; out.push(...l); if (l.length < 1000) break;
+  }
+  return out.filter(x => new Date((+x.date || +x.started || 0) * 1000).getFullYear() === year);
+}
+const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+function yearStats(rows) {
+  const secs = x => +x.play_duration || +x.duration || 0, ep = x => x.media_type === 'episode';
+  const top = (l, key, thumb) => { const m = new Map(); for (const x of l) { const k = key(x); if (!k) continue; const e = m.get(k) || { title: cut(k, 120), plays: 0, seconds: 0, thumb: thumb(x) }; e.plays++; e.seconds += secs(x); m.set(k, e); }
+    return [...m.values()].sort((a, b) => b.seconds - a.seconds || b.plays - a.plays).slice(0, 5); };
+  const days = Array(7).fill(0), hours = Array(24).fill(0), months = Array(12).fill(0), binge = new Map();
+  for (const x of rows) { const d = new Date((+x.date || +x.started) * 1000), t = secs(x); days[d.getDay()] += t; hours[d.getHours()] += t; months[d.getMonth()] += t;
+    if (ep(x)) { const k = d.toDateString() + '|' + x.grandparent_title; const e = binge.get(k) || { title: cut(x.grandparent_title, 120), date: d.toISOString().slice(0, 10), episodes: 0 }; e.episodes++; binge.set(k, e); } }
+  const b = [...binge.values()].sort((a, b2) => b2.episodes - a.episodes)[0], first = rows.slice().sort((a, b2) => (+a.date || +a.started) - (+b2.date || +b2.started))[0];
+  const people = top(rows, x => x.friendly_name || x.user, () => '').map(({ thumb, ...x }) => x);
+  return { plays: rows.length, seconds: rows.reduce((a, x) => a + secs(x), 0), episodes: rows.filter(ep).length, movies: rows.filter(x => x.media_type === 'movie').length,
+    topShows: top(rows.filter(ep), x => x.grandparent_title, x => String(x.grandparent_thumb || '')), topMovies: top(rows.filter(x => x.media_type === 'movie'), x => x.title + (x.year ? ` (${x.year})` : ''), x => String(x.thumb || '')),
+    day: days.some(Boolean) ? DAYS[days.indexOf(Math.max(...days))] : '', hour: hours.some(Boolean) ? hours.indexOf(Math.max(...hours)) : null, months: months.map(v => Math.round(v / 60)),
+    binge: b && b.episodes >= 3 ? b : null, first: first ? { title: cut(first.full_title || first.title, 160), date: new Date((+first.date || +first.started) * 1000).toISOString().slice(0, 10) } : null,
+    devices: top(rows, x => x.player || x.platform, () => '').slice(0, 3).map(x => x.title), people };
+}
+const wrapCache = new Map();
+// u = a person, or null for everyone on the server.
+async function wrapped(year, u) {
+  const key = year + ':' + (u ? u.id : '*') + ':' + ((tautOf() || {}).id || ''), c = wrapCache.get(key); if (c && Date.now() - c.at < 3600e3) return c.v;
+  const inYear = r => new Date(r.at).getFullYear() === year, mine = db.requests.filter(r => inYear(r) && (!u || r.uid === u.id));
+  const v = { year, name: u ? u.name : 'Everyone', watch: null, note: '', sid: '',
+    requests: { made: mine.length, ready: mine.filter(r => r.stage === 'available').length, movies: mine.filter(r => r.mediaType === 'movie').length, shows: mine.filter(r => r.mediaType === 'tv').length,
+      people: u ? undefined : Object.entries(mine.reduce((a, r) => (a[r.user] = (a[r.user] || 0) + 1, a), {})).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([name, n]) => ({ name, n })) } };
+  const s = tautOf();
+  if (!s) v.note = 'Add Tautulli under Settings, Apps to see what was watched.';
+  else try {
+    const id = u ? await tautUserId(s, u) : null;
+    if (u && !id) v.note = 'Tautulli does not know your Plex name. An admin can enter it under Users.';
+    else { v.watch = yearStats(await yearRows(s, year, id)); v.sid = s.id; if (u) delete v.watch.people; }
+  } catch (e) { v.note = e.message; }
+  if (!u) { const idx = await libIndex().catch(() => null); if (idx) { let mv = 0, tv = 0; for (const k of ['movie', 'tv']) for (const e of idx[k].values()) if (e.added && new Date(e.added).getFullYear() === year) k === 'movie' ? mv++ : tv++; v.added = { movies: mv, shows: tv }; } }
+  if (v.watch || !s) wrapCache.set(key, { at: Date.now(), v }); if (wrapCache.size > 60) wrapCache.delete(wrapCache.keys().next().value);
+  return v;
+}
 const usageOf = async u => {
   const now = Date.now(), mine = db.requests.filter(r => r.uid === u.id), n = st => mine.filter(r => r.status === st).length;
   const [space, watch] = await Promise.all([usedSpace(u).catch(() => null), watchOf(u).catch(() => null)]);
@@ -1192,13 +1241,13 @@ ${link ? `<p style="margin:26px 0 0"><a href="${hx(link)}" style="${F};display:i
 const personalFolk = () => db.users.filter(u => u.email && !u.noWeekly);
 // ---------- Newsletters, like Tautulli's: as many as you like, each with its own schedule, time frame, libraries, parts,
 // subject, words at the top and who gets it (alert channels and/or everyone's email). Sent ones are kept to look at again.
-const NL_EVERY = ['day', 'week', 'month'];
+const NL_EVERY = ['day', 'week', 'month', 'year'];
 const nlClean = (b, o = {}) => {
   const ch = new Set(((db.alerts || {}).channels || []).map(c => c.id)), sv = new Set(db.services.filter(s => ['sonarr', 'radarr'].includes(s.type)).map(s => s.id));
   const g = (k, d) => b[k] != null ? b[k] : o[k] != null ? o[k] : d, num = (v, lo, hi, d) => Number.isFinite(+v) ? Math.min(hi, Math.max(lo, Math.round(+v))) : d;
   const every = NL_EVERY.includes(b.every) ? b.every : o.every || 'week', parts = g('parts', {}), kinds = g('kinds', {}), to = g('to', {});
   return { id: o.id || uid(), name: cut(String(g('name', 'Newsletter')).trim() || 'Newsletter', 60), on: !!g('on', false), every,
-    day: num(g('day', every === 'month' ? 1 : 0), every === 'month' ? 1 : 0, every === 'month' ? 28 : 6, every === 'month' ? 1 : 0), hour: num(g('hour', 9), 0, 23, 9),
+    day: every === 'year' ? num(g('day', 20), 1, 31, 20) : num(g('day', every === 'month' ? 1 : 0), every === 'month' ? 1 : 0, every === 'month' ? 28 : 6, every === 'month' ? 1 : 0), hour: num(g('hour', 9), 0, 23, 9),
     days: num(g('days', every === 'day' ? 1 : every === 'month' ? 30 : 7), 1, 90, 7), max: num(g('max', 12), 1, 40, 12),
     parts: { added: parts.added !== false, soon: parts.soon !== false, stats: parts.stats !== false }, kinds: { movie: kinds.movie !== false, tv: kinds.tv !== false },
     sids: (Array.isArray(g('sids', [])) ? g('sids', []) : []).filter(x => sv.has(x)).slice(0, 20),
@@ -1212,10 +1261,12 @@ function nlDue(nl, now = Date.now()) {
   const d = new Date(now); d.setHours(nl.hour, 0, 0, 0);
   if (nl.every === 'day') { if (d.getTime() > now) d.setDate(d.getDate() - 1); }
   else if (nl.every === 'week') { d.setDate(d.getDate() - ((d.getDay() - nl.day + 7) % 7)); if (d.getTime() > now) d.setDate(d.getDate() - 7); }
+  else if (nl.every === 'year') { d.setMonth(11, nl.day); if (d.getTime() > now) d.setFullYear(d.getFullYear() - 1); }
   else { d.setDate(nl.day); if (d.getTime() > now) d.setMonth(d.getMonth() - 1); }
   return d.getTime();
 }
 async function nlSend(nl) {
+  if (nl.every === 'year') return wrapSend(nl);
   const n = await newsData({ days: nl.days, sids: nl.sids, kinds: nl.kinds, max: nl.max });
   if (!n.added.length && !(nl.parts.soon && n.soon.length) && !nl.parts.stats) return { sent: 0, empty: true };
   const subject = nlSubject(nl, n), html = newsHtml(n, baseUrl(), nlOpts(nl)), text = newsText(n).replace(/^GoatMediaStackarr weekly newsletter/, nl.name);
@@ -1227,6 +1278,43 @@ async function nlSend(nl) {
     else for (const u of personalFolk()) { const mine = { ...n, added: n.added.filter(x => kidsOk(u, x.cert)), soon: u.kids ? [] : n.soon };
       if (!mine.added.length && !mine.soon.length) continue;
       try { await require('./lib/smtp').sendMail({ host: c.host, port: c.port, secure: c.secure, user: c.user, pass: c.pass, from: c.from, insecure: !!c.insecure, to: u.email, subject, text: newsText(mine).replace(/^GoatMediaStackarr weekly newsletter/, nl.name), html: newsHtml(mine, baseUrl(), nlOpts(nl)) }); sent++; }
+      catch (e) { errors.push(u.name + ': ' + e.message); } } }
+  nl.archive = [{ at: Date.now(), subject, html, sent }, ...(nl.archive || [])].slice(0, 6);
+  if (errors.length) audit('system', 'Newsletter not sent to some', nl.name + ': ' + errors.slice(0, 3).join('; '));
+  save(); return { sent, errors };
+}
+// The December newsletter: everyone's year in review to the channels, and each person their own by email.
+const wrapSubject = (nl, year) => AL.render(nl.subject || '{name}: {year} in review', { name: nl.name, year, date: when(Date.now()), count: '', since: '', days: '' }) || `${year} in review`;
+function wrappedHtml(v, link, o = {}) {
+  const F = 'font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif', h = t => `<h2 style="${F};font-size:15px;margin:24px 0 8px;color:#111">${hx(t)}</h2>`, w = v.watch;
+  const big = (n, t) => `<td align="center" style="padding:14px 4px;background:#f2f4f8;border-radius:8px"><div style="${F};font-size:26px;font-weight:700;color:#111">${hx(n)}</div><div style="${F};font-size:11px;color:#667">${hx(t)}</div></td>`;
+  const ol = l => `<ol style="margin:0;padding-left:20px">${l.map(x => `<li style="${F};font-size:13px;color:#222;margin:4px 0"><b>${hx(x.title)}</b> <span style="color:#667">${x.seconds >= 3600 ? Math.round(x.seconds / 3600) + ' h' : Math.round(x.seconds / 60) + ' min'}</span></li>`).join('')}</ol>`;
+  const dt = x => new Date(x + 'T12:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long' });
+  const facts = w ? [w.day ? `${v.name === 'Everyone' ? 'The busiest night was' : 'Your night was'} ${w.day}${w.hour != null ? `, mostly around ${String(w.hour).padStart(2, '0')}:00` : ''}.` : '', w.binge ? `Longest binge: ${w.binge.episodes} episodes of ${w.binge.title} on ${dt(w.binge.date)}.` : '', w.first ? `It started with ${w.first.title} on ${dt(w.first.date)}.` : ''].filter(Boolean) : [];
+  const rq = v.requests;
+  return `<!doctype html><html><body style="margin:0;background:#e9ecf2"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:20px 10px">
+<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#fff;border-radius:12px"><tr><td style="padding:26px 26px 8px">
+<div style="${F};font-size:12px;color:#b07a00;font-weight:700;letter-spacing:.08em;text-transform:uppercase">${hx(v.year)} in review</div><div style="${F};font-size:24px;font-weight:700;color:#111;margin-top:2px">${hx(o.title || (v.name === 'Everyone' ? 'Everyone on the server' : v.name))}</div>${o.intro ? `<p style="${F};font-size:14px;color:#333;margin:10px 0 0;white-space:pre-line">${hx(o.intro)}</p>` : ''}
+${w ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="6" style="margin-top:14px"><tr>${big(Math.round(w.seconds / 3600).toLocaleString('en-GB'), 'hours watched')}${big(w.episodes, 'episodes')}${big(w.movies, 'movies')}</tr></table>` : ''}
+${facts.map(f => `<p style="${F};font-size:14px;color:#222;margin:8px 0">${hx(f)}</p>`).join('')}
+${w && w.topShows.length ? h('Top shows') + ol(w.topShows) : ''}${w && w.topMovies.length ? h('Top movies') + ol(w.topMovies) : ''}
+${w && w.people && w.people.length ? h('Who watched the most') + ol(w.people) : ''}
+${h('Requests')}<p style="${F};font-size:13px;color:#222;margin:0">${rq.made ? `${rq.made} request${rq.made === 1 ? '' : 's'}, ${rq.ready} ready to watch.` : 'No requests this year.'}</p>
+${v.added ? `<p style="${F};font-size:13px;color:#667;margin:8px 0 0">The library grew by ${v.added.movies} movies and ${v.added.shows} shows.</p>` : ''}
+${link ? `<p style="${F};font-size:13px;margin:20px 0 0"><a href="${hx(link)}/dashboard" style="color:#2a62d6">See it all in GoatMediaStackarr</a></p>` : ''}
+</td></tr><tr><td style="padding:22px 26px;${F};font-size:11px;color:#889">${hx(o.foot || '')}</td></tr></table></td></tr></table></body></html>`;
+}
+const wrappedText = v => { const w = v.watch; return [`${v.year} in review: ${v.name}`, w ? `${Math.round(w.seconds / 3600)} hours, ${w.episodes} episodes, ${w.movies} movies.` : '', w && w.topShows.length ? 'Top shows: ' + w.topShows.map(x => x.title).join(', ') : '', w && w.topMovies.length ? 'Top movies: ' + w.topMovies.map(x => x.title).join(', ') : '', `Requests: ${v.requests.made}, ${v.requests.ready} ready to watch.`].filter(Boolean).join('\n'); };
+async function wrapSend(nl) {
+  const now = new Date(), year = now.getMonth() === 11 ? now.getFullYear() : now.getFullYear() - 1, subject = wrapSubject(nl, year), opts = { intro: nl.intro, foot: nlOpts(nl).foot };
+  const all = await wrapped(year, null), html = wrappedHtml(all, baseUrl(), opts);
+  let sent = 0; const errors = [];
+  for (const c of ((db.alerts || {}).channels || []).filter(c => nl.to.channels.includes(c.id) && !channels.problem(c))) {
+    try { await channels.send(c, subject, wrappedText(all), html); sent++; } catch (e) { errors.push((c.name || c.type) + ': ' + e.message); } }
+  if (nl.to.everyone) { const c = mailer();
+    if (!c) errors.push('Everyone: no email channel');
+    else for (const u of personalFolk()) { const v = await wrapped(year, u).catch(() => null); if (!v || (!v.watch && !v.requests.made)) continue;
+      try { await require('./lib/smtp').sendMail({ host: c.host, port: c.port, secure: c.secure, user: c.user, pass: c.pass, from: c.from, insecure: !!c.insecure, to: u.email, subject, text: wrappedText(v), html: wrappedHtml(v, baseUrl(), opts) }); sent++; }
       catch (e) { errors.push(u.name + ': ' + e.message); } } }
   nl.archive = [{ at: Date.now(), subject, html, sent }, ...(nl.archive || [])].slice(0, 6);
   if (errors.length) audit('system', 'Newsletter not sent to some', nl.name + ': ' + errors.slice(0, 3).join('; '));
@@ -3455,6 +3543,16 @@ const goatServer = http.createServer(async (req, res) => {
     }
     if (p === '/api/usage' && m === 'GET') return send(res, 200, await usageOf(me));
     if (p === '/api/me/plex' && m === 'DELETE') { if (me.role !== 'admin') return send(res, 403, { error: 'An admin unlinks Plex profiles under Users.' }); delete me.plex; save(); audit(me.name, 'Unlinked their Plex account', ''); return send(res, 200, pubUser(me)); }
+    // Year in review: your own, or (admins) anyone's or everyone's.
+    if (p === '/api/wrapped' && m === 'GET') {
+      const q = new URL(req.url, 'http://x').searchParams, now = new Date(), year = Math.round(+q.get('year')) || (now.getMonth() >= 10 ? now.getFullYear() : now.getFullYear() - 1), who = q.get('uid') || me.id;
+      if (year < 2000 || year > now.getFullYear()) return send(res, 400, { error: 'Pick a year up to this one' });
+      if (who !== me.id && me.role !== 'admin') return send(res, 403, { error: 'Only your own year' });
+      const u = who === 'all' ? null : db.users.find(x => x.id === who); if (who !== 'all' && !u) return send(res, 404, { error: 'Not found' });
+      const v = await wrapped(year, u);
+      if (v.watch && v.sid) grant(me, v.sid, [...v.watch.topShows, ...v.watch.topMovies].map(x => x.thumb).filter(Boolean));
+      return send(res, 200, { ...v, people: me.role === 'admin' ? db.users.map(x => ({ id: x.id, name: x.name })) : undefined });
+    }
     if (p === '/api/notifications' && m === 'GET') {
       const q = new URL(req.url, 'http://x').searchParams, after = Math.max(0, +q.get('after') || 0), f = db.feed || { n: 0, items: [] };
       const mine = f.items.filter(x => x.to === me.id || (x.to === '@admins' && me.role === 'admin'));
@@ -3960,7 +4058,7 @@ const goatServer = http.createServer(async (req, res) => {
       const results = await Promise.all(list.map(async c => { try { await channels.send(c, 'GoatMediaStackarr test', 'Alerts are working.'); return { id: c.id, ok: true }; } catch (e) { return { id: c.id, ok: false, error: String(e.message).slice(0, 200) }; } }));
       return send(res, 200, { results });
     }
-    const nlPub = nl => { const { archive, ...x } = nl; return { ...x, next: nl.on ? (() => { const d = new Date(nlDue(nl)); if (nl.every === 'day') d.setDate(d.getDate() + 1); else if (nl.every === 'week') d.setDate(d.getDate() + 7); else d.setMonth(d.getMonth() + 1); return d.getTime(); })() : 0, sentList: (archive || []).map((a, i) => ({ i, at: a.at, subject: a.subject, sent: a.sent })) }; };
+    const nlPub = nl => { const { archive, ...x } = nl; return { ...x, next: nl.on ? (() => { const d = new Date(nlDue(nl)); if (nl.every === 'day') d.setDate(d.getDate() + 1); else if (nl.every === 'week') d.setDate(d.getDate() + 7); else if (nl.every === 'year') d.setFullYear(d.getFullYear() + 1); else d.setMonth(d.getMonth() + 1); return d.getTime(); })() : 0, sentList: (archive || []).map((a, i) => ({ i, at: a.at, subject: a.subject, sent: a.sent })) }; };
     if (p === '/api/newsletters' && m === 'GET') return send(res, 200, { list: (db.newsletters || []).map(nlPub), channels: ((db.alerts || {}).channels || []).map(c => ({ id: c.id, name: c.name || c.type, type: c.type })),
       libs: db.services.filter(s => ['sonarr', 'radarr'].includes(s.type)).map(s => ({ id: s.id, name: s.name, type: s.type })), mail: !!mailer() });
     if (p === '/api/newsletters' && m === 'POST') {
@@ -3971,6 +4069,7 @@ const goatServer = http.createServer(async (req, res) => {
       const nl = list[i];
       if (!r[2] && m === 'PUT') { list[i] = nlClean(await readBody(req), nl); save(); audit(me.name, 'Changed a newsletter', list[i].name); return send(res, 200, nlPub(list[i])); }
       if (!r[2] && m === 'DELETE') { list.splice(i, 1); save(); audit(me.name, 'Removed a newsletter', nl.name); return send(res, 200, {}); }
+      if (r[2] === 'preview' && m === 'GET' && nl.every === 'year') { const now = new Date(), y = now.getMonth() === 11 ? now.getFullYear() : now.getFullYear() - 1, v = await wrapped(y, null); return send(res, 200, { subject: wrapSubject(nl, y), html: wrappedHtml(v, baseUrl(), { intro: nl.intro, foot: nlOpts(nl).foot }), count: v.watch ? v.watch.plays : 0 }); }
       if (r[2] === 'preview' && m === 'GET') { const n = await newsData({ days: nl.days, sids: nl.sids, kinds: nl.kinds, max: nl.max }); return send(res, 200, { subject: nlSubject(nl, n), html: newsHtml(n, baseUrl(), nlOpts(nl)), count: n.added.length }); }
       if (r[2] === 'send' && m === 'POST') { if (!nl.to.channels.length && !nl.to.everyone) return send(res, 400, { error: 'Pick who gets it first' }); const out = await nlSend(nl); audit(me.name, 'Sent a newsletter', nl.name); return send(res, 200, out); }
       if (r[2] === 'archive' && m === 'GET' && r[3] != null) { const a = (nl.archive || [])[+r[3]]; if (!a) return send(res, 404, { error: 'Not found' }); return send(res, 200, { subject: a.subject, at: a.at, html: a.html }); }

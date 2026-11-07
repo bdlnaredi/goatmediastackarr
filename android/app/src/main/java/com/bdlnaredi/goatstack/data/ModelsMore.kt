@@ -155,3 +155,20 @@ data class TitleSubs(val bazarr: String = "", val known: Boolean = false, val pr
 @kotlinx.serialization.Serializable
 data class ReqEstimate(val bytes: Long = 0, val minutes: Int = 0, val episodes: Int = 0, val quality: String = "", val approve: String = "admin", val rule: String = "",
     val left: Int? = null, val days: Int? = null)
+
+// Year in review (/api/wrapped).
+@kotlinx.serialization.Serializable
+data class WrapTop(val title: String = "", val plays: Int = 0, val seconds: Long = 0, val thumb: String = "")
+@kotlinx.serialization.Serializable
+data class WrapBinge(val title: String = "", val date: String = "", val episodes: Int = 0)
+@kotlinx.serialization.Serializable
+data class WrapFirst(val title: String = "", val date: String = "")
+@kotlinx.serialization.Serializable
+data class WrapWatch(val plays: Int = 0, val seconds: Long = 0, val episodes: Int = 0, val movies: Int = 0, val topShows: List<WrapTop> = emptyList(), val topMovies: List<WrapTop> = emptyList(),
+    val day: String = "", val hour: Int? = null, val months: List<Long> = emptyList(), val binge: WrapBinge? = null, val first: WrapFirst? = null, val devices: List<String> = emptyList(), val people: List<WrapTop>? = null)
+@kotlinx.serialization.Serializable
+data class WrapReq(val made: Int = 0, val ready: Int = 0, val movies: Int = 0, val shows: Int = 0)
+@kotlinx.serialization.Serializable
+data class WrapPerson(val id: String = "", val name: String = "")
+@kotlinx.serialization.Serializable
+data class Wrapped(val year: Int = 0, val name: String = "", val watch: WrapWatch? = null, val note: String = "", val sid: String = "", val requests: WrapReq = WrapReq(), val people: List<WrapPerson>? = null)

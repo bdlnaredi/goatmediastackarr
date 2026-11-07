@@ -187,6 +187,13 @@ fun HomeScreen() {
             }
         }
 
+        // November to January: the year in review.
+        if (java.util.Calendar.getInstance().get(java.util.Calendar.MONTH).let { it >= 10 || it == 0 } && svcs.any { it.type == "tautulli" }) item {
+            GoatCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), onClick = { ctx.go("wrapped") }, padding = 14.dp) {
+                Text("${wrapYear()} IN REVIEW", style = MaterialTheme.typography.labelMedium, color = g.primary)
+                Text("Your year in Plex: hours, top shows and movies, longest binge", style = MaterialTheme.typography.titleSmall, color = g.text)
+            }
+        }
         val cw = cont.value?.cont.orEmpty()
         if (media != null && cw.isNotEmpty()) {
             item { SectionTitle("Continue watching") }
