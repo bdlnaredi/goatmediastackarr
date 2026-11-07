@@ -218,6 +218,7 @@ fun DetailScreen(sid: String, kind: String, id: Long) {
                     Text(x.overview, style = MaterialTheme.typography.bodyMedium, color = g.text.copy(alpha = 0.85f))
                     if (tv && x.next.isNotEmpty()) { Spacer(Modifier.height(10.dp)); Text("Next episode: ${Format.day(x.next)} ${Format.time(x.next)}", style = MaterialTheme.typography.labelLarge, color = g.primary) }
                     Spacer(Modifier.height(16.dp))
+                    SubsCard(sid, id, if (tv) "series" else "movie", Modifier.padding(bottom = 10.dp))
                     if (ctx.user.can("add")) {
                         GoatCard(Modifier.fillMaxWidth(), padding = 14.dp) {
                             Row(verticalAlignment = Alignment.CenterVertically) {

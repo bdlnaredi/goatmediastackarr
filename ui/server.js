@@ -3452,6 +3452,46 @@ const goatServer = http.createServer(async (req, res) => {
       } catch (e) { bad = e.message; }
       return send(res, ok ? 200 : 502, ok ? { found: ok, of: langs.length } : { error: bad || 'No subtitle was found' });
     }
+    // Subtitles for one title: its language profile in Bazarr, what it has and what it is missing, and a search for the rest.
+    if (p.startsWith('/api/subs') && ['/api/subs', '/api/subs/find'].includes(p)) {
+      const q = new URL(req.url, 'http://x').searchParams, b = m === 'GET' ? {} : await readBody(req);
+      const arrS = arr(db.services.find(x => x.id === (b.sid || q.get('sid')))), id = +(b.id || q.get('id')), kind = String(b.kind || q.get('kind') || '');
+      const bs = db.services.find(x => x.type === 'bazarr' && allowed(x));
+      if (!bs) return send(res, 404, { error: 'Add Bazarr in Settings to look after subtitles' });
+      if (!arrS || !(id > 0) || !(arrS.type === 'radarr' ? kind === 'movie' : ['series', 'episode'].includes(kind))) return send(res, 400, { error: 'Bad request' });
+      const lang = a => (a || []).map(l => ({ code: l.code2, name: l.name, forced: !!l.forced, hi: !!l.hi }));
+      const form = o => ({ method: m === 'PUT' ? 'POST' : 'PATCH', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(o) });
+      let ep = null, seriesId = kind === 'series' ? id : 0;
+      if (kind === 'episode') { ep = (((await bz(bs, `/api/episodes?episodeid%5B%5D=${id}`)) || {}).data || [])[0] || null; seriesId = ep ? +ep.sonarrSeriesId : 0; }
+      if (m === 'GET' && p === '/api/subs') {
+        const [pr, it] = await Promise.all([bz(bs, '/api/system/languages/profiles').catch(() => []),
+          kind === 'movie' ? bz(bs, `/api/movies?radarrid%5B%5D=${id}`) : seriesId ? bz(bs, `/api/series?seriesid%5B%5D=${seriesId}`) : null]);
+        const x = ((it || {}).data || [])[0];
+        if (!x) return send(res, 200, { bazarr: bs.name, known: false, profiles: [], profile: null, have: [], missing: [] });
+        const src = kind === 'series' ? null : kind === 'movie' ? x : ep;
+        return send(res, 200, { bazarr: bs.name, known: true, profiles: (Array.isArray(pr) ? pr : (pr && pr.data) || []).map(y => ({ id: y.profileId, name: cut(y.name, 60) })), profile: x.profileId ?? null,
+          have: src ? lang((src.subtitles || []).filter(y => y.path || y.code2)) : [], missing: src ? lang(src.missing_subtitles) : [], missingEps: kind === 'series' ? +x.episodeMissingCount || 0 : undefined, episodes: kind === 'series' ? +x.episodeFileCount || 0 : undefined });
+      }
+      if (m === 'PUT' && p === '/api/subs') {
+        if (deny('add', 'change subtitle languages')) return;
+        const pid = b.profile === null || b.profile === '' ? 'none' : String(+b.profile);
+        if (kind === 'movie') await bz(bs, '/api/movies', form({ radarrid: String(id), profileid: pid }));
+        else { if (!seriesId) return send(res, 404, { error: 'Bazarr does not know this show yet' }); await bz(bs, '/api/series', form({ seriesid: String(seriesId), profileid: pid })); }
+        audit(me.name, 'subtitle languages', `${arrS.name} ${kind} ${id}: profile ${pid}`);
+        return send(res, 200, {});
+      }
+      if (m === 'POST' && p === '/api/subs/find') {
+        if (deny('control', 'search for subtitles')) return;
+        if (kind === 'movie') await bz(bs, '/api/movies', form({ radarrid: String(id), action: 'search-missing' }));
+        else if (kind === 'series') await bz(bs, '/api/series', form({ seriesid: String(id), action: 'search-missing' }));
+        else {
+          if (!ep) return send(res, 404, { error: 'Bazarr does not know this episode yet' });
+          for (const l of (ep.missing_subtitles || []).slice(0, 10)) await bz(bs, '/api/episodes/subtitles', form({ seriesid: String(seriesId), episodeid: String(id), language: l.code2, forced: String(!!l.forced), hi: String(!!l.hi) }));
+        }
+        return send(res, 200, { started: true });
+      }
+      return send(res, 405, { error: 'Not allowed' });
+    }
     if ((r = p.match(/^\/api\/sab\/(\w+)\/history$/)) && m === 'GET') {
       const sv = svcOf(r[1], 'sabnzbd'); if (!sv) return send(res, 404, { error: 'Not found' });
       const d = (await sab(sv, 'mode=history&limit=30')).history || {};

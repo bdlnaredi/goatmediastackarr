@@ -7,6 +7,7 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 - Android app: *Import to library* on a finished torrent (its menu), each channel's own words for a trigger (✎, with the parameters to tap in and a preview) and its conditions under Alerts.
 - Data per day counts ruTorrent and Deluge too.
 - *Continue watching* on the dashboard and on the app's Home: what you started and did not finish (On Deck in Plex for the owner, Tautulli's history for everyone else, your own Jellyfin account), with how far you got. Tap one to carry on in Plex or Jellyfin.
+- Subtitles on each title (Library, web and app): which languages Bazarr gets for it (pick a language profile right there), the subtitles it has and the ones missing, and *Find subtitles* to look for the rest. A show tells how many episodes miss subtitles.
 
 ## v1.0.11 — 2026-11-02
 

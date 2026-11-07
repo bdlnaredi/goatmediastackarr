@@ -394,6 +394,14 @@ function create(opts = {}) {
     if (type === 'bazarr') {
       const form = m === 'PATCH' || m === 'POST' ? await new Promise(ok => { let b = ''; req.on('data', c => { b += c; }); req.on('end', () => ok(b)); }) : '';
       if (sub === '/api/system/status') return json(res, { data: { bazarr_version: '1.4.0.demo' } });
+      const bq = new URL(req.url, 'http://x').searchParams, bf = new URLSearchParams(form);
+      st.bzProf = st.bzProf || { movie: { 2: 1 }, series: { 1: 1 } };
+      if (sub === '/api/system/languages/profiles') return json(res, [{ profileId: 1, name: 'English' }, { profileId: 2, name: 'English + Hindi' }]);
+      if (sub === '/api/movies' && m === 'GET') { const id = +bq.get('radarrid[]'), w = st.subsMov.find(x => x.radarrId === id); return json(res, { data: [{ radarrId: id, title: 'Movie ' + id, profileId: st.bzProf.movie[id] ?? null, subtitles: [{ name: 'Hindi', code2: 'hi', path: '/movies/x.hi.srt', forced: false, hi: false }], missing_subtitles: w ? w.missing_subtitles : [] }] }); }
+      if (sub === '/api/series' && m === 'GET') { const id = +bq.get('seriesid[]'); return json(res, { data: [{ sonarrSeriesId: id, profileId: st.bzProf.series[id] ?? null, episodeFileCount: 12, episodeMissingCount: st.subsEp.filter(x => x.sonarrSeriesId === id).length }] }); }
+      if (sub === '/api/episodes' && m === 'GET') { const id = +bq.get('episodeid[]'), w = st.subsEp.find(x => x.sonarrEpisodeId === id); return json(res, { data: [{ sonarrEpisodeId: id, sonarrSeriesId: w ? w.sonarrSeriesId : 1, subtitles: [], missing_subtitles: w ? w.missing_subtitles : [] }] }); }
+      if ((sub === '/api/movies' || sub === '/api/series') && m === 'POST') { const k = sub === '/api/movies' ? 'movie' : 'series', id = +bf.get(k === 'movie' ? 'radarrid' : 'seriesid'), pid = bf.get('profileid'); st.bzProf[k][id] = pid === 'none' ? null : +pid; st.calls.push(`bazarr profile ${k} ${id} ${pid}`); res.writeHead(204); return res.end(); }
+      if ((sub === '/api/movies' || sub === '/api/series') && m === 'PATCH') { st.calls.push(`bazarr ${bf.get('action')} ${sub.slice(5)} ${bf.get('radarrid') || bf.get('seriesid')}`); res.writeHead(204); return res.end(); }
       if (sub === '/api/episodes/wanted') return json(res, { data: st.subsEp, total: st.subsEp.length });
       if (sub === '/api/movies/wanted') return json(res, { data: st.subsMov, total: st.subsMov.length });
       if (sub === '/api/episodes/subtitles' && m === 'PATCH') { st.calls.push('bazarr episodes ' + form); const p2 = new URLSearchParams(form); st.subsEp.forEach(e => { if (String(e.sonarrEpisodeId) === p2.get('episodeid')) e.missing_subtitles = e.missing_subtitles.filter(x => x.code2 !== p2.get('language')); }); st.subsEp = st.subsEp.filter(e => e.missing_subtitles.length); res.writeHead(204); return res.end(); }

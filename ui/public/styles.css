@@ -414,3 +414,4 @@ button.sm{min-height:30px;padding:4px 10px;font-size:13px}
 /* Continue watching: how far along */
 .pcp{position:absolute;left:8px;right:8px;bottom:8px;height:4px;border-radius:3px;background:rgba(0,0,0,.55);overflow:hidden;z-index:2}.pcp i{display:block;height:100%;background:var(--accent)}
 .pw .cn-have.dh{top:8px;right:8px;bottom:auto}
+.sbz{margin:6px 0 10px;padding:10px 12px;border:1px solid var(--line);border-radius:12px}.sbz b{display:inline-flex;gap:6px;align-items:center}.sbz b svg{width:18px;height:18px}

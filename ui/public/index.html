@@ -2180,6 +2180,22 @@ function idChips(i,extra){if(!i&&!extra)return '';i=i||{};const L=(n,v,u,t)=>`<a
   if(tk)o.push(`<a class="pill" href="${esc(tk)}" target="_blank" rel="noopener noreferrer" title="Find it on Trakt (opens in a new tab)">Trakt ${ic('ext')}</a>`);
   if(extra)o.push(extra);
   return o.length?`<div class="chips" style="margin-top:6px">${o.join('')}</div>`:''}
+// Subtitles for one title (Bazarr): which languages it gets, what it has, what is missing, and a search for the rest.
+async function subsBox(el,x){
+  const sv=services.find(s=>s.id===x.sid),kind=sv&&sv.type==='radarr'?'movie':x.scope==='series'?'series':'episode';
+  let d;try{d=await api(`/api/subs?sid=${encodeURIComponent(x.sid)}&id=${x.id}&kind=${kind}`)}catch(e){el.remove();return}
+  if(!document.contains(el))return;
+  if(!d.known){el.innerHTML=`<span class="mute">Subtitles: ${esc(d.bazarr)} has not picked this up yet.</span>`;return}
+  const tag=l=>esc(l.name||l.code)+(l.forced?' (forced)':'')+(l.hi?' (SDH)':'');
+  el.innerHTML=`<div class="row" style="gap:8px;align-items:center"><b>${ic('sub')}Subtitles</b>
+    <label class="mute">Languages <select id="sbp" ${can('add')?'':'disabled'} aria-label="Subtitle languages${kind==='episode'?' for the whole show':''}"><option value="">None</option>${d.profiles.map(p=>`<option value="${p.id}" ${p.id===d.profile?'selected':''}>${esc(p.name)}</option>`).join('')}</select></label>
+    ${can('control')&&d.profile!=null&&(kind==='series'?d.missingEps:d.missing.length)?'<button id="sbf">Find subtitles</button>':''}</div>
+    <div class="chips" style="margin-top:4px">${d.have.map(l=>`<span class="pill ok">${tag(l)}</span>`).join('')}${d.missing.map(l=>`<span class="pill bad" title="Missing">${tag(l)} missing</span>`).join('')}
+    ${kind==='series'?`<span class="mute">${d.missingEps?`${d.missingEps} episode${d.missingEps===1?' is':'s are'} missing subtitles`:d.profile!=null?'Every episode has its subtitles':''}</span>`:''}${kind!=='series'&&!d.have.length&&!d.missing.length?`<span class="mute">${d.profile==null?'No subtitles are fetched for this.':'Nothing yet.'}</span>`:''}</div>
+    ${kind==='episode'?'<div class="mute" style="font-size:12.5px">The languages are set for the whole show.</div>':''}`;
+  const sp=el.querySelector('#sbp');sp.onchange=async()=>{sp.disabled=true;try{await api('/api/subs','PUT',{sid:x.sid,id:x.id,kind,profile:sp.value===''?null:+sp.value});toast('Saved','ok');subsBox(el,x)}catch(e){toast(e.message,'bad');sp.disabled=false}};
+  const f=el.querySelector('#sbf');if(f)f.onclick=async()=>{f.disabled=true;f.textContent='Searching…';try{await api('/api/subs/find','POST',{sid:x.sid,id:x.id,kind});toast('Bazarr is looking for the missing subtitles','ok');setTimeout(()=>{if(document.contains(el))subsBox(el,x)},kind==='series'?8000:2500)}catch(e){toast(e.message,'bad');f.disabled=false;f.textContent='Find subtitles'}};
+}
 function showDetail(x){
   const o=document.createElement('div');o.className='ov pg';
   o.innerHTML=`<div class="dlg" role="dialog" aria-modal="true" aria-label="${esc(x.title)}"><button class="pgback" id="bk" style="flex-basis:100%;width:max-content">${ic('back')}Back</button>${x.poster?`<img src="${esc(x.poster)}" alt="" style="width:160px;border-radius:8px;align-self:flex-start">`:''}
@@ -2187,6 +2203,7 @@ function showDetail(x){
     <div class="mute">${esc(x.sub||'')}${x.date?' · '+new Date(x.date).toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'}):''}</div>
     ${x.meta?`<div class="mute">${esc(x.meta)}</div>`:''}
     ${x.sid&&x.id&&x.scope!=='series'?'<div id="fs" class="chips" style="margin:8px 0" role="status"></div>':''}
+    ${x.sid&&x.id&&ofType('bazarr').length?'<div id="sbz" class="sbz"></div>':''}
     <p>${esc(x.overview||'No description available yet.')}</p>${x.mon?`<label class="tgl" style="margin:4px 0 10px"><input type="checkbox" id="mon" ${x.mon.monitored?'checked':''} ${can('add')?'':'disabled'}><span>Monitored</span></label>`:''}${x.about?`<h3>About the series</h3><p class="mute">${esc(x.about)}</p>`:''}
     <div class="row">${x.sid&&x.id&&can('add')?`<button id="au">${x.scope==='series'?'Search missing episodes':'Auto search'}</button>${x.scope==='series'?'':'<button id="in">Interactive search</button>'}`:''}${x.del?'<button id="rm">Remove</button>':''}<button class="primary" id="cl">Close</button></div>
     <div class="mute" id="st" role="status" style="margin-top:8px"></div></div><div id="rl" style="flex-basis:100%"></div><div id="cx" style="flex-basis:100%;min-width:0"></div></div>`;
@@ -2205,6 +2222,7 @@ function showDetail(x){
   if(q('#rm'))q('#rm').onclick=async()=>{if(!confirm('Remove "'+x.title+'" from your library?'))return;
     const files=confirm('Also delete the downloaded files from disk?\n\nOK = delete the files, Cancel = keep the files');
     try{await api(`/api/library/${x.sid}/${x.id}?files=${files?1:0}`,'DELETE');close();if(x.onremove)x.onremove()}catch(e){st.textContent=e.message}};
+  if(q('#sbz'))subsBox(q('#sbz'),x);
   if(!q('#au'))return;
   q('#au').onclick=async()=>{const b=q('#au');b.disabled=true;st.textContent='Starting search…';
     try{await api('/api/auto','POST',{sid:x.sid,id:x.id,scope:x.scope});st.textContent='Search started. It will download the best match automatically if one is found.'}

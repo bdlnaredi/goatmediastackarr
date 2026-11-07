@@ -125,7 +125,7 @@ class ScreensTest {
 
         tap("Discover"); waitFor("Trending"); waitFor("Quiet Orbit"); shot("04-discover")
         tap("Library"); waitFor("Your shows"); waitFor("Paper Moon"); shot("05-library")
-        compose.onAllNodesWithText("Paper Moon").onFirst().performClick(); waitFor("Monitored"); waitFor("Search now"); shot("06-show")
+        compose.onAllNodesWithText("Paper Moon").onFirst().performClick(); waitFor("Monitored"); waitFor("3 episodes are missing subtitles"); waitFor("Search now"); shot("06-show")
         back()
         tap("Downloads"); waitFor("Downloading"); shot("07-downloads")
         tap("More"); waitFor("Go to"); shot("08-more")
