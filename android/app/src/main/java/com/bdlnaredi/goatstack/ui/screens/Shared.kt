@@ -142,7 +142,7 @@ fun RequestDialog(a: Ask, onDone: (String?) -> Unit) {
                             }
                         }
                     }
-                    else -> Text(if (ctx.user.admin || ctx.user.autoApprove) "It will be added and searched for right away." else "An admin will approve it first.", color = g.muted)
+                    else -> Text(if (ctx.user.admin || ctx.user.autoApprove) "It will be added and searched for right away." else "It is checked against the request rules; an admin approves the rest.", color = g.muted)
                 }
                 val sv = server
                 if (options?.choose == true && sv != null) {
@@ -156,6 +156,22 @@ fun RequestDialog(a: Ask, onDone: (String?) -> Unit) {
                         "firstSeason" to "First season", "lastSeason" to "Latest season", "pilot" to "Pilot episode", "none" to "None"), monitor, { monitor = it })
                     else com.bdlnaredi.goatstack.ui.ChoiceRow(listOf("1" to "Monitored", "0" to "Not monitored"), monitor, { monitor = it })
                     if (a.mediaType != "tv") { OptLabel("Minimum availability"); com.bdlnaredi.goatstack.ui.ChoiceRow(listOf("announced" to "Announced", "inCinemas" to "In cinemas", "released" to "Released"), avail, { avail = it }) }
+                }
+                // About how big it will be, and whether it goes through by itself or waits for an admin.
+                val chosen = if (a.mediaType == "tv" && !all) picked.sorted() else emptyList()
+                var est by remember { mutableStateOf<com.bdlnaredi.goatstack.data.ReqEstimate?>(null) }
+                LaunchedEffect(a.mediaId, chosen, profile) {
+                    est = if (seerr == null || !ctx.user.can("request") || (a.mediaType == "tv" && !all && chosen.isEmpty())) null
+                    else runCatching { ctx.api.get<com.bdlnaredi.goatstack.data.ReqEstimate>("/api/request/estimate?type=${a.mediaType}&id=${a.mediaId}" + (if (chosen.isNotEmpty()) "&seasons=" + chosen.joinToString(",") else "") + (if (profile > 0) "&profileId=$profile" else "")) }.getOrNull()
+                }
+                est?.let { e ->
+                    Spacer(Modifier.height(12.dp))
+                    Text("About ${com.bdlnaredi.goatstack.ui.Format.bytes(e.bytes)} (" + (if (e.episodes > 0) "${e.episodes} episodes" else "${e.minutes} min") + (if (e.quality.isNotEmpty()) " at ${e.quality}" else "") + ")", color = g.text, style = MaterialTheme.typography.bodyMedium)
+                    when (e.approve) {
+                        "rule" -> Text("Goes through straight away" + if (e.rule.isNotEmpty()) " (${e.rule})" else "", color = g.good, style = MaterialTheme.typography.bodySmall)
+                        "admin" -> Text("Waits for an admin", color = g.muted, style = MaterialTheme.typography.bodySmall)
+                    }
+                    e.left?.let { Text("$it request${if (it == 1) "" else "s"} left for the last ${e.days} days", color = g.muted, style = MaterialTheme.typography.bodySmall) }
                 }
                 if (error != null) { Spacer(Modifier.height(10.dp)); Text(error!!, color = g.bad) }
             }

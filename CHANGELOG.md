@@ -8,6 +8,7 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 - Data per day counts ruTorrent and Deluge too.
 - *Continue watching* on the dashboard and on the app's Home: what you started and did not finish (On Deck in Plex for the owner, Tautulli's history for everyone else, your own Jellyfin account), with how far you got. Tap one to carry on in Plex or Jellyfin.
 - Subtitles on each title (Library, web and app): which languages Bazarr gets for it (pick a language profile right there), the subtitles it has and the ones missing, and *Find subtitles* to look for the rest. A show tells how many episodes miss subtitles.
+- Request rules (Settings → Limits): approve requests straight away when they fit a rule, such as movies rated 7 or more and under 10 GB, for everyone or for chosen people. Before asking, people see about how big a request will be (from its running time and the quality it will be grabbed at), whether it goes through by itself, and how many requests they have left. Admins see the size on each waiting request.
 
 ## v1.0.11 — 2026-11-02
 

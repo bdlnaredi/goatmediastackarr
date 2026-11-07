@@ -415,3 +415,5 @@ button.sm{min-height:30px;padding:4px 10px;font-size:13px}
 .pcp{position:absolute;left:8px;right:8px;bottom:8px;height:4px;border-radius:3px;background:rgba(0,0,0,.55);overflow:hidden;z-index:2}.pcp i{display:block;height:100%;background:var(--accent)}
 .pw .cn-have.dh{top:8px;right:8px;bottom:auto}
 .sbz{margin:6px 0 10px;padding:10px 12px;border:1px solid var(--line);border-radius:12px}.sbz b{display:inline-flex;gap:6px;align-items:center}.sbz b svg{width:18px;height:18px}
+.rqest{font-size:13px;margin-top:6px}.rqest:empty{display:none}
+.rrule{margin-bottom:8px}.rrg{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px 10px}.rrg .rrn{grid-column:1/-1}.rrg label.blk{display:flex;flex-direction:column;gap:4px;margin:0}.rrg input,.rrg select{width:100%;box-sizing:border-box}.rrw{gap:6px 14px;flex-wrap:wrap;align-items:center;margin-top:8px}.rrw .chk{margin:0}

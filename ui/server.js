@@ -1421,6 +1421,38 @@ async function autoImport() {
   for (const k of Object.keys(done)) if (Date.now() - done[k].at > 60 * DAY) delete done[k];
 }
 
+// How big a request will be: its running time (a movie, or every episode of the seasons asked for) times the megabytes
+// a minute that Radarr or Sonarr allows for the quality it will be grabbed at (the profile's cutoff). A guess, shown before sending.
+const RES_MBMIN = r => r >= 2160 ? 70 : r >= 1080 ? 25 : r >= 720 ? 14 : 8;
+async function sizeEstimate(seerr, type, id, seasons, profileId) {
+  const d = await arrGet(seerr, `/api/v1/${type}/${id}`), tv = type === 'tv';
+  const all = tv ? (d.seasons || []).filter(x => +x.seasonNumber > 0) : [], want = seasons && seasons.length ? all.filter(x => seasons.includes(+x.seasonNumber)) : all;
+  const episodes = tv ? want.reduce((a, x) => a + (+x.episodeCount || 0), 0) : 0, per = tv ? +((d.episodeRunTime || [])[0]) || 45 : +d.runtime || 110, minutes = tv ? per * episodes : per;
+  const arrSvc = db.services.find(x => x.type === (tv ? 'sonarr' : 'radarr'));
+  let pid = +profileId || 0, quality = '', res = 1080, mbmin = 0;
+  if (!pid) { const l = await arrGet(seerr, `/api/v1/service/${tv ? 'sonarr' : 'radarr'}`).catch(() => []); const sv = (Array.isArray(l) ? l : []).find(x => x.isDefault && !x.is4k) || (Array.isArray(l) ? l : [])[0]; pid = sv ? +sv.activeProfileId || 0 : 0; }
+  if (arrSvc) try {
+    const [profs, defs] = await Promise.all([arrGet(arrSvc, '/api/v3/qualityprofile'), arrGet(arrSvc, '/api/v3/qualitydefinition').catch(() => [])]);
+    const pr = (Array.isArray(profs) ? profs : []).find(x => x.id === pid) || (Array.isArray(profs) ? profs : [])[0];
+    if (pr) {
+      const flat = []; const walk = (l, grp) => (l || []).forEach(it => { if (it.quality) flat.push({ ...it.quality, grp, allowed: it.allowed !== false }); if (it.items && it.items.length) walk(it.items, it.id); });
+      walk(pr.items);
+      const cut0 = flat.filter(x => x.id === pr.cutoff || x.grp === pr.cutoff).sort((a, b) => (b.resolution || 0) - (a.resolution || 0))[0] || flat.filter(x => x.allowed).sort((a, b) => (b.resolution || 0) - (a.resolution || 0))[0];
+      if (cut0) { quality = cut0.name || ''; res = +cut0.resolution || res;
+        const qd = (Array.isArray(defs) ? defs : []).find(x => x.quality && x.quality.id === cut0.id);
+        if (qd) mbmin = +qd.preferredSize || (+qd.maxSize && +qd.maxSize < 1000 ? (+qd.minSize + +qd.maxSize) / 2 : 0); }
+      else { const n = String(pr.name || ''); quality = n; res = /2160|4k|uhd|ultra/i.test(n) ? 2160 : /720/.test(n) ? 720 : /480|sd\b/i.test(n) ? 480 : 1080; }
+    }
+  } catch {}
+  if (!(mbmin > 0)) mbmin = RES_MBMIN(res);
+  const date = String(d.releaseDate || d.firstAirDate || '');
+  return { bytes: Math.round(minutes * mbmin * 1048576), minutes, episodes, quality: cut(quality, 60), rating: Math.round((+d.voteAverage || 0) * 10) / 10, year: +date.slice(0, 4) || 0, type };
+}
+// Request rules: a request that fits one of them is approved without waiting for an admin.
+const reqRules = () => (db.reqRules && Array.isArray(db.reqRules.rules) ? db.reqRules.rules : []);
+const reqRuleFor = (u, e) => e && reqRules().find(r => (!r.users || !r.users.length || r.users.includes(u.id)) && (r.kind === 'any' || r.kind === e.type)
+  && (!r.minRating || e.rating >= r.minRating) && (!r.maxGb || e.bytes <= r.maxGb * 1e9) && (!r.minYear || e.year >= r.minYear)) || null;
+
 // What one person started in Plex and has not finished, from Tautulli's history (Plex itself only tells the owner).
 async function tautContinue(u) {
   const tt = db.services.find(x => x.type === 'tautulli'); if (!tt) return [];
@@ -2687,6 +2719,17 @@ const goatServer = http.createServer(async (req, res) => {
         return { season: y.seasonNumber, num: y.episodeNumber, title: cut(y.title, 120), date: dt, aired: !!dt && Date.parse(dt) <= now, has: !!y.hasFile, monitored: !!y.monitored, asked: asked.has(y.id) }; })
         .sort((a, b) => a.season - b.season || a.num - b.num));
     }
+    // Before sending a request: about how big it will be, whether it goes through without an admin, and what is left of the person's limits.
+    if (p === '/api/request/estimate' && m === 'GET') {
+      const q = new URL(req.url, 'http://x').searchParams, type = q.get('type') === 'tv' ? 'tv' : 'movie', id = Math.round(+q.get('id'));
+      const s = db.services.filter(allowed).find(x => x.type === 'seerr'); if (!s || !(id > 0)) return send(res, 400, { error: 'Bad request' });
+      const seasons = String(q.get('seasons') || '').split(',').map(Number).filter(n => Number.isInteger(n) && n > 0);
+      const e = await sizeEstimate(s, type, id, seasons, +q.get('profileId') || 0);
+      const rule = me.role === 'admin' || me.autoApprove ? null : reqRuleFor(me, e), lim = me.reqLimit;
+      const left = me.role !== 'admin' && lim && lim.n > 0 ? Math.max(0, lim.n - db.requests.filter(r => r.uid === me.id && r.status !== 'declined' && r.at > Date.now() - lim.days * DAY).length) : null;
+      let space = null; if (me.role !== 'admin' && me.dataLimit > 0) { const sp = await usedSpace(me).catch(() => null); space = { used: sp ? sp.bytes : 0, limit: me.dataLimit * 1e9 }; }
+      return send(res, 200, { bytes: e.bytes, minutes: e.minutes, episodes: e.episodes, quality: e.quality, approve: me.role === 'admin' || me.autoApprove ? 'you' : rule ? 'rule' : 'admin', rule: rule ? rule.name || '' : '', left, days: lim && lim.n > 0 ? lim.days : null, space });
+    }
     // What can be chosen when asking for something: Seerr's Sonarr or Radarr servers, their quality profiles and folders.
     if (p === '/api/request/options' && m === 'GET') {
       const q = new URL(req.url, 'http://x').searchParams, s = svcOf(q.get('sid'), 'seerr') || db.services.filter(allowed).find(x => x.type === 'seerr');
@@ -2725,9 +2768,11 @@ const goatServer = http.createServer(async (req, res) => {
         minAvail: b.mediaType === 'movie' && AVAIL.includes(bo.minAvail) ? bo.minAvail : undefined }).filter(([, v]) => v !== undefined)) : null;
       const x = { id: uid(), sid: s.id, uid: me.id, user: me.name, mediaType: b.mediaType, mediaId: +b.mediaId, title: String(b.title || '').slice(0, 200), ...(opts && Object.keys(opts).length ? { opts } : {}),
         year: String(b.year || '').slice(0, 4), poster: String(b.poster || '').slice(0, 300), status: 'pending', at: Date.now(), ...(seasons.length ? { seasons } : {}), ...(b.via ? { via: b.via } : {}) };
-      if (me.role === 'admin' || me.autoApprove) { const sr = await seerrAdd(s, x); x.seerrId = sr && sr.id; x.status = 'approved'; x.stage = 'approved'; }
-      else { feed('@admins', 'request', 'New request', `${me.name} asked for ${x.title}${b.via === 'watchlist' ? ' (from their watchlist)' : ''}`, 'requests'); notify('requests', 'New request', `${me.name} requested ${x.title}`).catch(() => {}); }
-      seerrMedia.t = 0; db.requests.push(x); save(); audit(me.name, me.role !== 'admin' && me.autoApprove ? 'Requested (auto-approved)' : 'Requested', x.title + (b.via === 'watchlist' ? ' (watchlist)' : ''));
+      let rule = null;
+      if (me.role !== 'admin') { const e = await sizeEstimate(s, x.mediaType, x.mediaId, seasons, opts && opts.profileId).catch(() => null); if (e) x.est = e.bytes; if (!me.autoApprove) { rule = reqRuleFor(me, e); if (rule) x.rule = cut(rule.name || 'a rule', 60); } }
+      if (me.role === 'admin' || me.autoApprove || rule) { const sr = await seerrAdd(s, x); x.seerrId = sr && sr.id; x.status = 'approved'; x.stage = 'approved'; }
+      else { feed('@admins', 'request', 'New request', `${me.name} asked for ${x.title}${b.via === 'watchlist' ? ' (from their watchlist)' : ''}${x.est ? ' (about ' + gbText(x.est) + ')' : ''}`, 'requests'); notify('requests', 'New request', `${me.name} requested ${x.title}`).catch(() => {}); }
+      seerrMedia.t = 0; db.requests.push(x); save(); audit(me.name, me.role !== 'admin' && (me.autoApprove || rule) ? 'Requested (auto-approved' + (rule ? ' by rule ' + x.rule : '') + ')' : 'Requested', x.title + (b.via === 'watchlist' ? ' (watchlist)' : ''));
       return [200, x];
     };
     if (p === '/api/requests' && m === 'POST') {
@@ -3549,6 +3594,16 @@ const goatServer = http.createServer(async (req, res) => {
       audit(me.name, 'Bulk change', `${sv.name}: ${op}${op === 'preset' ? ' ' + b.preset : ''} on ${ids.length}`); return send(res, 200, { n: ids.length });
     }
     if (me.role !== 'admin') return send(res, 403, { error: 'Admins only' });
+    // Request rules (Settings → Limits): which requests go through without an admin.
+    if (p === '/api/reqrules' && m === 'GET') return send(res, 200, { rules: reqRules() });
+    if (p === '/api/reqrules' && m === 'PUT') {
+      const b = await readBody(req), ids = new Set(db.users.map(u => u.id));
+      const rules = (Array.isArray(b.rules) ? b.rules : []).slice(0, 20).map(r => ({ id: /^\w{1,20}$/.test(r.id || '') ? r.id : uid(), name: cut(String(r.name || '').trim(), 60),
+        kind: ['movie', 'tv'].includes(r.kind) ? r.kind : 'any', minRating: Math.min(10, Math.max(0, Math.round((+r.minRating || 0) * 10) / 10)), maxGb: Math.min(1e5, Math.max(0, Math.round(+r.maxGb || 0))),
+        minYear: Math.min(2100, Math.max(0, Math.round(+r.minYear || 0))), users: (Array.isArray(r.users) ? r.users : []).filter(x => ids.has(x)).slice(0, 200) }));
+      db.reqRules = { rules }; save(); audit(me.name, 'Request rules', rules.length + ' rule' + (rules.length === 1 ? '' : 's'));
+      return send(res, 200, { rules });
+    }
     if (p === '/api/throttle' && m === 'GET') { const t = db.settings.throttle || {}; return send(res, 200, { on: !!t.on, active: Object.keys(t.held || {}).length > 0 }); }
     if (p === '/api/throttle' && m === 'PUT') { const b = await readBody(req); db.settings.throttle = { ...(db.settings.throttle || {}), on: !!b.on }; save(); audit(me.name, b.on ? 'Turned on slowing downloads during streams' : 'Turned off slowing downloads during streams', ''); return send(res, 200, {}); }
     if (p === '/api/weekly' && m === 'GET') { const w = db.settings.weekly || {}; return send(res, 200, { on: !!w.on, day: w.day ?? 0, hour: w.hour ?? 9, last: w.last || 0, everyone: !!w.everyone, people: personalFolk().length, mail: !!mailer() }); }

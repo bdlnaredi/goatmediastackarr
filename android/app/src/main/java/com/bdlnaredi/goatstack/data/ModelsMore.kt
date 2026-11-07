@@ -146,9 +146,12 @@ data class ContItem(val title: String = "", val sub: String = "", val thumb: Str
 
 // Subtitles for one title (/api/subs): its Bazarr language profile, what it has and what it misses.
 @kotlinx.serialization.Serializable
-data class SubLang(val code: String = "", val name: String = "", val forced: Boolean = false, val hi: Boolean = false)
-@kotlinx.serialization.Serializable
 data class SubProfile(val id: Int = 0, val name: String = "")
 @kotlinx.serialization.Serializable
 data class TitleSubs(val bazarr: String = "", val known: Boolean = false, val profiles: List<SubProfile> = emptyList(), val profile: Int? = null,
     val have: List<SubLang> = emptyList(), val missing: List<SubLang> = emptyList(), val missingEps: Int? = null)
+
+// Before a request is sent (/api/request/estimate): about how big it is, and whether it goes through by itself.
+@kotlinx.serialization.Serializable
+data class ReqEstimate(val bytes: Long = 0, val minutes: Int = 0, val episodes: Int = 0, val quality: String = "", val approve: String = "admin", val rule: String = "",
+    val left: Int? = null, val days: Int? = null)
