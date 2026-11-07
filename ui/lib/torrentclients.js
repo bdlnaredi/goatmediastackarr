@@ -125,6 +125,8 @@ function rutorrent(s) {
   return {
     kind: 'rutorrent',
     async test() { const v = await call('system.client_version'); return { version: String(v) }; },
+    /** Bytes received and sent since rTorrent started (for the data per day). */
+    async totals() { const [d, u] = await Promise.all([call('throttle.global_down.total'), call('throttle.global_up.total')]); return { d: +d || 0, u: +u || 0 }; },
     /** The XML-RPC address that answered (for Sonarr and Radarr, which talk to it the same way). */
     async endpoint() { if (!endpoint) await call('system.client_version'); return endpoint; },
     async list() {
@@ -242,6 +244,8 @@ function deluge(s) {
   return {
     kind: 'deluge',
     async test() { await call('web.update_ui', ['name'], {}); const v = await call('daemon.info').catch(() => ''); return { version: String(v || '') }; },
+    /** Bytes received and sent since Deluge started (for the data per day). */
+    async totals() { const x = await call('core.get_session_status', ['total_download', 'total_upload']); return { d: +(x || {}).total_download || 0, u: +(x || {}).total_upload || 0 }; },
     async list() {
       const u = await ui(), st = u.stats || {};
       return { dl: +st.download_rate || 0, ul: +st.upload_rate || 0, alt: false, torrents: Object.entries(u.torrents || {}).map(([hash, x]) => ({ hash, name: x.name, state: stateOf(x),

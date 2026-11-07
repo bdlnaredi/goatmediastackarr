@@ -106,10 +106,13 @@ data class ImportJob(
 @Serializable data class WarnFixed(val done: String = "")
 
 // ---------- Alerts and newsletters ----------
-@Serializable data class AlertsInfo(val events: List<String> = emptyList(), val meta: Map<String, EventMeta> = emptyMap(), val channels: List<AlertChannel> = emptyList())
-@Serializable data class EventMeta(val name: String = "", val group: String = "")
+@Serializable data class AlertsInfo(val events: List<String> = emptyList(), val meta: Map<String, EventMeta> = emptyMap(), val channels: List<AlertChannel> = emptyList(), val ops: Map<String, String> = emptyMap())
+@Serializable data class EventMeta(val name: String = "", val group: String = "", val params: List<String> = emptyList(), val subject: String = "", val body: String = "")
 @Serializable data class AlertChannel(val id: String = "", val type: String = "", val name: String = "", val events: List<String> = emptyList(),
-    val tpl: Map<String, kotlinx.serialization.json.JsonElement> = emptyMap(), val conds: List<kotlinx.serialization.json.JsonElement> = emptyList())
+    val tpl: Map<String, AlertText> = emptyMap(), val conds: List<AlertCond> = emptyList(), val condMode: String = "all")
+@Serializable data class AlertText(val subject: String = "", val body: String = "")
+@Serializable data class AlertCond(val p: String = "", val op: String = "is", val v: String = "")
+@Serializable data class AlertPreview(val subject: String = "", val body: String = "")
 @Serializable data class Newsletters(val list: List<Newsletter> = emptyList())
 @Serializable data class Newsletter(val id: String = "", val name: String = "", val on: Boolean = false, val every: String = "week", val day: Int = 0, val hour: Int = 9, val days: Int = 7, val next: Long = 0)
 @Serializable data class SendResult(val sent: Int = 0, val empty: Boolean = false, val errors: List<String> = emptyList(), val results: List<SendOne> = emptyList())
@@ -124,3 +127,13 @@ data class ImportJob(
 @Serializable data class Traffic(val days: List<TrafficDay> = emptyList(), val total: TrafficTotal = TrafficTotal(), val usenetOn: Boolean = false)
 @Serializable data class TrafficDay(val date: String = "", val dl: Long = 0, val ul: Long = 0, val usenet: Long = 0)
 @Serializable data class TrafficTotal(val dl: Long = 0, val ul: Long = 0)
+
+// ---------- Importing a finished download (/api/import/look) ----------
+@Serializable data class ImportLook(val name: String = "", val apps: List<ImportApp> = emptyList())
+@Serializable data class ImportApp(val sid: String = "", val name: String = "", val type: String = "", val files: List<ImportFile> = emptyList(), val error: String = "")
+@Serializable data class ImportFile(val path: String = "", val name: String = "", val size: Long = 0, val q: String = "", val quality: kotlinx.serialization.json.JsonElement? = null,
+    val languages: List<kotlinx.serialization.json.JsonElement> = emptyList(), val releaseGroup: String = "", val match: ImportMatch? = null, val season: Int? = null,
+    val episodes: List<ImportEp> = emptyList(), val why: List<String> = emptyList())
+@Serializable data class ImportMatch(val id: Long = 0, val title: String = "")
+@Serializable data class ImportEp(val id: Long = 0, val season: Int = 0, val num: Int = 0, val title: String = "")
+@Serializable data class ImportResult(val imported: Int = 0)

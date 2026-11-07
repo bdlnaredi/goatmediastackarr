@@ -1495,9 +1495,11 @@ async function watchTick() {
 async function trafficTick() {
   const tr = db.traffic || (db.traffic = { last: {}, days: {} }), k = dayKey();
   let changed = false;
-  for (const s of db.services.filter(x => x.type === 'qbittorrent')) {
-    let ti; try { ti = await qb(s, '/api/v2/transfer/info'); } catch { continue; }
-    const d = +ti.dl_info_data || 0, u = +ti.up_info_data || 0, l = tr.last[s.id];
+  for (const s of db.services.filter(x => x.type === 'qbittorrent' || tclients.TYPES.includes(x.type))) {
+    let d, u;
+    try { if (s.type === 'qbittorrent') { const ti = await qb(s, '/api/v2/transfer/info'); d = +ti.dl_info_data || 0; u = +ti.up_info_data || 0; }
+      else { const c = tclients.clientFor(s); if (!c.totals) continue; ({ d, u } = await c.totals()); } } catch { continue; }
+    const l = tr.last[s.id];
     tr.last[s.id] = { d, u, at: Date.now() };
     if (!l) { changed = true; continue; }   // the first look only notes where the counters are
     const dd = d >= l.d ? d - l.d : d, du = u >= l.u ? u - l.u : u;
@@ -2329,7 +2331,7 @@ const goatServer = http.createServer(async (req, res) => {
     }
     // The last days' downloads and uploads in bytes: torrents (qBittorrent) and Usenet (SABnzbd).
     if (p === '/api/traffic' && m === 'GET') {
-      const qbs = db.services.filter(x => x.type === 'qbittorrent' && allowed(x)), sabs = db.services.filter(x => x.type === 'sabnzbd' && allowed(x));
+      const qbs = db.services.filter(x => (x.type === 'qbittorrent' || tclients.TYPES.includes(x.type)) && allowed(x)), sabs = db.services.filter(x => x.type === 'sabnzbd' && allowed(x));
       if (!qbs.length && !sabs.length) return send(res, 404, { error: 'Needs qBittorrent or SABnzbd' });
       const n = Math.min(90, Math.max(1, +new URL(req.url, 'http://x').searchParams.get('days') || 7)), days = [], t = db.traffic || { days: {} };
       const usenet = {};

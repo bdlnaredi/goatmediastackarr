@@ -3,6 +3,11 @@ package com.bdlnaredi.goatstack.ui.screens
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -43,6 +48,13 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.bdlnaredi.goatstack.data.AlertsInfo
+import com.bdlnaredi.goatstack.data.AlertChannel
+import com.bdlnaredi.goatstack.data.AlertCond
+import com.bdlnaredi.goatstack.data.AlertPreview
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.ui.window.Dialog
 import com.bdlnaredi.goatstack.data.ChatCode
 import com.bdlnaredi.goatstack.data.ChatState
 import com.bdlnaredi.goatstack.data.Newsletters
@@ -120,21 +132,25 @@ fun AlertsScreen() {
     val toast = toaster()
     var tab by rememberSaveable { mutableStateOf("ch") }
     var again by remember { mutableStateOf(0) }
+    var textFor by remember { mutableStateOf<Pair<AlertChannel, String>?>(null) }
+    var condFor by remember { mutableStateOf<AlertChannel?>(null) }
     Column(Modifier.fillMaxSize()) {
         BackPage("Alerts", "Channels, triggers and newsletters")
         ChoiceRow(listOf("ch" to "Channels and triggers", "nl" to "Newsletters"), tab, { tab = it }, Modifier.padding(bottom = 8.dp))
         if (tab == "ch") {
             val data = rememberLoad("alerts", again) { ctx.api.get<AlertsInfo>("/api/alerts") }
             LoadView(data) { a ->
+                textFor?.let { (c, k) -> AlertTextDialog(a, c, k) { saved -> textFor = null; if (saved) again++ } }
+                condFor?.let { c -> AlertCondDialog(a, c) { saved -> condFor = null; if (saved) again++ } }
                 val ticked = remember(a) { mutableStateMapOf<String, Boolean>().apply { a.channels.forEach { c -> c.events.forEach { put(c.id + "|" + it, true) } } } }
                 if (a.channels.isEmpty()) EmptyState(Icons.Rounded.Forum, "No channels yet", "Add one on the web page (Settings → Alerts) to get messages in Discord, Telegram, by email and more.")
                 else LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    item { Text("Tick what each channel is told about. Its own words for a trigger and its conditions are set on the web page.", style = MaterialTheme.typography.bodySmall, color = g.muted) }
+                    item { Text("Tick what each channel is told about. Tap ✎ to give a trigger this channel's own words, and Conditions to send only some.", style = MaterialTheme.typography.bodySmall, color = g.muted) }
                     items(a.channels, key = { it.id }) { c ->
                         GoatCard(Modifier.fillMaxWidth(), padding = 14.dp) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(c.name.ifEmpty { c.type }, style = MaterialTheme.typography.titleSmall, color = g.text, modifier = Modifier.weight(1f))
-                                if (c.conds.isNotEmpty()) Badge("${c.conds.size} condition${if (c.conds.size == 1) "" else "s"}", g.accent)
+                                androidx.compose.material3.TextButton(onClick = { condFor = c }) { Text(if (c.conds.isEmpty()) "Conditions" else "${c.conds.size} condition${if (c.conds.size == 1) "" else "s"}", color = g.accent) }
                                 androidx.compose.material3.TextButton(onClick = {
                                     scope.launch { try { val r = ctx.api.post<SendResult>("/api/alerts/test", buildJsonObject { put("id", c.id) }); toast(if (r.results.firstOrNull()?.ok == true) "Test message sent" else r.results.firstOrNull()?.error ?: "Failed") } catch (e: Exception) { toast(e.message ?: "Failed") } }
                                 }) { Text("Test", color = g.primary) }
@@ -153,7 +169,7 @@ fun AlertsScreen() {
                                             }
                                         }, colors = CheckboxDefaults.colors(checkedColor = g.primary, checkmarkColor = g.onPrimary))
                                         Text(a.meta[k]?.name ?: k, style = MaterialTheme.typography.bodyMedium, color = g.text, modifier = Modifier.weight(1f))
-                                        if (c.tpl.containsKey(k)) Badge("own text", g.muted)
+                                        if (on) androidx.compose.material3.IconButton(onClick = { textFor = c to k }) { Icon(Icons.Rounded.Edit, "Own words for ${a.meta[k]?.name ?: k}", tint = if (c.tpl.containsKey(k)) g.primary else g.muted) }
                                     }
                                 }
                             }
@@ -245,6 +261,106 @@ fun ChatAppsScreen() {
                 item { SectionTitle("How it works", Modifier.padding(top = 4.dp)) }
                 item { Text("Send the name of a movie or show to the bot, pick it from the posters and tap Request. It counts as your own request, and you hear in the chat when it is approved and ready.", style = MaterialTheme.typography.bodySmall, color = g.muted) }
             }
+        }
+    }
+}
+
+/** One channel's own subject and text for one trigger, with its parameters to tap in and a preview. */
+@Composable
+private fun AlertTextDialog(a: AlertsInfo, c: AlertChannel, k: String, onDone: (Boolean) -> Unit) {
+    val ctx = LocalCtx.current
+    val g = LocalGoat.current
+    val scope = rememberCoroutineScope()
+    val toast = toaster()
+    val m = a.meta[k]
+    var subject by remember { mutableStateOf(c.tpl[k]?.subject ?: "") }
+    var body by remember { mutableStateOf(c.tpl[k]?.body ?: "") }
+    var inBody by remember { mutableStateOf(true) }
+    var pv by remember { mutableStateOf<AlertPreview?>(null) }
+    androidx.compose.runtime.LaunchedEffect(subject, body) {
+        kotlinx.coroutines.delay(300)
+        pv = runCatching { ctx.api.post<AlertPreview>("/api/alerts/preview", buildJsonObject { put("kind", k); put("subject", subject); put("body", body) }) }.getOrNull()
+    }
+    fun save(tplFor: Map<String, com.bdlnaredi.goatstack.data.AlertText>) = scope.launch {
+        try {
+            ctx.api.send("PUT", "/api/alerts/channels/${c.id}", buildJsonObject {
+                put("type", c.type)
+                put("tpl", buildJsonObject { tplFor.forEach { (kk, t) -> put(kk, buildJsonObject { put("subject", t.subject); put("body", t.body) }) } })
+            }); toast("Saved"); onDone(true)
+        } catch (e: Exception) { toast(e.message ?: "Could not save") }
+    }
+    Dialog(onDismissRequest = { onDone(false) }) {
+        GoatCard(Modifier.fillMaxWidth(), padding = 16.dp) {
+            Text(m?.name ?: k, style = MaterialTheme.typography.titleMedium, color = g.text)
+            Text("${c.name.ifEmpty { c.type }}: its own words. Leave both empty for the standard text.", style = MaterialTheme.typography.bodySmall, color = g.muted)
+            OutlinedTextField(subject, { subject = it }, label = { Text("Subject") }, placeholder = { Text(m?.subject?.ifEmpty { null } ?: "{subject}") }, singleLine = true,
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp).onFocusChanged { if (it.isFocused) inBody = false })
+            OutlinedTextField(body, { body = it }, label = { Text("Text") }, placeholder = { Text(m?.body?.ifEmpty { null } ?: "{message}") }, minLines = 3,
+                modifier = Modifier.fillMaxWidth().padding(top = 6.dp).onFocusChanged { if (it.isFocused) inBody = true })
+            Text("Tap a parameter to add it. <… {param} …> drops out when it is empty.", style = MaterialTheme.typography.labelSmall, color = g.muted, modifier = Modifier.padding(top = 6.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(vertical = 6.dp)) {
+                (m?.params ?: emptyList()).forEach { p -> Badge("{$p}", g.accent, Modifier.clickable { if (inBody) body += "{$p}" else subject += "{$p}" }) }
+            }
+            pv?.let { GoatCard(Modifier.fillMaxWidth(), padding = 10.dp) { Text("Preview", style = MaterialTheme.typography.labelSmall, color = g.muted); Text(it.subject, style = MaterialTheme.typography.titleSmall, color = g.text); Text(it.body, style = MaterialTheme.typography.bodySmall, color = g.text) } }
+            Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                GhostButton("Standard text", modifier = Modifier.weight(1f), onClick = { save(c.tpl - k) })
+                PrimaryButton("Save", { save(if (subject.isBlank() && body.isBlank()) c.tpl - k else c.tpl + (k to com.bdlnaredi.goatstack.data.AlertText(subject.trim(), body.trim()))) }, Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+/** When one channel sends at all: all (or any) of these conditions must hold. */
+@Composable
+private fun AlertCondDialog(a: AlertsInfo, c: AlertChannel, onDone: (Boolean) -> Unit) {
+    val ctx = LocalCtx.current
+    val g = LocalGoat.current
+    val scope = rememberCoroutineScope()
+    val toast = toaster()
+    val rows = remember { androidx.compose.runtime.mutableStateListOf<AlertCond>().apply { addAll(c.conds) } }
+    var mode by remember { mutableStateOf(c.condMode) }
+    val params = c.events.flatMap { a.meta[it]?.params ?: emptyList() }.distinct().sorted().ifEmpty { listOf("user") }
+    Dialog(onDismissRequest = { onDone(false) }) {
+        GoatCard(Modifier.fillMaxWidth(), padding = 16.dp) {
+            Text("Conditions", style = MaterialTheme.typography.titleMedium, color = g.text)
+            Text("${c.name.ifEmpty { c.type }} sends only when these hold. Several values: a, b.", style = MaterialTheme.typography.bodySmall, color = g.muted)
+            ChoiceRow(listOf("all" to "All of them", "any" to "Any of them"), mode, { mode = it }, Modifier.padding(vertical = 6.dp))
+            Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState())) {
+                rows.forEachIndexed { i, x ->
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
+                        Column(Modifier.weight(1f)) {
+                            Pick(params, x.p.ifEmpty { params.first() }) { rows[i] = x.copy(p = it) }
+                            Pick(a.ops.keys.toList(), x.op, { a.ops[it] ?: it }) { rows[i] = x.copy(op = it) }
+                            OutlinedTextField(x.v, { rows[i] = x.copy(v = it) }, singleLine = true, placeholder = { Text("value") }, modifier = Modifier.fillMaxWidth())
+                        }
+                        androidx.compose.material3.IconButton(onClick = { rows.removeAt(i) }) { Icon(Icons.Rounded.Close, "Remove this condition", tint = g.muted) }
+                    }
+                }
+            }
+            GhostButton("Add a condition", modifier = Modifier.fillMaxWidth().padding(top = 6.dp), onClick = { rows.add(AlertCond(params.firstOrNull { it == "user" } ?: params.first(), "is", "")) })
+            PrimaryButton("Save", {
+                scope.launch {
+                    try {
+                        ctx.api.send("PUT", "/api/alerts/channels/${c.id}", buildJsonObject {
+                            put("type", c.type); put("condMode", mode)
+                            put("conds", JsonArray(rows.map { r -> buildJsonObject { put("p", r.p.ifEmpty { params.first() }); put("op", r.op); put("v", r.v) } }))
+                        }); toast("Saved"); onDone(true)
+                    } catch (e: Exception) { toast(e.message ?: "Could not save") }
+                }
+            }, Modifier.fillMaxWidth().padding(top = 8.dp))
+        }
+    }
+}
+
+/** A small drop-down to pick one of a few words. */
+@Composable
+private fun Pick(options: List<String>, value: String, label: (String) -> String = { it }, onPick: (String) -> Unit) {
+    val g = LocalGoat.current
+    var open by remember { mutableStateOf(false) }
+    androidx.compose.foundation.layout.Box {
+        Text(label(value) + " ▾", color = g.primary, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.clickable { open = true }.padding(vertical = 6.dp))
+        androidx.compose.material3.DropdownMenu(open, { open = false }) {
+            options.forEach { o -> androidx.compose.material3.DropdownMenuItem(text = { Text(label(o)) }, onClick = { open = false; onPick(o) }) }
         }
     }
 }

@@ -173,6 +173,8 @@ private fun Torrents(sid: String, qbit: Boolean = true) {
     var managing by remember { mutableStateOf(false) }
     var adding by remember { mutableStateOf(false) }
     var moving by remember { mutableStateOf<Torrent?>(null) }
+    var importing by remember { mutableStateOf<Torrent?>(null) }
+    importing?.let { t -> ImportDialog(sid, t.hash, t.name) { importing = null } }
     val data = rememberLoad(sid) { ctx.api.get<QbList>("/api/qb/$sid/list") }
     val meta = rememberLoad(sid) { ctx.api.get<QbMeta>("/api/qb/$sid/meta") }
     AutoRefresh(ctx.prefs.refreshMs) { data.reload() }
@@ -244,6 +246,7 @@ private fun Torrents(sid: String, qbit: Boolean = true) {
                                 DropdownMenuItem(text = { Text("Force start") }, leadingIcon = { Icon(Icons.Rounded.Bolt, null) }, onClick = { menu = false; act("force", t, "Started") })
                                 DropdownMenuItem(text = { Text("Check files") }, leadingIcon = { Icon(Icons.Rounded.Refresh, null) }, onClick = { menu = false; act("recheck", t, "Checking") })
                                 DropdownMenuItem(text = { Text("Category…") }, leadingIcon = { Icon(Icons.Rounded.Folder, null) }, onClick = { menu = false; moving = t })
+                                if (ctx.user.admin && qbit && t.done) DropdownMenuItem(text = { Text("Import to library") }, leadingIcon = { Icon(Icons.Rounded.Download, null) }, onClick = { menu = false; importing = t })
                                 if (ctx.user.can("remove")) DropdownMenuItem(text = { Text("Remove", color = g.bad) }, leadingIcon = { Icon(Icons.Rounded.Delete, null, tint = g.bad) },
                                     onClick = { menu = false; withFiles = false; if (ctx.prefs.confirmRemove) deleting = t else act("delete", t, "Removed") })
                             }
