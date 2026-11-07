@@ -2950,7 +2950,7 @@ function chanDialog(c,done){
     try{if(c){await api('/api/alerts/channels/'+c.id,'PUT',b)}else await api('/api/alerts/channels','POST',b);o.close();toast('Saved','ok');done()}
     catch(x){o.querySelector('#ce').textContent=x.message}};
 }
-const ALERT_NAMES={finished:'A download finishes',grabbed:'Something is added from Trackers',requests:'Someone makes a request',available:'A request is ready to watch',reports:'Someone reports a problem',offline:'An app goes offline or comes back',vpn:'The VPN stops working',disk:'The array is almost full',streamLimit:'Someone reaches their streaming limit',update:'A new version is out',appUpdates:'Apps inside the container are updated (weekly)',backup:'A backup or restore of the stack fails',healed:'Something was fixed by itself (a stuck download, an app restarted)',weekly:'The weekly newsletter'};
+const ALERT_NAMES={finished:'A download finishes',grabbed:'Something is added from Trackers',requests:'Someone makes a request',available:'A request is ready to watch',reports:'Someone reports a problem',offline:'An app goes offline or comes back',vpn:'The VPN stops working',disk:'The array is almost full, a disk is hot, failing or disabled, or a parity check ends',streamLimit:'Someone reaches their streaming limit',update:'A new version is out',appUpdates:'Apps inside the container are updated (weekly)',backup:'A backup or restore of the stack fails',healed:'Something was fixed by itself (a stuck download, an app restarted)',weekly:'The weekly newsletter'};
 // ---------- Alerts and newsletters, the way Tautulli does them
 let alTab='ch';
 async function alView(){
@@ -2976,8 +2976,10 @@ function chView(a){
         <p class="mute" style="margin:6px 0">Send only when <select data-cm aria-label="All or any"><option value="all" ${c.condMode!=='any'?'selected':''}>all</option><option value="any" ${c.condMode==='any'?'selected':''}>any</option></select> of these hold. A trigger without that parameter counts it as empty. Example: <i>user is not</i> <code>admin</code>, or <i>location is</i> <code>wan</code>.</p>
         <div data-cl>${(c.conds||[]).map((x,i)=>condRow(c,x,i)).join('')}</div>
         <div class="row" style="margin-top:6px"><button type="button" data-ca>${ic('rq')}Add condition</button><button type="button" class="primary" data-cs>Save conditions</button></div></details></div>`).join('')||empty('No channels yet','Add one to get messages on your phone, in Discord, by email and more.')}</div></div>
-    <form id="f" class="panel" style="max-width:820px;margin-top:16px"><h3 style="margin-top:0">When the array counts as full</h3>
-    <label class="mute">At (%) <input name="diskPct" type="number" min="50" max="99" value="${a.diskPct||90}" style="width:80px"></label>
+    <form id="f" class="panel" style="max-width:820px;margin-top:16px"><h3 style="margin-top:0">Unraid</h3>
+    <div class="row" style="gap:16px;flex-wrap:wrap"><label class="mute">The array counts as full at (%) <input name="diskPct" type="number" min="50" max="99" value="${a.diskPct||90}" style="width:80px"></label>
+    <label class="mute">A disk is too hot at (°C) <input name="diskTemp" type="number" min="35" max="80" value="${a.diskTemp||55}" style="width:80px"></label></div>
+    <p class="mute" style="font-size:13px;margin:4px 0 0">Unraid's own hot limit for a disk is used when it has one. You also hear when a disk is disabled or missing, gets read/write errors or a SMART warning, and when a parity check ends.</p>
     <div class="row"><button class="primary">Save</button></div><div class="err" id="e"></div></form><div id="botp"></div>`;
   const msg=(t,ok)=>{const m=$('#e');m.style.color=ok?'var(--ok-t)':'';m.textContent=t};
   botPanel();
@@ -2994,7 +2996,7 @@ function chView(a){
     const cx=e.target.closest('[data-cx]');if(cx){cx.closest('.cnd').remove()}
     if(e.target.closest('[data-cs]')){const conds=readConds(row),condMode=row.querySelector('[data-cm]').value;
       try{await api('/api/alerts/channels/'+c.id,'PUT',{type:c.type,conds,condMode});c.conds=conds;c.condMode=condMode;toast('Conditions saved','ok');alView()}catch(x){toast(x.message,'bad')}}};
-  $('#f').onsubmit=async e=>{e.preventDefault();const f=e.target.elements,o={...a,diskPct:f.diskPct.value};['channels','events','meta','ops'].forEach(k=>delete o[k]);
+  $('#f').onsubmit=async e=>{e.preventDefault();const f=e.target.elements,o={...a,diskPct:f.diskPct.value,diskTemp:f.diskTemp.value};['channels','events','meta','ops'].forEach(k=>delete o[k]);
     try{await api('/api/alerts','PUT',o);msg('Saved',true)}catch(x){msg(x.message)}};
   $('#cl').onchange=async e=>{const t=e.target;if(!t.matches('[data-ev]'))return;const row=t.closest('[data-c]'),c=chOf(row);
     const ev=[...row.querySelectorAll('[data-ev]:checked')].map(x=>x.dataset.ev);

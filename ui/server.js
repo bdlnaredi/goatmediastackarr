@@ -1568,6 +1568,44 @@ async function pfTick() {
       feed('@admins', 'problem', 'Forwarded port not working', why, 'stack'); await notify('vpn', 'Forwarded port not working', why + ' Restarting the VPN on the Stack page usually gets a new one.'); }
   } else { if (st.told) { feed('@admins', 'info', 'Forwarded port working again', `Port ${v.port}`, 'stack'); await notify('vpn', 'Forwarded port working again', `qBittorrent is reachable again on port ${v.port}.`); } st.bad = 0; st.told = false; }
 }
+// Unraid's disks and parity: a disk too hot, a disk Unraid marks as disabled, wrong or missing, new read/write errors,
+// SMART that is not OK, and a parity check that finishes. Each problem is told once, and again only after it was fine.
+const DISK_BAD = { DISK_DSBL: 'disabled', DISK_DSBL_NEW: 'disabled (new disk)', DISK_INVALID: 'invalid', DISK_WRONG: 'the wrong disk for its slot', DISK_NP_MISSING: 'missing' };
+async function unraidHealthTick() {
+  const lim = (db.alerts && db.alerts.diskTemp) || 55;
+  for (const s of db.services.filter(x => x.type === 'unraid')) {
+    const uh = mon.uh = mon.uh || {}, st = uh[s.id] = uh[s.id] || { hot: {}, bad: {}, err: {}, smart: {}, parity: null };
+    let a;
+    try { a = (await gql(s, '{ array { parityCheckStatus { status progress errors running } disks { name temp status numErrors critical } parities { name temp status numErrors critical } caches { name temp status numErrors critical } } }')).array; }
+    catch { try { a = (await gql(s, '{ array { parityCheckStatus { status progress errors running } disks { name temp status } parities { name temp status } caches { name temp status } } }')).array; } catch { continue; } }
+    if (!a) continue;
+    const tell = async (title, body, pr) => { feed('@admins', 'problem', title, body, 'unraid'); await notify('disk', title, body, undefined, { server: s.name, ...pr }).catch(() => {}); };
+    const all = [...(a.parities || []).map(d => ({ ...d, role: 'parity' })), ...(a.disks || []).map(d => ({ ...d, role: 'data' })), ...(a.caches || []).map(d => ({ ...d, role: 'cache' }))];
+    for (const d of all) {
+      const n = cut(d.name, 40); if (!n) continue;
+      const crit = +d.critical > 0 ? +d.critical : lim, t = +d.temp || 0;
+      if (t >= crit && !st.hot[n]) { st.hot[n] = 1; await tell(`${n} is too hot`, `${n} is at ${t} °C (the alert is at ${crit} °C). Check the fans and the airflow.`, { disk: n, temp: t, problem: 'hot' }); }
+      else if (t > 0 && t <= crit - 3) st.hot[n] = 0;
+      const bad = DISK_BAD[d.status];
+      if (bad && !st.bad[n]) { st.bad[n] = 1; await tell(`${n} has a problem`, `Unraid says ${n}${d.role === 'cache' ? ' (cache)' : d.role === 'parity' ? ' (parity)' : ''} is ${bad}.`, { disk: n, problem: d.status }); }
+      else if (!bad) st.bad[n] = 0;
+      if (d.numErrors != null) { const e = +d.numErrors || 0; if (st.err[n] != null && e > st.err[n]) await tell(`${n} has errors`, `${n} has ${e} read/write error${e === 1 ? '' : 's'} (${e - st.err[n]} new). A failing disk or cable shows this first.`, { disk: n, problem: 'errors' }); st.err[n] = e; }
+    }
+    try {
+      for (const d of ((await gql(s, '{ disks { name device smartStatus } }')).disks || [])) {
+        const n = cut(d.name || d.device, 60), v = String(d.smartStatus || '').toUpperCase(), bad = v && v !== 'OK' && v !== 'UNKNOWN';
+        if (bad && !st.smart[n]) { st.smart[n] = 1; await tell(`SMART warning for ${n}`, `The disk's own health check (SMART) says ${v.toLowerCase()} for ${n}. Plan to replace it.`, { disk: n, problem: 'smart' }); }
+        else if (!bad) st.smart[n] = 0;
+      }
+    } catch {}
+    const p = a.parityCheckStatus || {}, was = st.parity; st.parity = { running: !!p.running };
+    if (was && was.running && !p.running) {
+      const e = +p.errors || 0;
+      if (e > 0) await tell('Parity check found errors', `The parity check finished with ${e} error${e === 1 ? '' : 's'}.`, { problem: 'parity' });
+      else { feed('@admins', 'info', 'Parity check finished', 'No errors', 'unraid'); await notify('disk', 'Parity check finished', 'The parity check finished with no errors.', undefined, { server: s.name, problem: 'parity' }).catch(() => {}); }
+    }
+  }
+}
 async function trafficTick() {
   const tr = db.traffic || (db.traffic = { last: {}, days: {} }), k = dayKey();
   let changed = false;
@@ -1813,6 +1851,7 @@ async function monitor() {
     await safe(streamTick);
     await safe(trafficTick);
     if (mon.n % 4 === 1) await safe(pfTick);
+    if (mon.n % 4 === 3) await safe(unraidHealthTick);
     if (mon.n % 4 === 0) await safe(recentWatch);
     if (mon.n % 4 === 2) await safe(autoImport);
     await safe(nlTick);
@@ -3877,13 +3916,13 @@ const goatServer = http.createServer(async (req, res) => {
     if (p === '/api/alerts' && m === 'GET') {
       const a = db.alerts || {}, pub = c => ({ id: c.id, type: c.type, where: c.target ? (() => { try { return new URL(c.target).origin + '/…'; } catch { return '…'; } })() : '', chat: c.type === 'telegram' || c.type === 'pushover' ? c.chat : '',
         host: c.host || '', port: c.port || '', secure: c.secure || '', user: c.user || '', from: c.from || '', to: c.to || '', hasSecret: !!(c.token || c.pass), name: c.name || '', events: chanEvents(c), tpl: c.tpl || {}, conds: c.conds || [], condMode: c.condMode === 'any' ? 'any' : 'all' });
-      return send(res, 200, { finished: !!a.finished, offline: !!a.offline, disk: !!a.disk, vpn: !!a.vpn, requests: !!a.requests, reports: a.reports !== false, diskPct: a.diskPct || 90, events: ALERT_EVENTS, meta: Object.fromEntries(ALERT_EVENTS.map(k => [k, { ...AL.EVENTS[k], params: AL.paramsOf(k) }])), ops: AL.OPS, channels: (a.channels || []).map(pub) });
+      return send(res, 200, { finished: !!a.finished, offline: !!a.offline, disk: !!a.disk, vpn: !!a.vpn, requests: !!a.requests, reports: a.reports !== false, diskPct: a.diskPct || 90, diskTemp: a.diskTemp || 55, events: ALERT_EVENTS, meta: Object.fromEntries(ALERT_EVENTS.map(k => [k, { ...AL.EVENTS[k], params: AL.paramsOf(k) }])), ops: AL.OPS, channels: (a.channels || []).map(pub) });
     }
     if (p === '/api/alerts' && m === 'PUT') {
       const b = await readBody(req), o = db.alerts || { channels: [] };
       // The old on/off switches only matter to channels saved before each had its own list; keep them unless sent.
       const keep = (k, v) => k in b ? v : o[k];
-      db.alerts = { ...o, finished: keep('finished', !!b.finished), offline: keep('offline', !!b.offline), disk: keep('disk', !!b.disk), vpn: keep('vpn', !!b.vpn), requests: keep('requests', !!b.requests), reports: keep('reports', b.reports !== false), diskPct: Math.min(99, Math.max(50, +b.diskPct || o.diskPct || 90)) };
+      db.alerts = { ...o, finished: keep('finished', !!b.finished), offline: keep('offline', !!b.offline), disk: keep('disk', !!b.disk), vpn: keep('vpn', !!b.vpn), requests: keep('requests', !!b.requests), reports: keep('reports', b.reports !== false), diskPct: Math.min(99, Math.max(50, +b.diskPct || o.diskPct || 90)), diskTemp: Math.min(80, Math.max(35, +b.diskTemp || o.diskTemp || 55)) };
       save(); audit(me.name, 'Changed alert settings', ''); return send(res, 200, {});
     }
     const chanFields = (b, o = {}) => { const g = k => b[k] != null && String(b[k]).trim() !== '' ? String(b[k]).trim().slice(0, 500) : o[k];

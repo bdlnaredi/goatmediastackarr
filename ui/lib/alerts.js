@@ -25,7 +25,7 @@ const EVENTS = {
   streamLimit: { name: 'Streaming limit reached', group: 'Requests', params: [] },
   offline: { name: 'App down or back up', group: 'Server', params: [] },
   vpn: { name: 'VPN down or back up', group: 'Server', params: [] },
-  disk: { name: 'Array almost full', group: 'Server', params: [] },
+  disk: { name: 'Array full, disk or parity problem', group: 'Server', params: ['disk', 'temp', 'problem', 'server'] },
   backup: { name: 'Backup failed', group: 'Server', params: [] },
   update: { name: 'GoatMediaStackarr update', group: 'Server', params: [] },
   appUpdates: { name: 'App updates in the stack', group: 'Server', params: [] },

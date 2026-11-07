@@ -10,6 +10,7 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 - Subtitles on each title (Library, web and app): which languages Bazarr gets for it (pick a language profile right there), the subtitles it has and the ones missing, and *Find subtitles* to look for the rest. A show tells how many episodes miss subtitles.
 - Request rules (Settings → Limits): approve requests straight away when they fit a rule, such as movies rated 7 or more and under 10 GB, for everyone or for chosen people. Before asking, people see about how big a request will be (from its running time and the quality it will be grabbed at), whether it goes through by itself, and how many requests they have left. Admins see the size on each waiting request.
 - VPN extras on the Stack page: a *Speed test* through the VPN and without it (download, upload and delay, and how much of your speed the VPN keeps), *Find the fastest* PIA regions from your server (only ones with port forwarding when that is on), and an alert when the forwarded port stops working (qBittorrent firewalled or no port from the VPN) and when it works again.
+- Unraid health in alerts: you hear when a disk gets too hot (Unraid's own limit, or the one under Alerts), is disabled, wrong or missing, gets new read/write errors or a SMART warning, and when a parity check ends (with or without errors). These come with the *Array full, disk or parity problem* trigger, with {disk}, {temp} and {problem} for your own words and conditions.
 
 ## v1.0.11 — 2026-11-02
 
