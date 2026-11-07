@@ -411,3 +411,6 @@ button.sm{min-height:30px;padding:4px 10px;font-size:13px}
 .trs b{font-size:17px;letter-spacing:-.01em}.trs .mute{font-size:12px}
 .trs{grid-template-columns:repeat(3,minmax(0,1fr))}#trf .lgd span{white-space:nowrap}
 @media(max-width:560px){.trs{gap:6px}.trs>div{padding:8px}.trs b{font-size:14px}}
+/* Continue watching: how far along */
+.pcp{position:absolute;left:8px;right:8px;bottom:8px;height:4px;border-radius:3px;background:rgba(0,0,0,.55);overflow:hidden;z-index:2}.pcp i{display:block;height:100%;background:var(--accent)}
+.pw .cn-have.dh{top:8px;right:8px;bottom:auto}

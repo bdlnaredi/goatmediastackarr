@@ -43,6 +43,7 @@ class FakeServer(private val server: MockWebServer) : Dispatcher() {
             p == "/api/login" -> json("""{"user":{"id":"u1","name":"Ann","role":"admin"}}""").also { signedIn = true }.setHeader("Set-Cookie", "sid=abc123; HttpOnly; Path=/")
             p == "/api/plexlogin/start" -> json("""{"ticket":"t1","url":"https://app.plex.tv/auth#?code=x"}""")
             p == "/api/services" -> json(SERVICES)
+            p == "/api/jellyfin/j1/now" -> json("""{"cont":[{"title":"Glass Meridian","sub":"2024","thumb":"m1","key":"m1","progress":0.37},{"title":"Harbor Lights","sub":"S02E05 Low Tide","thumb":"s1","key":"e5","progress":0.0,"next":true}],"sessions":[],"recent":[],"server":"srv1"}""")
             p == "/api/live" -> MockResponse().setHeader("Content-Type", "text/event-stream").setBody("retry: 3000\n\ndata: ${live()}\n\n")
             p == "/api/upcoming" -> json(upcoming())
             p == "/api/requests" -> json(requests())

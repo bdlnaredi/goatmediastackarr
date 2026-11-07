@@ -1421,6 +1421,25 @@ async function autoImport() {
   for (const k of Object.keys(done)) if (Date.now() - done[k].at > 60 * DAY) delete done[k];
 }
 
+// What one person started in Plex and has not finished, from Tautulli's history (Plex itself only tells the owner).
+async function tautContinue(u) {
+  const tt = db.services.find(x => x.type === 'tautulli'); if (!tt) return [];
+  const names = [u.name, u.plex && u.plex.name, u.plexName].filter(Boolean).map(x => String(x).trim().toLowerCase());
+  const t = async (cmd, extra = '') => { const r = await fetch(`${tt.url.replace(/\/+$/, '')}/api/v2?apikey=${encodeURIComponent(tt.apiKey || '')}&cmd=${cmd}${extra}`, { signal: AbortSignal.timeout(8000) }); return ((await r.json()).response || {}).data; };
+  const who = ((await t('get_users')) || []).find(x => names.includes(String(x.username || '').trim().toLowerCase()) || names.includes(String(x.friendly_name || '').trim().toLowerCase()));
+  if (!who) return [];
+  const h = ((await t('get_history', `&user_id=${encodeURIComponent(who.user_id)}&length=60`)) || {}).data || [], seen = new Set(), out = [];
+  for (const x of h) {
+    const k = String(x.rating_key || ''), show = x.media_type === 'episode' ? String(x.grandparent_rating_key || '') : '';
+    if (!k || seen.has(k) || (show && seen.has('s' + show))) continue; seen.add(k); if (show) seen.add('s' + show);
+    const pc = +x.percent_complete || 0; if (+x.watched_status >= 1 || pc < 3 || pc >= 90) continue;
+    out.push({ title: cut(x.media_type === 'episode' ? x.grandparent_title : x.title, 120), sub: x.media_type === 'episode' ? `S${pad2(x.parent_media_index)}E${pad2(x.media_index)} ${cut(x.title, 80)}` : String(x.year || ''),
+      thumb: String(x.media_type === 'episode' ? x.grandparent_thumb || x.thumb || '' : x.thumb || ''), key: k, progress: pc / 100 });
+    if (out.length >= 16) break;
+  }
+  return out;
+}
+
 async function applyArrOpts(x) {
   const o = x.opts || {}, tv = x.mediaType === 'tv', kind = tv ? 'sonarr' : 'radarr';
   for (let i = 0; i < 12; i++) {
@@ -3053,10 +3072,17 @@ const goatServer = http.createServer(async (req, res) => {
       const th2 = x => x.grandparentThumb || x.parentThumb || x.thumb || '';
       const nm = x => x.type === 'episode' ? { title: x.grandparentTitle, sub: `S${pad2(x.parentIndex)}E${pad2(x.index)} ${x.title}` } : { title: x.title, sub: String(x.year || '') };
       const mineS = mineOnly(me, sessions), recent = raw.map(x => ({ ...nm(x), thumb: th2(x), key: String(x.ratingKey || '') }));
-      grant(me, s.id, [...mineS.map(x => x.thumb), ...recent.map(x => x.thumb)]);
+      // Continue watching: the owner's On Deck in Plex for an admin; for anyone else, what Tautulli saw them start and not finish.
+      let cont = [];
+      try {
+        if (me.role === 'admin') cont = ((((await plex(s, '/library/onDeck?X-Plex-Container-Start=0&X-Plex-Container-Size=16').then(x => x.json())).MediaContainer) || {}).Metadata || [])
+          .map(x => ({ ...nm(x), thumb: th2(x), key: String(x.ratingKey || ''), progress: x.duration ? Math.min(1, (+x.viewOffset || 0) / x.duration) : 0, next: !x.viewOffset }));
+        else cont = await tautContinue(me);
+      } catch {}
+      grant(me, s.id, [...mineS.map(x => x.thumb), ...recent.map(x => x.thumb), ...cont.map(x => x.thumb)]);
       // The server's ID, so a title can be opened in Plex's own page.
       if (!plexMidCache[s.id]) try { plexMidCache[s.id] = (((await plex(s, '/identity').then(x => x.json())).MediaContainer) || {}).machineIdentifier || ''; } catch {}
-      return send(res, 200, { sessions: mineS, recent, machine: plexMidCache[s.id] || '' });
+      return send(res, 200, { sessions: mineS, recent, cont, machine: plexMidCache[s.id] || '' });
     }
     if ((r = p.match(/^\/api\/plex\/(\w+)\/img$/))) {
       const s = svcOf(r[1], 'plex'), pth = new URL(req.url, 'http://x').searchParams.get('p') || '';
@@ -3069,7 +3095,15 @@ const goatServer = http.createServer(async (req, res) => {
     if ((r = p.match(/^\/api\/jellyfin\/(\w+)\/now$/))) {
       const s = svcOf(r[1], 'jellyfin'); if (!s) return send(res, 404, { error: 'Not found' });
       const [sessions, b] = await Promise.all([jfSessions(s), jfGet(s, '/Items?SortBy=DateCreated&SortOrder=Descending&Recursive=true&IncludeItemTypes=Movie,Series&Fields=DateCreated&Limit=60').then(x => x.json())]);
-      const mineJ = mineOnly(me, sessions); grant(me, s.id, mineJ.map(x => x.thumb)); return send(res, 200, { sessions: mineJ, recent: ownNames(me) ? [] : pickRecent(b.Items || [], x => Date.parse(x.DateCreated)).map(x => ({ title: cut(x.Name, 120), sub: String(x.ProductionYear || ''), thumb: x.Id, key: x.Id })), server: b.ServerId || ((b.Items || [])[0] || {}).ServerId || '' });
+      const mineJ = mineOnly(me, sessions);
+      // Continue watching: the person's own Jellyfin account (matched by name), where they stopped.
+      let cont = [];
+      try { const names = [me.name, me.plex && me.plex.name, me.plexName].filter(Boolean).map(x => String(x).trim().toLowerCase());
+        const ju = ((await (await jfGet(s, '/Users')).json()) || []).find(x => names.includes(String(x.Name || '').trim().toLowerCase()));
+        if (ju) cont = (((await (await jfGet(s, `/Users/${ju.Id}/Items/Resume?Limit=16&Recursive=true&Fields=PrimaryImageAspectRatio&MediaTypes=Video`)).json()) || {}).Items || []).map(x => ({
+          title: cut(x.Type === 'Episode' ? x.SeriesName : x.Name, 120), sub: x.Type === 'Episode' ? `S${pad2(x.ParentIndexNumber)}E${pad2(x.IndexNumber)} ${cut(x.Name, 80)}` : String(x.ProductionYear || ''),
+          thumb: x.Type === 'Episode' && x.SeriesId ? x.SeriesId : x.Id, key: x.Id, progress: Math.min(1, ((x.UserData || {}).PlayedPercentage || 0) / 100) })); } catch {}
+      grant(me, s.id, [...mineJ.map(x => x.thumb), ...cont.map(x => x.thumb)]); return send(res, 200, { cont, sessions: mineJ, recent: ownNames(me) ? [] : pickRecent(b.Items || [], x => Date.parse(x.DateCreated)).map(x => ({ title: cut(x.Name, 120), sub: String(x.ProductionYear || ''), thumb: x.Id, key: x.Id })), server: b.ServerId || ((b.Items || [])[0] || {}).ServerId || '' });
     }
     if ((r = p.match(/^\/api\/jellyfin\/(\w+)\/img$/))) {
       const s = svcOf(r[1], 'jellyfin'), id = new URL(req.url, 'http://x').searchParams.get('p') || '';

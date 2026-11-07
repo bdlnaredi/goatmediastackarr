@@ -85,6 +85,9 @@ fun HomeScreen() {
     val healthy = l?.health?.values?.count { it } ?: 0
     val known = l?.health?.size ?: 0
 
+    val media = svcs.firstOrNull { it.type == "plex" } ?: svcs.firstOrNull { it.type == "jellyfin" }
+    val cont = rememberLoad(media?.id) { media?.let { m -> runCatching { ctx.api.get<com.bdlnaredi.goatstack.data.MediaNow>("/api/${m.type}/${m.id}/now") }.getOrNull() } }
+    val uri = androidx.compose.ui.platform.LocalUriHandler.current
     val feed = rememberLoad { ctx.api.get<com.bdlnaredi.goatstack.data.Feed>("/api/notifications") }
     val unread = feed.value?.let { f -> f.items.count { it.id > f.read } } ?: 0
     val upd by ctx.app.updates.collectAsStateWithLifecycle()
@@ -178,6 +181,36 @@ fun HomeScreen() {
                             }
                             Spacer(Modifier.height(10.dp))
                             Bar(p.progress.toFloat(), height = 4.dp)
+                        }
+                    }
+                }
+            }
+        }
+
+        val cw = cont.value?.cont.orEmpty()
+        if (media != null && cw.isNotEmpty()) {
+            item { SectionTitle("Continue watching") }
+            item {
+                LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    items(cw) { c ->
+                        val d = cont.value!!
+                        // Open the title where it plays: Plex on the web (or its app), or the Jellyfin page.
+                        val link = when {
+                            c.key.isBlank() -> null
+                            media.type == "plex" -> if (d.machine.isBlank()) null else "https://app.plex.tv/desktop/#!/server/${d.machine}/details?key=" + java.net.URLEncoder.encode("/library/metadata/${c.key}", "UTF-8")
+                            else -> {
+                                val b = if (media.managed || media.url.isBlank()) runCatching { java.net.URI(ctx.api.base).let { "${it.scheme}://${it.host}:8096/" } }.getOrNull() else media.url.trimEnd('/') + "/"
+                                b?.let { "${it}web/index.html#/details?id=${c.key}" + if (d.server.isNotBlank()) "&serverId=${d.server}" else "" }
+                            }
+                        }
+                        Column(Modifier.width(118.dp).clickable(enabled = link != null) { link?.let { runCatching { uri.openUri(it) } } }) {
+                            Poster(ctx.api.mediaImage(media.id, media.type, c.thumb), c.title, Modifier.fillMaxWidth(), corner = 12.dp)
+                            Spacer(Modifier.height(6.dp))
+                            if (c.next) Text("Up next", style = MaterialTheme.typography.labelSmall, color = g.primary)
+                            else Bar(c.progress.toFloat(), height = 4.dp)
+                            Spacer(Modifier.height(4.dp))
+                            Text(c.title, style = MaterialTheme.typography.labelLarge, color = g.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            if (c.sub.isNotBlank()) Text(c.sub, style = MaterialTheme.typography.labelSmall, color = g.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     }
                 }

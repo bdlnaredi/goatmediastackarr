@@ -296,6 +296,9 @@ function create(opts = {}) {
           Player: { title: movie ? 'Phone' : 'Living Room TV', product: movie ? 'Plex for Android' : 'Plex for LG', state: (st.paused || [])[i] ? 'paused' : 'playing' }, Media: [{ videoResolution: movie ? '1080' : '4k' }],
           ...(tc ? { TranscodeSession: { videoDecision: 'transcode', audioDecision: 'copy' } } : {}) };
       }) } });
+      if (sub.startsWith('/library/onDeck')) return json(res, { MediaContainer: { Metadata: [
+        { type: 'movie', ratingKey: '901', title: 'Glass Meridian', year: 2024, thumb: '/library/metadata/901/thumb', viewOffset: 3.1e6, duration: 7.2e6 },
+        { type: 'episode', ratingKey: '902', title: 'The Long Night', grandparentTitle: 'Harbor Lights', parentIndex: 2, index: 5, grandparentThumb: '/library/metadata/90/thumb', viewOffset: 0, duration: 3.0e6 }] } });
       if (sub.startsWith('/library/recentlyAdded')) return json(res, { MediaContainer: { Metadata: [...(st.added || []), ...Array.from({ length: 24 }, (_, i) => ({ type: 'movie', ratingKey: String(300 + i), title: 'New item ' + i, year: 2025, addedAt: Math.round(Date.now() / 1000) - (i < (st.fresh == null ? 3 : st.fresh) ? i * 3600 : (20 + i) * 86400), thumb: '/library/metadata/' + (300 + i) + '/thumb' }))] } });
       if (sub.startsWith('/library/metadata/')) { res.writeHead(200, { 'Content-Type': 'image/svg+xml' }); const hue = [...sub].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 360, 7), t = decodeURIComponent(svg('Demo', hue).split(',')[1]); return res.end(t); }
       return json(res, { MediaContainer: {} });
