@@ -462,3 +462,4 @@ button.sm{min-height:30px;padding:4px 10px;font-size:13px}
 .dock a .ic{width:22px;height:22px}.dock a.on{background:color-mix(in srgb,var(--accent) 20%,transparent);color:var(--text)}.dock a.on .ic{color:var(--accent)}
 .dock a span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sxn a{text-decoration:none;cursor:pointer;box-sizing:border-box}
+.wst{display:flex;gap:12px;align-items:flex-start;margin:10px 0}.wst .wnum{flex:none;width:28px;height:28px;border-radius:50%;background:var(--accent);color:#111;font-weight:750;display:flex;align-items:center;justify-content:center}.wst b{display:block;margin-bottom:2px}

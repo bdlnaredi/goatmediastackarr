@@ -4,6 +4,7 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- Invite friends, all in one link: an invite can now also share your Plex libraries with their Plex account (pick which; plex.tv sends them the invite) and make them a Jellyfin account with the same name and password. Add a welcome note, and the first time they sign in they get a short guide: accept the Plex invite, sign in to Jellyfin, how to request, and the Android app.
 ## v1.0.15 — 2026-11-08
 
 - Android app: an *Address at home* (Settings → Server), like nzb360's local address. On Wi-Fi, when GoatMediaStackarr answers at that address, the app talks to it there (faster, and it works when the internet is down); anywhere else it switches back to the main address by itself. You stay signed in either way.

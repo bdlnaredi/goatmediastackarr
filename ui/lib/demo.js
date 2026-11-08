@@ -280,6 +280,9 @@ function create(opts = {}) {
       if (sub.startsWith('/api/v2/pins') && m === 'POST') { st.pins = (st.pins || 0) + 1; const id = 1000 + st.pins; st.pinAt[id] = Date.now(); return json(res, { id, code: 'DEMO' + id, authToken: null }); }
       const pm = sub.match(/^\/api\/v2\/pins\/(\d+)/); if (pm) return json(res, { id: +pm[1], code: 'DEMO', authToken: Date.now() - (st.pinAt[pm[1]] || 0) > (st.pinDelay == null ? 1500 : st.pinDelay) ? 'plex-token-' + (st.plexWho || 'alex') : null });
       if (sub === '/api/users') { res.writeHead(200, { 'Content-Type': 'application/xml' }); return res.end('<MediaContainer><User id="4242" title="alex" username="alex" filterMovies="' + (st.plexFilter || '') + '" filterTelevision=""/></MediaContainer>'); }
+      { const sv = sub.match(/^\/api\/servers\/([\w-]+)(\/shared_servers)?$/);
+        if (sv && !sv[2]) { res.writeHead(200, { 'Content-Type': 'application/xml' }); return res.end('<MediaContainer><Server machineIdentifier="' + sv[1] + '"><Section id="9001" key="1" title="Movies"/><Section id="9002" key="2" title="TV Shows"/><Section id="9003" key="3" title="Private"/></Server></MediaContainer>'); }
+        if (sv && m === 'POST') { st.plexShares = st.plexShares || []; st.plexShares.push(await body(req)); return json(res, { id: 1 }); } }
       if (sub.startsWith('/api/v2/user')) { const w = st.plexWho || 'alex'; return json(res, { id: 4242, uuid: 'uuid-' + w, username: w, title: w, email: w + '@example.com' }); }
       if (sub.startsWith('/api/v2/resources')) return json(res, st.plexNoAccess ? [{ name: 'Someone else', provides: 'server', clientIdentifier: 'other-machine', owned: false }] : [{ name: 'Demo Plex', provides: 'server,player', clientIdentifier: 'demo-machine-id', owned: false, accessToken: 'demo-user-tok-' + (st.plexWho || 'alex') }]);
       return json(res, {});
@@ -309,6 +312,7 @@ function create(opts = {}) {
     if (type === 'jellyfin') {
       // Who has an account, and what "kid" watched (for "Because you watched").
       if (sub === '/Users') return json(res, [{ Id: 'u-admin', Name: 'admin' }, { Id: 'u-kid', Name: 'kid' }, { Id: 'u-kid', Name: 'demo' }]);
+      if (sub === '/Users/New' && m === 'POST') { const d = await body(req); st.jfNew = st.jfNew || []; st.jfNew.push(d); return json(res, { Id: 'u-' + d.Name, Name: d.Name }); }
       if (sub === '/Users/u-kid/Items') return json(res, { Items: [{ Id: 'm1', Type: 'Movie', Name: 'Demo movie 5001', ProviderIds: { Tmdb: '5001' } }, { Id: 'e1', Type: 'Episode', Name: 'Pilot', SeriesId: 's1' }] });
       if (sub === '/Users/u-admin/Items') return json(res, { Items: [] });
       if (sub === '/Items' && q.get('Ids')) return json(res, { Items: [{ Id: 's1', Type: 'Series', Name: 'Demo show', ProviderIds: { Tmdb: '7002' } }] });

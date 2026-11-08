@@ -1095,6 +1095,26 @@ async function heal() {
     }
   }
 }
+// ---------- What an invite can also do: share the owner's Plex libraries with the new person's Plex account (an invite
+// from plex.tv to their email), and make them a Jellyfin account with the same name and password.
+async function plexShareInvite(email, keys) {
+  const s = db.services.find(x => x.type === 'plex' && x.apiKey); if (!s) throw new Error('No Plex server with a token');
+  const ident = ((await plexGet(s, '/identity')).MediaContainer || {}).machineIdentifier; if (!ident) throw new Error('Plex did not say which server it is');
+  const tv = PLEXTV(), hdr = { 'X-Plex-Token': s.apiKey, 'X-Plex-Client-Identifier': plexCid(), 'X-Plex-Product': 'GoatMediaStackarr' };
+  // plex.tv numbers the libraries its own way: match them to the server's by key.
+  const xml = await (await fetch(`${tv}/api/servers/${encodeURIComponent(ident)}`, { signal: AbortSignal.timeout(10000), headers: { ...hdr, Accept: 'application/xml' } })).text();
+  const map = {}; for (const m of xml.matchAll(/<Section\b[^>]*>/g)) { const id = (/\bid="(\d+)"/.exec(m[0]) || [])[1], key = (/\bkey="(\d+)"/.exec(m[0]) || [])[1]; if (id && key) map[key] = +id; }
+  const ids = (keys && keys.length ? keys : Object.keys(map)).map(k => map[k]).filter(Boolean);
+  const r = await fetch(`${tv}/api/servers/${encodeURIComponent(ident)}/shared_servers`, { method: 'POST', signal: AbortSignal.timeout(15000), headers: { ...hdr, 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({ server_id: ident, shared_server: { library_section_ids: ids, invited_email: email }, sharing_settings: {} }) });
+  if (!r.ok) { const t = await r.text().catch(() => ''); throw new Error(r.status === 400 && /already/i.test(t) ? 'already shared with that account' : 'plex.tv answered ' + r.status); }
+  return ids.length;
+}
+async function jellyfinMakeUser(name, password) {
+  const s = db.services.find(x => x.type === 'jellyfin' && x.apiKey); if (!s) throw new Error('No Jellyfin with an API key');
+  const r = await jfGet(s, '/Users/New', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ Name: name, Password: password }) });
+  return ((await r.json().catch(() => ({}))) || {}).Id || '';
+}
 const plexGet = async (s, pth) => {
   const x = await fetch(s.url.replace(/\/+$/, '') + pth, { signal: AbortSignal.timeout(8000), headers: { 'X-Plex-Token': s.apiKey, Accept: 'application/json' } });
   if (!x.ok) throw new Error('Plex returned ' + x.status); return x.json();
@@ -2292,7 +2312,7 @@ const goatServer = http.createServer(async (req, res) => {
       const hh = th(invm[1]), x = db.invites.find(l => same(l.hash, hh));
       const live = x && (!x.exp || x.exp > Date.now()) && (!x.max || (x.used || 0) < x.max);
       if (!live) { fl.n++; fl.t = Date.now(); failsInv[ip] = fl; return send(res, 404, { error: x ? 'This invite has expired or been used up. Ask for a new one.' : 'This invite link is not valid.' }); }
-      if (m === 'GET') return send(res, 200, { label: x.label || '', by: x.by || '', server: db.settings.serverName || 'GoatMediaStackarr', kids: !!x.kids, exp: x.exp || 0 });
+      if (m === 'GET') return send(res, 200, { label: x.label || '', by: x.by || '', server: db.settings.serverName || 'GoatMediaStackarr', kids: !!x.kids, exp: x.exp || 0, plex: !!(x.plex && x.plex.on), jellyfin: !!x.jellyfin });
       const b = await readBody(req), name = cut(b.name, 40).trim();
       if (!name || !/^[\p{L}\p{N} ._-]+$/u.test(name)) return send(res, 400, { error: 'Pick a name (letters, numbers, spaces, dots and dashes).' });
       if ((b.password || '').length < 8) return send(res, 400, { error: 'Pick a password of 8+ characters' });
@@ -2304,7 +2324,15 @@ const goatServer = http.createServer(async (req, res) => {
       if (x.autoApprove) u.autoApprove = true;
       if (x.kids) u.kids = { age: x.kids.age };
       if (b.email && require('./lib/smtp').ADDR.test(String(b.email).trim())) u.email = cut(b.email, 120).trim();
-      u.invite = x.id; db.users.push(u); x.used = (x.used || 0) + 1; x.people = [...(x.people || []), name].slice(-50); save();
+      if (x.plex && x.plex.on && !require('./lib/smtp').ADDR.test(String(b.plexEmail || '').trim())) return send(res, 400, { error: 'Enter the email (or the name) of your Plex account, so the libraries can be shared with it.' });
+      u.invite = x.id; db.users.push(u); x.used = (x.used || 0) + 1; x.people = [...(x.people || []), name].slice(-50);
+      // What comes with the invite: Plex libraries shared with their Plex account, a Jellyfin account, and a welcome page.
+      const w = u.welcome = { at: Date.now(), note: x.welcome || '', by: x.by || '' };
+      if (x.plex && x.plex.on) { const em = cut(String(b.plexEmail).trim(), 120); w.plex = { email: em };
+        try { w.plex.libs = await plexShareInvite(em, x.plex.libs || []); w.plex.ok = true; u.plexName = u.plexName || em; } catch (e) { w.plex.error = e.message; } }
+      if (x.jellyfin) { w.jellyfin = {}; try { await jellyfinMakeUser(name, b.password); w.jellyfin.ok = true; } catch (e) { w.jellyfin.error = e.message; } }
+      save();
+      if ((w.plex && w.plex.error) || (w.jellyfin && w.jellyfin.error)) feed('@admins', 'problem', 'Invite: something to finish by hand', `${name}: ${[w.plex && w.plex.error ? 'Plex sharing (' + w.plex.error + ')' : '', w.jellyfin && w.jellyfin.error ? 'Jellyfin account (' + w.jellyfin.error + ')' : ''].filter(Boolean).join(', ')}`, 'set:users');
       audit(name, 'Joined with an invite', (x.label || x.id) + ' · ' + res.info.ip);
       feed('@admins', 'user', 'New profile', `${name} joined with ${x.label ? 'the invite "' + x.label + '"' : 'an invite'}`, 'set:users');
       return login(res, u);
@@ -2373,6 +2401,16 @@ const goatServer = http.createServer(async (req, res) => {
       const i = (me.passkeys || []).findIndex(k => k.id === r0[1]); if (i < 0) return send(res, 404, { error: 'Not found' });
       const [k] = me.passkeys.splice(i, 1); save(); audit(me.name, 'Removed a passkey', k.name); return send(res, 200, {});
     }
+    // The welcome page after joining with an invite: what was set up for them and how to start.
+    if (p === '/api/welcome' && m === 'GET') {
+      const w = me.welcome; if (!w) return send(res, 200, { show: false });
+      const has = t => db.services.find(x => x.type === t && svcOk(me, x));
+      return send(res, 200, { show: true, note: w.note || '', by: w.by || '', server: db.settings.serverName || 'GoatMediaStackarr',
+        plex: w.plex ? { ok: !!w.plex.ok, email: w.plex.email, error: w.plex.error ? 'Your Plex invite has not gone out yet; ' + (w.by || 'the admin') + ' will send it.' : '' } : has('plex') ? { ok: true, email: '', error: '' } : null,
+        jellyfin: w.jellyfin ? { ok: !!w.jellyfin.ok, url: (has('jellyfin') || {}).url || '', error: w.jellyfin.error ? 'Your Jellyfin account is not ready yet; ' + (w.by || 'the admin') + ' will make it.' : '' } : null,
+        requests: !!has('seerr') && (me.perms || {}).request !== false, apk: 'https://github.com/bdlnaredi/goatmediastackarr/releases/latest/download/goatmediastackarr.apk', kids: !!me.kids });
+    }
+    if (p === '/api/welcome' && m === 'DELETE') { delete me.welcome; save(); return send(res, 200, {}); }
     if (p === '/api/me/chats' && m === 'GET') { const st = bots.state(); return send(res, 200, { telegram: !!(me.chats || {}).telegram, discord: !!(me.chats || {}).discord, bots: { telegram: st.telegram.on ? ((db.settings.bots || {}).telegram || {}).name || 'on' : '', discord: st.discord.on ? ((db.settings.bots || {}).discord || {}).name || 'on' : '' } }); }
     if (p === '/api/me/chats/code' && m === 'POST') {
       for (const [k, v] of chatCodes) if (v.exp < Date.now() || v.uid === me.id) chatCodes.delete(k);
@@ -4213,7 +4251,7 @@ const goatServer = http.createServer(async (req, res) => {
       return send(res, 200, await statusData({ name: cut(q.get('name'), 60).trim() || 'Status page', note: cut(q.get('note'), 160).trim(), look: LOOKS.includes(q.get('look')) ? q.get('look') : 'auto', scopes: sc }));
     }
     const invOut = x => ({ id: x.id, label: x.label || '', at: x.at, by: x.by || '', exp: x.exp || 0, max: x.max || 0, used: x.used || 0, people: x.people || [], access: x.access || [],
-      perms: x.perms || null, kids: x.kids || null, reqLimit: x.reqLimit || null, autoApprove: !!x.autoApprove, hint: x.hint || '',
+      perms: x.perms || null, kids: x.kids || null, reqLimit: x.reqLimit || null, autoApprove: !!x.autoApprove, hint: x.hint || '', plex: x.plex || null, jellyfin: !!x.jellyfin, welcome: x.welcome || '',
       live: (!x.exp || x.exp > Date.now()) && (!x.max || (x.used || 0) < x.max) });
     if (p === '/api/settings/2fa' && m === 'GET') return send(res, 200, { policy: tfaPolicy(), missing: db.users.filter(need2fa).map(u => u.name) });
     if (p === '/api/settings/2fa' && m === 'PUT') {
@@ -4222,6 +4260,12 @@ const goatServer = http.createServer(async (req, res) => {
       return send(res, 200, { policy: v, missing: db.users.filter(need2fa).map(u => u.name) });
     }
     if (p === '/api/invites' && m === 'GET') return send(res, 200, db.invites.map(invOut).reverse());
+    // The Plex libraries an invite can share (the owner's server).
+    if (p === '/api/invites/plexlibs' && m === 'GET') {
+      const s = db.services.find(x => x.type === 'plex' && x.apiKey); if (!s) return send(res, 200, []);
+      const d = await plexGet(s, '/library/sections').catch(() => null);
+      return send(res, 200, (((d || {}).MediaContainer || {}).Directory || []).map(x => ({ key: String(x.key), title: cut(x.title, 60), type: x.type || '' })));
+    }
     if (p === '/api/invites' && m === 'POST') {
       const b = await readBody(req); if (db.invites.length >= 100) return send(res, 400, { error: 'That is a lot of invites. Remove some old ones first.' });
       const code = crypto.randomBytes(18).toString('base64url'), days = Math.round(+b.days || 0), max = Math.round(+b.max || 0);
@@ -4231,7 +4275,9 @@ const goatServer = http.createServer(async (req, res) => {
         access: (Array.isArray(b.access) ? b.access : []).filter(a => db.services.some(s2 => s2.id === a)),
         perms: b.perms ? Object.fromEntries(['add', 'control', 'remove', 'request'].map(k => [k, b.perms[k] !== false])) : null,
         kids: b.kids ? { age: Math.min(17, Math.max(0, Math.round(+b.kids.age) || 7)) } : null,
-        reqLimit: n > 0 ? { n: Math.min(n, 1000), days: Math.min(Math.max(d || 7, 1), 365) } : null, autoApprove: !!b.autoApprove };
+        reqLimit: n > 0 ? { n: Math.min(n, 1000), days: Math.min(Math.max(d || 7, 1), 365) } : null, autoApprove: !!b.autoApprove,
+        plex: b.plex && b.plex.on ? { on: true, libs: (Array.isArray(b.plex.libs) ? b.plex.libs : []).map(String).filter(k => /^\d+$/.test(k)).slice(0, 50) } : null,
+        jellyfin: !!b.jellyfin, welcome: cut(String(b.welcome || '').trim(), 800) };
       db.invites.push(x); save(); audit(me.name, 'Made an invite link', x.label || x.id);
       return send(res, 200, { ...invOut(x), code });
     }

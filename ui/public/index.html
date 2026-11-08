@@ -575,6 +575,7 @@ async function start(){
   // First visit to a new GoatMediaStackarr: open the Stack page, where the setup checklist is, until it is marked done.
   if(!fromUrl&&GOAT&&me.role==='admin')try{const g=await api('/api/goat/status');if(!(g.settings&&g.settings.setup&&g.settings.setup.done))tab='goat'}catch{}
   render();
+  if(me.role!=='admin')welcomeOnce();
   if(me.role==='admin'&&!DEMO)updNote();
   // After an update, show what changed once. A first visit only remembers the version.
   if(VER&&!DEMO){if(!UI.seenVer){UI.seenVer=VER;saveUI()}else if(UI.seenVer!==VER)whatsNew()}
@@ -704,6 +705,18 @@ function forgotView(setup,needCode){
     catch(x){$('#e').textContent=x.message;b.disabled=false}};
 }
 // Joining with an invite link: the person picks their own name and password and is signed in.
+// After joining with an invite: a welcome page with what was set up for them and how to start. Shown once.
+async function welcomeOnce(){
+  let w;try{w=await api('/api/welcome')}catch{return}if(!w.show)return;
+  const step=(i,t,b)=>`<div class="wst"><span class="wnum">${i}</span><div><b>${t}</b><div class="mute">${b}</div></div></div>`;let n=0;
+  const o=modal(`<h2 style="margin-top:0">Welcome to ${esc(w.server)}!</h2>${w.note?`<div class="box" style="white-space:pre-line;margin-bottom:12px">${esc(w.note)}${w.by?`<div class="mute" style="margin-top:6px">${esc(w.by)}</div>`:''}</div>`:''}
+    ${w.plex?step(++n,'Watch in Plex',w.plex.error?esc(w.plex.error):w.plex.email?`An invite went to <b>${esc(w.plex.email)}</b>. Open it (or app.plex.tv, Settings, Manage, Library access) and accept it; then the libraries show in every Plex app.`:'Open Plex on your TV, phone or app.plex.tv.'):''}
+    ${w.jellyfin?step(++n,'Watch in Jellyfin',w.jellyfin.error?esc(w.jellyfin.error):`Sign in with the same name and password${w.jellyfin.url?' at '+esc(w.jellyfin.url):''}, or in the Jellyfin app.`):''}
+    ${w.requests?step(++n,'Ask for something','Find a movie or show in Discover (or Search) and press Request. You hear when it is ready.'):''}
+    ${step(++n,'Get the app',`The GoatMediaStackarr app for Android: <a href="${esc(w.apk)}" target="_blank" rel="noopener">download it</a>, open it and enter <b>${esc(location.host)}</b>.`)}
+    <div class="row" style="margin-top:14px"><button class="primary" data-x>Let's go</button></div>`);
+  o.querySelector('[data-x]').onclick=o.close;api('/api/welcome','DELETE').catch(()=>{});
+}
 async function inviteView(code){
   Cinema.stopAmbient();showStage();
   const leave=()=>{history.replaceState(null,'',location.pathname+location.search);start()};
@@ -714,10 +727,12 @@ async function inviteView(code){
     <input name="name" placeholder="${T('Your name')}" aria-label="${T('Your name')}" autocomplete="username" required maxlength="40" autofocus>
     <div class="pwf"><input name="password" type="password" placeholder="${T('Password (8+ characters)')}" aria-label="${T('Password')}" autocomplete="new-password" required minlength="8"><button type="button" class="ghost" id="pwt" aria-label="Show password" aria-pressed="false">${ic('eye')}</button></div>
     <input name="email" type="email" placeholder="${T('Email for password recovery (optional)')}" autocomplete="email">
+    ${d.plex?`<input name="plexEmail" type="email" required placeholder="Your Plex account's email" aria-label="Your Plex account's email"><p class="mute" style="margin:-4px 0 4px;font-size:13px">Plex libraries are shared with this Plex account. No Plex account yet? Make one free at plex.tv first.</p>`:''}
+    ${d.jellyfin?`<p class="mute" style="margin:0 0 4px;font-size:13px">You also get a Jellyfin account with the same name and password.</p>`:''}
     <button class="primary">${T('Make my profile')}</button><button type="button" class="lnk" id="bk">${T('I already have a profile')}</button><div class="err" id="e" role="alert"></div></form></div>`;
   pwToggle();$('#bk').onclick=leave;
   $('#jf').onsubmit=async e=>{e.preventDefault();const f=e.target.elements,b=e.target.querySelector('.primary');$('#e').textContent='';b.disabled=true;
-    try{await api('/api/invite/'+code,'POST',{name:f.name.value,password:f.password.value,email:f.email.value});history.replaceState(null,'',location.pathname+location.search);start()}
+    try{await api('/api/invite/'+code,'POST',{name:f.name.value,password:f.password.value,email:f.email.value,plexEmail:f.plexEmail?f.plexEmail.value:''});history.replaceState(null,'',location.pathname+location.search);start()}
     catch(x){$('#e').textContent=x.message;b.disabled=false}};
 }
 // Invite links, in Settings → Users: who can join, with which apps and rights, until when.
@@ -731,21 +746,27 @@ function invitePanel(){
       <label class="mute">${T('They can')} <select name="pre"><option value="std">${T('Standard')}</option><option value="view">${T('View only')}</option></select></label>
       <label class="chk"><input type="checkbox" name="kids">${T('Kids profile')}</label><label class="mute">${T('up to age')} <select name="age">${[4,7,10,13,16].map(a=>`<option ${a===7?'selected':''}>${a}</option>`).join('')}</select></label></div>
       <div class="mute" style="margin-top:12px">${T('Apps they can open')}</div><div>${services.map(x=>`<label class="chk" style="margin:6px 14px 0 0"><input type="checkbox" data-ia="${x.id}" ${['seerr','plex','jellyfin'].includes(x.type)?'checked':''}>${esc(x.name)}</label>`).join('')}</div>
+      ${services.some(x=>x.type==='plex')?`<div style="margin-top:12px"><label class="chk"><input type="checkbox" name="plexon">Share my Plex libraries with them (they give their Plex account's email; plex.tv sends them the invite)</label><div id="ivpl" class="mute" style="margin:4px 0 0 28px"></div></div>`:''}
+      ${services.some(x=>x.type==='jellyfin')?`<label class="chk" style="margin-top:8px"><input type="checkbox" name="jfon">Make them a Jellyfin account (same name and password)</label>`:''}
+      <label class="mute blk" style="margin-top:12px">Welcome note (shown when they first sign in)<textarea name="welcome" rows="2" maxlength="800" placeholder="Hi! Ask for anything in Discover. Please don't share your password."></textarea></label>
       <div class="row" style="margin-top:12px"><button class="primary">${ic('rq')}${T('Make invite link')}</button></div><div class="err" id="ive"></div></form>
     <div id="ivl" style="margin-top:12px"></div></div>`;
 }
 async function inviteList(){
   const el=$('#ivl');if(!el)return;let l=[];try{l=await api('/api/invites')}catch{return}
   const day=t=>new Date(t).toLocaleDateString(undefined,{day:'numeric',month:'short'});
-  el.innerHTML=l.length?l.map(x=>`<div class="box row" style="margin-top:8px" data-iv="${x.id}"><b>${esc(x.label||T('Invite'))}</b><span class="pill ${x.live?'ok':''}">${x.live?T('Open'):T('Closed')}</span>${x.kids?`<span class="pill">${T('Kids')} ${x.kids.age}</span>`:''}
+  el.innerHTML=l.length?l.map(x=>`<div class="box row" style="margin-top:8px" data-iv="${x.id}"><b>${esc(x.label||T('Invite'))}</b><span class="pill ${x.live?'ok':''}">${x.live?T('Open'):T('Closed')}</span>${x.kids?`<span class="pill">${T('Kids')} ${x.kids.age}</span>`:''}${x.plex?'<span class="pill">Plex</span>':''}${x.jellyfin?'<span class="pill">Jellyfin</span>':''}
     <span class="mute">${x.used}${x.max?' / '+x.max:''} ${T('joined')}${x.people.length?': '+esc(x.people.join(', ')):''}${x.exp?' · '+(x.exp>Date.now()?T('until'):T('ended'))+' '+day(x.exp):''}</span><span class="grow"></span><button class="danger" data-ivd>${T('Remove')}</button></div>`).join(''):`<p class="mute" style="margin:0">${T('No invite links yet.')}</p>`;
   el.onclick=async e=>{const b=e.target.closest('[data-ivd]');if(!b)return;const id=b.closest('[data-iv]').dataset.iv;if(!confirm(T('Remove this invite link? Profiles already made with it stay.')))return;
     try{await api('/api/invites/'+id,'DELETE');inviteList()}catch(x){toast(x.message,'bad')}};
 }
 function inviteWire(){
   const f=$('#ivf');if(!f)return;inviteList();
+  // Which Plex libraries to share (all ticked to start with).
+  if($('#ivpl'))api('/api/invites/plexlibs').then(l=>{if($('#ivpl'))$('#ivpl').innerHTML=l.map(x=>`<label class="chk" style="margin:4px 14px 0 0"><input type="checkbox" data-pl="${esc(x.key)}" checked>${esc(x.title)}</label>`).join('')}).catch(()=>{});
   f.onsubmit=async e=>{e.preventDefault();$('#ive').textContent='';
-    const v=new FormData(f),b={label:v.get('label'),days:+v.get('days'),max:+v.get('max'),perms:PRESET[v.get('pre')],kids:f.kids.checked?{age:+v.get('age')}:null,access:[...f.querySelectorAll('[data-ia]:checked')].map(c=>c.dataset.ia)};
+    const v=new FormData(f),b={label:v.get('label'),days:+v.get('days'),max:+v.get('max'),perms:PRESET[v.get('pre')],kids:f.kids.checked?{age:+v.get('age')}:null,access:[...f.querySelectorAll('[data-ia]:checked')].map(c=>c.dataset.ia),
+      plex:f.plexon&&f.plexon.checked?{on:true,libs:[...f.querySelectorAll('[data-pl]:checked')].map(c=>c.dataset.pl)}:null,jellyfin:!!(f.jfon&&f.jfon.checked),welcome:f.welcome.value};
     try{const x=await api('/api/invites','POST',b),link=location.origin+'/#invite='+x.code;f.label.value='';inviteList();
       const o=modal(`<div class="row"><h2 style="margin:0;flex:1">${T('Invite link ready')}</h2><button data-x>${T('Close')}</button></div>
         <p class="mute">${T('Send this link, or let them scan the code. It is shown only now.')}</p>
