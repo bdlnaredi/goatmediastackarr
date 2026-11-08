@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+## v1.0.14 — 2026-11-08
+
 - Adding from Search now asks where it goes, its quality, what to monitor (and for shows the series type and season folders; for movies the minimum availability), and whether to start searching now, on the web and in the app.
 - The last choices for adding or requesting (folder, quality, monitor and the rest) are remembered, for shows and movies apart, and offered again in Search, Discover's request options and Music & books.
 - RSS: set how often qBittorrent checks the feeds, how many articles it keeps, and turn reading the feeds or the download rules on and off (Feeds, for admins; web and app).
