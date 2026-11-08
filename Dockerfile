@@ -196,6 +196,14 @@ RUN --mount=type=secret,id=GITHUB_TOKEN,env=GITHUB_TOKEN \
     fetch-release filebrowser/filebrowser "${FILEBROWSER_VERSION}" "^linux-${a}-filebrowser\.tar\.gz$" /tmp/fb.tar.gz /opt/goat/versions/filebrowser && \
     mkdir -p /opt/filebrowser && tar -xzf /tmp/fb.tar.gz -C /opt/filebrowser filebrowser && rm /tmp/fb.tar.gz && chmod +x /opt/filebrowser/filebrowser
 
+# Unpackerr: unpacks .rar/.zip/.7z downloads for Sonarr, Radarr and Lidarr (one small program; runs when in GOAT_ENGINES).
+ARG UNPACKERR_VERSION=latest
+RUN --mount=type=secret,id=GITHUB_TOKEN,env=GITHUB_TOKEN \
+    a=$([ "$TARGETARCH" = arm64 ] && echo arm64 || echo amd64) && \
+    fetch-release Unpackerr/unpackerr "${UNPACKERR_VERSION}" "^unpackerr[._-]([^/]*[._-])?(${a}[._-]linux|linux[._-]${a})(\.tar)?\.gz$" /tmp/unpackerr.gz /opt/goat/versions/unpackerr && \
+    mkdir -p /tmp/up && if tar -tzf /tmp/unpackerr.gz >/dev/null 2>&1; then tar -xzf /tmp/unpackerr.gz -C /tmp/up && f=$(find /tmp/up -type f -name 'unpackerr*' ! -name '*.*' | head -n1) && mv "$f" /usr/local/bin/unpackerr; \
+    else gunzip -c /tmp/unpackerr.gz > /usr/local/bin/unpackerr; fi && rm -rf /tmp/up /tmp/unpackerr.gz && chmod +x /usr/local/bin/unpackerr && /usr/local/bin/unpackerr --version
+
 # Bazarr and SABnzbd, built in the python stage above.
 COPY --from=python /opt/bazarr /opt/bazarr
 COPY --from=python /opt/sabnzbd /opt/sabnzbd

@@ -208,6 +208,7 @@ Settings changed on the Stack page are saved in `appdata/goatmediastackarr/goat/
 - **`tautulli`** for Plex statistics (needs Plex).
 - **`flaresolverr`** when indexer sites show Cloudflare's "checking your browser" page. It is downloaded on first start with its own browser, added to Prowlarr as a proxy with the tag `flaresolverr` (tag the sites that need it), and follows Prowlarr onto the VPN. x86 only.
 - **`rutorrent`** and **`deluge`** for more torrent apps next to qBittorrent (below).
+- **`unpackerr`** for downloads that arrive as `.rar` (or `.zip`, `.7z`) archives, which Sonarr, Radarr and Lidarr can't import on their own. It unpacks them in the downloads folder, waits for the import, then removes the unpacked copy (the archive keeps seeding). It is connected to Sonarr, Radarr and Lidarr for you and has no page of its own; it shows on the Stack page, and its log is `appdata/goatmediastackarr/unpackerr/unpackerr.log`. `UNPACKERR_PROTOCOLS=torrent,usenet` also handles Usenet (SABnzbd unpacks its own by default).
 
 Seerr works with one media server: Jellyfin when it runs, otherwise Plex. `SEERR_MEDIA_SERVER=plex` picks Plex while both run (decided on Seerr's first setup).
 

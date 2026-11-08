@@ -76,7 +76,7 @@ jobs:
           mkdir -p /tmp/goat/config /tmp/goat/media /tmp/goat/downloads
           docker run -d --name goat -p 2806:2806 -p 8096:8096 \
             -e PUID=1001 -e PGID=121 -e TZ=Asia/Kolkata \
-            -e GOAT_ENGINES=sonarr,radarr,lidarr,prowlarr,bazarr,qbittorrent,rutorrent,deluge,sabnzbd,jellyfin,seerr,tautulli \
+            -e GOAT_ENGINES=sonarr,radarr,lidarr,prowlarr,bazarr,qbittorrent,rutorrent,deluge,sabnzbd,jellyfin,seerr,tautulli,unpackerr \
             -v /tmp/goat/config:/config -v /tmp/goat/media:/media -v /tmp/goat/downloads:/downloads \
             --cap-add=NET_ADMIN --device=/dev/net/tun \
             --sysctl net.ipv4.conf.all.src_valid_mark=1 --sysctl net.ipv4.conf.all.rp_filter=2 \
@@ -97,6 +97,7 @@ jobs:
             [tautulli]=http://127.0.0.1:8181/engines/tautulli/
             [rutorrent]='-u goat:$(jq -r .rutorrentPass /config/goat/secrets.json) http://127.0.0.1:8090/'
             [deluge]=http://127.0.0.1:8112/
+            [unpackerr]=http://127.0.0.1:5656/metrics
             [ui]=http://127.0.0.1:2806/api/health )
           for i in $(seq 1 90); do
             missing=""

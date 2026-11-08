@@ -164,6 +164,28 @@ case "$name" in
       as "$fb" -d "$db" config init "${opts[@]}" >/dev/null && as "$fb" -d "$db" users add goat "$(head -c 24 /dev/urandom | base64 | tr -dc A-Za-z0-9)" --perm.admin >/dev/null
     else as "$fb" -d "$db" config set "${opts[@]}" >/dev/null; fi
     cmd=("$fb" -d "$db") ;;
+  unpackerr)
+    # Unpackerr: unpacks downloads that come as .rar (and .zip, .7z…) archives, so Sonarr, Radarr and Lidarr can import
+    # them, then removes the unpacked copy once they have. It watches each app's queue through its API key.
+    mkdir -p /config/unpackerr && chown "$PUID:$PGID" /config/unpackerr
+    key() { sed -n 's:.*<ApiKey>\([^<]*\)</ApiKey>.*:\1:p' "/config/$1/config.xml" 2>/dev/null | head -n1; }
+    n=0
+    for a in sonarr radarr lidarr; do
+      in_list "$a" "${GOAT_ENGINES,,}" || continue
+      k=$(key "$a"); [[ -z "$k" ]] && continue
+      A="${a^^}"; port=$(node -e "process.stdout.write(String(require('/opt/goat/bin/engines.js').ENGINES['$a'].port))")
+      export "UN_${A}_0_URL=http://127.0.0.1:${port}/engines/${a}" "UN_${A}_0_API_KEY=${k}" "UN_${A}_0_PATHS_0=${DOWNLOADS_DIR:-/downloads}"
+      export "UN_${A}_0_PROTOCOLS=${UNPACKERR_PROTOCOLS:-torrent}" "UN_${A}_0_DELETE_ORIG=false" "UN_${A}_0_DELETE_DELAY=${UNPACKERR_DELETE_DELAY:-5m}"
+      n=$((n+1))
+    done
+    if (( n == 0 )); then echo "[goat] Unpackerr waits for Sonarr, Radarr or Lidarr to make their API keys (first start). Trying again in a minute."; sleep 60; exit 1; fi
+    export UN_LOG_FILE=/config/unpackerr/unpackerr.log UN_LOG_FILES=3 UN_LOG_FILE_MB=5 UN_QUIET=false UN_DEBUG="${UNPACKERR_DEBUG:-false}"
+    export UN_INTERVAL="${UNPACKERR_INTERVAL:-2m}" UN_START_DELAY=1m UN_RETRY_DELAY=5m UN_MAX_RETRIES=3 UN_PARALLEL="${UNPACKERR_PARALLEL:-1}"
+    export UN_FILE_MODE=0664 UN_DIR_MODE=0775 UN_ACTIVITY=false
+    # Its small status page (also how GoatMediaStackarr sees that it runs), only inside the container.
+    export UN_WEBSERVER_METRICS=true UN_WEBSERVER_LISTEN_ADDR="127.0.0.1:${GOAT_PORT_UNPACKERR:-5656}" UN_WEBSERVER_LOG_FILE=/config/unpackerr/http.log
+    echo "[goat] Unpackerr watches $n app(s) for archives in ${DOWNLOADS_DIR:-/downloads}."
+    cmd=(/usr/local/bin/unpackerr) ;;
   sitefetch)
     export HOME=/config/goat SITEFETCH_PORT=8899
     cmd=(/usr/local/bin/node /opt/goat/bin/sitefetch.js) ;;
