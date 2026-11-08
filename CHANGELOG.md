@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+## v1.0.13 — 2026-11-08
+
 - Android app, Downloads: tap a download (or its category) to change its category, pause it or remove it. Pause and resume are their own button now, and the ⋮ button opens the rest.
 - Passkeys in the Android app: *Sign in with a passkey* on the sign-in screen, and Settings → Passkeys to add one with your fingerprint or face (kept by Google Password Manager, Samsung Pass and the like). The same passkey works in the browser at that address. It needs the server's public https address (your Cloudflare address, say): GoatMediaStackarr now serves the /.well-known/assetlinks.json that tells Android the app belongs to it.
 
