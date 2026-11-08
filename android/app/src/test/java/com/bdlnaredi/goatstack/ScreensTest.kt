@@ -182,12 +182,17 @@ class ScreensTest {
     /** Scrolls the page's list until [text] is on screen. */
     private fun scrollTo(text: String) {
         // The page that is leaving can still be on screen for a moment, so try every list until one has it.
-        val lists = compose.onAllNodes(hasScrollAction())
-        val n = lists.fetchSemanticsNodes().size
+        // What is further down can still be loading (each row asks the server on its own), so keep trying for a while.
         var last: Throwable? = null
-        for (i in n - 1 downTo 0) {
-            try { lists[i].performScrollToNode(hasText(text, substring = true, ignoreCase = true)); compose.waitForIdle(); return } catch (e: Throwable) { last = e }
-        }
+        val until = System.currentTimeMillis() + 15_000
+        do {
+            val lists = compose.onAllNodes(hasScrollAction())
+            val n = lists.fetchSemanticsNodes().size
+            for (i in n - 1 downTo 0) {
+                try { lists[i].performScrollToNode(hasText(text, substring = true, ignoreCase = true)); compose.waitForIdle(); return } catch (e: Throwable) { last = e }
+            }
+            compose.mainClock.advanceTimeBy(250); Thread.sleep(100); compose.waitForIdle()
+        } while (System.currentTimeMillis() < until)
         throw AssertionError("No list on screen has \"$text\"", last)
     }
 
