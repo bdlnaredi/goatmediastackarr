@@ -275,11 +275,16 @@ main.sx{display:block}
 .sxn{display:flex;flex-wrap:wrap;gap:10px 22px;margin:0 0 20px;padding-bottom:14px;border-bottom:1px solid var(--line)}
 .sxg{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .sxh{font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--mute);padding:0 4px 0 0}
-.sxn button{display:flex;gap:7px;align-items:center;width:auto;flex:none;text-align:left;border:1px solid var(--line);background:none;border-radius:999px;padding:7px 14px;color:var(--text);white-space:nowrap}
-.sxn button small{display:none}
-.sxn button:hover{background:color-mix(in srgb,var(--s2) 80%,transparent)}
-.sxn button.on,.sxn button.on:hover{background:var(--s1);box-shadow:var(--hl),0 4px 14px -8px rgba(0,0,0,.55)}
-.sxn button .ic{width:18px;height:18px;margin:0;flex:none;color:var(--mute)}.sxn button.on .ic{color:var(--accent)}
+.sxn button,
+.sxn a{display:flex;gap:7px;align-items:center;width:auto;flex:none;text-align:left;border:1px solid var(--line);background:none;border-radius:999px;padding:7px 14px;color:var(--text);white-space:nowrap}
+.sxn button small,
+.sxn a small{display:none}
+.sxn button:hover,
+.sxn a:hover{background:color-mix(in srgb,var(--s2) 80%,transparent)}
+.sxn button.on,.sxn button.on:hover,
+.sxn a.on,.sxn a.on:hover{background:var(--s1);box-shadow:var(--hl),0 4px 14px -8px rgba(0,0,0,.55)}
+.sxn button .ic,
+.sxn a .ic{width:18px;height:18px;margin:0;flex:none;color:var(--mute)}.sxn button.on .ic,.sxn a.on .ic{color:var(--accent)}
 .sxn b{display:block;font-weight:600;font-size:14px}.sxn small{display:block;font-size:12px;color:var(--mute);line-height:1.35;margin-top:1px}
 .sxt{margin:0 0 16px}.sxt h2{margin:0;font-size:22px;letter-spacing:-.025em}.sxt p{margin:3px 0 0}
 main.sx #m .panel{max-width:760px!important}
@@ -287,7 +292,8 @@ main.sx #m .panel{max-width:760px!important}
  main.sx{display:block}
  .sxn{position:static;flex-direction:row;gap:6px;overflow-x:auto;margin:0 -16px 16px;padding:0 16px 4px;scrollbar-width:none}.sxn::-webkit-scrollbar{display:none}
  .sxg{display:contents}.sxh{display:none}
- .sxn button{width:auto;flex:none;align-items:center;padding:8px 14px;border:1px solid var(--line);border-radius:999px;white-space:nowrap}.sxn button small{display:none}.sxn button .ic{margin:0;width:18px;height:18px}
+ .sxn button,
+ .sxn a{width:auto;flex:none;align-items:center;padding:8px 14px;border:1px solid var(--line);border-radius:999px;white-space:nowrap}.sxn button small,.sxn a small{display:none}.sxn button .ic,.sxn a .ic{margin:0;width:18px;height:18px}
 }
 /* phone: top bar + dock */
 .dock,.mtools{display:none}
@@ -779,7 +785,7 @@ function codeView(ticket){
     try{await api('/api/login/2fa','POST',{ticket,code:e.target.code.value.trim()});start()}
     catch(x){$('#e').textContent=x.message;if(/start again|expired|too many/i.test(x.message))setTimeout(()=>authView(false,false),1500)}};
 }
-const ICONS={key:'<circle cx="7.5" cy="15.5" r="4"/><path d="m10.5 12.5 9-9M16 7l3 3M13.5 9.5l2 2"/>',rel:'<path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',goat:'<path d="M12 3 3 7.5l9 4.5 9-4.5L12 3zM3 12l9 4.5 9-4.5M3 16.5 12 21l9-4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>',ext:'<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+const ICONS={home:'<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h5v-6h4v6h5V9.5"/>',plus:'<path d="M12 5v14M5 12h14"/>',server:'<rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/>',key:'<circle cx="7.5" cy="15.5" r="4"/><path d="m10.5 12.5 9-9M16 7l3 3M13.5 9.5l2 2"/>',rel:'<path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',goat:'<path d="M12 3 3 7.5l9 4.5 9-4.5L12 3zM3 12l9 4.5 9-4.5M3 16.5 12 21l9-4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>',ext:'<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
  mb:'<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
  sub:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 11h3M13 11h4M7 15h5M15 15h2"/>',
  nzb:'<path d="M7 18a4 4 0 0 1-.6-7.96A6 6 0 0 1 18 9a4.5 4.5 0 0 1-.5 9H7z"/><path d="M12 11v6m0 0-2.5-2.5M12 17l2.5-2.5"/>',
@@ -819,10 +825,16 @@ const LOGO='<img src="/icon-192.png" alt="" width="38" height="38">';
 const PAGES={dash:['',''],wl:['Watchlist','What you want to watch. You hear when each one is in the library.'],find:['Search','Find a show or movie and add it to Sonarr or Radarr.'],disc:['Discover','What is trending, popular and anticipated on Trakt, TMDB and TheTVDB.'],rq:['Requests','Ask for something new, or approve what others asked for.'],lib:['Library','Everything in Sonarr and Radarr, and what is still missing.'],
  wt:['Wanted','Episodes and movies you are still missing, or that could be a better quality.'],dl:['Downloads','What qBittorrent is fetching right now.'],rss:['RSS','Feeds and auto-download rules from qBittorrent.'],up:['Upcoming','Releases coming soon, and what is downloading.'],
  idx:['Indexers','Search, check, add and remove the indexers in Jackett and Prowlarr.'],trk:['Trackers','Search your trackers, and browse their websites (through the VPN if you like). Downloads go straight to qBittorrent.'],mb:['Music and books','Artists and authors from Lidarr and Readarr.'],sub:['Subtitles','Episodes and movies that are missing subtitles in Bazarr.'],nzb:['Usenet','What SABnzbd is fetching, what finished, and adding NZB files.'],hl:['Health','Problems, disk space and stuck downloads across your apps.'],ur:['Unraid','Server health, disks and containers.'],stats:['Watch stats','Who watches what on Plex.'],goat:['Stack','The apps inside GoatMediaStackarr: VPN, connections, logins and restarts.'],set:['Settings','Apps, profiles, alerts, backups and how GoatMediaStackarr looks.']};
-// The menu, grouped. Pages not listed in a group (none today) would not show in the menu.
-const NAVG=[['Watch',['dash','disc','wl','find','lib','up','mb']],['Requests',['rq','wt']],['Downloads',['dl','rss','nzb','trk','idx','sub']],['Server',['goat','hl','ur','stats','set']]];
+// The menu: Home on its own, then four groups, each with its icon. Watch is what is there to watch; Add is everything
+// about getting something new (finding it, asking for it, what is still missing, its subtitles); Downloads is how it
+// arrives; Server is running the whole thing. Pages not listed in a group would not show in the menu.
+const NAVG=[['Watch',['disc','lib','wl','up','mb','stats'],'play'],['Add',['find','rq','wt','sub'],'plus'],['Downloads',['dl','nzb','rss','trk','idx'],'dl'],['Server',['hl','goat','ur','set'],'server']];
+// One line under each menu item, so it is clear what is behind it.
+const NAVD={dash:'Your home page',disc:'Trending and popular',lib:'Everything you have',wl:'What you want to watch',up:'Coming out soon',mb:'Artists and authors',stats:'Who watches what',
+  find:'Add a show or movie',rq:'Ask for something, approve',wt:'Still missing or to upgrade',sub:'Missing subtitles',dl:'Torrents right now',nzb:'SABnzbd',rss:'Feeds and auto-download rules',trk:'Search trackers, browse sites',idx:'Jackett and Prowlarr',
+  hl:'Problems and stuck downloads',goat:'Apps, VPN, connections',ur:'Disks and containers',set:'Apps, people, alerts…'};
 const navGroupOf=k=>{const g=NAVG.find(([,l])=>l.includes(k));return g&&k!=='dash'?g[0]:''};
-const TABS=[['dash','Dashboard'],['find','Search'],['disc','Discover'],['wl','Watchlist'],['rq','Requests'],['lib','Library'],['wt','Wanted'],['dl','Downloads'],['rss','RSS'],['up','Upcoming'],['idx','Indexers'],['trk','Trackers'],['mb','Music & books'],['sub','Subtitles'],['nzb','Usenet'],['hl','Health'],['ur','Unraid'],['stats','Stats'],['goat','Stack'],['set','Settings']];
+const TABS=[['dash','Home'],['find','Search'],['disc','Discover'],['wl','Watchlist'],['rq','Requests'],['lib','Library'],['wt','Wanted'],['dl','Downloads'],['rss','RSS'],['up','Upcoming'],['idx','Indexers'],['trk','Trackers'],['mb','Music & books'],['sub','Subtitles'],['nzb','Usenet'],['hl','Health'],['ur','Unraid'],['stats','Watch stats'],['goat','Stack'],['set','Settings']];
 const TYPE_TABS={trk:['qbittorrent'],find:['sonarr','radarr'],rq:['seerr'],lib:['sonarr','radarr'],wt:['sonarr','radarr'],dl:['qbittorrent','rutorrent','deluge'],rss:['qbittorrent'],up:['sonarr','radarr'],idx:['jackett','prowlarr'],mb:['lidarr','readarr'],sub:['bazarr'],nzb:['sabnzbd'],ur:['unraid'],stats:['tautulli']};
 const PICK={sub:'bazarr',nzb:'sabnzbd',dl:'torrent',rss:'qbittorrent',idx:'jackett',ur:'unraid',rq:'seerr',stats:'tautulli'};
 const visibleTabs=()=>TABS.filter(([k])=>!TYPE_TABS[k]||TYPE_TABS[k].some(t=>ofType(t).length)).filter(([k])=>k!=='disc'||Object.values(me.lists||{}).some(Boolean)).filter(([k])=>k!=='hl'||(me.role==='admin'&&services.some(s=>['sonarr','radarr','lidarr','readarr','prowlarr'].includes(s.type)))).filter(([k])=>k!=='goat'||(GOAT&&me.role==='admin')).filter(([k])=>k!=='trk'||me.role==='admin').filter(([k])=>!me.kids||KIDS_TABS.includes(k));
@@ -838,13 +850,19 @@ const pathFor=()=>tab==='dash'?'/':'/'+(SLUG[tab]||tab)+(tab==='set'&&stSub&&stS
 function readPath(){
   const parts=location.pathname.split('/').filter(Boolean).map(x=>{try{return decodeURIComponent(x)}catch{return x}});
   if(!parts.length)return false;
+  if(parts[0]==='title'&&['movie','tv'].includes(parts[1])&&parts[2]){tab='disc';TITLE_OPEN={type:parts[1],id:+parts[2]||parts[2]};return true}
   const k=UNSLUG[parts[0].toLowerCase()];if(!k)return false;
   tab=k;if(k==='set')stSub=parts[1]||'acct';
   // /library/tv/<app>/<id> and /library/movies/<app>/<id>: the library opens with that show or movie on top.
   if(k==='lib'&&['tv','movies'].includes(parts[1])&&parts[2]&&parts[3]){libSel=parts[2];LIB_OPEN={sid:parts[2],id:parts[3]}}
   return true;
 }
-let LIB_OPEN=null,NEXT_LAYER_URL=null;
+let LIB_OPEN=null,NEXT_LAYER_URL=null,TITLE_OPEN=null;
+// Titles (posters) open with a click; Ctrl/⌘/Shift-click or the middle button opens them in a new tab instead.
+let MOD_CLICK=false,MID=false;
+document.addEventListener('click',e=>{MOD_CLICK=newTabClick(e)||MID;MID=false;setTimeout(()=>{MOD_CLICK=false})},true);
+document.addEventListener('auxclick',e=>{if(e.button!==1||e.target.closest('a[href]'))return;const t=e.target.closest('[data-k],[data-t],[data-i],[data-fy] [data-t],[data-li]');
+  if(!t||!t.querySelector('img,.ph0,.pimg')&&!t.matches('img'))return;e.preventDefault();MID=true;t.click()},true);
 let routeQuiet=false;
 // ---------- Layers: a dialog opened over a page is a step in the browser history, so the back button
 // (and a phone's back gesture) closes the dialog instead of leaving the page.
@@ -859,6 +877,9 @@ window.addEventListener('popstate',()=>{
   if(popsToIgnore){popsToIgnore--;return}
   if(LAYERS.length){const top=LAYERS[LAYERS.length-1];top._byBack=true;if(top.close)top.close();else top.remove();return}
   if(!me)return;if(!readPath())tab='dash';routeQuiet=true;render()});
+// A click meant for a new tab or window (Ctrl, ⌘, Shift, or the middle button): leave it to the browser.
+const newTabClick=e=>!!(e&&(e.ctrlKey||e.metaKey||e.shiftKey||e.altKey||e.button===1));
+const pathOf=k=>k==='dash'?'/':'/'+(SLUG[k]||k);
 function goto(k){if(String(k).includes(':')){const [t,s]=k.split(':');tab=t==='st'?'set':t;stSub=s}else tab=k;render()}
 function render(){
   hideStage();Cinema.ambient();Cinema.tilt();
@@ -866,23 +887,26 @@ function render(){
   const tabs=visibleTabs();if(!tabs.some(t=>t[0]===tab))tab='dash';
   const pg=PAGES[tab]||['',''];
   // The menu in four groups: watching, asking for things, downloading, and running the server.
-  const groups=NAVG.map(([g,ks])=>[g,ks.map(k=>tabs.find(x=>x[0]===k)).filter(Boolean)]).filter(([,l])=>l.length);
-  const navBtn=([k,n])=>`<button class="nv ${tab===k?'on':''}" data-t="${k}" title="${T(n)}"${tab===k?' aria-current="page"':''}>${ic(k)}<span>${n}</span></button>`;
-  const dockIds=['dash','lib','dl','rq','disc','up'].filter(k=>tabs.some(x=>x[0]===k)).slice(0,4),dockHtml=`<nav class="dock" aria-label="Main">${dockIds.map(k=>`<button data-t="${k}" class="${tab===k?'on':''}"${tab===k?' aria-current="page"':''}>${ic(k)}<span>${(tabs.find(x=>x[0]===k)||[,k])[1]}</span></button>`).join('')}<button id="dm" class="${dockIds.includes(tab)?'':'on'}" aria-haspopup="dialog">${ic('more')}<span>More</span></button></nav>`;
+  const groups=NAVG.map(([g,ks,gi])=>[g,ks.map(k=>tabs.find(x=>x[0]===k)).filter(Boolean),gi]).filter(([,l])=>l.length);
+  // Menu items are real links: a click moves here, and Ctrl/middle-click or "Open in new tab" opens the page in another tab.
+  const navBtn=([k,n])=>`<a class="nv ${tab===k?'on':''}" href="${pathOf(k)}" data-t="${k}" title="${T(n)}"${tab===k?' aria-current="page"':''}>${ic(k==='dash'?'home':k)}<span>${n}</span>${NAVD[k]?`<small>${NAVD[k]}</small>`:''}</a>`;
+  const dockIds=['dash','lib','dl','rq','disc','up'].filter(k=>tabs.some(x=>x[0]===k)).slice(0,4),dockHtml=`<nav class="dock" aria-label="Main">${dockIds.map(k=>`<a href="${pathOf(k)}" data-t="${k}" class="${tab===k?'on':''}"${tab===k?' aria-current="page"':''}>${ic(k==='dash'?'home':k)}<span>${(tabs.find(x=>x[0]===k)||[,k])[1]}</span></a>`).join('')}<button id="dm" class="${dockIds.includes(tab)?'':'on'}" aria-haspopup="dialog">${ic('more')}<span>More</span></button></nav>`;
   const fresh=whatsNewDot();
   $('#app').innerHTML=`<a class="skip" href="#m">Skip to content</a><div class="shell"><nav class="side" aria-label="Main"><div class="brand"><a href="#" class="home" id="home" title="Home" aria-label="GoatMediaStackarr, go to Home"><span class="logo">${LOGO}</span><span class="t">GoatMediaStackarr</span></a><span class="mtools"><button class="ghost" id="wn2" aria-label="What's new">${ic('new')}${fresh?'<i class="ndot"></i>':''}</button><button class="ghost" id="qs2" aria-label="Quick search">${ic('find')}</button><button class="ghost" id="ap3" aria-label="Appearance">${ic('pal')}</button></span><button class="ghost" id="rl" aria-label="Shrink or expand the menu" title="Shrink or expand the menu">${ic('chev')}</button></div>
     <button class="qs" id="qs" aria-label="Quick search">${ic('find')}<span>Quick search</span><kbd>Ctrl K</kbd></button>
-    <div class="nav">${groups.map(([g,l])=>`<div class="ng${l.some(x=>x[0]===tab)?' on':''}" role="group" aria-label="${T(g)}"><div class="ngh" tabindex="-1">${g}</div><div class="ngl">${l.map(navBtn).join('')}</div></div>`).join('')}</div>
+    <div class="nav">${tabs.some(x=>x[0]==='dash')?`<div class="ng ng1${tab==='dash'?' on':''}">${navBtn(['dash','Home'])}</div>`:''}${groups.map(([g,l,gi])=>`<div class="ng${l.some(x=>x[0]===tab)?' on':''}" role="group" aria-label="${T(g)}"><button class="ngh nghb" data-g="${esc(l[0][0])}" aria-haspopup="true">${ic(gi)}<span>${g}</span></button><div class="ngl">${l.map(navBtn).join('')}</div></div>`).join('')}</div>
     <button class="nv wn" id="wn" title="What's new">${ic('new')}<span>What's new</span>${fresh?'<i class="ndot" aria-label="New"></i>':''}</button>
     <div class="who"><span class="av">${esc((me.name[0]||'?').toUpperCase())}</span><span class="nm">${esc(me.name)}</span><button class="ghost" id="ap" aria-label="Appearance" title="Appearance">${ic('pal')}</button><button id="out" class="ghost" aria-label="Sign out" title="Sign out">${ic('out')}</button></div><div class="ver" title="GoatMediaStackarr version, see Settings, About">GoatMediaStackarr ${esc(VER)}${APPMODE?' · Android app':''}</div></nav>
     <main>${DEMO?'<div class="demo" role="note">Demo mode: the apps here are pretend and nothing is saved. Risky settings are locked.</div>':''}<div class="ph">${pg[0]?`<div class="phg">${navGroupOf(tab)?`<span class="phk">${navGroupOf(tab)}</span>`:''}<h1>${pg[0]}</h1><p class="mute">${pg[1]}</p></div>`:''}</div><div id="m" tabindex="-1"></div></main>${dockHtml}</div>`;
-  document.querySelectorAll('.nv[data-t],.dock [data-t]').forEach(b=>b.onclick=()=>{tab=b.dataset.t;render()});
+  document.querySelectorAll('.nv[data-t],.dock [data-t]').forEach(b=>b.onclick=e=>{if(newTabClick(e))return;e.preventDefault();tab=b.dataset.t;render()});
+  // A group's name opens its list on hover; tapped (a touch screen) it goes to the group's first page.
+  document.querySelectorAll('.nghb[data-g]').forEach(b=>b.onclick=()=>{const g=b.closest('.ng');if(g&&g.classList.contains('on')&&!matchMedia('(hover:hover)').matches)return;tab=b.dataset.g;render()});
   document.querySelectorAll('#home,.tbrand').forEach(b=>b.onclick=e=>{e.preventDefault();tab='dash';render();window.scrollTo&&window.scrollTo(0,0)});
   const so=async()=>{liveStop();await api('/api/logout','POST');me=null;start()};$('#out').onclick=so;
   $('#ap').onclick=appearance;$('#ap3').onclick=appearance;$('#qs2').onclick=quick;$('#wn').onclick=whatsNew;$('#wn2').onclick=whatsNew;
-  $('#dm').onclick=()=>{const o=modal(`<div class="row" style="width:100%"><h2 style="margin:0;flex:1">Menu</h2><button data-x>Close</button></div>${groups.map(([g,l])=>{const rest=l.filter(x=>!dockIds.includes(x[0]));return rest.length?`<div class="mg"><div class="ngh">${g}</div><div class="more">${rest.map(([k,n])=>`<button data-t="${k}" class="${tab===k?'on':''}">${ic(k)}<span>${n}</span></button>`).join('')}</div></div>`:''}).join('')}
-    <div class="mg"><div class="ngh">You</div><div class="more"><button id="mw">${ic('new')}<span>What's new</span></button><button id="mp">${ic('pal')}<span>Appearance</span></button><button id="mo">${ic('out')}<span>Sign out</span></button></div></div><p class="mute" style="margin:12px 0 0">GoatMediaStackarr ${esc(VER)}${APPMODE?' · Android app':''}</p>`);
-    o.querySelector('[data-x]').onclick=o.close;o.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{o.close();tab=b.dataset.t;render()});o.querySelector('#mp').onclick=()=>{o.close();appearance()};o.querySelector('#mw').onclick=()=>{o.close();whatsNew()};o.querySelector('#mo').onclick=()=>{o.close();so()}};
+  $('#dm').onclick=()=>{const o=modal(`<div class="row" style="width:100%"><h2 style="margin:0;flex:1">Menu</h2><button data-x>Close</button></div>${groups.map(([g,l,gi])=>{const rest=l.filter(x=>!dockIds.includes(x[0]));return rest.length?`<div class="mg"><div class="mgh">${ic(gi)}${g}</div><div class="mlist">${rest.map(([k,n])=>`<a href="${pathOf(k)}" data-t="${k}" class="${tab===k?'on':''}"><i>${ic(k)}</i><span><b>${n}</b>${NAVD[k]?`<small>${NAVD[k]}</small>`:''}</span></a>`).join('')}</div></div>`:''}).join('')}
+    <div class="mg"><div class="mgh">${ic('usr')}You</div><div class="mlist"><button id="mw"><i>${ic('new')}</i><span><b>What's new</b><small>In this version</small></span></button><button id="mp"><i>${ic('pal')}</i><span><b>Appearance</b><small>Theme, colours, layout</small></span></button><button id="mo"><i>${ic('out')}</i><span><b>Sign out</b><small>${esc(me.name)}</small></span></button></div></div><p class="mute" style="margin:12px 0 0">GoatMediaStackarr ${esc(VER)}${APPMODE?' · Android app':''}</p>`);
+    o.querySelector('[data-x]').onclick=o.close;o.querySelectorAll('[data-t]').forEach(b=>b.onclick=e=>{if(newTabClick(e))return;e.preventDefault();o.close();tab=b.dataset.t;render()});o.querySelector('#mp').onclick=()=>{o.close();appearance()};o.querySelector('#mw').onclick=()=>{o.close();whatsNew()};o.querySelector('#mo').onclick=()=>{o.close();so()}};
 $('#rl').onclick=()=>{UI.rail=!UI.rail;saveUI()};$('#qs').onclick=quick;
   const pt=PICK[tab];
   if(pt&&ofType(pt).length>1){const cur=first(pt);document.querySelector('.ph').insertAdjacentHTML('beforeend',`<label class="pick mute">App <select id="pk2" aria-label="Which app">${ofType(pt).map(s=>`<option value="${s.id}" ${s.id===cur.id?'selected':''}>${esc(s.name)}</option>`).join('')}</select></label>`);
@@ -893,6 +917,7 @@ $('#rl').onclick=()=>{UI.rail=!UI.rail;saveUI()};$('#qs').onclick=quick;
   // Keep the address bar in step with what is on screen: a new history entry for each move, none for back/forward.
   {const want=pathFor();if(location.pathname!==want){if(routeQuiet)history.replaceState(null,'',want+location.search);else history.pushState(null,'',want)}routeQuiet=false;
    document.title=(tab==='dash'?'':(PAGES[tab]&&PAGES[tab][0]?PAGES[tab][0]+' · ':''))+'GoatMediaStackarr'}
+  if(TITLE_OPEN){const t=TITLE_OPEN;TITLE_OPEN=null;setTimeout(()=>titlePage(t.type,t.id),0)}
   if(arrOnce())Cinema.load(api);
   const mm=$('#m');if(mm){mm.classList.remove('pgin');void mm.offsetWidth;mm.classList.add('pgin')}
 }
@@ -1114,11 +1139,11 @@ function setView(){
   if(!secs.some(s=>s[0]===stSub))stSub='acct';
   const cur=secs.find(s=>s[0]===stSub);
   const groups=[...new Set(secs.map(s=>s[5]))];
-  const nav=`<nav class="sxn" id="sn" aria-label="Settings sections">${groups.map(g=>`<div class="sxg"><div class="sxh">${g}</div>${secs.filter(s=>s[5]===g).map(([k,n,,d,i])=>`<button data-k="${k}" class="${k===stSub?'on':''}"${k===stSub?' aria-current="page"':''}>${ic(i)}<span><b>${n}</b><small>${d}</small></span></button>`).join('')}</div>`).join('')}</nav>`;
+  const nav=`<nav class="sxn" id="sn" aria-label="Settings sections">${groups.map(g=>`<div class="sxg"><div class="sxh">${g}</div>${secs.filter(s=>s[5]===g).map(([k,n,,d,i])=>`<a href="/settings/${k}" data-k="${k}" class="${k===stSub?'on':''}"${k===stSub?' aria-current="page"':''}>${ic(i)}<span><b>${n}</b><small>${d}</small></span></a>`).join('')}</div>`).join('')}</nav>`;
   const mm=$('#m');mm.insertAdjacentHTML('beforebegin',nav);
   mm.closest('main').classList.add('sx');
   mm.insertAdjacentHTML('beforebegin',`<div class="sxt"><h2>${cur[1]}</h2><p class="mute">${cur[3]}</p></div>`);
-  $('#sn').onclick=e=>{const b=e.target.closest('[data-k]');if(!b)return;stSub=b.dataset.k;render()};
+  $('#sn').onclick=e=>{const b=e.target.closest('[data-k]');if(!b||newTabClick(e))return;e.preventDefault();stSub=b.dataset.k;render()};
   const ob=$('#sn .on');if(ob&&ob.scrollIntoView)ob.scrollIntoView({inline:'center',block:'nearest'});
   ({limits:stLimits,acct:stAcct,look:stLook,apps:svcView,lists:stLists,users:usrView,alerts:alView,rules:stRules,backup:stBackup,audit:stAudit,about:stAbout})[stSub]();
 }
@@ -2225,7 +2250,8 @@ const libMeta=(x,tv)=>[fmt(x.size)+' on disk',x.missing?(tv?x.missing+' episodes
 function openLibItem(s,x,cb){
   cb=cb||{};
   // The show or movie gets its own address while it is open, so it can be bookmarked or shared; Back closes it.
-  if(s&&x&&x.id!=null)NEXT_LAYER_URL=`/library/${s.type==='sonarr'?'tv':'movies'}/${encodeURIComponent(s.id)}/${encodeURIComponent(x.id)}`;
+  if(s&&x&&x.id!=null){const u=`/library/${s.type==='sonarr'?'tv':'movies'}/${encodeURIComponent(s.id)}/${encodeURIComponent(x.id)}`;
+    if(MOD_CLICK){MOD_CLICK=false;window.open(u,'_blank','noopener');return}NEXT_LAYER_URL=u}
   if(s.type==='sonarr')return seriesDialog(s,x,cb);
   showDetail({title:x.title,sub:String(x.year||''),poster:x.poster,fanart:x.fanart,overview:x.overview,meta:libMeta(x,false),sid:s.id,id:x.id,scope:'',del:me.role==='admin',onremove:cb.onRemove,arr:arrBtn(s,arrHref(s,x.slug,x.tmdb||x.id)),fkind:'movie',onfiles:cb.onChange,
     mon:{sid:s.id,kind:'movie',id:x.id,monitored:x.monitored,onChange:v=>{x.monitored=v;if(cb.onChange)cb.onChange()}}});
@@ -2740,6 +2766,9 @@ async function forYou(el){
 }
 function titlePage(type,id,seed){
   seed=seed||{};type=type==='tv'?'tv':'movie';
+  // Its own address (/title/movie/123), for bookmarks and sharing; Ctrl/middle-click opens it in a new tab.
+  if(MOD_CLICK){MOD_CLICK=false;window.open(`/title/${type}/${encodeURIComponent(id)}`,'_blank','noopener');return document.createElement('div')}
+  NEXT_LAYER_URL=`/title/${type}/${encodeURIComponent(id)}`;
   const o=modal(`<button class="pgback" data-x>${ic('back')}Back</button><h2 style="margin:4px 0 0">${esc(seed.title||'')}</h2><div id="tpb" style="margin-top:12px">${skel(3)}</div>`,true);
   if(seed.poster)pageBg(o,seed.poster);o.querySelector('[data-x]').onclick=o.close;
   api(`/api/title?type=${type}&id=${id}`).then(t=>{

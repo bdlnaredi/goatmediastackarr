@@ -98,8 +98,8 @@ img.nopic{visibility:hidden}
  [data-style=cinema] .ph h1,[data-style=cinema] .gh{font-size:32px}
  [data-style=cinema] .dock{border-radius:18px;background:rgba(12,12,16,.9)}
  :root[data-style=cinema][data-theme=light] .dock{background:rgba(255,255,255,.94)}
- [data-style=cinema] .dock button{border-radius:12px}
- [data-style=cinema] .dock button.on{background:none}
+ [data-style=cinema] .dock button,[data-style=cinema] .dock a{border-radius:12px}
+ [data-style=cinema] .dock button.on,[data-style=cinema] .dock a.on{background:none}
  [data-style=cinema] .cn-card{width:130px}
 }
 
@@ -172,8 +172,8 @@ img.nopic{visibility:hidden}
  [data-style=dash] .side{height:auto;border-right:0;border-bottom:1px solid var(--line)}
  [data-style=dash] main{padding:16px 14px calc(100px + env(safe-area-inset-bottom))}
  [data-style=dash] .dock{left:0;right:0;bottom:0;border-radius:0;border-width:1px 0 0;background:var(--s1);box-shadow:none;padding:4px 4px max(4px,env(safe-area-inset-bottom));-webkit-backdrop-filter:none;backdrop-filter:none}
- [data-style=dash] .dock button{border-radius:8px}
- [data-style=dash] .dock button.on{background:none}
+ [data-style=dash] .dock button,[data-style=dash] .dock a{border-radius:8px}
+ [data-style=dash] .dock button.on,[data-style=dash] .dock a.on{background:none}
  [data-style=dash] .dlg{border-radius:14px 14px 0 0}
  [data-style=dash] #toasts{bottom:calc(84px + env(safe-area-inset-bottom))}
 }
@@ -250,8 +250,8 @@ html[data-style=compact][data-rail=min]{--rail:56px}
  [data-style=compact] .side{height:auto;border-right:0;border-bottom:1px solid var(--line);padding:8px 12px}
  [data-style=compact] main{padding:12px 12px calc(86px + env(safe-area-inset-bottom))}
  [data-style=compact] .dock{left:0;right:0;bottom:0;border-radius:0;border-width:1px 0 0;background:var(--s1);box-shadow:none;padding:2px 2px max(2px,env(safe-area-inset-bottom));-webkit-backdrop-filter:none;backdrop-filter:none}
- [data-style=compact] .dock button{border-radius:4px;min-height:50px;font-size:11px}
- [data-style=compact] .dock button.on{background:var(--s2)}
+ [data-style=compact] .dock button,[data-style=compact] .dock a{border-radius:4px;min-height:50px;font-size:11px}
+ [data-style=compact] .dock button.on,[data-style=compact] .dock a.on{background:var(--s2)}
  [data-style=compact] button,[data-style=compact] input,[data-style=compact] select,[data-style=compact] textarea{min-height:38px}
  [data-style=compact] .dlg{border-radius:10px 10px 0 0}
  [data-style=compact] #toasts{bottom:calc(70px + env(safe-area-inset-bottom))}
@@ -324,9 +324,11 @@ html[data-run=sections] .tile::after{animation-delay:calc(var(--i,0) * -0.6s)}
 main.sx .sxn{gap:6px 16px;margin:0 0 12px;padding-bottom:10px}
 main.sx .sxg{gap:5px}
 main.sx .sxh{font-size:10.5px}
-main.sx .sxn button{padding:4px 11px;gap:6px}
+main.sx .sxn button,
+main.sx .sxn a{padding:4px 11px;gap:6px}
 main.sx .sxn b{font-size:13px;font-weight:560}
-main.sx .sxn button .ic{width:15px;height:15px}
+main.sx .sxn button .ic,
+main.sx .sxn a .ic{width:15px;height:15px}
 main.sx .sxt{margin:0 0 10px}main.sx .sxt h2{font-size:19px}main.sx .sxt p{font-size:13px}
 main.sx #m .panel{padding:14px 16px}
 main.sx #m .panel[style*="margin-top:16px"]{margin-top:10px!important}
@@ -425,3 +427,38 @@ button.sm{min-height:30px;padding:4px 10px;font-size:13px}
 .wrm{display:grid;grid-template-columns:repeat(12,1fr);gap:4px;align-items:end;height:104px}.wrm div{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px;height:100%}.wrm i{width:100%;max-width:26px;border-radius:5px 5px 2px 2px;background:var(--accent)}.wrm span{font-size:11px;color:var(--mute)}.wrl .row{gap:10px;padding:5px 0;border-bottom:1px solid var(--line)}
 .wrban svg{transform:rotate(180deg)}
 .rqo label.chk{display:flex;align-items:center;gap:10px;margin:0}.rqo label.chk input{width:auto;margin:0}
+/* ---- The menu (Home, Watch, Add, Downloads, Server): group names with icons, items with a line about them ---- */
+.nghb{display:flex;align-items:center;gap:7px;width:100%;background:none;border:0;box-shadow:none;margin:0;text-align:left;font:inherit;color:inherit;cursor:default;min-height:0}
+.nghb .ic{width:13px;height:13px;opacity:.9}
+.nv small{display:none}
+.ng1{padding-bottom:4px}
+/* Cinema (menu along the top): the group names are buttons with their icon, the lists drop down with descriptions. */
+[data-style=cinema] .nghb{display:flex!important;cursor:pointer;width:auto}
+[data-style=cinema] .nghb .ic{width:17px;height:17px}
+[data-style=cinema] .ng1 .nv{padding:9px 14px;font-size:14.5px;font-weight:650;color:var(--text);opacity:.72;background:none;box-shadow:none;border-radius:0}
+[data-style=cinema] .ng1 .nv:hover{opacity:1}[data-style=cinema] .ng1 .nv.on{opacity:1;box-shadow:inset 0 -2px 0 var(--accent)}[data-style=cinema] .ng1 .nv.on::before{display:none}
+[data-style=cinema] .ng1 .nv .ic{width:17px;height:17px}
+[data-style=cinema] .ngl{min-width:290px;padding:8px}
+[data-style=cinema] .ngl .nv{display:grid;grid-template-columns:34px 1fr;grid-template-rows:auto auto;column-gap:12px;row-gap:1px;align-items:center;padding:8px 10px;border-radius:10px;text-align:left}
+[data-style=cinema] .ngl .nv .ic{grid-row:1/3;width:34px;height:34px;padding:8px;box-sizing:border-box;border-radius:9px;background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent)}
+[data-style=cinema] .ngl .nv span{font-size:14px;font-weight:620;color:var(--text);line-height:1.2}
+[data-style=cinema] .ngl .nv small{display:block;font-size:12px;font-weight:450;color:var(--mute);line-height:1.25;white-space:nowrap}
+[data-style=cinema] .ngl .nv:hover,[data-style=cinema] .ngl .nv.on{background:color-mix(in srgb,var(--text) 7%,transparent)}
+[data-style=cinema] .ngl .nv.on::before{display:none}[data-style=cinema] .ngl .nv.on span{color:var(--accent)}
+/* Phones: the More sheet is a list, a group at a time, each item with its icon and a line about it. */
+.mg .mgh{display:flex;align-items:center;gap:8px;font-size:11.5px;font-weight:720;letter-spacing:.09em;text-transform:uppercase;color:var(--mute);margin:16px 2px 6px}
+.mg .mgh .ic{width:15px;height:15px}
+.mlist{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.mlist button,.mlist a{text-decoration:none;color:var(--text);cursor:pointer;display:flex;align-items:center;gap:12px;width:100%;padding:11px 12px;border:0;border-radius:0;border-bottom:1px solid var(--line);background:none;text-align:left;min-height:56px}
+.mlist a:last-child,.mlist button:last-child{border-bottom:0}
+.mlist a i,.mlist button i{display:flex;flex:none;width:36px;height:36px;border-radius:10px;align-items:center;justify-content:center;background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent)}
+.mlist a i .ic,.mlist button i .ic{width:19px;height:19px}
+.mlist a span,.mlist button span{display:flex;flex-direction:column;gap:1px;min-width:0}.mlist a b,.mlist button b{font-size:15px;font-weight:620}.mlist a small,.mlist button small{font-size:12.5px;color:var(--mute)}
+.mlist a.on,.mlist button.on{background:color-mix(in srgb,var(--accent) 10%,transparent)}.mlist a.on b,.mlist button.on b{color:var(--accent)}
+[data-style=cinema] .nghb:hover,[data-style=cinema] .nghb:focus{background:none!important}
+.mlist a:hover,.mlist a:focus-visible,.mlist button:hover,.mlist button:focus-visible{background:color-mix(in srgb,var(--text) 6%,transparent)}.mlist button:focus{outline:none}
+.nv,a.nv{text-decoration:none;font:inherit;cursor:pointer;box-sizing:border-box}a.nv:visited{color:var(--mute)}
+.dock a{display:flex;align-items:center;text-decoration:none;cursor:pointer;flex:1;min-width:0;flex-direction:column;gap:3px;padding:8px 2px 7px;border:0;border-radius:22px;background:none;color:var(--mute);font-size:11.5px;font-weight:620;min-height:56px;justify-content:center}
+.dock a .ic{width:22px;height:22px}.dock a.on{background:color-mix(in srgb,var(--accent) 20%,transparent);color:var(--text)}.dock a.on .ic{color:var(--accent)}
+.dock a span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sxn a{text-decoration:none;cursor:pointer;box-sizing:border-box}
