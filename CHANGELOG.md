@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+## v1.0.12 — 2026-11-08
+
 - Android app: *Import to library* on a finished torrent (its menu), each channel's own words for a trigger (✎, with the parameters to tap in and a preview) and its conditions under Alerts.
 - Data per day counts ruTorrent and Deluge too.
 - *Continue watching* on the dashboard and on the app's Home: what you started and did not finish (On Deck in Plex for the owner, Tautulli's history for everyone else, your own Jellyfin account), with how far you got. Tap one to carry on in Plex or Jellyfin.
