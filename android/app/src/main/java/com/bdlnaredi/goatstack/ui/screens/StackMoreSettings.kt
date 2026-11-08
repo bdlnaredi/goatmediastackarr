@@ -26,6 +26,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Lightbulb
 import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Dns
@@ -289,10 +290,11 @@ fun MoreScreen() {
             Dest(Icons.Rounded.Notifications, "Alerts", "Channels, triggers and newsletters") { ctx.go("alerts") },
             if (ctx.me.goat) Dest(Icons.Rounded.MoveDown, "Bring in your setup", "From the apps you use now") { ctx.go("import") } else null,
         ),
-        "You" to listOf(
+        "You" to listOfNotNull(
             Dest(Icons.Rounded.Person, "Profile", "Picture, space and watch time") { ctx.profile() },
             Dest(Icons.Rounded.Settings, "Settings", "Style, theme, account, devices") { ctx.go("settings") },
             Dest(Icons.Rounded.AutoAwesome, "What's new", "Changes in each version") { ctx.go("whatsnew") },
+            if (ctx.user.kids == null) Dest(Icons.Rounded.Lightbulb, "Suggestions", "Ideas and problems to fix") { ctx.go("suggestions") } else null,
         ),
     ).filter { it.second.isNotEmpty() }
     LazyColumn(Modifier.fillMaxSize().statusBarsPadding(), contentPadding = PaddingValues(bottom = 24.dp)) {

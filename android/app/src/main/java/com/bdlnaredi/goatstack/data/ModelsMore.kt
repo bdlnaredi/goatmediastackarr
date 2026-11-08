@@ -180,3 +180,9 @@ data class TrkIndexer(val id: Int = 0, val name: String = "", val protocol: Stri
 // How often qBittorrent checks the RSS feeds (/api/rss/:sid/settings).
 @kotlinx.serialization.Serializable
 data class RssSettings(val interval: Int = 30, val max: Int = 50, val on: Boolean = true, val rules: Boolean = true)
+
+// ---------- Suggestions (/api/suggestions) ----------
+@kotlinx.serialization.Serializable data class SugIssue(val number: Int = 0, val url: String = "")
+@kotlinx.serialization.Serializable data class Suggestion(val id: String = "", val title: String = "", val body: String = "", val kind: String = "feature", val at: Long = 0,
+    val status: String = "new", val issue: SugIssue? = null, val votes: Int = 0, val voted: Boolean = false, val mine: Boolean = false, val user: String? = null)
+@kotlinx.serialization.Serializable data class SugList(val items: List<Suggestion> = emptyList(), val repo: String = "", val names: Boolean = false, val token: Boolean = false)

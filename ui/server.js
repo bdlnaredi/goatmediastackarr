@@ -1555,6 +1555,30 @@ function importPrune(have) {
   if (n) save(); return n;
 }
 
+// ---------- Suggestions: anyone can suggest something for GoatMediaStackarr and vote; an admin sends them on to the
+// project's GitHub Issues (with a token in one go, or by opening GitHub's new-issue page already filled in).
+const SUG_KINDS = { feature: 'Feature', bug: 'Bug', other: 'Other' };
+const SUG_REPO = 'bdlnaredi/goatmediastackarr';
+const sugCfg = () => ({ repo: SUG_REPO, token: '', names: false, ...(db.settings.suggest || {}) });
+const sugOut = (x, u) => ({ id: x.id, title: x.title, body: x.body, kind: x.kind, at: x.at, status: x.status, issue: x.issue || null, votes: (x.votes || []).length,
+  voted: (x.votes || []).includes(u.id), mine: x.uid === u.id, user: u.role === 'admin' || x.uid === u.id ? x.user : undefined });
+function sugIssue(x) {
+  const c = sugCfg();
+  const title = `[${SUG_KINDS[x.kind] || 'Suggestion'}] ${x.title}`;
+  const body = `${x.body || '_No details given._'}\n\n---\nSuggested ${c.names ? 'by ' + x.user + ' ' : ''}through GoatMediaStackarr ${VERSION} on ${new Date(x.at).toISOString().slice(0, 10)}` +
+    ((x.votes || []).length ? ` · ${(x.votes || []).length} ${(x.votes || []).length === 1 ? 'person wants' : 'people want'} this` : '') + '.';
+  return { title: cut(title, 250), body: cut(body, 6000), labels: [x.kind === 'bug' ? 'bug' : 'enhancement'] };
+}
+const sugLink = x => { const i = sugIssue(x); return `https://github.com/${sugCfg().repo}/issues/new?` + new URLSearchParams({ title: i.title, body: i.body, labels: i.labels.join(',') }).toString(); };
+async function sugSend(x) {
+  const c = sugCfg(); if (!c.token) throw new Error('Add a GitHub token first (Suggestions → GitHub)');
+  const r = await fetch((process.env.GITHUB_API || 'https://api.github.com') + `/repos/${c.repo}/issues`, { method: 'POST', signal: AbortSignal.timeout(20000),
+    headers: { Authorization: 'Bearer ' + c.token, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json', 'User-Agent': 'GoatMediaStackarr', 'X-GitHub-Api-Version': '2022-11-28' },
+    body: JSON.stringify(sugIssue(x)) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(r.status === 401 ? 'GitHub did not accept the token' : r.status === 404 ? `GitHub has no ${c.repo}, or the token cannot reach it` : r.status === 410 ? 'Issues are turned off on that repository' : (d.message || 'GitHub said ' + r.status));
+  x.issue = { number: d.number, url: d.html_url }; x.status = 'sent'; return x.issue;
+}
 // How big a request will be: its running time (a movie, or every episode of the seasons asked for) times the megabytes
 // a minute that Radarr or Sonarr allows for the quality it will be grabbed at (the profile's cutoff). A guess, shown before sending.
 const RES_MBMIN = r => r >= 2160 ? 70 : r >= 1080 ? 25 : r >= 720 ? 14 : 8;
@@ -3744,6 +3768,65 @@ const goatServer = http.createServer(async (req, res) => {
       } catch (e) { failed.push(s.name + ': ' + e.message); } }
       audit(me.name, op === 'pause' ? 'Paused all downloads' : 'Resumed all downloads', done.join(', '));
       return send(res, 200, { op, done, failed });
+    }
+    if (p === '/api/suggestions' && m === 'GET') {
+      if (me.kids) return send(res, 403, { error: 'Not for kids profiles' });
+      const c = sugCfg(), l = (db.suggestions || []).slice();
+      l.sort((a, b) => ((b.status === 'new') - (a.status === 'new')) || ((b.votes || []).length - (a.votes || []).length) || b.at - a.at);
+      return send(res, 200, { items: l.map(x => sugOut(x, me)), repo: c.repo, names: !!c.names, ...(me.role === 'admin' ? { token: !!c.token } : {}) });
+    }
+    if (p === '/api/suggestions' && m === 'POST') {
+      if (me.kids) return send(res, 403, { error: 'Not for kids profiles' });
+      const b = await readBody(req), title = String(b.title || '').trim().slice(0, 120), body = String(b.body || '').trim().slice(0, 4000), kind = SUG_KINDS[b.kind] ? b.kind : 'feature';
+      if (title.length < 4) return send(res, 400, { error: 'Give it a short title' });
+      const l = db.suggestions || (db.suggestions = []);
+      if (me.role !== 'admin' && l.filter(x => x.uid === me.id && Date.now() - x.at < DAY).length >= 10) return send(res, 429, { error: 'That is 10 today. Try again tomorrow.' });
+      const x = { id: uid(), uid: me.id, user: me.name, title, body, kind, at: Date.now(), status: 'new', votes: [me.id] };
+      l.push(x); if (l.length > 1000) l.splice(0, l.length - 1000); save();
+      if (me.role !== 'admin') feed('@admins', 'report', 'New suggestion', `${me.name}: ${title}`, 'suggestions');
+      return send(res, 200, sugOut(x, me));
+    }
+    if ((r = p.match(/^\/api\/suggestions\/(\w+)(?:\/(vote|github|link))?$/))) {
+      const x = (db.suggestions || []).find(y => y.id === r[1]); if (!x || me.kids) return send(res, 404, { error: 'Not found' });
+      if (r[2] === 'vote' && m === 'POST') { const v = x.votes || (x.votes = []), i = v.indexOf(me.id); if (i >= 0) v.splice(i, 1); else v.push(me.id); save(); return send(res, 200, sugOut(x, me)); }
+      if (r[2] === 'link' && m === 'GET') { if (adminOnly()) return; return send(res, 200, { url: sugLink(x) }); }
+      if (r[2] === 'github' && m === 'POST') {
+        if (adminOnly()) return; if (x.issue) return send(res, 200, sugOut(x, me));
+        try { await sugSend(x); } catch (e) { return send(res, 400, { error: e.message }); }
+        save(); audit(me.name, 'Sent a suggestion to GitHub', `${x.title} → #${x.issue.number}`); return send(res, 200, sugOut(x, me));
+      }
+      if (!r[2] && m === 'PUT') {
+        const b = await readBody(req);
+        if (me.role !== 'admin' && x.uid !== me.id) return send(res, 403, { error: 'Only your own' });
+        if (x.uid === me.id && x.status === 'new') { if (b.title != null && String(b.title).trim().length >= 4) x.title = String(b.title).trim().slice(0, 120); if (b.body != null) x.body = String(b.body).trim().slice(0, 4000); if (SUG_KINDS[b.kind]) x.kind = b.kind; }
+        if (me.role === 'admin' && ['new', 'sent', 'done', 'declined'].includes(b.status)) x.status = b.status;
+        if (me.role === 'admin' && typeof b.issue === 'string') { const n = b.issue.match(/\/issues\/(\d+)/) || b.issue.match(/^#?(\d+)$/); if (n) { x.issue = { number: +n[1], url: /^https:\/\/github\.com\//.test(b.issue) ? cut(b.issue, 300) : `https://github.com/${sugCfg().repo}/issues/${n[1]}` }; if (x.status === 'new') x.status = 'sent'; } }
+        save(); return send(res, 200, sugOut(x, me));
+      }
+      if (!r[2] && m === 'DELETE') {
+        if (me.role !== 'admin' && x.uid !== me.id) return send(res, 403, { error: 'Only your own' });
+        db.suggestions = db.suggestions.filter(y => y !== x); save(); return send(res, 200, {});
+      }
+    }
+    // Admins: the repository suggestions go to, a token that may open issues there, and whether names go with them.
+    if (p === '/api/suggestsettings' && m === 'PUT') {
+      if (adminOnly()) return;
+      const b = await readBody(req), c = { ...sugCfg() };
+      if (b.repo != null) { const rp = String(b.repo).trim().replace(/^https?:\/\/github\.com\//, '').replace(/\.git$|\/$/g, ''); if (rp && !/^[\w.-]+\/[\w.-]+$/.test(rp)) return send(res, 400, { error: 'Write it as owner/repository' }); c.repo = rp || SUG_REPO; }
+      if (typeof b.token === 'string' && b.token.trim()) c.token = b.token.trim().slice(0, 300);
+      if (b.token === null) c.token = '';
+      if (b.names != null) c.names = !!b.names;
+      db.settings.suggest = c; save(); audit(me.name, 'Changed where suggestions go', c.repo);
+      return send(res, 200, { repo: c.repo, token: !!c.token, names: c.names });
+    }
+    if (p === '/api/suggestions-all/github' && m === 'POST') {
+      if (adminOnly()) return;
+      const out = { sent: [], failed: [] };
+      for (const x of (db.suggestions || []).filter(y => y.status === 'new' && !y.issue)) {
+        try { await sugSend(x); out.sent.push({ title: x.title, url: x.issue.url }); } catch (e) { out.failed.push(x.title + ': ' + e.message); if (/token|reach|turned off/.test(e.message)) break; }
+      }
+      save(); if (out.sent.length) audit(me.name, 'Sent suggestions to GitHub', out.sent.length + ' issue(s)');
+      return send(res, 200, out);
     }
     if (p === '/api/notifications' && m === 'GET') {
       const q = new URL(req.url, 'http://x').searchParams, after = Math.max(0, +q.get('after') || 0), f = db.feed || { n: 0, items: [] };

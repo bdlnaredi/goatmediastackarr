@@ -463,3 +463,10 @@ button.sm{min-height:30px;padding:4px 10px;font-size:13px}
 .dock a span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sxn a{text-decoration:none;cursor:pointer;box-sizing:border-box}
 .wst{display:flex;gap:12px;align-items:flex-start;margin:10px 0}.wst .wnum{flex:none;width:28px;height:28px;border-radius:50%;background:var(--accent);color:#111;font-weight:750;display:flex;align-items:center;justify-content:center}.wst b{display:block;margin-bottom:2px}
+
+/* Suggestions: a vote button on the left, the idea on the right. */
+.sugc{display:flex;gap:14px;align-items:flex-start;margin-bottom:10px;padding:14px 16px}
+.sugv{display:flex;flex-direction:column;align-items:center;gap:2px;min-width:52px;padding:8px 6px;border-radius:12px;background:var(--s2);border:1px solid var(--line);color:var(--mute)}
+.sugv b{color:var(--text);font-size:15px}.sugv.on{background:var(--accent);border-color:var(--accent);color:#111}.sugv.on b{color:inherit}
+.sugt{font-size:15px;word-break:break-word}.sugb{margin-top:6px;white-space:pre-wrap;word-break:break-word;color:var(--text);opacity:.9}
+.sugc select{width:auto;margin:0;padding:6px 10px}

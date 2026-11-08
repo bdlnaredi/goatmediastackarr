@@ -4,6 +4,7 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- Suggestions (in the Server menu, and More in the app): anyone can suggest an idea or report a problem, and vote for the ones they want too (most wanted first). Admins send them on to the project's GitHub Issues: in one click with a GitHub token saved on that page, or without one by opening GitHub's new-issue page already filled in. Names are not sent unless the admin turns that on.
 - Import finished downloads (Settings → Download rules): each download waiting to be imported has a **Don't import** button that takes it off the list for good, and **Don't import any** clears them all at once. They stay in Downloads. A download you removed from qBittorrent no longer stays on the list as waiting.
 - autobrr's page and API work behind /engines/autobrr (autobrr ignored that address for its API until told otherwise). Existing autobrr settings are fixed on the next start.
 - Trakt and Letterboxd (Account): connect your own Trakt and your watchlist stays the same in both places (added or removed on either side), and what you finish in Plex goes to your Trakt history. Give your Letterboxd name and its public watchlist comes in. New watchlist items are asked for straight away when that is on. An admin adds a Trakt app once (Settings, Lists: client ID and secret).

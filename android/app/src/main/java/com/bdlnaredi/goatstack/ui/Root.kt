@@ -91,6 +91,7 @@ class Ctx(val app: AppState, val me: Me, val user: User, val nav: NavHostControl
             l == "profile" -> profile()
             l == "watchlist" -> go("watchlist")
             l in listOf("requests", "downloads", "health", "stack", "users", "unraid", "notifications", "upcoming") -> go(l)
+            l == "suggestions" -> go(l)
             else -> go("notifications")
         }
     }
@@ -265,6 +266,7 @@ private fun MainShell(state: AppState, me: Me, user: User) {
                     com.bdlnaredi.goatstack.ui.screens.CollectionScreen(e.arguments?.getLong("id") ?: 0)
                 }
                 composable("whatsnew") { com.bdlnaredi.goatstack.ui.screens.WhatsNewScreen() }
+                composable("suggestions") { com.bdlnaredi.goatstack.ui.screens.SuggestionsScreen() }
                 composable("person/{id}", arguments = listOf(navArgument("id") { type = NavType.LongType })) { e ->
                     com.bdlnaredi.goatstack.ui.screens.PersonScreen(e.arguments?.getLong("id") ?: 0)
                 }

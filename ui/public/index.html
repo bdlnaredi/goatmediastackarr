@@ -868,22 +868,22 @@ const ICONS={home:'<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h5v-6h4v6h5V9
  wt:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>',stats:'<path d="M5 20V10M12 20V4M19 20v-7"/>',
  set:'<circle cx="12" cy="12" r="3"/><path d="M12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6 7 7m10 10 1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4"/>',
  tv:'<rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8M12 17v4"/>',film:'<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 4v16M16 4v16M4 9h4M4 15h4M16 9h4M16 15h4"/>',book:'<path d="M5 4h10a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h10"/>',box:'<path d="M3 7.5 12 3l9 4.5v9L12 21l-9-4.5z"/><path d="M3 7.5 12 12l9-4.5M12 12v9"/>',
- disc:'<circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/>',hist:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',trash:'<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',edit:'<path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',x:'<path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'};
+ disc:'<circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/>',hist:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',trash:'<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',edit:'<path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',x:'<path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',sug:'<path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.6 10.8c.6.5 1 1.2 1 2V16h5.2v-.2c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z"/>',up1:'<path d="M12 19V5M5 12l7-7 7 7"/>'};
 const ic=k=>`<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${ICONS[k]}</svg>`;
 const LOGO='<img src="/icon-192.png" alt="" width="38" height="38">';
-const PAGES={dash:['',''],wl:['Watchlist','What you want to watch. You hear when each one is in the library.'],find:['Search','Find a show or movie and add it to Sonarr or Radarr.'],disc:['Discover','What is trending, popular and anticipated on Trakt, TMDB and TheTVDB.'],rq:['Requests','Ask for something new, or approve what others asked for.'],lib:['Library','Everything in Sonarr and Radarr, and what is still missing.'],
+const PAGES={dash:['',''],sug:['Suggestions','Ideas for GoatMediaStackarr and problems to fix. Vote for the ones you want; the admin sends them on to the project on GitHub.'],wl:['Watchlist','What you want to watch. You hear when each one is in the library.'],find:['Search','Find a show or movie and add it to Sonarr or Radarr.'],disc:['Discover','What is trending, popular and anticipated on Trakt, TMDB and TheTVDB.'],rq:['Requests','Ask for something new, or approve what others asked for.'],lib:['Library','Everything in Sonarr and Radarr, and what is still missing.'],
  wt:['Wanted','Episodes and movies you are still missing, or that could be a better quality.'],dl:['Downloads','What qBittorrent is fetching right now.'],rss:['RSS','Feeds and auto-download rules from qBittorrent.'],up:['Upcoming','Releases coming soon, and what is downloading.'],
  idx:['Indexers','Search, check, add and remove the indexers in Jackett and Prowlarr.'],trk:['Trackers','Search your trackers, and browse their websites (through the VPN if you like). Downloads go straight to qBittorrent.'],mb:['Music and books','Artists and authors from Lidarr and Readarr.'],sub:['Subtitles','Episodes and movies that are missing subtitles in Bazarr.'],nzb:['Usenet','What SABnzbd is fetching, what finished, and adding NZB files.'],hl:['Health','Problems, disk space and stuck downloads across your apps.'],ur:['Unraid','Server health, disks and containers.'],stats:['Watch stats','Who watches what on Plex.'],goat:['Stack','The apps inside GoatMediaStackarr: VPN, connections, logins and restarts.'],set:['Settings','Apps, profiles, alerts, backups and how GoatMediaStackarr looks.']};
 // The menu: Home on its own, then four groups, each with its icon. Watch is what is there to watch; Add is everything
 // about getting something new (finding it, asking for it, what is still missing, its subtitles); Downloads is how it
 // arrives; Server is running the whole thing. Pages not listed in a group would not show in the menu.
-const NAVG=[['Watch',['disc','lib','wl','up','mb','stats'],'play'],['Add',['find','rq','wt','sub'],'plus'],['Downloads',['dl','nzb','rss','trk','idx'],'dl'],['Server',['hl','goat','ur','set'],'server']];
+const NAVG=[['Watch',['disc','lib','wl','up','mb','stats'],'play'],['Add',['find','rq','wt','sub'],'plus'],['Downloads',['dl','nzb','rss','trk','idx'],'dl'],['Server',['hl','goat','ur','sug','set'],'server']];
 // One line under each menu item, so it is clear what is behind it.
 const NAVD={dash:'Your home page',disc:'Trending and popular',lib:'Everything you have',wl:'What you want to watch',up:'Coming out soon',mb:'Artists and authors',stats:'Who watches what',
   find:'Add a show or movie',rq:'Ask for something, approve',wt:'Still missing or to upgrade',sub:'Missing subtitles',dl:'Torrents right now',nzb:'SABnzbd',rss:'Feeds and auto-download rules',trk:'Search trackers, browse sites',idx:'Jackett and Prowlarr',
-  hl:'Problems and stuck downloads',goat:'Apps, VPN, connections',ur:'Disks and containers',set:'Apps, people, alerts…'};
+  hl:'Problems and stuck downloads',goat:'Apps, VPN, connections',ur:'Disks and containers',sug:'Ideas and problems to fix',set:'Apps, people, alerts…'};
 const navGroupOf=k=>{const g=NAVG.find(([,l])=>l.includes(k));return g&&k!=='dash'?g[0]:''};
-const TABS=[['dash','Home'],['find','Search'],['disc','Discover'],['wl','Watchlist'],['rq','Requests'],['lib','Library'],['wt','Wanted'],['dl','Downloads'],['rss','RSS'],['up','Upcoming'],['idx','Indexers'],['trk','Trackers'],['mb','Music & books'],['sub','Subtitles'],['nzb','Usenet'],['hl','Health'],['ur','Unraid'],['stats','Watch stats'],['goat','Stack'],['set','Settings']];
+const TABS=[['dash','Home'],['find','Search'],['disc','Discover'],['wl','Watchlist'],['rq','Requests'],['lib','Library'],['wt','Wanted'],['dl','Downloads'],['rss','RSS'],['up','Upcoming'],['idx','Indexers'],['trk','Trackers'],['mb','Music & books'],['sub','Subtitles'],['nzb','Usenet'],['hl','Health'],['ur','Unraid'],['stats','Watch stats'],['goat','Stack'],['sug','Suggestions'],['set','Settings']];
 const TYPE_TABS={trk:['qbittorrent'],find:['sonarr','radarr'],rq:['seerr'],lib:['sonarr','radarr'],wt:['sonarr','radarr'],dl:['qbittorrent','rutorrent','deluge'],rss:['qbittorrent'],up:['sonarr','radarr'],idx:['jackett','prowlarr'],mb:['lidarr','readarr'],sub:['bazarr'],nzb:['sabnzbd'],ur:['unraid'],stats:['tautulli']};
 const PICK={sub:'bazarr',nzb:'sabnzbd',dl:'torrent',rss:'qbittorrent',idx:'jackett',ur:'unraid',rq:'seerr',stats:'tautulli'};
 const visibleTabs=()=>TABS.filter(([k])=>!TYPE_TABS[k]||TYPE_TABS[k].some(t=>ofType(t).length)).filter(([k])=>k!=='disc'||Object.values(me.lists||{}).some(Boolean)).filter(([k])=>k!=='hl'||(me.role==='admin'&&services.some(s=>['sonarr','radarr','lidarr','readarr','prowlarr'].includes(s.type)))).filter(([k])=>k!=='goat'||(GOAT&&me.role==='admin')).filter(([k])=>k!=='trk'||me.role==='admin').filter(([k])=>!me.kids||KIDS_TABS.includes(k));
@@ -892,7 +892,7 @@ const KIDS_TABS=['dash','lib','mb','set'],KIDS_DASH=['hero','foryou','ticker','r
 let stSub='acct';
 // ---------- Addresses: every tab and every Settings section has its own address (/downloads, /settings/apps),
 // so the browser's back button, bookmarks and links work.
-const SLUG={dash:'dashboard',wl:'watchlist',find:'search',disc:'discover',rq:'requests',lib:'library',wt:'wanted',dl:'downloads',rss:'rss',up:'upcoming',idx:'indexers',trk:'trackers',mb:'music',sub:'subtitles',nzb:'usenet',hl:'health',ur:'unraid',stats:'stats',goat:'stack',set:'settings'};
+const SLUG={dash:'dashboard',wl:'watchlist',find:'search',disc:'discover',rq:'requests',lib:'library',wt:'wanted',dl:'downloads',rss:'rss',up:'upcoming',idx:'indexers',trk:'trackers',mb:'music',sub:'subtitles',nzb:'usenet',hl:'health',ur:'unraid',stats:'stats',goat:'stack',sug:'suggestions',set:'settings'};
 const UNSLUG=Object.fromEntries(Object.entries(SLUG).map(([k,v])=>[v,k]));
 const pathFor=()=>tab==='dash'?'/':'/'+(SLUG[tab]||tab)+(tab==='set'&&stSub&&stSub!=='acct'?'/'+encodeURIComponent(stSub):'');
 // Reads the tab (and Settings section) from the address. Returns false when the address names no page.
@@ -962,7 +962,7 @@ $('#rl').onclick=()=>{UI.rail=!UI.rail;saveUI()};$('#qs').onclick=quick;
     $('#pk2').onchange=e=>{UI['pick_'+pt]=e.target.value;saveUI();render()}}
   [].concat(timer||[]).forEach(clearInterval);liveFns=[];LIVE.subs.clear();if(tab!=='dash'&&tab!=='ur')liveStop();
   const on=document.querySelector('.nv.on');if(on&&on.scrollIntoView)on.scrollIntoView({inline:'center',block:'nearest'});
-  ({trk:trkView,wl:wlView,dash:dashView,find:findView,disc:discView,rq:rqView,lib:libView,wt:wtView,dl:dlView,rss:rssView,up:upView,idx:idxView,mb:mbView,sub:subView,nzb:nzbView,hl:hlView,ur:urView,stats:statsView,goat:goatView,set:setView})[tab]();
+  ({trk:trkView,wl:wlView,dash:dashView,find:findView,disc:discView,rq:rqView,lib:libView,wt:wtView,dl:dlView,rss:rssView,up:upView,idx:idxView,mb:mbView,sub:subView,nzb:nzbView,hl:hlView,ur:urView,stats:statsView,goat:goatView,sug:sugView,set:setView})[tab]();
   // Keep the address bar in step with what is on screen: a new history entry for each move, none for back/forward.
   {const want=pathFor();if(location.pathname!==want){if(routeQuiet)history.replaceState(null,'',want+location.search);else history.pushState(null,'',want)}routeQuiet=false;
    document.title=(tab==='dash'?'':(PAGES[tab]&&PAGES[tab][0]?PAGES[tab][0]+' · ':''))+'GoatMediaStackarr'}
@@ -2763,6 +2763,53 @@ async function openInLibrary(l){
 }
 // ---------- Watchlist
 const wlToggle=(type,id,on,x)=>on?api('/api/watchlist','POST',{type,id,title:x.title,year:x.year,poster:x.poster}):api(`/api/watchlist/${type}/${id}`,'DELETE');
+// ---------- Suggestions: anyone can suggest something and vote; admins send them to the project's GitHub Issues.
+const SUG_KIND={feature:['Idea','acc'],bug:['Problem','bad'],other:['Other','']},SUG_ST={new:['New',''],sent:['On GitHub','ok'],done:['Done','ok'],declined:['Not planned','bad']};
+async function sugView(){
+  $('#m').innerHTML=skel(3);
+  let d;try{d=await api('/api/suggestions')}catch(x){$('#m').innerHTML=`<div class="err">${esc(x.message)}</div>`;return}
+  if(tab!=='sug')return;
+  const A=me.role==='admin',fresh=d.items.filter(x=>x.status==='new').length,f=UI.sugf||'open';
+  const shown=d.items.filter(x=>f==='all'||(f==='open'?x.status==='new':x.status!=='new'));
+  const card=x=>`<div class="panel sugc" data-s="${x.id}"><button class="sugv${x.voted?' on':''}" data-vote aria-pressed="${x.voted}" title="${x.voted?'Take back your vote':'I want this too'}">${ic('up1')}<b>${x.votes}</b></button>
+    <div class="grow" style="min-width:0"><div class="row" style="gap:6px;flex-wrap:wrap"><span class="pill ${SUG_KIND[x.kind][1]}">${SUG_KIND[x.kind][0]}</span>${x.status!=='new'?`<span class="pill ${SUG_ST[x.status][1]}">${SUG_ST[x.status][0]}</span>`:''}<b class="sugt">${esc(x.title)}</b></div>
+    ${x.body?`<div class="sugb">${esc(x.body)}</div>`:''}<div class="mute" style="font-size:13px;margin-top:6px">${x.user?esc(x.user)+' · ':''}${ago(x.at)}${x.issue?` · <a href="${esc(x.issue.url)}" target="_blank" rel="noopener">${ic('ext')}#${x.issue.number} on GitHub</a>`:''}</div>
+    <div class="row" style="margin-top:8px;gap:6px;flex-wrap:wrap">${A&&!x.issue?`<button data-gh class="primary">${ic('ext')}${d.token?'Send to GitHub':'Open on GitHub'}</button>`:''}${A&&!x.issue&&!d.token?`<button data-gm class="ghost">Mark as sent</button>`:''}
+      ${A?`<select data-st aria-label="Status">${Object.entries(SUG_ST).map(([k,[n]])=>`<option value="${k}" ${x.status===k?'selected':''}>${n}</option>`).join('')}</select>`:''}${x.mine||A?`<button data-del class="ghost">${ic('trash')}Remove</button>`:''}</div></div></div>`;
+  $('#m').innerHTML=`<div class="panel" style="margin-bottom:16px"><h3 style="margin-top:0">Suggest something</h3>
+    <form id="sgf" class="nlform"><div class="seg" id="sgk" style="margin-bottom:8px">${Object.entries(SUG_KIND).map(([k,[n]],i)=>`<button type="button" data-k="${k}" class="${i?'':'on'}">${n}</button>`).join('')}</div>
+    <input name="title" maxlength="120" placeholder="In a few words: what would make it better?" required minlength="4">
+    <textarea name="body" rows="3" maxlength="4000" placeholder="More about it (optional): what you would like, or what went wrong and how to make it happen again"></textarea>
+    <div class="row"><button class="primary">${ic('sug')}Suggest</button><span class="mute grow" style="font-size:13px">${A?'':'The admin can send it on to the project on GitHub.'+(d.names?' Your name goes with it.':' Your name is not shown there.')}</span></div><div class="err" id="sge2"></div></form></div>
+    ${A?`<details class="panel" style="margin-bottom:16px" ${d.token?'':'open'}><summary><b>GitHub</b> <span class="mute">${esc(d.repo)} · ${d.token?'a token is saved, so suggestions go there in one click':'no token: each one opens GitHub filled in, for you to submit'}</span></summary>
+      <form id="sgs" class="nlform" style="margin-top:10px"><label class="mute">Repository <input name="repo" value="${esc(d.repo)}" placeholder="owner/repository"></label>
+      <label class="mute">Token <input name="token" type="password" autocomplete="new-password" placeholder="${d.token?'Saved. Type a new one to change it':'Optional: a fine-grained token with Issues: Read and write on that repository'}"></label>
+      <label class="chk"><input type="checkbox" name="names" ${d.names?'checked':''}>Say who suggested it on GitHub</label>
+      <div class="row"><button class="primary">Save</button>${d.token?'<button type="button" class="ghost" id="sgtk">Forget the token</button>':''}${d.token&&fresh?`<button type="button" id="sgall">${ic('ext')}Send all ${fresh} new ones</button>`:''}</div><div class="err" id="sgse"></div></form></details>`:''}
+    <div class="row" style="margin-bottom:12px"><span class="mute grow">${d.items.length} ${d.items.length===1?'suggestion':'suggestions'}, ${fresh} new</span><div class="seg" id="sgfl">${[['open','New'],['done','Sent and done'],['all','All']].map(([k,n])=>`<button data-v="${k}" class="${f===k?'on':''}">${n}</button>`).join('')}</div></div>
+    <div id="sgl">${shown.length?shown.map(card).join(''):empty(f==='open'?'No new suggestions':'Nothing here yet','Ideas and problems people send show up here, most wanted first.')}</div>`;
+  let kind='feature';const m=$('#m');
+  m.querySelector('#sgk').onclick=e=>{const b=e.target.closest('[data-k]');if(!b)return;kind=b.dataset.k;m.querySelectorAll('#sgk [data-k]').forEach(x=>x.classList.toggle('on',x===b))};
+  m.querySelector('#sgfl').onclick=e=>{const b=e.target.closest('[data-v]');if(b){UI.sugf=b.dataset.v;saveUI();sugView()}};
+  m.querySelector('#sgf').onsubmit=async e=>{e.preventDefault();$('#sge2').textContent='';const g=e.target.elements;
+    try{await api('/api/suggestions','POST',{title:g.title.value,body:g.body.value,kind});toast('Thanks! Suggestion sent','ok');UI.sugf='open';sugView()}catch(x){$('#sge2').textContent=x.message}};
+  const sf=m.querySelector('#sgs');if(sf){
+    sf.onsubmit=async e=>{e.preventDefault();$('#sgse').textContent='';const g=sf.elements;try{await api('/api/suggestsettings','PUT',{repo:g.repo.value,token:g.token.value,names:g.names.checked});toast('Saved','ok');sugView()}catch(x){$('#sgse').textContent=x.message}};
+    const tk=sf.querySelector('#sgtk');if(tk)tk.onclick=async()=>{await api('/api/suggestsettings','PUT',{token:null});toast('Token forgotten','ok');sugView()};
+    const al=sf.querySelector('#sgall');if(al)al.onclick=async()=>{al.disabled=true;al.textContent='Sending…';try{const r=await api('/api/suggestions-all/github','POST');toast(`${r.sent.length} sent to GitHub${r.failed.length?', '+r.failed.length+' not: '+r.failed[0]:''}`,r.failed.length?'bad':'ok');sugView()}catch(x){$('#sgse').textContent=x.message;al.disabled=false}};
+  }
+  m.querySelector('#sgl').onclick=async e=>{const c=e.target.closest('[data-s]');if(!c)return;const id=c.dataset.s,x=d.items.find(y=>y.id===id);
+    const b=e.target.closest('button');if(!b)return;
+    try{
+      if(b.matches('[data-vote]')){const r=await api(`/api/suggestions/${id}/vote`,'POST');Object.assign(x,r);b.classList.toggle('on',r.voted);b.setAttribute('aria-pressed',r.voted);b.querySelector('b').textContent=r.votes}
+      else if(b.matches('[data-gh]')){
+        if(d.token){b.disabled=true;b.textContent='Sending…';const r=await api(`/api/suggestions/${id}/github`,'POST');toast(`Opened #${r.issue.number} on GitHub`,'ok');sugView()}
+        else{const r=await api(`/api/suggestions/${id}/link`);window.open(r.url,'_blank','noopener');toast('Submit it on GitHub, then press Mark as sent','ok')}}
+      else if(b.matches('[data-gm]')){const u=prompt('The address of the issue on GitHub (or its number), so people can follow it:','');if(u==null)return;await api(`/api/suggestions/${id}`,'PUT',u.trim()?{issue:u.trim()}:{status:'sent'});sugView()}
+      else if(b.matches('[data-del]')){if(!confirm('Remove this suggestion?'))return;await api(`/api/suggestions/${id}`,'DELETE');toast('Removed','ok');sugView()}
+    }catch(x){toast(x.message,'bad');b.disabled=false}};
+  m.querySelectorAll('[data-st]').forEach(sel=>sel.onchange=async()=>{try{await api(`/api/suggestions/${sel.closest('[data-s]').dataset.s}`,'PUT',{status:sel.value});toast('Saved','ok');sugView()}catch(x){toast(x.message,'bad')}});
+}
 async function wlView(){
   $('#m').innerHTML=skel(3);
   let d;try{d=await api('/api/watchlist')}catch(x){$('#m').innerHTML=`<div class="err">${esc(x.message)}</div>`;return}
