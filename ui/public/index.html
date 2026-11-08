@@ -666,6 +666,34 @@ async function pkAdd(name){
   const r=c.response;if(!r.getPublicKey||!r.getAuthenticatorData)throw new Error('This browser is too old for passkeys. Update it and try again.');
   return api('/api/passkeys/register/finish','POST',{ticket:o.ticket,id:c.id,name,clientDataJSON:b64e(r.clientDataJSON),authenticatorData:b64e(r.getAuthenticatorData()),publicKey:b64e(r.getPublicKey()),alg:r.getPublicKeyAlgorithm()});
 }
+// Account → Trakt and Letterboxd: connect your own; your watchlist follows them (and Plex plays go to Trakt).
+async function syncPanel(){
+  const el=$('#syp');if(!el)return;let d;try{d=await api('/api/me/sync')}catch{el.remove();return}
+  if(!document.contains(el))return;const t=d.trakt,l=d.letterboxd,when=x=>x?ago(x):'not yet';
+  el.innerHTML=`<h3 style="margin-top:0">Trakt and Letterboxd</h3><p class="mute" style="margin-top:0">Your watchlist here follows them${d.auto?', and what lands on it is asked for straight away':''}. Checked every half hour.</p>
+    <div class="box"><div class="row" style="gap:10px"><b class="grow">Trakt</b>${t.connected?`<span class="pill ok">${esc(t.name||'Connected')}</span>`:''}</div>
+      ${t.connected?`<div class="mute" style="font-size:13px;margin:4px 0">Last synced ${esc(when(t.last))}${t.counts?` · ${t.counts.added} in, ${t.counts.sent} out`:''}${t.histSent?` · ${t.histSent} plays sent`:''}${t.error?` · <span style="color:var(--bad-t)">${esc(t.error)}</span>`:''}</div>
+        <label class="chk"><input type="checkbox" id="tw" ${t.opts.watchlist?'checked':''}>Watchlist, both ways</label><label class="chk"><input type="checkbox" id="th" ${t.opts.history?'checked':''}>What I finish in Plex goes to my Trakt history</label>
+        <div class="row" style="margin-top:6px"><button id="tnow">Sync now</button><button id="toff" class="danger">Disconnect</button></div>`
+      :t.can?`<p class="mute" style="font-size:13px;margin:4px 0">Connect your Trakt account: your watchlists stay the same in both places.</p><div class="row"><button class="primary" id="ton">Connect Trakt</button></div><div id="tcode"></div>`
+      :`<p class="mute" style="font-size:13px;margin:4px 0">${me.role==='admin'?'Add a Trakt app first under Settings, Lists (client ID and secret).':'Not set up on this server yet.'}</p>`}</div>
+    <div class="box" style="margin-top:10px"><b>Letterboxd</b><div class="mute" style="font-size:13px;margin:4px 0">${l.user?`Watchlist of <b>${esc(l.user)}</b> comes in · last checked ${esc(when(l.last))}${l.count?` · ${l.count} films`:''}${l.error?` · <span style="color:var(--bad-t)">${esc(l.error)}</span>`:''}`:'Your public Letterboxd watchlist comes in here.'}</div>
+      <form id="lbf" class="row" style="gap:8px"><input name="u" value="${esc(l.user)}" placeholder="Letterboxd name" style="max-width:220px" autocomplete="off"><button class="primary">${l.user?'Save':'Connect'}</button>${l.user?'<button type="button" id="lboff">Remove</button>':''}</form></div><div class="err" id="sye"></div>`;
+  const er=$('#sye'),opt=()=>api('/api/me/sync','PUT',{trakt:{watchlist:$('#tw').checked,history:$('#th').checked}}).then(()=>toast('Saved','ok')).catch(x=>er.textContent=x.message);
+  if($('#tw')){$('#tw').onchange=opt;$('#th').onchange=opt}
+  if($('#tnow'))$('#tnow').onclick=async()=>{const b=$('#tnow');b.disabled=true;b.textContent='Syncing…';try{const r=await api('/api/me/sync/now','POST');if(r.trakt||r.letterboxd)er.textContent=r.trakt||r.letterboxd;else toast('Synced','ok')}catch(x){er.textContent=x.message}syncPanel()};
+  if($('#toff'))$('#toff').onclick=async()=>{if(!confirm('Disconnect Trakt? Nothing is removed from either watchlist.'))return;await api('/api/me/sync/trakt','DELETE').catch(()=>{});syncPanel()};
+  if($('#ton'))$('#ton').onclick=async()=>{const b=$('#ton');b.disabled=true;er.textContent='';
+    let c;try{c=await api('/api/me/sync/trakt/start','POST')}catch(x){er.textContent=x.message;b.disabled=false;return}
+    $('#tcode').innerHTML=`<div class="box" style="margin-top:8px;text-align:center"><div class="mute">Open <a href="${esc(c.url)}" target="_blank" rel="noopener">${esc(c.url)}</a> and enter</div><div style="font-size:30px;font-weight:800;letter-spacing:.15em;margin:6px 0">${esc(c.code)}</div><div class="mute" style="font-size:13px">Waiting for Trakt…</div></div>`;
+    const end=Date.now()+c.expires*1000;
+    const poll=async()=>{if(!document.contains(el))return;if(Date.now()>end){er.textContent='That code ran out. Try again.';syncPanel();return}
+      let r;try{r=await api('/api/me/sync/trakt/poll','POST')}catch{r={state:'waiting'}}
+      if(r.state==='ok'){toast('Trakt connected','ok');syncPanel();return}if(r.state==='denied'||r.state==='expired'){er.textContent=r.state==='denied'?'Trakt was not allowed.':'That code ran out. Try again.';syncPanel();return}
+      setTimeout(poll,c.interval*1000)};setTimeout(poll,c.interval*1000)};
+  $('#lbf').onsubmit=async e=>{e.preventDefault();er.textContent='';try{await api('/api/me/sync','PUT',{letterboxd:e.target.u.value.trim()});toast('Saved. Your Letterboxd watchlist is coming in.','ok');setTimeout(syncPanel,4000)}catch(x){er.textContent=x.message}};
+  if($('#lboff'))$('#lboff').onclick=async()=>{await api('/api/me/sync','PUT',{letterboxd:''}).catch(()=>{});syncPanel()};
+}
 // Account → Passkeys: the ones you have, add one on this device, remove one.
 async function pkPanel(){
   const el=$('#pkp');if(!el)return;let l=[];try{l=await api('/api/passkeys')}catch{}
@@ -1244,6 +1272,7 @@ async function stAcct(){
       <input name="old" type="password" placeholder="Current password" autocomplete="current-password" required><input name="new" type="password" placeholder="New password (8+ characters)" autocomplete="new-password" required>
       <input name="again" type="password" placeholder="New password again" autocomplete="new-password" required><div class="row"><button class="primary">Change password</button></div><div class="err" id="pe"></div></form></div>
     ${me.plex&&me.role!=='admin'?'':'<div class="panel" id="pkp" style="max-width:560px;margin-top:16px"></div>'}
+    <div class="panel" id="syp" style="max-width:560px;margin-top:16px"></div>
     ${services.some(x=>x.type==='tautulli')?`<div class="panel row" style="max-width:560px;margin-top:16px;gap:10px"><div class="grow"><h3 style="margin:0">Year in review</h3><p class="mute" style="margin:4px 0 0">What you watched this year, your top shows and movies, and your requests.</p></div><button id="wrac">Open</button></div>`:''}
     <div class="panel" style="max-width:560px;margin-top:16px"><h3 style="margin-top:0">Phone messages for you</h3>
       <p class="mute">GoatMediaStackarr can message you when a request of yours is approved or ready to watch. Use an ntfy topic address (like https://ntfy.sh/my-topic) or a Discord webhook address.</p>
@@ -1265,7 +1294,7 @@ async function stAcct(){
   if($('#pll'))$('#pll').onclick=plexLink;
   if($('#plu'))$('#plu').onclick=async()=>{if(!confirm('Unlink your Plex account? You then sign in with your password only.'))return;try{me=await api('/api/me/plex','DELETE');stAcct()}catch(x){toast(x.message,'bad')}};
   if($('#wrac'))$('#wrac').onclick=()=>wrappedOpen();
-  pkPanel();
+  pkPanel();syncPanel();
   $('#pf').onsubmit=async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target)),m=$('#pe');m.textContent='';
     if(f.new!==f.again){m.textContent='The new passwords do not match';return}
     try{await api('/api/password','POST',{old:f.old,new:f.new});e.target.reset();toast('Password changed','ok')}catch(x){m.textContent=x.message}};
@@ -2925,6 +2954,9 @@ async function stLists(){
   $('#m').innerHTML=`<p class="mute" style="max-width:640px">Add a free key from any of these sites and a <b>Discover</b> tab appears with their Trending, Popular and Anticipated lists. Keys stay on your server. Trakt has no pictures of its own, so they come from TMDB (if you add a key) or from Seerr.</p>`+SL_SRC.map(([k,n,lab,help])=>`<div class="panel" style="max-width:640px;margin-top:14px"><div class="row"><h3 style="margin:0" class="grow">${n}</h3>${c[k].on?`<span class="pill ok">Saved ${esc(c[k].hint)}</span>`:'<span class="pill">Not set</span>'}</div>
     <p class="mute">${help}</p><form data-k="${k}" style="margin:0"><input name="v" placeholder="${c[k].on?'Paste a new '+lab+' to replace it':lab}" autocomplete="off" spellcheck="false" aria-label="${n} ${lab}"><div class="row"><button class="primary">Save</button>${c[k].on?'<button type="button" data-rm="'+k+'">Remove</button>':''}</div></form></div>`).join('')+'<div class="err" id="le"></div>';
   const put=async b=>{try{const r=await api('/api/listsettings','PUT',b);me.lists=r;toast('Saved','ok');stLists()}catch(e){$('#le').textContent=e.message}};
+  // The Trakt app's secret, so each person can connect their own Trakt (Account → Trakt and Letterboxd).
+  if(c.trakt.on){const tf=document.querySelector('form[data-k="trakt"]');if(tf)tf.insertAdjacentHTML('afterend',`<form id="tsec" style="margin:8px 0 0"><p class="mute" style="margin:0 0 6px">To let people connect their own Trakt (their watchlist both ways, and what they watch in Plex to their Trakt history), also paste the app's <b>Client Secret</b>. In the Trakt app, set the Redirect URI to <code>urn:ietf:wg:oauth:2.0:oob</code>.</p><input name="v" placeholder="${c.traktSecret?'Saved. Paste a new Client Secret to replace it':'Client Secret'}" autocomplete="off" spellcheck="false" aria-label="Trakt Client Secret"><div class="row"><button class="primary">Save secret</button>${c.traktSecret?'<button type="button" id="tsecrm">Remove</button>':''}</div></form>`);
+    const ts=$('#tsec');if(ts){ts.onsubmit=e=>{e.preventDefault();const v=ts.v.value.trim();if(v)put({traktSecret:v})};const rm=$('#tsecrm');if(rm)rm.onclick=()=>put({traktSecret:''})}}
   document.querySelectorAll('form[data-k]').forEach(f=>f.onsubmit=e=>{e.preventDefault();const v=f.v.value.trim();if(!v){$('#le').textContent='Paste the key first.';return}put({[f.dataset.k]:v})});
   document.querySelectorAll('[data-rm]').forEach(b=>b.onclick=()=>put({[b.dataset.rm]:''}));
 }

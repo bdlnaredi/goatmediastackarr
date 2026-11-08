@@ -1971,6 +1971,7 @@ async function monitor() {
     if (mon.n % 4 === 1) await safe(pfTick);
     if (mon.n % 4 === 3) await safe(unraidHealthTick);
     if (mon.n % 4 === 0) await safe(recentWatch);
+    if (mon.n % (+process.env.SYNC_EVERY || 30) === 5) safe(() => syncAll());
     if (mon.n % 4 === 2) await safe(autoImport);
     await safe(nlTick);
     if (mon.n % 120 === 0 && !DEMO) await safe(latestRelease);
@@ -2404,6 +2405,42 @@ const goatServer = http.createServer(async (req, res) => {
       const i = (me.passkeys || []).findIndex(k => k.id === r0[1]); if (i < 0) return send(res, 404, { error: 'Not found' });
       const [k] = me.passkeys.splice(i, 1); save(); audit(me.name, 'Removed a passkey', k.name); return send(res, 200, {});
     }
+    // ---------- Your Trakt and Letterboxd.
+    if (p === '/api/me/sync' && m === 'GET') {
+      const t = me.trakt || {}, l = me.letterboxd || {};
+      return send(res, 200, { trakt: { can: !!(traktApp().id && traktApp().secret), connected: !!t.token, name: t.name || '', last: t.last || 0, error: t.error || '', counts: t.counts || null, histSent: t.histSent || 0, opts: { watchlist: (t.opts || {}).watchlist !== false, history: (t.opts || {}).history !== false } },
+        letterboxd: { user: l.user || '', last: l.last || 0, error: l.error || '', count: l.count || 0, added: l.added || 0 }, auto: !!(db.settings.watchlist || {}).auto });
+    }
+    if (p === '/api/me/sync' && m === 'PUT') {
+      const b = await readBody(req);
+      if (b.trakt && me.trakt) { me.trakt.opts = { watchlist: b.trakt.watchlist !== false, history: b.trakt.history !== false }; }
+      if (b.letterboxd !== undefined) { const nm = String(b.letterboxd || '').trim().replace(/^https?:\/\/(www\.)?letterboxd\.com\//i, '').replace(/\/.*$/, '');
+        if (nm && !/^[\w-]{2,40}$/.test(nm)) return send(res, 400, { error: 'That does not look like a Letterboxd name' });
+        me.letterboxd = nm ? { ...(me.letterboxd && me.letterboxd.user === nm ? me.letterboxd : {}), user: nm } : undefined; }
+      save(); if (b.letterboxd) syncAll(me).catch(() => {});
+      return send(res, 200, {});
+    }
+    if (p === '/api/me/sync/trakt/start' && m === 'POST') {
+      const app = traktApp(); if (!app.id || !app.secret) return send(res, 400, { error: 'An admin has to add a Trakt app first (Settings, Lists: client ID and secret).' });
+      const r = await fetch(TRAKT() + '/oauth/device/code', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client_id: app.id }), signal: AbortSignal.timeout(15000) });
+      if (!r.ok) return send(res, 502, { error: 'Trakt answered ' + r.status });
+      const d = await r.json(); traktPending.set(me.id, { code: d.device_code, exp: Date.now() + (+d.expires_in || 600) * 1000 });
+      return send(res, 200, { code: d.user_code, url: d.verification_url, interval: +d.interval || 5, expires: +d.expires_in || 600 });
+    }
+    if (p === '/api/me/sync/trakt/poll' && m === 'POST') {
+      const pd = traktPending.get(me.id), app = traktApp(); if (!pd || pd.exp < Date.now()) return send(res, 200, { state: 'expired' });
+      const r = await fetch(TRAKT() + '/oauth/device/token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: pd.code, client_id: app.id, client_secret: app.secret }), signal: AbortSignal.timeout(15000) });
+      if (r.status === 400 || r.status === 429) return send(res, 200, { state: 'waiting' });
+      if (r.status === 418) { traktPending.delete(me.id); return send(res, 200, { state: 'denied' }); }
+      if (!r.ok) { if ([404, 409, 410].includes(r.status)) traktPending.delete(me.id); return send(res, 200, { state: r.status === 410 ? 'expired' : 'waiting' }); }
+      const d = await r.json(); traktPending.delete(me.id);
+      me.trakt = { token: d.access_token, refresh: d.refresh_token, exp: Date.now() + (+d.expires_in || 7776000) * 1000, opts: { watchlist: true, history: true } };
+      try { const who = await traktCall(me, 'GET', '/users/settings'); me.trakt.name = (((who || {}).user) || {}).username || ''; } catch {}
+      save(); audit(me.name, 'Connected Trakt', me.trakt.name || ''); syncAll(me).catch(() => {});
+      return send(res, 200, { state: 'ok', name: me.trakt.name });
+    }
+    if (p === '/api/me/sync/trakt' && m === 'DELETE') { delete me.trakt; traktPending.delete(me.id); save(); return send(res, 200, {}); }
+    if (p === '/api/me/sync/now' && m === 'POST') { try { await syncAll(me); } catch {} const t = me.trakt || {}, l = me.letterboxd || {}; return send(res, 200, { trakt: t.error || '', letterboxd: l.error || '' }); }
     // The welcome page after joining with an invite: what was set up for them and how to start.
     if (p === '/api/welcome' && m === 'GET') {
       const w = me.welcome; if (!w) return send(res, 200, { show: false });
@@ -4203,7 +4240,7 @@ const goatServer = http.createServer(async (req, res) => {
     const linkScopes = b => Object.fromEntries(SCOPES.map(k => [k, k === 'apps' ? b[k] !== false : !!b[k]]));
     if (p === '/api/listsettings' && m === 'GET') {
       const k = listKeys(), hint = v => v ? '\u2022\u2022\u2022\u2022' + v.slice(-4) : '';
-      return send(res, 200, { trakt: { on: !!k.trakt, hint: hint(k.trakt) }, tmdb: { on: !!k.tmdb, hint: hint(k.tmdb) }, tvdb: { on: !!k.tvdb, hint: hint(k.tvdb) } });
+      return send(res, 200, { traktSecret: !!traktApp().secret, trakt: { on: !!k.trakt, hint: hint(k.trakt) }, tmdb: { on: !!k.tmdb, hint: hint(k.tmdb) }, tvdb: { on: !!k.tvdb, hint: hint(k.tvdb) } });
     }
     if (p === '/api/listsettings' && m === 'PUT') {
       const b = await readBody(req), cur = (db.settings.lists = db.settings.lists || {}), field = { trakt: 'id', tmdb: 'key', tvdb: 'key' }, changed = [];
@@ -4211,9 +4248,12 @@ const goatServer = http.createServer(async (req, res) => {
         if (typeof b[src] !== 'string') continue;   // left out: keep what is saved
         const v = b[src].trim();
         if (v && !/^[\w.\-]{8,2000}$/.test(v)) return send(res, 400, { error: `That does not look like a ${listsLib.NAMES[src]} key. Copy it again without spaces.` });
-        if (v) cur[src] = { [field[src]]: v }; else delete cur[src];
+        if (v) cur[src] = { ...(src === 'trakt' && cur.trakt && cur.trakt.secret ? { secret: cur.trakt.secret } : {}), [field[src]]: v }; else delete cur[src];
         changed.push(listsLib.NAMES[src] + (v ? ' saved' : ' removed'));
       }
+      // The Trakt app's secret: needed only for people to connect their own Trakt (watchlist and history sync).
+      if (typeof b.traktSecret === 'string') { const v = b.traktSecret.trim(); if (v && !/^[\w.\-]{8,2000}$/.test(v)) return send(res, 400, { error: 'That does not look like a Trakt client secret.' });
+        if (v) { if (!cur.trakt) return send(res, 400, { error: 'Add the Trakt client ID too.' }); cur.trakt.secret = v; } else if (cur.trakt) delete cur.trakt.secret; changed.push('Trakt secret ' + (v ? 'saved' : 'removed')); }
       save(); audit(me.name, 'Changed Discover list keys', changed.join(', ')); return send(res, 200, lists.enabled());
     }
     if (p === '/api/plexsettings' && m === 'GET') {
@@ -4648,6 +4688,103 @@ async function botApi(u, method, pth, body) {
   let t = botTok[u.id]; if (!t || !sessions.has(th(t))) { t = botTok[u.id] = crypto.randomBytes(24).toString('hex'); sessions.set(th(t), { uid: u.id, at: Date.now(), seen: Date.now(), ua: 'chat bot', ip: 'chat', bot: true }); }
   const r = await fetch(`http://127.0.0.1:${PORT}${pth}`, { method, headers: { Cookie: 'sid=' + t, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(100000) });
   return { status: r.status, data: await r.json().catch(() => ({})) };
+}
+
+// ---------- Trakt and Letterboxd: each person can connect their own. Trakt: the watchlist both ways (what is added or
+// removed on one side follows on the other) and what they watched in Plex goes to their Trakt history. Letterboxd: the
+// watchlist (public) comes in. New watchlist items go through the normal watchlist, so "ask for it straight away" works.
+const TRAKT = () => String(process.env.TRAKT_URL || (DEMO ? `http://127.0.0.1:${PORT}/__demo/trakt` : 'https://api.trakt.tv')).replace(/\/+$/, '');
+const LBX = () => String(process.env.LETTERBOXD_URL || 'https://letterboxd.com').replace(/\/+$/, '');
+const traktApp = () => { const t = ((db.settings || {}).lists || {}).trakt || {}; return { id: String(t.id || ''), secret: String(t.secret || '') }; };
+const traktPending = new Map();
+async function traktCall(u, method, pth, body) {
+  const app = traktApp(), tk = u.trakt || {};
+  if (tk.exp && tk.exp - Date.now() < 7 * 864e5 && tk.refresh) {   // keep the sign-in fresh (Trakt's last 3 months)
+    const r = await fetch(TRAKT() + '/oauth/token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(15000),
+      body: JSON.stringify({ refresh_token: tk.refresh, client_id: app.id, client_secret: app.secret, redirect_uri: 'urn:ietf:wg:oauth:2.0:oob', grant_type: 'refresh_token' }) });
+    if (r.ok) { const d = await r.json(); Object.assign(tk, { token: d.access_token, refresh: d.refresh_token, exp: Date.now() + (+d.expires_in || 7776000) * 1000 }); save(); }
+  }
+  const r = await fetch(TRAKT() + pth, { method, signal: AbortSignal.timeout(20000), body: body ? JSON.stringify(body) : undefined,
+    headers: { 'Content-Type': 'application/json', 'trakt-api-version': '2', 'trakt-api-key': app.id, Authorization: 'Bearer ' + (tk.token || ''), 'User-Agent': 'GoatMediaStackarr' } });
+  if (r.status === 401) { tk.error = 'Trakt signed this app out. Connect it again.'; save(); throw new Error(tk.error); }
+  if (!r.ok) throw new Error('Trakt answered ' + r.status);
+  return r.status === 204 ? null : r.json().catch(() => null);
+}
+const wlKey = (t, id) => t + ':' + id;
+async function syncTrakt(u) {
+  const tk = u.trakt; if (!tk || !tk.token) return;
+  const o = tk.opts || {};
+  if (o.watchlist !== false) {
+    const [mv, sh] = await Promise.all([traktCall(u, 'GET', '/sync/watchlist/movies'), traktCall(u, 'GET', '/sync/watchlist/shows')]);
+    const T = new Map();
+    for (const x of mv || []) { const m = x.movie || {}, id = +(m.ids || {}).tmdb; if (id) T.set(wlKey('movie', id), { type: 'movie', id, title: m.title || '', year: String(m.year || '') }); }
+    for (const x of sh || []) { const m = x.show || {}, id = +(m.ids || {}).tmdb; if (id) T.set(wlKey('tv', id), { type: 'tv', id, title: m.title || '', year: String(m.year || '') }); }
+    const mine = () => (db.watchlist || []).filter(w => w.uid === u.id), L = new Map(mine().map(w => [wlKey(w.type, w.id), w])), S = new Set(tk.seen || []);
+    const first = !tk.seen;   // the first time, nothing is removed anywhere: the two lists are joined
+    const addHere = [...T.keys()].filter(k => !L.has(k) && (first || !S.has(k)));
+    const dropHere = first ? [] : [...L.keys()].filter(k => S.has(k) && !T.has(k));
+    const addThere = [...L.keys()].filter(k => !T.has(k) && (first || !S.has(k)));
+    const dropThere = first ? [] : [...T.keys()].filter(k => S.has(k) && !L.has(k));
+    for (const k of addHere) { const x = T.get(k); await botApi(u, 'POST', '/api/watchlist', { type: x.type, id: x.id, title: x.title, year: x.year }).catch(() => {}); }
+    if (dropHere.length) { const d = new Set(dropHere); db.watchlist = (db.watchlist || []).filter(w => !(w.uid === u.id && d.has(wlKey(w.type, w.id)))); }
+    const body = ks => ({ movies: ks.filter(k => k.startsWith('movie:')).map(k => ({ ids: { tmdb: +k.split(':')[1] } })), shows: ks.filter(k => k.startsWith('tv:')).map(k => ({ ids: { tmdb: +k.split(':')[1] } })) });
+    if (addThere.length) await traktCall(u, 'POST', '/sync/watchlist', body(addThere));
+    if (dropThere.length) await traktCall(u, 'POST', '/sync/watchlist/remove', body(dropThere));
+    tk.seen = mine().map(w => wlKey(w.type, w.id));
+    tk.counts = { added: addHere.length, removed: dropHere.length, sent: addThere.length, unsent: dropThere.length };
+  }
+  // What they finished in Plex (Tautulli's history) goes to their Trakt history.
+  if (o.history !== false && tautOf()) {
+    const s = tautOf(), id = await tautUserId(s, u).catch(() => null);
+    if (id) {
+      const since = tk.histAt || Date.now() - 864e5, d = await tautCmd(s, 'get_history', `&user_id=${encodeURIComponent(id)}&length=200&after=${new Date(since - 864e5).toISOString().slice(0, 10)}`);
+      const rows = ((d && d.data) || []).filter(x => (+x.watched_status === 1 || +x.percent_complete >= 85) && (+x.stopped || +x.date) * 1000 > since);
+      const movies = [], episodes = [];
+      for (const x of rows.slice(0, 100)) {
+        const md = await tautCmd(s, 'get_metadata', '&rating_key=' + encodeURIComponent(x.rating_key)).catch(() => null), g = ((md && md.guids) || []).map(String);
+        const pick = pre => { const v = g.find(z => z.startsWith(pre + '://')); return v ? v.slice(pre.length + 3) : ''; };
+        const ids = { ...(pick('tmdb') ? { tmdb: +pick('tmdb') } : {}), ...(pick('imdb') ? { imdb: pick('imdb') } : {}), ...(pick('tvdb') ? { tvdb: +pick('tvdb') } : {}) };
+        if (!Object.keys(ids).length) continue;
+        const at = new Date((+x.stopped || +x.date) * 1000).toISOString();
+        (x.media_type === 'episode' ? episodes : x.media_type === 'movie' ? movies : []).push({ watched_at: at, ids });
+      }
+      if (movies.length || episodes.length) await traktCall(u, 'POST', '/sync/history', { movies, episodes });
+      tk.histAt = Date.now(); tk.histSent = (tk.histSent || 0) + movies.length + episodes.length;
+    }
+  }
+  tk.last = Date.now(); tk.error = ''; save();
+}
+// Letterboxd has no open API: its public watchlist pages are read, and each film's page says its TMDB number.
+async function syncLetterboxd(u) {
+  const lb = u.letterboxd; if (!lb || !lb.user) return;
+  const get = async pth => { const r = await fetch(LBX() + pth, { signal: AbortSignal.timeout(15000), headers: { 'User-Agent': 'Mozilla/5.0 GoatMediaStackarr', Accept: 'text/html' } }); if (!r.ok) throw new Error(r.status === 404 ? 'No Letterboxd member by that name' : 'Letterboxd answered ' + r.status); return r.text(); };
+  const slugs = [];
+  for (let pg = 1; pg <= 20; pg++) {
+    const h = await get(`/${encodeURIComponent(lb.user)}/watchlist/page/${pg}/`);
+    const found = [...new Set([...h.matchAll(/data-(?:film-slug|item-slug)="([\w-]+)"|data-target-link="\/film\/([\w-]+)\/"/g)].map(m => m[1] || m[2]))];
+    slugs.push(...found); if (!found.length || !/class="next"/.test(h)) break;
+  }
+  const cache = db.settings.lbTmdb = db.settings.lbTmdb || {}, have = new Set((db.watchlist || []).filter(w => w.uid === u.id).map(w => wlKey(w.type, w.id)));
+  const done = new Set(lb.done || []); let added = 0;
+  for (const sl of slugs.slice(0, 300)) {
+    if (done.has(sl)) continue;
+    if (!cache[sl]) { const h = await get(`/film/${sl}/`).catch(() => ''); const m = /data-tmdb-id="(\d+)"/.exec(h), t = /data-tmdb-type="(\w+)"/.exec(h); if (!m) continue;
+      cache[sl] = { id: +m[1], type: t && t[1] === 'tv' ? 'tv' : 'movie', title: ((/<meta property="og:title" content="([^"]+)"/.exec(h) || [])[1] || sl).replace(/&amp;/g, '&').replace(/&#039;/g, "'").replace(/ \((\d{4})\)$/, ''), year: ((/<meta property="og:title" content="[^"]*\((\d{4})\)"/.exec(h) || [])[1] || '') }; }
+    const c = cache[sl]; done.add(sl);
+    if (!have.has(wlKey(c.type, c.id))) { await botApi(u, 'POST', '/api/watchlist', { type: c.type, id: c.id, title: c.title, year: c.year }).catch(() => {}); added++; }
+  }
+  const keys = Object.keys(cache); if (keys.length > 5000) for (const k of keys.slice(0, keys.length - 5000)) delete cache[k];
+  lb.done = [...done].slice(-2000); lb.last = Date.now(); lb.count = slugs.length; lb.added = (lb.added || 0) + added; lb.error = ''; save();
+}
+let syncBusy = false;
+async function syncAll(only) {
+  if (!only) { if (syncBusy) return; syncBusy = true; }
+  try {
+    for (const u of only ? [only] : db.users) {
+      if (u.trakt && u.trakt.token) await syncTrakt(u).catch(e => { u.trakt.error = e.message; save(); });
+      if (u.letterboxd && u.letterboxd.user) await syncLetterboxd(u).catch(e => { u.letterboxd.error = e.message; save(); });
+    }
+  } finally { if (!only) syncBusy = false; }
 }
 const chatCodes = new Map();
 const bots = BOTS.create({ cfg: () => db.settings.bots || {}, log: t => console.log('[bots] ' + t), api: botApi,

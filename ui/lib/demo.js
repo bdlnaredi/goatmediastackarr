@@ -441,6 +441,7 @@ function create(opts = {}) {
         return ok([{ stat_id: 'top_movies', rows: mv }, { stat_id: 'top_tv', rows: tv }, { stat_id: 'top_users', rows: [{ user: 'alex', friendly_name: 'Alex', total_plays: 42, total_duration: 150000 }, { user: 'sam', friendly_name: 'Sam', total_plays: 27, total_duration: 91000 }, { user: 'jo', friendly_name: 'Jo', total_plays: 11, total_duration: 36000 }] }]);
       }
       if (cmd === 'get_user_watch_time_stats') return ok(String(q.get('query_days') || '1,7,30,0').split(',').map(d => ({ query_days: +d, total_plays: (+d || 90) * 2, total_time: (+d || 90) * 5400 })));
+      if (cmd === 'get_metadata') { const k = String(q.get('rating_key') || ''); return ok({ rating_key: k, guids: k.startsWith('7') ? ['tmdb://' + k, 'imdb://tt' + k] : ['tvdb://' + k] }); }
       if (cmd === 'get_users') return ok([{ user_id: 1, username: 'alex', friendly_name: 'Alex' }, { user_id: 2, username: 'sam', friendly_name: 'Sam' }, { user_id: 3, username: 'jo', friendly_name: 'Jo' }]);
       if (cmd === 'get_history' && q.get('after')) {   // a whole year: an evening of something every few days
         const y = +q.get('after').slice(0, 4) + 1, all = Array.from({ length: 140 }, (_, i) => { const t = new Date(y, 0, 1 + Math.floor(i * 2.5), 19 + (i % 4), 0, 0), uid = (i % 3) + 1, tv = i % 4 !== 3, sh = st.shows[i % 3], mv = st.movies[i % 5];
