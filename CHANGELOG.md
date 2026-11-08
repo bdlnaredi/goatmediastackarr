@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+## v1.0.15 — 2026-11-08
+
 - Android app: an *Address at home* (Settings → Server), like nzb360's local address. On Wi-Fi, when GoatMediaStackarr answers at that address, the app talks to it there (faster, and it works when the internet is down); anywhere else it switches back to the main address by itself. You stay signed in either way.
 - A new menu: Home, then Watch (Discover, Library, Watchlist, Upcoming, Music & books, Watch stats), Add (Search, Requests, Wanted, Subtitles), Downloads (Downloads, Usenet, RSS, Trackers, Indexers) and Server (Health, Stack, Unraid, Settings). Each group has its icon, and each page in the drop-down lists its icon and a line about what is there. On phones, More is a tidy list in the same groups.
 - Every menu item, Settings section and title can open in a new tab, like Sonarr and Radarr: menu items are real links (Ctrl/⌘-click, middle-click, or "Open in new tab" when you right-click or long-press), and Ctrl/middle-click on a poster opens that show or movie in a new tab. A title from Discover or Search now has its own address too (/title/movie/…), for bookmarks and sharing.
