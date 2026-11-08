@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- Passkeys in the Android app: *Sign in with a passkey* on the sign-in screen, and Settings → Passkeys to add one with your fingerprint or face (kept by Google Password Manager, Samsung Pass and the like). The same passkey works in the browser at that address. It needs the server's public https address (your Cloudflare address, say): GoatMediaStackarr now serves the /.well-known/assetlinks.json that tells Android the app belongs to it.
+
 ## v1.0.12 — 2026-11-08
 
 - Android app: *Import to library* on a finished torrent (its menu), each channel's own words for a trigger (✎, with the parameters to tap in and a preview) and its conditions under Alerts.
@@ -15,7 +17,6 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 - Unraid health in alerts: you hear when a disk gets too hot (Unraid's own limit, or the one under Alerts), is disabled, wrong or missing, gets new read/write errors or a SMART warning, and when a parity check ends (with or without errors). These come with the *Array full, disk or parity problem* trigger, with {disk}, {temp} and {problem} for your own words and conditions.
 - Year in review: each person's year in Plex (from Tautulli) with hours watched, top shows and movies, their night and hour, the longest binge, the first thing they watched, month by month, and their requests. Admins can look at anyone's, or everyone's with who watched the most and how the library grew. It is on the dashboard and the app's Home from November to January, under Account, and in the app's Settings. Newsletters can now be sent once a year (on a December day you pick) as the Year in review: everyone's to the channels, and each person's own by email.
 - Passkeys: sign in with Face ID, a fingerprint, Windows Hello or a security key, with no password or code. Add them under Account; each works at the address it was made at, and browsers allow them only over https (your Cloudflare or Tailscale address) or at localhost. When two-step sign-in is required, a passkey counts as the second step.
-- Passkeys in the Android app: *Sign in with a passkey* on the sign-in screen, and Settings → Passkeys to add one with your fingerprint or face (kept by Google Password Manager, Samsung Pass and the like). The same passkey works in the browser at that address. It needs the server's public https address (your Cloudflare address, say): GoatMediaStackarr now serves the /.well-known/assetlinks.json that tells Android the app belongs to it.
 
 ## v1.0.11 — 2026-11-02
 
