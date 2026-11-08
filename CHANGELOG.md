@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- Import finished downloads (Settings → Download rules): each download waiting to be imported has a **Don't import** button that takes it off the list for good, and **Don't import any** clears them all at once. They stay in Downloads. A download you removed from qBittorrent no longer stays on the list as waiting.
+- autobrr's page and API work behind /engines/autobrr (autobrr ignored that address for its API until told otherwise). Existing autobrr settings are fixed on the next start.
 - Trakt and Letterboxd (Account): connect your own Trakt and your watchlist stays the same in both places (added or removed on either side), and what you finish in Plex goes to your Trakt history. Give your Letterboxd name and its public watchlist comes in. New watchlist items are asked for straight away when that is on. An admin adds a Trakt app once (Settings, Lists: client ID and secret).
 - cross-seed is built in: add `cross-seed` to the apps to run and the torrents you already have are found on your other trackers and seeded there too, with no extra download or space (hard links). It is set up for you from Prowlarr's trackers, qBittorrent, Sonarr and Radarr, checks the trackers' feeds every 30 minutes and searches recent torrents daily. Through the VPN when qBittorrent is.
 - autobrr is built in: add `autobrr` to the apps to run, open it from the Stack page, and it grabs new releases from your trackers' IRC announce channels the moment they appear. Through the VPN when qBittorrent is.

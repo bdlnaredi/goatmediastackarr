@@ -177,10 +177,12 @@ case "$name" in
     mkdir -p /config/autobrr && chown "$PUID:$PGID" /config/autobrr
     f=/config/autobrr/config.toml
     if [[ ! -s "$f" ]]; then
-      printf '# Made by GoatMediaStackarr on first start; your changes here are kept.\nhost = "127.0.0.1"\nport = %s\nbaseUrl = "/engines/autobrr/"\nlogPath = "/config/autobrr/logs/autobrr.log"\nlogLevel = "INFO"\ncheckForUpdates = false\nsessionSecret = "%s"\n' \
+      printf '# Made by GoatMediaStackarr on first start; your changes here are kept.\nhost = "127.0.0.1"\nport = %s\nbaseUrl = "/engines/autobrr/"\nlogPath = "/config/autobrr/logs/autobrr.log"\nlogLevel = "INFO"\ncheckForUpdates = false\nsessionSecret = "%s"\nbaseUrlModeLegacy = false\n' \
         "${GOAT_PORT_AUTOBRR:-7474}" "$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')" > "$f"
       chown "$PUID:$PGID" "$f"; chmod 600 "$f"
     fi
+    # Without this autobrr ignores baseUrl for its API (the "legacy" mode) and the page behind /engines/autobrr breaks.
+    grep -q '^baseUrlModeLegacy' "$f" || echo 'baseUrlModeLegacy = false' >> "$f"
     mkdir -p /config/autobrr/logs && chown "$PUID:$PGID" /config/autobrr/logs
     cmd=(/usr/local/bin/autobrr --config /config/autobrr) ;;
   unpackerr)

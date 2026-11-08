@@ -94,6 +94,9 @@ The menu has four groups. In the Cinema style they are drop-downs on the bar acr
 - **Collections** and **Because you watched**: a movie's page says which collection it belongs to, the collection's page lists every film in it with *Request the missing ones*, Radarr's collections are under Library, and the dashboard suggests titles from what each person actually watched.
 - **Missing episodes**: a show's page lists the episodes that aren't here, and each can be asked for on its own.
 - **Upcoming**: the next two weeks, or a month calendar.
+- **Continue watching**: what you stopped part way through in Plex or Jellyfin, on the dashboard.
+- **Year in review**: each person's year in Plex (hours, top shows and movies, busiest day), from Tautulli, on the dashboard from November to January, and as an email if you want.
+- **Trakt and Letterboxd** (Settings → Account): connect your own Trakt and your watchlist stays the same in both places, and what you finish in Plex goes to your Trakt history. A public Letterboxd watchlist can be brought in too.
 - **Music & books**: Lidarr's artists and Readarr's authors.
 
 | | |
@@ -104,15 +107,17 @@ The menu has four groups. In the Cinema style they are drop-downs on the bar acr
 
 ### Requests
 
-- **Requests**: anyone can ask for a show or movie; admins approve or decline (or let a profile approve itself). Each request shows where it really is: *Requested*, *Approved*, *Looking for a download*, *Downloading* (how far, how long), *Copying to the library*, *In the library* and *Available*. Request limits per person.
+- **Requests**: anyone can ask for a show or movie; admins approve or decline (or let a profile approve itself). Each request shows where it really is: *Requested*, *Approved*, *Looking for a download*, *Downloading* (how far, how long), *Copying to the library*, *In the library* and *Available*. Request limits per person. Before sending, a request shows **about how big it will be** and whether it needs an admin. **Request rules** (Settings → Limits) approve the ones that fit by themselves: by kind, rating, size and person.
+- **Subtitles**: on a title's page, the subtitles Bazarr has and the languages it wants, with **Find subtitles**.
 - **Wanted**: what Sonarr and Radarr are still looking for, with **Choose a release** on each.
 
 ### Downloads
 
-- **Downloads**: qBittorrent, ruTorrent, Deluge and SABnzbd in one list: pause, resume, remove, categories and tags, files, trackers, peers, speed limits and schedules, and adding links or `.torrent` files.
-- **RSS**: qBittorrent's feeds and auto-download rules.
+- **Downloads**: qBittorrent, ruTorrent, Deluge and SABnzbd in one list: pause, resume, remove, categories and tags, files, trackers, peers, speed limits and schedules, and adding links or `.torrent` files. Sort by speed, time left, progress, seeders, ratio, size or name.
+- **Import finished downloads** (Settings → Download rules): a torrent Sonarr and Radarr did not grab themselves (from Trackers, RSS or added by hand) is imported when it finishes and every file is a clear match. The rest wait on that page: **Import** to say what it is, or **Don't import** to take it off the list (or all of them at once). One you remove from Downloads leaves the list by itself.
+- **RSS**: qBittorrent's feeds and auto-download rules, and how often the feeds are checked.
 - **Usenet**: SABnzbd's queue and history, and your provider's news servers (add, test, change, remove).
-- **Trackers** (admins): search all your Prowlarr trackers at once and send a result to qBittorrent; or browse a tracker's own website inside GoatMediaStackarr, through the VPN or not, signed in once, with every download or magnet button going straight to qBittorrent.
+- **Trackers** (admins): search all your Prowlarr trackers at once (or one on its own) and send a result to qBittorrent; or browse a tracker's own website inside GoatMediaStackarr, through the VPN or not, signed in once, with every download or magnet button going straight to qBittorrent.
 - **Indexers**: search, test and remove the sites in Prowlarr and Jackett. **Subtitles**: what Bazarr is still missing.
 
 | | |
@@ -126,9 +131,9 @@ The menu has four groups. In the Cinema style they are drop-downs on the bar acr
 - **File Browser** (admins): the media and downloads folders in the browser, opened from the Stack page: upload, download, rename, move and delete files.
 - **Health**: problems the apps report, stuck downloads, and disk space per folder. **Fix problems by itself** (on by default) removes, blocks and searches again for downloads that failed or have not moved for a day, and restarts a built-in app that stops answering; every fix is listed here.
 - **Unraid**: the array, disks and containers, if you add your Unraid server. **Stats**: what gets watched, from Tautulli.
-- **Settings**: *Account* (password, two-step sign-in, Sign in with Plex, devices), *Appearance*, *Apps*, *Discover lists*, *Users* (what each profile can see and do), *Limits* (streaming per month and disk space per person), *Status pages*, *Alerts* (email, ntfy, Discord, Telegram, Pushover, Gotify or any webhook, each with its own list of what it hears about), *Download rules*, *Backup* and *Activity*.
+- **Settings**: *Account* (password, two-step sign-in, passkeys, Sign in with Plex, devices), *Appearance*, *Apps*, *Discover lists*, *Users* (what each profile can see and do), *Limits* (streaming per month and disk space per person), *Status pages*, *Alerts* (email, ntfy, Discord, Telegram, Pushover, Gotify or any webhook, each with its own list of what it hears about), *Download rules*, *Backup* and *Activity*.
 - **Kids profiles** (Settings → Users): a simpler look with only what is in the library and rated for their age, and no searching or requesting.
-- **Invite links** (Settings → Users): a link or QR code that lets people make their own profile, with the apps and rights you choose, for a day, a week, a month or until you remove it.
+- **Invite links** (Settings → Users): a link or QR code that lets people make their own profile, with the apps and rights you choose, for a day, a week, a month or until you remove it. An invite can also share your Plex libraries with their Plex account, make them a Jellyfin account, and greet them with a welcome note and a short how-to the first time they sign in.
 - **Backups of the whole stack** (Settings → Backup): every app's settings and databases in one file, daily or weekly, and a guided *Put back* that restores only the apps you pick (with a copy of how they were just before).
 - **Weekly email for everyone** (Settings → Alerts): each person with an email address gets their own week: their requests and watchlist titles that came in, what is new and what is coming.
 
@@ -161,10 +166,13 @@ A native app (Kotlin and Jetpack Compose), not a web page in a frame. It has the
 - **Discover**, **Search** and **Library**, with each title's page (cast, More like this, seasons, trailer) and actors' filmographies; request through Seerr (the whole show or chosen seasons) or add straight to Sonarr or Radarr.
 - **Downloads** with every client, **RSS** (tick several articles and download them at once), **Upcoming** with a calendar, **Wanted** and **Choose a release**.
 - **More**: every other page in groups like the web page (Watch, Requests, Downloads, Server, You), including **Watchlist** and **What's new**.
-- **In your language**: English, Hindi, Spanish, German or French (Settings → Language), and a **home-screen widget** with the download and upload speeds and what is playing.
+- **In your language**: English, Hindi, Spanish, German or French (Settings → Language).
+- **Two home-screen widgets**: the download and upload speeds and what is playing; and what is coming up with the requests (waiting for you, or yours on the way).
 - **Profile**: your picture, your streaming this month, the space your requests take and your watch time.
-- **Notifications** that work with the app closed and without Google services: something you asked for is ready, a request was approved or declined, your streaming limit; for admins also new requests, problem reports and server problems.
-- **Sign in** with your name and password (two-step codes work) or **Sign in with Plex**.
+- **Notifications** that work with the app closed and without Google services: something you asked for is ready, a request was approved or declined, your streaming limit; for admins also new requests, problem reports and server problems. **Approve** or **Decline** a new request, or **Pause all** downloads, straight from the notification.
+- **Address at home** (Settings → Server): on your Wi-Fi the app talks to the server's local address, anywhere else the outside one, by itself.
+- **Android TV**: the same app installs on a TV, shows on its home screen, and works with the remote's D-pad.
+- **Sign in** with your name and password (two-step codes work), a **passkey** (fingerprint or face), or **Sign in with Plex**.
 
 **Install:** download `goatmediastackarr.apk` from the [latest release](https://github.com/bdlnaredi/goatmediastackarr/releases/latest) on your phone and open it. Then enter the address you use in the browser, for example `192.168.1.10:2806`. Android 8 or newer; newer versions install over older ones, and the app tells you when one is out.
 

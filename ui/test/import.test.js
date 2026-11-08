@@ -44,3 +44,37 @@ test('importing finished downloads: automatic when clear, by hand with choices, 
     assert.equal((await u.get(`/api/import/look?qb=${qbid}&hash=${'b'.repeat(40)}`)).status, 403);
   } finally { await s.stop(); srv.close(); }
 });
+
+test('waiting imports: gone from qBittorrent leaves the list, and "Don\'t import" takes one or all off for good', async () => {
+  const fake = fakes.create(), srv = http.createServer((req, res) => fake.handle(req, res, req.url)).listen(0);
+  await new Promise(r => srv.once('listening', r));
+  const fb = `http://127.0.0.1:${srv.address().port}`;
+  const s = await boot({ MONITOR_MS: '250' }), a = client(s.base); await setup(a);
+  const wait = async (f, ms = 8000) => { const t = Date.now(); while (!(await f())) { if (Date.now() - t > ms) return false; await new Promise(r => setTimeout(r, 100)); } return true; };
+  const st = fake.state, list = async () => (await a.get('/api/import/settings')).data.recent;
+  try {
+    await a.post('/api/services', { type: 'qbittorrent', name: 'qB', url: `${fb}/qbittorrent`, user: 'u', pass: 'p' });
+    await a.post('/api/services', { type: 'radarr', name: 'Radarr', url: `${fb}/radarr`, apiKey: 'k' });
+    await wait(async () => (await a.get('/api/import/settings')).data.on);
+    const now = Math.floor(Date.now() / 1000) + 30, mk = (c, name) => ({ hash: c.repeat(40), name, size: 1e9, progress: 1, category: 'movies', tags: '', state: 'stalledUP', dlspeed: 0, upspeed: 0, eta: 0, ratio: 0, num_seeds: 1, num_leechs: 0, added_on: now - 100, completion_on: now, save_path: '/downloads', content_path: '/downloads/' + name });
+    st.torrents.push(mk('c', 'Unknown.One.2025'), mk('d', 'Unknown.Two.2025'), mk('e', 'Unknown.Three.2025'), mk('f', 'Unknown.Four.2025'));
+    assert.ok(await wait(async () => (await list()).filter(x => x.state === 'needs').length === 4), JSON.stringify(await list()));
+
+    // Removed from qBittorrent: nothing left to import, so it leaves the list.
+    st.torrents = st.torrents.filter(t => t.hash !== 'c'.repeat(40));
+    assert.ok(!(await list()).some(x => /One/.test(x.name)), 'gone from Downloads, gone from the list');
+
+    // Don't import one: off the list, and not offered again.
+    assert.equal((await a.post('/api/import/skip', { hash: 'd'.repeat(40) })).data.skipped, 1);
+    assert.ok(!(await list()).some(x => /Two/.test(x.name)));
+    assert.equal((await a.post('/api/import/skip', { hash: '9'.repeat(40) })).status, 404);
+    await a.post('/api/users', { name: 'u', password: 'useruser1', role: 'user' });
+    const u = client(s.base); await u.post('/api/login', { name: 'u', password: 'useruser1' });
+    assert.equal((await u.post('/api/import/skip', { all: true })).status, 403, 'admins only');
+    assert.equal((await u.get('/api/import/settings')).status, 403);
+    // All the rest at once.
+    assert.equal((await a.post('/api/import/skip', { all: true })).data.skipped, 2);
+    await new Promise(r => setTimeout(r, 800));
+    assert.deepEqual((await list()).filter(x => x.state === 'needs'), [], 'still off after the next look');
+  } finally { await s.stop(); srv.close(); }
+});

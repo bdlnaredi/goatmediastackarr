@@ -1538,6 +1538,21 @@ async function autoImport() {
     }
   }
   for (const k of Object.keys(done)) if (Date.now() - done[k].at > 60 * DAY) delete done[k];
+  importPrune(await qbHashes());
+}
+// Every torrent qBittorrent has right now (upper-case hashes), or null when one of them did not answer.
+async function qbHashes() {
+  const all = new Set();
+  for (const s of db.services.filter(x => x.type === 'qbittorrent')) {
+    try { const l = await qb(s, '/api/v2/torrents/info'); for (const t of Array.isArray(l) ? l : []) all.add(String(t.hash || '').toUpperCase()); } catch { return null; }
+  }
+  return all;
+}
+// A download that waits to be imported (or failed) but is no longer in qBittorrent has nothing left to import: it goes.
+function importPrune(have) {
+  const done = db.importDone || {}; if (!have) return 0; let n = 0;
+  for (const [k, v] of Object.entries(done)) if ((v.state === 'needs' || v.state === 'failed') && !have.has(k)) { delete done[k]; n++; }
+  if (n) save(); return n;
 }
 
 // How big a request will be: its running time (a movie, or every episode of the seasons asked for) times the megabytes
@@ -4018,7 +4033,22 @@ const goatServer = http.createServer(async (req, res) => {
       audit(me.name, 'Imported a download by hand', `${out.length} file${out.length === 1 ? '' : 's'} → ${sv.name}`);
       return send(res, 200, { imported: out.length });
     }
-    if (p === '/api/import/settings' && m === 'GET') { const c = db.settings.autoImport || { on: true }; return send(res, 200, { on: c.on !== false, recent: Object.entries(db.importDone || {}).map(([h, v]) => ({ hash: h, ...v })).sort((a, b) => b.at - a.at).slice(0, 15) }); }
+    if (p === '/api/import/settings' && m === 'GET') {
+      if (adminOnly()) return;
+      const c = db.settings.autoImport || { on: true }; importPrune(await qbHashes());
+      // Skipped ones (the admin did not want them) stay noted, so they are not offered again, but are not shown.
+      return send(res, 200, { on: c.on !== false, recent: Object.entries(db.importDone || {}).filter(([, v]) => v.state !== 'skipped').map(([h, v]) => ({ hash: h, ...v })).sort((a, b) => b.at - a.at).slice(0, 15) });
+    }
+    // Take downloads off the list: one (by its hash), or every one that waits ("needs") or failed. They are not imported or offered again.
+    if (p === '/api/import/skip' && m === 'POST') {
+      if (adminOnly()) return;
+      const b = await readBody(req), done = db.importDone || (db.importDone = {}), now = Date.now();
+      const keys = b.all ? Object.keys(done).filter(k => ['needs', 'failed'].includes(done[k].state)) : [String(b.hash || '').toUpperCase()].filter(k => done[k] && done[k].state !== 'imported');
+      if (!keys.length) return send(res, b.all ? 200 : 404, b.all ? { skipped: 0 } : { error: 'Not on the list' });
+      for (const k of keys) done[k] = { ...done[k], state: 'skipped', at: now };
+      save(); audit(me.name, 'Skipped importing', keys.length === 1 ? done[keys[0]].name || keys[0] : keys.length + ' downloads');
+      return send(res, 200, { skipped: keys.length });
+    }
     if (p === '/api/import/settings' && m === 'PUT') { const b = await readBody(req), c = db.settings.autoImport || {}; db.settings.autoImport = { ...c, on: !!b.on, since: b.on && !c.on ? Date.now() : c.since || Date.now() }; save(); audit(me.name, 'Changed importing by itself', b.on ? 'on' : 'off'); return send(res, 200, {}); }
     if (p === '/api/warnings' && m === 'GET') {
       const out = [], add = (sv, level, text, extra = {}) => out.push({ sid: sv.id, app: sv.name, type: sv.type, level, text: cut(text, 400), ...extra });
