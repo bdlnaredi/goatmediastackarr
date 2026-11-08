@@ -2,6 +2,8 @@ package com.bdlnaredi.goatstack.ui.screens
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -227,7 +229,8 @@ private fun Torrents(sid: String, qbit: Boolean = true) {
         else LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             items(list, key = { it.hash }) { t ->
                 var menu by remember { mutableStateOf(false) }
-                GoatCard(Modifier.fillMaxWidth(), padding = 14.dp) {
+                // Tapping the download opens its actions (category, pause, remove…), not only the small button.
+                GoatCard(Modifier.fillMaxWidth().then(if (canControl) Modifier.clickable { menu = true } else Modifier), padding = 14.dp) {
                     Row(verticalAlignment = Alignment.Top) {
                         Column(Modifier.weight(1f)) {
                             Text(t.name, style = MaterialTheme.typography.bodyMedium, color = g.text, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -235,20 +238,24 @@ private fun Torrents(sid: String, qbit: Boolean = true) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 val st = Format.torrentState(t.state)
                                 Badge(st, when (st) { "Downloading" -> g.primary; "Seeding", "Finished" -> g.good; "Problem" -> g.bad; else -> g.muted })
-                                if (t.category.isNotEmpty()) Badge(t.category, g.accent)
+                                if (t.category.isNotEmpty()) Badge(t.category, g.accent, if (canControl) Modifier.clickable { moving = t } else Modifier)
+                                else if (canControl && cats.isNotEmpty()) Badge("+ Category", g.muted, Modifier.clickable { moving = t })
                             }
                         }
-                        if (canControl) Column {
-                            IconButton(onClick = { menu = true }) { Icon(if (t.paused) Icons.Rounded.PlayArrow else Icons.Rounded.Pause, "Actions", tint = g.text) }
-                            DropdownMenu(menu, { menu = false }) {
-                                DropdownMenuItem(text = { Text(if (t.paused) "Resume" else "Pause") }, leadingIcon = { Icon(if (t.paused) Icons.Rounded.PlayArrow else Icons.Rounded.Pause, null) },
-                                    onClick = { menu = false; act(if (t.paused) "resume" else "pause", t, if (t.paused) "Resumed" else "Paused") })
-                                DropdownMenuItem(text = { Text("Force start") }, leadingIcon = { Icon(Icons.Rounded.Bolt, null) }, onClick = { menu = false; act("force", t, "Started") })
-                                DropdownMenuItem(text = { Text("Check files") }, leadingIcon = { Icon(Icons.Rounded.Refresh, null) }, onClick = { menu = false; act("recheck", t, "Checking") })
-                                DropdownMenuItem(text = { Text("Category…") }, leadingIcon = { Icon(Icons.Rounded.Folder, null) }, onClick = { menu = false; moving = t })
-                                if (ctx.user.admin && qbit && t.done) DropdownMenuItem(text = { Text("Import to library") }, leadingIcon = { Icon(Icons.Rounded.Download, null) }, onClick = { menu = false; importing = t })
-                                if (ctx.user.can("remove")) DropdownMenuItem(text = { Text("Remove", color = g.bad) }, leadingIcon = { Icon(Icons.Rounded.Delete, null, tint = g.bad) },
-                                    onClick = { menu = false; withFiles = false; if (ctx.prefs.confirmRemove) deleting = t else act("delete", t, "Removed") })
+                        if (canControl) Row {
+                            IconButton(onClick = { act(if (t.paused) "resume" else "pause", t, if (t.paused) "Resumed" else "Paused") }) { Icon(if (t.paused) Icons.Rounded.PlayArrow else Icons.Rounded.Pause, if (t.paused) "Resume" else "Pause", tint = g.text) }
+                            Box {
+                                IconButton(onClick = { menu = true }) { Icon(Icons.Rounded.MoreVert, "More actions", tint = g.text) }
+                                DropdownMenu(menu, { menu = false }) {
+                                    DropdownMenuItem(text = { Text(if (t.paused) "Resume" else "Pause") }, leadingIcon = { Icon(if (t.paused) Icons.Rounded.PlayArrow else Icons.Rounded.Pause, null) },
+                                        onClick = { menu = false; act(if (t.paused) "resume" else "pause", t, if (t.paused) "Resumed" else "Paused") })
+                                    DropdownMenuItem(text = { Text("Force start") }, leadingIcon = { Icon(Icons.Rounded.Bolt, null) }, onClick = { menu = false; act("force", t, "Started") })
+                                    DropdownMenuItem(text = { Text("Check files") }, leadingIcon = { Icon(Icons.Rounded.Refresh, null) }, onClick = { menu = false; act("recheck", t, "Checking") })
+                                    DropdownMenuItem(text = { Text("Category…") }, leadingIcon = { Icon(Icons.Rounded.Folder, null) }, onClick = { menu = false; moving = t })
+                                    if (ctx.user.admin && qbit && t.done) DropdownMenuItem(text = { Text("Import to library") }, leadingIcon = { Icon(Icons.Rounded.Download, null) }, onClick = { menu = false; importing = t })
+                                    if (ctx.user.can("remove")) DropdownMenuItem(text = { Text("Remove", color = g.bad) }, leadingIcon = { Icon(Icons.Rounded.Delete, null, tint = g.bad) },
+                                        onClick = { menu = false; withFiles = false; if (ctx.prefs.confirmRemove) deleting = t else act("delete", t, "Removed") })
+                                }
                             }
                         }
                     }
