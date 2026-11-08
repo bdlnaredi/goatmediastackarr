@@ -152,6 +152,10 @@ const lists = listsLib.create({ keys: listKeys, file: path.join(DATA, 'lists-cac
 // are left out (Plex's own sign-in protects them), except admins.
 const tfaPolicy = () => ['none', 'admins', 'everyone'].includes((db.settings || {}).require2fa) ? db.settings.require2fa : 'none';
 const WA = require('./lib/webauthn'), pkTickets = new Map();
+// The Android app's signing key (SHA-256), and any more from GOAT_ANDROID_CERTS (comma separated) for your own builds.
+const APP_CERTS = ['82:2B:65:A5:94:0B:F5:E2:C2:7D:68:25:CC:42:E9:2D:73:63:52:7B:D8:2D:A0:97:BA:36:10:5B:81:90:D1:DE',
+  ...String(process.env.GOAT_ANDROID_CERTS || '').split(',').map(x => x.trim().toUpperCase()).filter(x => /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/.test(x))];
+const APP_HASHES = APP_CERTS.map(x => Buffer.from(x.replace(/:/g, ''), 'hex').toString('base64url'));
 // The passkey's site: the address this page was opened at (no port), the way the browser sees it.
 const rpOf = req => String((TRUST && req.headers['x-forwarded-host']) || req.headers.host || 'localhost').split(',')[0].trim().replace(/:\d+$/, '').replace(/^\[|\]$/g, '').toLowerCase();
 const tfaRequired = u => !!u && (u.require2fa || tfaPolicy() === 'everyone' || (tfaPolicy() === 'admins' && u.role === 'admin')) && !(u.plex && u.role !== 'admin');
@@ -2115,6 +2119,13 @@ const goatServer = http.createServer(async (req, res) => {
     res.writeHead(200, { 'Content-Type': WPM[n.split('.').pop().toLowerCase()], 'Cache-Control': 'public, max-age=86400', 'X-Content-Type-Options': 'nosniff' });
     return fs.createReadStream(path.join(WPD, n)).pipe(res);
   }
+  // The Android app's passkeys: Android only lets the app use passkeys for this address when the address says the app is
+  // its own (Digital Asset Links). The fingerprint is the app's signing key (the one in the repository).
+  if (p === '/.well-known/assetlinks.json' && (m === 'GET' || m === 'HEAD')) {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=3600', 'Access-Control-Allow-Origin': '*' });
+    return res.end(JSON.stringify([{ relation: ['delegate_permission/common.handle_all_urls', 'delegate_permission/common.get_login_creds'],
+      target: { namespace: 'android_app', package_name: 'com.bdlnaredi.goatstack', sha256_cert_fingerprints: APP_CERTS } }]));
+  }
   if (p.startsWith('/site/')) return siteHandle(req, res, p).catch(() => { if (!res.headersSent) { res.writeHead(500); res.end(); } });
   if (p.startsWith('/engines/')) {
     const t = goatTarget(req.url);
@@ -2252,7 +2263,7 @@ const goatServer = http.createServer(async (req, res) => {
       try {
         if (!cred) throw Object.assign(new Error('This passkey is not known here. Sign in with your password and add it under Account.'), { plain: true });
         if (cred.rp !== tk.rpId) throw Object.assign(new Error(`This passkey was made for ${cred.rp}. Open GoatMediaStackarr at that address to use it.`), { plain: true });
-        const r = WA.verify(b, cred, tk); cred.count = r.count; cred.used = Date.now();
+        const r = WA.verify(b, cred, { ...tk, apps: APP_HASHES }); cred.count = r.count; cred.used = Date.now();
       } catch (e) { fl.n++; fl.t = Date.now(); fails[ip] = fl; audit(u ? u.name : '?', 'Failed passkey sign-in', ip + ': ' + e.message); return send(res, 401, { error: e.plain ? e.message : 'That passkey did not work' }); }
       delete fails[ip]; save(); audit(u.name, 'Signed in', res.info.ip + ' (passkey' + (cred.name ? ': ' + cred.name : '') + ')');
       return login(res, u);
@@ -2351,7 +2362,7 @@ const goatServer = http.createServer(async (req, res) => {
       if (!tk || tk.exp < Date.now() || tk.uid !== me.id) return send(res, 400, { error: 'That took too long. Please try again.' });
       const id = String(b.id || ''); if (!/^[\w-]{16,400}$/.test(id)) return send(res, 400, { error: 'The passkey has no proper id' });
       if (db.users.some(x => (x.passkeys || []).some(k => k.id === id))) return send(res, 400, { error: 'That passkey is already added' });
-      let k; try { k = WA.register(b, tk); } catch (e) { return send(res, 400, { error: e.plain ? e.message : 'The passkey could not be added' }); }
+      let k; try { k = WA.register(b, { ...tk, apps: APP_HASHES }); } catch (e) { return send(res, 400, { error: e.plain ? e.message : 'The passkey could not be added' }); }
       if ((me.passkeys || []).length >= 10) return send(res, 400, { error: 'Ten passkeys is the most. Remove one first.' });
       const name = cut(String(b.name || '').trim(), 40) || 'Passkey ' + ((me.passkeys || []).length + 1);
       (me.passkeys = me.passkeys || []).push({ id, ...k, rp: tk.rpId, name, at: Date.now() }); save(); audit(me.name, 'Added a passkey', name + ' (' + tk.rpId + ')');

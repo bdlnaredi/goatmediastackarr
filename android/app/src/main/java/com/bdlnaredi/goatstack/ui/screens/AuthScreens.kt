@@ -239,6 +239,16 @@ fun LoginScreen(state: AppState, me: Me) {
                 Spacer(Modifier.height(18.dp))
                 PrimaryButton(if (busy) "Signing in…" else "Sign in", onClick = submit, enabled = !busy && name.isNotBlank() && pass.isNotEmpty(),
                     icon = Icons.AutoMirrored.Rounded.Login, modifier = Modifier.fillMaxWidth())
+                if (com.bdlnaredi.goatstack.data.Passkeys.unusable(state.server) == null) {
+                    Spacer(Modifier.height(10.dp))
+                    GhostButton("Sign in with a passkey", icon = Icons.Rounded.Key, enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
+                        busy = true; error = null
+                        scope.launch {
+                            try { state.passkeySignIn(ctx) } catch (e: com.bdlnaredi.goatstack.data.PasskeyCancelled) { } catch (e: Exception) { error = e.message }
+                            busy = false
+                        }
+                    })
+                }
             } else {
                 GoatField(code, { code = it; error = null }, "Code", Icons.Rounded.Key, keyboard = KeyboardType.Ascii, ime = ImeAction.Go, onDone = submit)
                 ErrorLine(error)

@@ -253,6 +253,7 @@ private fun MainShell(state: AppState, me: Me, user: User) {
                 composable("alerts") { com.bdlnaredi.goatstack.ui.screens.AlertsScreen() }
                 composable("chats") { com.bdlnaredi.goatstack.ui.screens.ChatAppsScreen() }
                 composable("wrapped") { com.bdlnaredi.goatstack.ui.screens.WrappedScreen() }
+                composable("passkeys") { com.bdlnaredi.goatstack.ui.screens.PasskeysScreen() }
                 composable("trackers") { com.bdlnaredi.goatstack.ui.screens.TrackersScreen() }
                 composable("notifications") { com.bdlnaredi.goatstack.ui.screens.NotificationsScreen() }
                 composable(

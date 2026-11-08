@@ -106,6 +106,9 @@ class AppState(val store: Store) {
         refresh()
     }
 
+    /** Passkey sign-in (Android's Credential Manager), then load the profile it signed in to. */
+    suspend fun passkeySignIn(context: android.content.Context) { Passkeys.signIn(context, api); refresh() }
+
     suspend fun plexStart(): PlexStart = api.post("/api/plexlogin/start")
 
     /** Admins: links a Plex account to this profile, so it can sign in with Plex too. */
