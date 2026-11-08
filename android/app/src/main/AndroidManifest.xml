@@ -5,6 +5,10 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Android TV: no touch screen there, and the leanback launcher is optional so phones still install it. -->
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <uses-feature android:name="android.software.leanback" android:required="false" />
+
     <!-- Lets the app open Plex's sign-in page in a browser tab (Custom Tabs) on Android 11 and newer. -->
     <queries>
         <intent>
@@ -23,6 +27,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:label="@string/app_name"
         android:supportsRtl="true"
+        android:banner="@drawable/tv_banner"
         android:networkSecurityConfig="@xml/network_security"
         android:theme="@style/Theme.Goat.Starting">
         <activity
@@ -34,6 +39,11 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- The Android TV home screen. -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
         </activity>
         <!-- The home-screen widget: speeds and what is playing. -->
         <receiver android:name=".GoatWidget" android:exported="true" android:label="@string/app_name">
@@ -43,5 +53,15 @@
             </intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_goat" />
         </receiver>
+        <!-- The second widget: coming up, and the requests. -->
+        <receiver android:name=".GoatListWidget" android:exported="true" android:label="@string/widget_list_title">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.bdlnaredi.goatstack.LIST_REFRESH" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_list" />
+        </receiver>
+        <!-- Buttons on notifications (approve, decline, pause): run without opening the app. -->
+        <receiver android:name=".data.NotifyAction" android:exported="false" />
     </application>
 </manifest>

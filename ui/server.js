@@ -103,9 +103,10 @@ async function pushTo(url, title, body) {
 // One list for everyone: each entry is for one profile (its id) or for every admin ('@admins'). The app asks for what
 // is new since the last one it saw, and shows the kinds the person turned on. [link] says which page a tap opens.
 const FEED_KINDS = ['ready', 'reqstatus', 'request', 'report', 'download', 'problem', 'stream', 'update', 'test'];
-const feed = (to, kind, title, body, link = '') => {
+// ref: what the item is about (a request's id), so a phone can act on it from the notification itself.
+const feed = (to, kind, title, body, link = '', ref = '') => {
   if (!db.feed) db.feed = { n: 0, items: [] };
-  const f = db.feed; f.n++; f.items.push({ id: f.n, at: Date.now(), to, kind, title: String(title).slice(0, 120), body: String(body || '').slice(0, 500), link: String(link).slice(0, 80) });
+  const f = db.feed; f.n++; f.items.push({ id: f.n, at: Date.now(), to, kind, title: String(title).slice(0, 120), body: String(body || '').slice(0, 500), link: String(link).slice(0, 80), ...(ref ? { ref: String(ref).slice(0, 40) } : {}) });
   if (f.items.length > 600) f.items.splice(0, f.items.length - 600);
   save();
 };
@@ -3040,7 +3041,7 @@ const goatServer = http.createServer(async (req, res) => {
         poster: cut(b.poster || (((sr.images || []).find(i => i.coverType === 'poster') || {}).remoteUrl) || '', 300), status: 'pending', at: Date.now(),
         episode: { series: e.id, id: x0.id, season: se, num: ep, name: cut(x0.title, 120) } };
       if (me.role === 'admin' || me.autoApprove) { await episodeAdd(sv, x); x.status = 'approved'; x.stage = 'approved'; }
-      else { feed('@admins', 'request', 'New request', `${me.name} asked for ${x.title}`, 'requests'); notify('requests', 'New request', `${me.name} requested ${x.title}`).catch(() => {}); }
+      else { feed('@admins', 'request', 'New request', `${me.name} asked for ${x.title}`, 'requests', x.id); notify('requests', 'New request', `${me.name} requested ${x.title}`).catch(() => {}); }
       db.requests.push(x); save(); audit(me.name, x.status === 'approved' && me.role !== 'admin' ? 'Requested (auto-approved)' : 'Requested', x.title);
       return send(res, 200, x);
     }
@@ -3106,7 +3107,7 @@ const goatServer = http.createServer(async (req, res) => {
       let rule = null;
       if (me.role !== 'admin') { const e = await sizeEstimate(s, x.mediaType, x.mediaId, seasons, opts && opts.profileId).catch(() => null); if (e) x.est = e.bytes; if (!me.autoApprove) { rule = reqRuleFor(me, e); if (rule) x.rule = cut(rule.name || 'a rule', 60); } }
       if (me.role === 'admin' || me.autoApprove || rule) { const sr = await seerrAdd(s, x); x.seerrId = sr && sr.id; x.status = 'approved'; x.stage = 'approved'; }
-      else { feed('@admins', 'request', 'New request', `${me.name} asked for ${x.title}${b.via === 'watchlist' ? ' (from their watchlist)' : ''}${x.est ? ' (about ' + gbText(x.est) + ')' : ''}`, 'requests'); notify('requests', 'New request', `${me.name} requested ${x.title}`).catch(() => {}); }
+      else { feed('@admins', 'request', 'New request', `${me.name} asked for ${x.title}${b.via === 'watchlist' ? ' (from their watchlist)' : ''}${x.est ? ' (about ' + gbText(x.est) + ')' : ''}`, 'requests', x.id); notify('requests', 'New request', `${me.name} requested ${x.title}`).catch(() => {}); }
       seerrMedia.t = 0; db.requests.push(x); save(); audit(me.name, me.role !== 'admin' && (me.autoApprove || rule) ? 'Requested (auto-approved' + (rule ? ' by rule ' + x.rule : '') + ')' : 'Requested', x.title + (b.via === 'watchlist' ? ' (watchlist)' : ''));
       return [200, x];
     };
@@ -3713,6 +3714,21 @@ const goatServer = http.createServer(async (req, res) => {
       const v = await wrapped(year, u);
       if (v.watch && v.sid) grant(me, v.sid, [...v.watch.topShows, ...v.watch.topMovies].map(x => x.thumb).filter(Boolean));
       return send(res, 200, { ...v, people: me.role === 'admin' ? db.users.map(x => ({ id: x.id, name: x.name })) : undefined });
+    }
+    // Pause (or resume) every download client at once: the "Pause all" button on a phone's download notification.
+    if (p === '/api/downloads/all' && m === 'POST') {
+      if (deny('control', 'control downloads')) return;
+      const b = await readBody(req), op = b.op === 'resume' ? 'resume' : 'pause', done = [], failed = [];
+      for (const s of db.services.filter(x => svcOk(me, x) && (x.type === 'qbittorrent' || x.type === 'sabnzbd' || tclients.TYPES.includes(x.type)))) { try {
+        delete qbListCache[s.id];
+        if (s.type === 'sabnzbd') await sabGet(s, 'mode=' + op);
+        else if (s.type === 'qbittorrent') { const n = op === 'pause' ? ['stop', 'pause'] : ['start', 'resume'];
+          try { await qb(s, '/api/v2/torrents/' + n[0], { hashes: 'all' }); } catch (e) { if (!e.nf) throw e; await qb(s, '/api/v2/torrents/' + n[1], { hashes: 'all' }); } }
+        else await tclients.clientFor(s).act(op, 'all', {});
+        done.push(s.name);
+      } catch (e) { failed.push(s.name + ': ' + e.message); } }
+      audit(me.name, op === 'pause' ? 'Paused all downloads' : 'Resumed all downloads', done.join(', '));
+      return send(res, 200, { op, done, failed });
     }
     if (p === '/api/notifications' && m === 'GET') {
       const q = new URL(req.url, 'http://x').searchParams, after = Math.max(0, +q.get('after') || 0), f = db.feed || { n: 0, items: [] };

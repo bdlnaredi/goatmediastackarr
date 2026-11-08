@@ -134,6 +134,9 @@ fun GoatTheme(themeId: String, styleId: String = "cinema", content: @Composable 
         }
     }
     CompositionLocalProvider(LocalGoat provides palette, LocalStyle provides style) {
-        MaterialTheme(colorScheme = scheme, typography = typography(style), content = content)
+        MaterialTheme(colorScheme = scheme, typography = typography(style)) {
+            // The ripple, and a ring around whatever has the focus (Android TV's D-pad, a keyboard).
+            CompositionLocalProvider(androidx.compose.foundation.LocalIndication provides FocusRing(palette.primary), content = content)
+        }
     }
 }

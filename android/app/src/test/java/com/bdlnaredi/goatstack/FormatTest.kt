@@ -79,4 +79,28 @@ class FormatTest {
         val t = Api {}.json.decodeFromString<com.bdlnaredi.goatstack.data.TitleInfo>("""{"type":"tv","id":5,"title":"X","cast":[{"name":"A"}],"library":{"sid":"s1","id":2,"kind":"tv"},"new":1}""")
         assertEquals("s1", t.library!!.sid); assertEquals("A", t.cast[0].name)
     }
+
+    @Test fun listWidget() {
+        val today = LocalDate.of(2026, 11, 9)
+        val up = com.bdlnaredi.goatstack.data.Upcoming(calendar = listOf(
+            com.bdlnaredi.goatstack.data.CalItem(date = "2026-11-08", title = "Old"),
+            com.bdlnaredi.goatstack.data.CalItem(date = "2026-11-10T20:00:00Z", title = "Show", sub = "S01E02"),
+            com.bdlnaredi.goatstack.data.CalItem(date = "2026-11-09", title = "Film"),
+        ))
+        assertEquals(listOf("Today · Film", "Tomorrow · Show S01E02"), GoatListWidget.rows(up, today))
+        assertEquals(listOf("Nothing coming up this week"), GoatListWidget.rows(com.bdlnaredi.goatstack.data.Upcoming(), today))
+        val reqs = listOf(com.bdlnaredi.goatstack.data.MediaRequest(status = "pending"), com.bdlnaredi.goatstack.data.MediaRequest(status = "approved", stage = "available"))
+        assertEquals("1 request waiting for you", GoatListWidget.reqLine(true, reqs))
+        assertEquals("1 of your requests on the way", GoatListWidget.reqLine(false, reqs))
+        assertEquals("", GoatListWidget.reqLine(true, null))
+    }
+
+    @Test fun notificationButtons() {
+        val a = com.bdlnaredi.goatstack.data.NotifyAction
+        assertEquals(listOf("approve", "decline"), a.actionsFor("request", "r1", true).map { it.second })
+        assertTrue(a.actionsFor("request", "", true).isEmpty())
+        assertEquals(listOf("pause"), a.actionsFor("download", "", true).map { it.second })
+        assertTrue(a.actionsFor("download", "", false).isEmpty())
+        assertTrue(a.actionsFor("ready", "", true).isEmpty())
+    }
 }
