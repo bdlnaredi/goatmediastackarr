@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+## v1.0.16 — 2026-11-08
+
 - Suggestions (in the Server menu, and More in the app): anyone can suggest an idea or report a problem, and vote for the ones they want too (most wanted first). Admins send them on to the project's GitHub Issues: in one click with a GitHub token saved on that page, or without one by opening GitHub's new-issue page already filled in. Names are not sent unless the admin turns that on.
 - Import finished downloads (Settings → Download rules): each download waiting to be imported has a **Don't import** button that takes it off the list for good, and **Don't import any** clears them all at once. They stay in Downloads. A download you removed from qBittorrent no longer stays on the list as waiting.
 - autobrr's page and API work behind /engines/autobrr (autobrr ignored that address for its API until told otherwise). Existing autobrr settings are fixed on the next start.
