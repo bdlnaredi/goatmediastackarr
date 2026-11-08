@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- Sort downloads by download or upload speed, time left, progress, seeders, peers, ratio, size or name (as well as newest and active first), on the web and in the app. The ⇅ button turns the order around, and your choice is remembered.
+
 ## v1.0.13 — 2026-11-08
 
 - Android app, Downloads: tap a download (or its category) to change its category, pause it or remove it. Pause and resume are their own button now, and the ⋮ button opens the rest.

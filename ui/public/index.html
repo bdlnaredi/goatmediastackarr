@@ -1752,7 +1752,9 @@ const msBase=id=>'/api/'+((services.find(x=>x.id===id)||{}).type||'plex')+'/'+id
 const first=t=>{const l=ofType(t);return l.find(s=>s.id===UI['pick_'+t])||l[0]};
 const ago=t=>{const s=(Date.now()-t)/1000;return !t?'a while ago':s<90?'just now':s<5400?Math.round(s/60)+' min ago':s<129600?Math.round(s/3600)+' h ago':Math.round(s/86400)+' days ago'};
 const noSvc=n=>{$('#m').innerHTML=`<div class="panel">Connect ${n} first (Settings, then Apps), or ask the admin for access.</div>`};
-let dlSort='added';
+// How the downloads are ordered (kept per browser), and whether the order is turned around.
+const DL_SORTS=[['added','Newest added'],['status','Status (active first)'],['dl','Download speed'],['ul','Upload speed'],['eta','Time left'],['progress','Progress'],['seeds','Seeders'],['peers','Peers'],['ratio','Ratio'],['size','Largest size'],['name','Name (A to Z)']];
+let dlSort=(()=>{try{const v=localStorage.getItem('mh-dlsort');return DL_SORTS.some(x=>x[0]===v)?v:'added'}catch{return 'added'}})(),dlRev=(()=>{try{return localStorage.getItem('mh-dlrev')==='1'}catch{return false}})();
 const rank=s=>/^(downloading|forcedDL|metaDL|forcedMetaDL)$/.test(s)?0:s==='stalledDL'?1:/^queued/.test(s)?2:/^(uploading|stalledUP|forcedUP)$/.test(s)?3:/^(paused|stopped)/.test(s)?4:5;
 const HIST=60,dlH=[],ulH=[],cpuH=[],memH=[];
 const hp=(a,v)=>{a.push(+v||0);if(a.length>HIST)a.shift()};
@@ -1836,7 +1838,7 @@ function dlView(){
     <div class="row" style="margin:14px 0">${QB?'<button id="alt">Speed limits</button>':''}<button id="pa">${ic('pause')}Pause all</button><button id="ra">${ic('play')}Resume all</button><button id="hs">${ic('hist')}History</button>
     ${admin&&QB?`<button id="lm">Speed limit settings</button><button id="cm">Categories and tags</button>`:''}${!QB?`<span class="mute" style="font-size:13px">${s.type==='deluge'?'Deluge':'ruTorrent'}: categories are its labels. Speed limits and schedules stay in its own page.</span>`:''}</div>
     <div class="row" style="margin-bottom:12px"><input id="sq" type="search" placeholder="Search torrents" aria-label="Search torrents" style="flex:1;min-width:150px">
-    <select id="sc" aria-label="Category"></select><select id="so" aria-label="Sort"><option value="added">Newest added</option><option value="size">Largest size</option><option value="status">Status (active first)</option></select>
+    <select id="sc" aria-label="Category"></select><select id="so" aria-label="Sort">${DL_SORTS.map(([k,n])=>`<option value="${k}">${n}</option>`).join('')}</select><button class="icon${dlRev?' on':''}" id="sor" title="Reverse the order" aria-label="Reverse the order" aria-pressed="${dlRev}">⇅</button>
     ${can('add')?`<button class="primary" id="ad">${ic('rq')}Add downloads</button>`:''}</div>
     <div class="row" style="margin-bottom:8px;justify-content:space-between"><div class="seg" id="fl">${[['all','All'],['downloading','Downloading'],['seeding','Seeding'],['paused','Paused'],['active','Active'],['errors','Errors']].map(([k,n])=>`<button data-f="${k}" data-n="${n}">${n}<i></i></button>`).join('')}</div><label class="chk" style="margin:0"><input type="checkbox" id="sa" aria-label="Select all shown torrents"><span>Select all</span></label></div>
     <div class="row" id="bk" style="display:none;margin:10px 0;position:sticky;top:8px;z-index:3;background:var(--s1);border:1px solid var(--line);border-radius:14px;padding:10px 12px"></div>
@@ -1864,7 +1866,11 @@ function dlView(){
     document.querySelectorAll('#fl [data-f]').forEach(b=>{b.querySelector('i').textContent=cnt[b.dataset.f];b.classList.toggle('on',b.dataset.f===dlF)});
     const qv=dlQ.toLowerCase();
     vis=t.filter(x=>(dlF==='all'||(dlF==='active'?(x.dlspeed>0||x.upspeed>0):stOf(x.state)===dlF))&&(!dlCat||(dlCat==='__none'?!x.category:x.category===dlCat))&&(!qv||x.name.toLowerCase().includes(qv)));
-    const k={added:(a,b)=>b.added-a.added,size:(a,b)=>b.size-a.size,status:(a,b)=>rank(a.state)-rank(b.state)||b.added-a.added}[dlSort];
+    // Time left: finished ones and ones with no estimate (qBittorrent says 8640000) go last.
+    const eta=t=>t.progress>=1||!(t.eta>0)||t.eta>=8640000?Infinity:t.eta;
+    const k0={added:(a,b)=>b.added-a.added,size:(a,b)=>b.size-a.size,status:(a,b)=>rank(a.state)-rank(b.state)||b.added-a.added,dl:(a,b)=>b.dlspeed-a.dlspeed||b.added-a.added,ul:(a,b)=>b.upspeed-a.upspeed||b.added-a.added,
+      eta:(a,b)=>{const x=eta(a),y=eta(b);return (x===y?0:x<y?-1:1)||b.dlspeed-a.dlspeed},progress:(a,b)=>b.progress-a.progress||b.added-a.added,seeds:(a,b)=>(b.seeds||0)-(a.seeds||0)||b.added-a.added,peers:(a,b)=>(b.peers||0)-(a.peers||0)||b.added-a.added,
+      ratio:(a,b)=>(b.ratio||0)-(a.ratio||0),name:(a,b)=>String(a.name).localeCompare(String(b.name),undefined,{numeric:true,sensitivity:'base'})}[dlSort]||((a,b)=>b.added-a.added),k=dlRev?(a,b)=>k0(b,a):k0;
     vis.sort(k);syncMaster();
     const nk=vis.map(x=>x.hash).join();
     if(nk===key){if(vis.length)[...$('#l').children].forEach((el,i)=>vis[i]&&upd(el,vis[i]));return}
@@ -1901,7 +1907,8 @@ function dlView(){
   $('#fl').onclick=e=>{const b=e.target.closest('[data-f]');if(!b)return;dlF=b.dataset.f;key=null;paint()};
   $('#sq').oninput=e=>{dlQ=e.target.value;key=null;paint()};
   $('#sc').onchange=e=>{dlCat=e.target.value;key=null;paint()};
-  $('#so').onchange=e=>{dlSort=e.target.value;key=null;paint()};
+  $('#so').onchange=e=>{dlSort=e.target.value;try{localStorage.setItem('mh-dlsort',dlSort)}catch{}key=null;paint()};
+  $('#sor').onclick=e=>{dlRev=!dlRev;e.currentTarget.setAttribute('aria-pressed',dlRev);e.currentTarget.classList.toggle('on',dlRev);try{localStorage.setItem('mh-dlrev',dlRev?'1':'0')}catch{}key=null;paint()};
   $('#sa').onchange=e=>{if(e.target.checked)vis.forEach(x=>dlSel.add(x.hash));else vis.forEach(x=>dlSel.delete(x.hash));key=null;paint();bulkBar()};
   if($('#alt'))$('#alt').onclick=async()=>{try{await api(`/api/qb/${s.id}/alt`,'POST');await draw()}catch(x){toast(x.message,'bad')}};
   $('#pa').onclick=()=>run('pause','all');$('#ra').onclick=()=>run('resume','all');

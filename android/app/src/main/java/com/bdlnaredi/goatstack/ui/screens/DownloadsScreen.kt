@@ -3,6 +3,7 @@ package com.bdlnaredi.goatstack.ui.screens
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.SwapVert
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
@@ -162,6 +163,29 @@ fun AutoRefresh(ms: Long, reload: () -> Unit) {
     LaunchedEffect(ms) { if (!com.bdlnaredi.goatstack.ui.Tuning.still) while (true) { delay(ms); reload() } }
 }
 
+private val DL_SORTS = listOf("added" to "Newest", "status" to "Active first", "dl" to "Down speed", "ul" to "Up speed", "eta" to "Time left", "progress" to "Progress",
+    "seeds" to "Seeders", "peers" to "Peers", "ratio" to "Ratio", "size" to "Size", "name" to "Name")
+
+/** Biggest (or soonest) first; finished ones and ones with no estimate go last for time left. */
+private fun dlComparator(sort: String): Comparator<Torrent> {
+    val newest = compareByDescending<Torrent> { it.added }
+    fun eta(t: Torrent) = if (t.done || t.eta <= 0 || t.eta >= 8640000) Long.MAX_VALUE else t.eta
+    fun rank(t: Torrent) = when { !t.paused && !t.done -> 0; !t.paused && t.upspeed > 0 -> 1; !t.paused -> 2; else -> 3 }
+    return when (sort) {
+        "status" -> compareBy<Torrent> { rank(it) }.then(newest)
+        "dl" -> compareByDescending<Torrent> { it.dlspeed }.then(newest)
+        "ul" -> compareByDescending<Torrent> { it.upspeed }.then(newest)
+        "eta" -> compareBy<Torrent> { eta(it) }.thenByDescending { it.dlspeed }
+        "progress" -> compareByDescending<Torrent> { it.progress }.then(newest)
+        "seeds" -> compareByDescending<Torrent> { it.seeds }.then(newest)
+        "peers" -> compareByDescending<Torrent> { it.peers }.then(newest)
+        "ratio" -> compareByDescending<Torrent> { it.ratio }.then(newest)
+        "size" -> compareByDescending<Torrent> { it.size }.then(newest)
+        "name" -> compareBy(String.CASE_INSENSITIVE_ORDER) { it.name }
+        else -> newest
+    }
+}
+
 @Composable
 private fun Torrents(sid: String, qbit: Boolean = true) {
     val ctx = LocalCtx.current
@@ -182,6 +206,9 @@ private fun Torrents(sid: String, qbit: Boolean = true) {
     AutoRefresh(ctx.prefs.refreshMs) { data.reload() }
     val canControl = ctx.user.can("control")
     val cats = meta.value?.categories.orEmpty()
+    val sp = androidx.compose.ui.platform.LocalContext.current.getSharedPreferences("downloads", android.content.Context.MODE_PRIVATE)
+    var sort by remember { mutableStateOf(sp.getString("sort", "added")?.takeIf { k -> DL_SORTS.any { it.first == k } } ?: "added") }
+    var rev by remember { mutableStateOf(sp.getBoolean("rev", false)) }
 
     fun act(action: String, hashes: Any, ok: String, files: Boolean = false) {
         scope.launch {
@@ -217,6 +244,11 @@ private fun Torrents(sid: String, qbit: Boolean = true) {
             // ruTorrent and Deluge make their labels themselves when one is first used; managing them is qBittorrent's.
             if (ctx.user.admin && qbit) GhostButton("Categories", icon = Icons.Rounded.Folder, modifier = Modifier.weight(1f), onClick = { managing = true })
         }
+        // How they are ordered (kept on this phone), and the ⇅ button turns it around.
+        Row(Modifier.fillMaxWidth().padding(end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            ChoiceRow(DL_SORTS, sort, { sort = it; sp.edit().putString("sort", it).apply() }, Modifier.weight(1f))
+            IconButton(onClick = { rev = !rev; sp.edit().putBoolean("rev", rev).apply() }) { Icon(Icons.Rounded.SwapVert, if (rev) "Order: reversed" else "Reverse the order", tint = if (rev) g.primary else g.muted) }
+        }
         val list = q.torrents.filter { cat == null || it.category == cat }.filter {
             when (filter) {
                 "active" -> !it.paused && (!it.done || it.dlspeed > 0 || it.upspeed > 0)
@@ -224,7 +256,7 @@ private fun Torrents(sid: String, qbit: Boolean = true) {
                 "paused" -> it.paused
                 else -> true
             }
-        }.sortedByDescending { it.added }
+        }.sortedWith(dlComparator(sort)).let { if (rev) it.reversed() else it }
         if (list.isEmpty()) EmptyState(Icons.Rounded.Download, "Nothing here", if (filter == "active") "No downloads are running right now." else "No downloads match.")
         else LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             items(list, key = { it.hash }) { t ->
