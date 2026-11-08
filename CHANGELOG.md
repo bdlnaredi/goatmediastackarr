@@ -4,12 +4,10 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
-<<<<<<< Updated upstream
+- Unpackerr is built in: add `unpackerr` to the apps to run (GOAT_ENGINES) and downloads that arrive as .rar, .zip or .7z archives are unpacked so Sonarr, Radarr and Lidarr can import them, then the unpacked copy is removed after the import (the archive keeps seeding). It is connected to those apps for you, shows on the Stack page with start, stop and restart, and logs to appdata/goatmediastackarr/unpackerr. Torrents only by default (SABnzbd unpacks its own); `UNPACKERR_PROTOCOLS=torrent,usenet` adds Usenet.
+
 ## v1.0.14 — 2026-11-08
 
-=======
-- Unpackerr is built in: add `unpackerr` to the apps to run (GOAT_ENGINES) and downloads that arrive as .rar, .zip or .7z archives are unpacked so Sonarr, Radarr and Lidarr can import them, then the unpacked copy is removed after the import (the archive keeps seeding). It is connected to those apps for you, shows on the Stack page with start, stop and restart, and logs to appdata/goatmediastackarr/unpackerr. Torrents only by default (SABnzbd unpacks its own); `UNPACKERR_PROTOCOLS=torrent,usenet` adds Usenet.
->>>>>>> Stashed changes
 - Adding from Search now asks where it goes, its quality, what to monitor (and for shows the series type and season folders; for movies the minimum availability), and whether to start searching now, on the web and in the app.
 - The last choices for adding or requesting (folder, quality, monitor and the rest) are remembered, for shows and movies apart, and offered again in Search, Discover's request options and Music & books.
 - RSS: set how often qBittorrent checks the feeds, how many articles it keeps, and turn reading the feeds or the download rules on and off (Feeds, for admins; web and app).
