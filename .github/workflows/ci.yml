@@ -76,7 +76,7 @@ jobs:
           mkdir -p /tmp/goat/config /tmp/goat/media /tmp/goat/downloads
           docker run -d --name goat -p 2806:2806 -p 8096:8096 \
             -e PUID=1001 -e PGID=121 -e TZ=Asia/Kolkata \
-            -e GOAT_ENGINES=sonarr,radarr,lidarr,prowlarr,bazarr,qbittorrent,rutorrent,deluge,sabnzbd,jellyfin,seerr,tautulli,unpackerr \
+            -e GOAT_ENGINES=sonarr,radarr,lidarr,prowlarr,bazarr,qbittorrent,rutorrent,deluge,sabnzbd,jellyfin,seerr,tautulli,unpackerr,cross-seed,autobrr \
             -v /tmp/goat/config:/config -v /tmp/goat/media:/media -v /tmp/goat/downloads:/downloads \
             --cap-add=NET_ADMIN --device=/dev/net/tun \
             --sysctl net.ipv4.conf.all.src_valid_mark=1 --sysctl net.ipv4.conf.all.rp_filter=2 \
@@ -97,6 +97,7 @@ jobs:
             [tautulli]=http://127.0.0.1:8181/engines/tautulli/
             [rutorrent]='-u goat:$(jq -r .rutorrentPass /config/goat/secrets.json) http://127.0.0.1:8090/'
             [deluge]=http://127.0.0.1:8112/
+            [autobrr]=http://127.0.0.1:7474/engines/autobrr/api/healthz/liveness
             [ui]=http://127.0.0.1:2806/api/health )
           for i in $(seq 1 90); do
             missing=""
@@ -106,6 +107,15 @@ jobs:
           done
           echo "::error title=Not answering after 15 minutes::$missing"
           docker logs goat 2>&1 | tail -60 | sed 's/^/::error::/'; exit 1
+      - name: cross-seed is set up from the stack
+        run: |
+          # No trackers in this test's Prowlarr, so cross-seed should say it waits for one (and its program must be there).
+          docker exec goat /opt/cross-seed/node_modules/.bin/cross-seed --version
+          for i in $(seq 1 30); do
+            if docker logs goat 2>&1 | grep -q 'cross-seed waits for torrent trackers in Prowlarr\|cross-seed searches'; then docker logs goat 2>&1 | grep 'cross-seed' | tail -3 | sed 's/^/::notice::/'; exit 0; fi
+            sleep 10
+          done
+          echo "::error::cross-seed did not start its setup"; docker logs goat 2>&1 | grep -i 'cross-seed' | tail -15 | sed 's/^/::error::/'; exit 1
       - name: Unpackerr runs and watches the apps
         run: |
           for i in $(seq 1 30); do

@@ -1,0 +1,4 @@
+#!/bin/sh
+# Exit code $1: pause briefly so a crashing engine does not restart in a tight loop.
+[ "$1" != 0 ] && [ "$1" != 256 ] && sleep 3
+exit 0

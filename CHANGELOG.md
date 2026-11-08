@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- cross-seed is built in: add `cross-seed` to the apps to run and the torrents you already have are found on your other trackers and seeded there too, with no extra download or space (hard links). It is set up for you from Prowlarr's trackers, qBittorrent, Sonarr and Radarr, checks the trackers' feeds every 30 minutes and searches recent torrents daily. Through the VPN when qBittorrent is.
+- autobrr is built in: add `autobrr` to the apps to run, open it from the Stack page, and it grabs new releases from your trackers' IRC announce channels the moment they appear. Through the VPN when qBittorrent is.
 - Invite friends, all in one link: an invite can now also share your Plex libraries with their Plex account (pick which; plex.tv sends them the invite) and make them a Jellyfin account with the same name and password. Add a welcome note, and the first time they sign in they get a short guide: accept the Plex invite, sign in to Jellyfin, how to request, and the Android app.
 ## v1.0.15 — 2026-11-08
 

@@ -23,7 +23,7 @@ vpn_list="${VPN_APPS,,}"
 in_list prowlarr "$vpn_list" && vpn_list="$vpn_list,flaresolverr"
 # ruTorrent's rTorrent and Deluge's daemon download torrents, so they follow qBittorrent onto the VPN. Their web pages
 # (rutorrent-web, deluge-web) never use the VPN: they must answer on your network.
-in_list qbittorrent "$vpn_list" && vpn_list="$vpn_list,rutorrent,deluge"
+in_list qbittorrent "$vpn_list" && vpn_list="$vpn_list,rutorrent,deluge,autobrr,cross-seed"
 # The site browser's helper always uses the VPN when the VPN is on (sites added "without the VPN" do not use it at all).
 vpn_list="$vpn_list,sitefetch"
 if [[ "${VPN_ENABLED,,}" == "true" ]] && in_list "$name" "$vpn_list"; then
@@ -164,6 +164,25 @@ case "$name" in
       as "$fb" -d "$db" config init "${opts[@]}" >/dev/null && as "$fb" -d "$db" users add goat "$(head -c 24 /dev/urandom | base64 | tr -dc A-Za-z0-9)" --perm.admin >/dev/null
     else as "$fb" -d "$db" config set "${opts[@]}" >/dev/null; fi
     cmd=("$fb" -d "$db") ;;
+  cross-seed)
+    mkdir -p /config/cross-seed && chown -R "$PUID:$PGID" /config/cross-seed
+    export CONFIG_DIR=/config/cross-seed
+    node /opt/goat/bin/crossseed.js; rc=$?
+    if (( rc == 3 )); then sleep 300; exit 1; fi
+    (( rc == 0 )) || { sleep 60; exit 1; }
+    chown -R "$PUID:$PGID" /config/cross-seed "${DOWNLOADS_DIR:-/downloads}/cross-seed" 2>/dev/null || true
+    cmd=(/opt/cross-seed/node_modules/.bin/cross-seed daemon) ;;
+  autobrr)
+    # autobrr's own settings: behind GoatMediaStackarr's address at /engines/autobrr, listening inside the container only.
+    mkdir -p /config/autobrr && chown "$PUID:$PGID" /config/autobrr
+    f=/config/autobrr/config.toml
+    if [[ ! -s "$f" ]]; then
+      printf '# Made by GoatMediaStackarr on first start; your changes here are kept.\nhost = "127.0.0.1"\nport = %s\nbaseUrl = "/engines/autobrr/"\nlogPath = "/config/autobrr/logs/autobrr.log"\nlogLevel = "INFO"\ncheckForUpdates = false\nsessionSecret = "%s"\n' \
+        "${GOAT_PORT_AUTOBRR:-7474}" "$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')" > "$f"
+      chown "$PUID:$PGID" "$f"; chmod 600 "$f"
+    fi
+    mkdir -p /config/autobrr/logs && chown "$PUID:$PGID" /config/autobrr/logs
+    cmd=(/usr/local/bin/autobrr --config /config/autobrr) ;;
   unpackerr)
     # Unpackerr: unpacks downloads that come as .rar (and .zip, .7z…) archives, so Sonarr, Radarr and Lidarr can import
     # them, then removes the unpacked copy once they have. It watches each app's queue through its API key.

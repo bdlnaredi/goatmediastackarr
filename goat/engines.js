@@ -35,6 +35,10 @@ const ENGINES = {
   // Off unless added to GOAT_ENGINES: unpacks downloads that arrive as .rar/.zip/.7z archives so Sonarr, Radarr and
   // Lidarr can import them. No page of its own (the port is not used).
   unpackerr:   { name: 'Unpackerr',   port: 5656, base: '' },
+  // Off unless added to GOAT_ENGINES. cross-seed: finds your torrents on your other trackers and seeds them there
+  // too (no extra download). autobrr: grabs new releases from tracker IRC announce channels the moment they appear.
+  'cross-seed': { name: 'cross-seed', port: 2468, base: '' },
+  autobrr:     { name: 'autobrr',     port: 7474, base: '/engines/autobrr' },
   // Always there unless GOAT_FILEBROWSER=false: the media and downloads folders in the browser, for admins.
   filebrowser: { name: 'File Browser', port: 8095, base: '/engines/filebrowser' },
 };

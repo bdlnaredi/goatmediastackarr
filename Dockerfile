@@ -90,6 +90,15 @@ RUN --mount=type=secret,id=GITHUB_TOKEN,env=GITHUB_TOKEN \
 # ---------- Node runtime for the GoatMediaStackarr UI, the wiring script and Seerr ----------
 FROM node:${NODE_VERSION}-bookworm-slim AS node
 
+# ---------- cross-seed (a Node program) with its own packages ----------
+FROM node:${NODE_VERSION}-bookworm-slim AS crossseed
+ARG CROSSSEED_VERSION=6
+RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ ca-certificates && \
+    mkdir -p /opt/cross-seed && cd /opt/cross-seed && npm init -y >/dev/null && \
+    npm install --omit=dev --no-audit --no-fund "cross-seed@${CROSSSEED_VERSION}" && \
+    node -e "console.log('cross-seed', require('/opt/cross-seed/node_modules/cross-seed/package.json').version)" && \
+    node -p "require('/opt/cross-seed/node_modules/cross-seed/package.json').version" > /opt/cross-seed/.goat-version
+
 # ---------- Final image ----------
 FROM ubuntu:24.04
 
@@ -204,6 +213,14 @@ RUN --mount=type=secret,id=GITHUB_TOKEN,env=GITHUB_TOKEN \
     mkdir -p /tmp/up && if tar -tzf /tmp/unpackerr.gz >/dev/null 2>&1; then tar -xzf /tmp/unpackerr.gz -C /tmp/up && f=$(find /tmp/up -type f -name 'unpackerr*' ! -name '*.*' | head -n1) && mv "$f" /usr/local/bin/unpackerr; \
     else gunzip -c /tmp/unpackerr.gz > /usr/local/bin/unpackerr; fi && rm -rf /tmp/up /tmp/unpackerr.gz && chmod +x /usr/local/bin/unpackerr && /usr/local/bin/unpackerr --version
 
+# autobrr: grabs releases from tracker IRC announce channels (one small program; runs when in GOAT_ENGINES).
+ARG AUTOBRR_VERSION=latest
+RUN --mount=type=secret,id=GITHUB_TOKEN,env=GITHUB_TOKEN \
+    a=$([ "$TARGETARCH" = arm64 ] && echo arm64 || echo x86_64) && \
+    fetch-release autobrr/autobrr "${AUTOBRR_VERSION}" "^autobrr_[^/]*_linux_${a}\.tar\.gz$" /tmp/autobrr.tgz /opt/goat/versions/autobrr && \
+    mkdir -p /tmp/ab && tar -xzf /tmp/autobrr.tgz -C /tmp/ab && mv /tmp/ab/autobrr /usr/local/bin/autobrr && ([ -f /tmp/ab/autobrrctl ] && mv /tmp/ab/autobrrctl /usr/local/bin/ || true) && \
+    rm -rf /tmp/ab /tmp/autobrr.tgz && chmod +x /usr/local/bin/autobrr && /usr/local/bin/autobrr version
+
 # Bazarr and SABnzbd, built in the python stage above.
 COPY --from=python /opt/bazarr /opt/bazarr
 COPY --from=python /opt/sabnzbd /opt/sabnzbd
@@ -238,6 +255,8 @@ RUN --mount=type=secret,id=GITHUB_TOKEN,env=GITHUB_TOKEN \
 # Node.js for the UI, the wiring script and Seerr.
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
 COPY --from=seerr /app /opt/seerr
+COPY --from=crossseed /opt/cross-seed /opt/cross-seed
+RUN cp /opt/cross-seed/.goat-version /opt/goat/versions/cross-seed 2>/dev/null || true
 
 # GoatMediaStackarr itself: the UI (built from MediaHub), the setup scripts and the service definitions.
 COPY ui /opt/goat/ui
