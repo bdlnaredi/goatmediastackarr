@@ -42,6 +42,11 @@ class AppState(val store: Store) {
         private set
     var lastLibrary: String = ""
         private set
+    /** The server's address at home (see [watchNetwork]), and whether the app is using it right now. */
+    var home: String = ""
+        private set
+    private val _atHome = MutableStateFlow(false)
+    val atHome: StateFlow<Boolean> = _atHome
 
     init {
         scope.launch {
@@ -52,12 +57,68 @@ class AppState(val store: Store) {
             lastLibrary = s.library
             // Only if nothing else (a sign-in, a new server) happened while the settings were being read.
             if (_phase.value is Phase.Starting) {
-                server = s.server
+                server = s.server; home = s.home
                 if (s.server.isEmpty()) _phase.value = Phase.NeedServer
-                else { api.configure(s.server, s.sid); refresh() }
+                else { api.configure(s.server, s.sid); if (home.isNotEmpty()) pickBase(); refresh() }
             }
         }
         scope.launch { api.signedOut.collect { if (_phase.value is Phase.Ready) refresh() } }
+    }
+
+    // ---------- Home address (like nzb360): on Wi-Fi, when the server answers at its home address, the app talks to it
+    // there (fast, and it works when the internet is down); anywhere else it uses the main address. Same sign-in.
+    private var cm: android.net.ConnectivityManager? = null
+    private var pickJob: kotlinx.coroutines.Job? = null
+
+    /** Follows the phone's network, so the app switches between the home and the main address by itself. */
+    fun watchNetwork(context: android.content.Context) {
+        val c = context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager ?: return
+        cm = c
+        runCatching {
+            c.registerDefaultNetworkCallback(object : android.net.ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: android.net.Network) { scope.launch { pickBase() } }
+                override fun onCapabilitiesChanged(network: android.net.Network, caps: android.net.NetworkCapabilities) { scope.launch { pickBase() } }
+                override fun onLost(network: android.net.Network) { scope.launch { pickBase() } }
+            })
+        }
+    }
+
+    private fun onLan(): Boolean {
+        val c = cm ?: return true   // not known (tests): try the home address anyway
+        val caps = c.getNetworkCapabilities(c.activeNetwork) ?: return false
+        return caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) || caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET)
+    }
+
+    /** Answers at that address within a couple of seconds, as GoatMediaStackarr. */
+    private suspend fun answers(url: String): Boolean = kotlinx.coroutines.withContext(Dispatchers.IO) {
+        runCatching {
+            val quick = api.client.newBuilder().connectTimeout(2, java.util.concurrent.TimeUnit.SECONDS).readTimeout(3, java.util.concurrent.TimeUnit.SECONDS).build()
+            quick.newCall(okhttp3.Request.Builder().url(url.trimEnd('/') + "/api/me").build()).execute().use { r -> r.isSuccessful && (r.body?.string() ?: "").contains("\"version\"") }
+        }.getOrDefault(false)
+    }
+
+    /** Picks the address to use now. A short wait first, so a burst of network changes is one check. */
+    fun pickBase() {
+        pickJob?.cancel()
+        pickJob = scope.launch {
+            kotlinx.coroutines.delay(400)
+            if (server.isEmpty()) return@launch
+            val useHome = home.isNotEmpty() && onLan() && answers(home)
+            val want = if (useHome) home else server
+            val was = _atHome.value
+            if (api.base != want.trimEnd('/')) api.useBase(want)
+            _atHome.value = useHome
+            if (was != useHome && _phase.value is Phase.Offline) refresh()
+        }
+    }
+
+    /** Sets (or clears, with "") the home address. Checks it is this server first; returns a problem in words, or null. */
+    suspend fun setHome(address: String): String? {
+        if (address.isBlank()) { store.setHome(""); home = ""; pickBase(); return null }
+        val url = Api.normalizeServer(address) ?: return "That does not look like an address. Try something like 192.168.1.10:2806"
+        if (!answers(url)) return "GoatMediaStackarr did not answer at $url. Check the address, and that this phone is on your home Wi-Fi."
+        store.setHome(url); home = url; pickBase()
+        return null
     }
 
     /** Asks the server who we are, and moves to the sign-in or the app accordingly. */
@@ -86,7 +147,7 @@ class AppState(val store: Store) {
         return try {
             val me = api.get<Me>("/api/me")
             if (me.version.isEmpty()) return "Something answered at that address, but it is not GoatMediaStackarr."
-            store.setServer(url); server = url
+            store.setServer(url); server = url; home = ""; _atHome.value = false
             if (me.user != null) { loadServices(); _phase.value = Phase.Ready(me, me.user) } else _phase.value = Phase.NeedLogin(me)
             null
         } catch (e: Exception) { e.message ?: "Could not reach it" }

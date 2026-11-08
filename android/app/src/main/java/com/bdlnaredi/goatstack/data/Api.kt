@@ -43,6 +43,8 @@ class Api(private val onSession: (String?) -> Unit) {
     val signedOut: SharedFlow<Unit> = _signedOut
 
     fun configure(server: String, session: String?) { base = server.trimEnd('/'); sid = session }
+    /** The same server and sign-in at another address (its home address on Wi-Fi, or back to the main one). */
+    fun useBase(server: String) { base = server.trimEnd('/') }
 
     private fun ours(url: okhttp3.HttpUrl): Boolean {
         val b = base.toHttpUrlOrNull() ?: return false

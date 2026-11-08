@@ -29,15 +29,18 @@ class Store(private val ctx: Context) {
     private val kPrefs = stringPreferencesKey("prefs")
     private val kFeed = stringPreferencesKey("feedLast")
     private val kUpd = stringPreferencesKey("notifiedUpdate")
+    private val kHome = stringPreferencesKey("homeServer")
 
-    data class Saved(val server: String, val sid: String?, val theme: String, val library: String, val prefs: Prefs = Prefs())
+    data class Saved(val server: String, val sid: String?, val theme: String, val library: String, val prefs: Prefs = Prefs(), val home: String = "")
 
-    private fun read(p: Preferences) = Saved(p[kServer].orEmpty(), p[kSid], p[kTheme] ?: "goat", p[kLibrary].orEmpty(), Prefs.parse(p[kPrefs].orEmpty()))
+    private fun read(p: Preferences) = Saved(p[kServer].orEmpty(), p[kSid], p[kTheme] ?: "goat", p[kLibrary].orEmpty(), Prefs.parse(p[kPrefs].orEmpty()), p[kHome].orEmpty())
 
     val saved: Flow<Saved> = ctx.store.data.map(::read)
     suspend fun load(): Saved = read(ctx.store.data.first())
 
-    suspend fun setServer(v: String) = ctx.store.edit { it[kServer] = v; it.remove(kSid) }
+    suspend fun setServer(v: String) = ctx.store.edit { it[kServer] = v; it.remove(kSid); it.remove(kHome) }
+    /** The address to use at home (on Wi-Fi, when it answers), like nzb360's local address. Empty: always the main one. */
+    suspend fun setHome(v: String) = ctx.store.edit { it[kHome] = v }
     suspend fun setSid(v: String?) = ctx.store.edit { if (v == null) it.remove(kSid) else it[kSid] = v }
     suspend fun setTheme(v: String) = ctx.store.edit { it[kTheme] = v }
     suspend fun setLibrary(v: String) = ctx.store.edit { it[kLibrary] = v }

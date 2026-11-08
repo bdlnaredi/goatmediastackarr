@@ -1,5 +1,7 @@
 package com.bdlnaredi.goatstack.ui.screens
 
+import androidx.compose.runtime.collectAsState
+import androidx.compose.material.icons.rounded.Wifi
 import com.bdlnaredi.goatstack.data.tr
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.background
@@ -188,6 +190,8 @@ private fun Label(text: String) {
 
 @Composable
 fun SettingsScreen() {
+    var homeDialog by remember { mutableStateOf(false) }
+    if (homeDialog) HomeAddressDialog { homeDialog = false }
     val ctx = LocalCtx.current
     val g = LocalGoat.current
     val uri = LocalUriHandler.current
@@ -278,7 +282,10 @@ fun SettingsScreen() {
         item { SectionTitle("Server", Modifier.padding(top = 10.dp)) }
         item {
             GoatCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp), padding = 10.dp) {
-                SettingRow(Icons.Rounded.Dns, "Address", ctx.app.server)
+                val atHome by ctx.app.atHome.collectAsState()
+                SettingRow(Icons.Rounded.Dns, "Address", ctx.app.server + if (ctx.app.home.isNotEmpty() && !atHome) "  · in use" else "")
+                SettingRow(Icons.Rounded.Wifi, "Address at home", if (ctx.app.home.isEmpty()) "Not set. On your home Wi-Fi the app can use the server's local address (faster, and it works when the internet is down)"
+                    else ctx.app.home + if (atHome) "  · in use now (home Wi-Fi)" else "  · used on your home Wi-Fi", onClick = { homeDialog = true })
                 SettingRow(Icons.Rounded.Dns, "Version", ctx.me.version + if (ctx.me.goat) " · GoatMediaStackarr" else "")
                 SettingRow(Icons.Rounded.Language, "Open the web page", "Everything the app does not have yet", onClick = { runCatching { uri.openUri(ctx.app.server) } })
                 Spacer(Modifier.height(6.dp))
@@ -540,4 +547,40 @@ private fun PlexLinkRow() {
                 } catch (e: Exception) { toast(e.message ?: "That did not work") }
             }
         })
+}
+
+/** The server's local address, used on Wi-Fi when it answers there (like nzb360's local/home network address). */
+@Composable
+private fun HomeAddressDialog(onDone: () -> Unit) {
+    val ctx = LocalCtx.current
+    val g = LocalGoat.current
+    val scope = rememberCoroutineScope()
+    val toast = toaster()
+    var addr by remember { mutableStateOf(ctx.app.home.ifEmpty { "" }) }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = { if (!busy) onDone() }, containerColor = g.surface,
+        title = { Text("Address at home") },
+        text = {
+            Column {
+                Text("When this phone is on Wi-Fi and GoatMediaStackarr answers at this address, the app uses it instead of ${ctx.app.server}. Anywhere else it goes back by itself. You stay signed in.", color = g.muted, style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.height(10.dp))
+                androidx.compose.material3.OutlinedTextField(addr, { addr = it.trim(); error = null }, label = { Text("Like 192.168.1.10:2806") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                error?.let { Spacer(Modifier.height(8.dp)); Text(it, color = g.bad, style = MaterialTheme.typography.bodySmall) }
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(enabled = !busy && addr.isNotBlank(), onClick = {
+                busy = true; error = null
+                scope.launch { val e = ctx.app.setHome(addr); busy = false; if (e == null) { toast("Saved. The app uses it on your home Wi-Fi."); onDone() } else error = e }
+            }) { Text(if (busy) "Checking…" else "Save", color = g.primary) }
+        },
+        dismissButton = {
+            Row {
+                if (ctx.app.home.isNotEmpty()) androidx.compose.material3.TextButton(enabled = !busy, onClick = { scope.launch { ctx.app.setHome(""); toast("Home address removed"); onDone() } }) { Text("Remove", color = g.bad) }
+                androidx.compose.material3.TextButton(onClick = onDone, enabled = !busy) { Text("Cancel", color = g.muted) }
+            }
+        },
+    )
 }

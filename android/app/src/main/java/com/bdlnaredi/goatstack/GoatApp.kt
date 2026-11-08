@@ -15,6 +15,7 @@ class GoatApp : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         state = AppState(Store(this))
+        state.watchNetwork(this)
     }
 
     // Pictures go through the same connection as everything else, so artwork the server serves (which needs the
