@@ -121,3 +121,16 @@ test('pages without their own phone layout get one, pages with one keep it', () 
   assert.equal((b.match(/name="viewport"/g) || []).length, 1);
   assert.match(b, /width=1200/);
 });
+
+test('tooltips inside onmouseover stay whole, and only real attributes are rewritten', () => {
+  const { rwHtml } = require('../lib/sites');
+  const html = `<title>a<b</title><!-- <a href="/c"> --><a href="details.php?id=1" onmouseover="return overlib('<img src=\\'/poster/1.jpg\\' width=150>', VAUTO, WIDTH, 0, DELAY, 0);" onmouseout="return nd();"><b>Kedarnath</b></a>`
+    + `<img src='/pic/bol.png' alt=Bol><a href=/download.php?id=1>dl</a><script>i.src = '/x.png'; if (a<b) {}</script>`;
+  const out = rwHtml(html, 'https://bwtorrents.tv/browse.php', '/site/T', 'bwt');
+  assert.ok(out.includes(`onmouseover="return overlib('<img src=\\'/site/T/~/https/bwtorrents.tv/poster/1.jpg\\' width=150>', VAUTO, WIDTH, 0, DELAY, 0);"`), 'the tooltip keeps its quotes, and its picture loads through the browser');
+  assert.ok(out.includes(`onmouseout="return nd();"><b>Kedarnath</b>`));
+  assert.ok(out.includes(`<img src='/site/T/~/https/bwtorrents.tv/pic/bol.png' alt=Bol>`), 'single quotes stay single');
+  assert.ok(out.includes(`<a href="/site/T/~/https/bwtorrents.tv/download.php?id=1">`));
+  assert.ok(out.includes(`<script>i.src = '/x.png'; if (a<b) {}</script>`), 'scripts are left alone');
+  assert.ok(out.includes(`<!-- <a href="/c"> -->`) && out.includes('<title>a<b</title>'));
+});

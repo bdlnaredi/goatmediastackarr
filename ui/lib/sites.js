@@ -54,26 +54,71 @@ const MOBILE = '<meta name="viewport" content="width=device-width, initial-scale
   + '<style>@media (max-width:820px){html,body{max-width:100vw;overflow-x:auto}img,video,iframe{max-width:100%!important;height:auto}'
   + 'table{max-width:100%}td,th{word-break:break-word}pre{white-space:pre-wrap}input,select,textarea{max-width:100%}}</style>';
 
-/** Rewrites one HTML page so every link, picture, form and style stays inside the browser. */
+const URL_ATTRS = new Set(['href', 'src', 'action', 'formaction', 'poster', 'background', 'data-src', 'data-original', 'data-lazy-src', 'data-url']);
+const RAW_TAGS = new Set(['script', 'style', 'textarea', 'title', 'xmp']);
+const ATTR = /([\s\/]*)([^\s"'>\/=]+)(?:(\s*=\s*)("[^"]*"|'[^']*'|[^\s"'>]+))?/y;
+// An attribute value written back the way it came: in the same quotes, so a value inside another attribute (a
+// tooltip's HTML in onmouseover="…", say) is never cut open by a quote of the other kind.
+const quote = (q, v) => q === "'" ? `'${String(v).replace(/&/g, '&amp;').replace(/'/g, '&#39;')}'` : `"${enc(v)}"`;
+
+/**
+ * Rewrites one HTML page so every link, picture, form and style stays inside the browser. It reads the page tag by tag
+ * (attribute values, comments and scripts are left whole), so only real attributes of real tags are changed.
+ */
 function rwHtml(html, base, pre, label) {
-  let h = String(html);
+  const h = String(html), n = h.length;
   // A <base href> moves where relative links point: follow it, and point it into the browser too.
   const bm = /<base\b[^>]*\bhref\s*=\s*["']?([^"'\s>]+)/i.exec(h);
   if (bm) { try { base = new URL(unent(bm[1]), base).href; } catch {} }
-  h = h.replace(/<meta[^>]+http-equiv\s*=\s*["']?content-security-policy["']?[^>]*>/gi, '')
-    .replace(/\s(integrity|nonce)\s*=\s*("[^"]*"|'[^']*')/gi, '')
-    .replace(/\b(href|src|action|formaction|poster|background|data-src|data-original|data-lazy-src|data-url)\s*=\s*("([^"]*)"|'([^']*)'|([^\s"'>]+))/gi,
-      (all, attr, v, d, s, b) => { const u = d != null ? d : s != null ? s : b; const n = prox(u, base, pre); return n === u ? all : `${attr}="${enc(n)}"`; })
-    .replace(/\bsrcset\s*=\s*("([^"]*)"|'([^']*)')/gi, (all, v, d, s) => `srcset="${enc(String(d != null ? d : s).split(',').map(p => { const [u, ...r] = p.trim().split(/\s+/); return [prox(u, base, pre), ...r].join(' '); }).join(', '))}"`)
-    .replace(/(<meta[^>]+http-equiv\s*=\s*["']?refresh["']?[^>]*content\s*=\s*["'][^"']*?url\s*=\s*)([^"'>]+)/gi, (all, a, u) => a + enc(prox(u.trim(), base, pre)))
-    .replace(/(<style\b[^>]*>)([\s\S]*?)(<\/style>)/gi, (all, a, css, z) => a + rwCss(css, base, pre) + z)
-    .replace(/\bstyle\s*=\s*"([^"]*)"/gi, (all, css) => `style="${rwCss(css, base, pre)}"`);
+  let out = '', i = 0;
+  while (i < n) {
+    const lt = h.indexOf('<', i);
+    if (lt < 0) { out += h.slice(i); break; }
+    out += h.slice(i, lt);
+    if (h.startsWith('<!--', lt)) { const e = h.indexOf('-->', lt + 4), end = e < 0 ? n : e + 3; out += h.slice(lt, end); i = end; continue; }
+    const tm = /^<([a-zA-Z][\w:-]*)/.exec(h.slice(lt, lt + 80));
+    if (!tm) { out += '<'; i = lt + 1; continue; }
+    const tag = tm[1].toLowerCase(), attrs = [];
+    let j = lt + tm[0].length, rest = '';
+    while (j < n && h[j] !== '>') {
+      ATTR.lastIndex = j; const a = ATTR.exec(h);
+      if (!a || a[0].length === 0) { rest += h[j]; j++; continue; }
+      attrs.push({ ws: a[1] || ' ', name: a[2], eq: a[3] || '', raw: a[4] }); j = ATTR.lastIndex;
+    }
+    const close = j < n ? '>' : '';
+    const get = k => { const a = attrs.find(x => x.name.toLowerCase() === k); return a && a.raw != null ? unq(a.raw).v : null; };
+    // A content security policy from the site would stop the browser's own helper script: leave it out.
+    if (tag === 'meta' && /content-security-policy/i.test(get('http-equiv') || '')) { i = j + 1; continue; }
+    let o = '<' + tm[1];
+    for (const a of attrs) {
+      const k = a.name.toLowerCase();
+      if (k === 'integrity' || k === 'nonce') continue;
+      if (a.raw == null) { o += a.ws + a.name; continue; }
+      const { q, v } = unq(a.raw);
+      let nv = null;
+      if (URL_ATTRS.has(k)) { const x = prox(v, base, pre); if (x !== v) nv = x; }
+      else if (k === 'srcset') nv = unent(v).split(',').map(p => { const [u, ...r] = p.trim().split(/\s+/); return [prox(u, base, pre), ...r].join(' '); }).join(', ');
+      // Pictures inside script attributes (a tooltip's onmouseover="overlib('<img src=…>')", say) load through the browser too.
+      else if (k.startsWith('on')) { const w = unent(v), x = w.replace(/\b(src|href)\s*=\s*(\\?["'])([^"'\\\s>]+)\2/gi, (all, at, q, u) => `${at}=${q}${prox(u, base, pre)}${q}`); if (x !== w) nv = x; }
+      else if (k === 'style') { const x = rwCss(unent(v), base, pre); if (x !== unent(v)) nv = x; }
+      else if (k === 'content' && tag === 'meta' && /refresh/i.test(get('http-equiv') || '')) { const x = unent(v).replace(/(url\s*=\s*)(\S+)/i, (all, b, u) => b + prox(u.replace(/^['"]|['"]$/g, ''), base, pre)); if (x !== unent(v)) nv = x; }
+      o += a.ws + a.name + a.eq + (nv == null ? a.raw : quote(q || '"', nv));
+    }
+    out += o + rest + close; i = j + 1;
+    // A script, a style sheet and the like hold text, not tags: copy it up to its closing tag (styles get their links rewritten).
+    if (RAW_TAGS.has(tag) && close) {
+      const e = h.toLowerCase().indexOf('</' + tag, i), end = e < 0 ? n : e;
+      out += tag === 'style' ? rwCss(h.slice(i, end), base, pre) : h.slice(i, end); i = end;
+    }
+  }
   // Most tracker sites are built for desktops and say nothing about phones, so a phone shows them zoomed out at
   // desktop width. Tell the phone to use its own width, keep pinch zoom, and stop wide pictures and tables from pushing
   // the page sideways. Sites that already have their own mobile layout keep theirs.
-  const s = shim(base, pre, label) + (/<meta[^>]+name\s*=\s*["']?viewport/i.test(h) ? '' : MOBILE);
-  return /<head\b[^>]*>/i.test(h) ? h.replace(/<head\b[^>]*>/i, m => m + s) : s + h;
+  const s = shim(base, pre, label) + (/<meta[^>]+name\s*=\s*["']?viewport/i.test(out) ? '' : MOBILE);
+  return /<head\b[^>]*>/i.test(out) ? out.replace(/<head\b[^>]*>/i, m => m + s) : s + out;
 }
+// An attribute's value without its quotes (and which quote it had).
+function unq(raw) { const c = raw[0]; return c === '"' || c === "'" ? { q: c, v: raw.slice(1, -1) } : { q: '', v: raw }; }
 
 // ---------- Cookies: kept on the server, per site, so you sign in to a tracker once ----------
 // jar: { "<domain>": { "<name>": { v: value, exp: ms or 0, p: path } } }

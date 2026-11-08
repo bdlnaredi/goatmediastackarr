@@ -4,6 +4,7 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- Sites: pages with tooltips built into their links (BWTorrents' torrent list, for one) showed `', VAUTO, WIDTH, 0, DELAY, 0);}" onmouseout=…` text instead of the names. Pages are now rewritten tag by tag, so text inside an attribute is never cut open, and the tooltip posters load through the site browser (and the VPN) too.
 - Sort downloads by download or upload speed, time left, progress, seeders, peers, ratio, size or name (as well as newest and active first), on the web and in the app. The ⇅ button turns the order around, and your choice is remembered.
 
 ## v1.0.13 — 2026-11-08
