@@ -179,11 +179,10 @@ case "$name" in
       n=$((n+1))
     done
     if (( n == 0 )); then echo "[goat] Unpackerr waits for Sonarr, Radarr or Lidarr to make their API keys (first start). Trying again in a minute."; sleep 60; exit 1; fi
-    export UN_LOG_FILE=/config/unpackerr/unpackerr.log UN_LOG_FILES=3 UN_LOG_FILE_MB=5 UN_QUIET=false UN_DEBUG="${UNPACKERR_DEBUG:-false}"
+    # Its log goes to its own file (not the container log, which it would fill with a queue line every minute).
+    export UN_LOG_FILE=/config/unpackerr/unpackerr.log UN_LOG_FILES=3 UN_LOG_FILE_MB=5 UN_QUIET=true UN_LOG_QUEUES=10m UN_DEBUG="${UNPACKERR_DEBUG:-false}"
     export UN_INTERVAL="${UNPACKERR_INTERVAL:-2m}" UN_START_DELAY=1m UN_RETRY_DELAY=5m UN_MAX_RETRIES=3 UN_PARALLEL="${UNPACKERR_PARALLEL:-1}"
     export UN_FILE_MODE=0664 UN_DIR_MODE=0775 UN_ACTIVITY=false
-    # Its small status page (also how GoatMediaStackarr sees that it runs), only inside the container.
-    export UN_WEBSERVER_METRICS=true UN_WEBSERVER_LISTEN_ADDR="127.0.0.1:${GOAT_PORT_UNPACKERR:-5656}" UN_WEBSERVER_LOG_FILE=/config/unpackerr/http.log
     echo "[goat] Unpackerr watches $n app(s) for archives in ${DOWNLOADS_DIR:-/downloads}."
     cmd=(/usr/local/bin/unpackerr) ;;
   sitefetch)

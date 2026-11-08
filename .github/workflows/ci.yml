@@ -97,7 +97,6 @@ jobs:
             [tautulli]=http://127.0.0.1:8181/engines/tautulli/
             [rutorrent]='-u goat:$(jq -r .rutorrentPass /config/goat/secrets.json) http://127.0.0.1:8090/'
             [deluge]=http://127.0.0.1:8112/
-            [unpackerr]=http://127.0.0.1:5656/metrics
             [ui]=http://127.0.0.1:2806/api/health )
           for i in $(seq 1 90); do
             missing=""
@@ -107,6 +106,15 @@ jobs:
           done
           echo "::error title=Not answering after 15 minutes::$missing"
           docker logs goat 2>&1 | tail -60 | sed 's/^/::error::/'; exit 1
+      - name: Unpackerr runs and watches the apps
+        run: |
+          for i in $(seq 1 30); do
+            if docker exec goat pgrep -x unpackerr >/dev/null && docker exec goat grep -qiE 'sonarr' /config/unpackerr/unpackerr.log 2>/dev/null; then
+              docker exec goat grep -iE 'sonarr|radarr|lidarr' /config/unpackerr/unpackerr.log | head -5 | sed 's/^/::notice::Unpackerr: /'; exit 0; fi
+            sleep 10
+          done
+          echo "::error::Unpackerr is not running, or not watching Sonarr"; docker exec goat sh -c 'tail -20 /config/unpackerr/unpackerr.log' 2>&1 | sed 's/^/::error::/'
+          docker logs goat 2>&1 | grep -i unpackerr | tail -10 | sed 's/^/::error::/'; exit 1
       - name: Engines are connected to each other
         run: |
           for i in $(seq 1 60); do

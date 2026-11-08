@@ -33,7 +33,7 @@ const ENGINES = {
   // Deluge's Web UI; its daemon (deluged) listens on 127.0.0.1:58846, only inside the container.
   deluge:      { name: 'Deluge',      port: 8112, base: '', daemon: 58846 },
   // Off unless added to GOAT_ENGINES: unpacks downloads that arrive as .rar/.zip/.7z archives so Sonarr, Radarr and
-  // Lidarr can import them. No page of its own; its status page (metrics) listens only inside the container.
+  // Lidarr can import them. No page of its own (the port is not used).
   unpackerr:   { name: 'Unpackerr',   port: 5656, base: '' },
   // Always there unless GOAT_FILEBROWSER=false: the media and downloads folders in the browser, for admins.
   filebrowser: { name: 'File Browser', port: 8095, base: '/engines/filebrowser' },
