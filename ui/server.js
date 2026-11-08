@@ -2478,15 +2478,20 @@ const goatServer = http.createServer(async (req, res) => {
         swr('folders:' + s.id, 600000, 24 * 3600e3, () => call(s, '/api/v3/rootfolder')), swr('profiles:' + s.id, 600000, 24 * 3600e3, () => call(s, '/api/v3/qualityprofile'))]);
       const results = found.slice(0, 12).map(x => ({ title: x.title, year: x.year, overview: x.overview, added: !!x.id,
         poster: x.remotePoster || ((x.images || []).find(i => i.coverType === 'poster') || {}).remoteUrl, raw: x }));
-      return send(res, 200, { results, folders: folders.map(f => ({ path: f.path })), profiles: profiles.map(f => ({ id: f.id, name: f.name })) });
+      return send(res, 200, { results, kind: s.type, folders: folders.map(f => ({ path: f.path, free: f.freeSpace || 0 })), profiles: profiles.map(f => ({ id: f.id, name: f.name })) });
     }
     if (p === '/api/add' && m === 'POST') {
       if (deny('add', 'add shows or movies')) return;
       const b = await readBody(req), s = arr(db.services.find(x => x.id === b.sid));
       if (!s || !b.item) return send(res, 404, { error: 'Not found' });
-      const base = { ...b.item, rootFolderPath: b.rootFolderPath, qualityProfileId: +b.qualityProfileId, monitored: true };
-      const body = s.type === 'sonarr' ? { ...base, seasonFolder: true, addOptions: { searchForMissingEpisodes: true } }
-        : { ...base, minimumAvailability: 'released', addOptions: { searchForMovie: true } };
+      // What to watch for (TV: which episodes; movies: on or off), when a movie counts as out, the show's type and season
+      // folders, and whether to search now. Left out, they are what they always were: everything, released, search now.
+      const search = b.search !== false, MON = ['all', 'future', 'missing', 'existing', 'firstSeason', 'latestSeason', 'pilot', 'none'];
+      const tvMon = MON.includes(b.monitor) ? b.monitor : b.monitor === 'lastSeason' ? 'latestSeason' : 'all', mvMon = b.monitor === false || b.monitor === 'none' || b.monitor === '0' ? false : true;
+      const base = { ...b.item, rootFolderPath: b.rootFolderPath, qualityProfileId: +b.qualityProfileId, monitored: s.type === 'sonarr' ? tvMon !== 'none' : mvMon };
+      const body = s.type === 'sonarr' ? { ...base, seasonFolder: b.seasonFolder !== false, seriesType: ['standard', 'daily', 'anime'].includes(b.seriesType) ? b.seriesType : (b.item.seriesType || 'standard'),
+          addOptions: { monitor: tvMon, searchForMissingEpisodes: search && tvMon !== 'none', searchForCutoffUnmetEpisodes: false } }
+        : { ...base, minimumAvailability: ['announced', 'inCinemas', 'released'].includes(b.minAvail) ? b.minAvail : 'released', addOptions: { searchForMovie: search && mvMon, monitor: mvMon ? 'movieOnly' : 'none' } };
       await call(s, '/api/v3/' + (s.type === 'sonarr' ? 'series' : 'movie'), { method: 'POST', body: JSON.stringify(body) });
       return send(res, 200, {});
     }
@@ -2712,6 +2717,21 @@ const goatServer = http.createServer(async (req, res) => {
       return send(res, 200, {});
     }
     const rssOf = id => svcOf(id, 'qbittorrent');
+    // How often qBittorrent checks the feeds, how many articles it keeps, and whether it reads them and runs the rules at all.
+    if ((r = p.match(/^\/api\/rss\/(\w+)\/settings$/))) {
+      const s = rssOf(r[1]); if (!s) return send(res, 404, { error: 'Not found' });
+      if (m === 'GET') { const pr = await qb(s, '/api/v2/app/preferences'); return send(res, 200, { interval: +pr.rss_refresh_interval || 30, max: +pr.rss_max_articles_per_feed || 50, on: pr.rss_processing_enabled !== false, rules: pr.rss_auto_downloading_enabled !== false }); }
+      if (m === 'PUT') {
+        if (me.role !== 'admin') return send(res, 403, { error: 'Admins only' });
+        const b = await readBody(req), o = {};
+        if (b.interval != null) o.rss_refresh_interval = Math.min(1440, Math.max(1, Math.round(+b.interval) || 30));
+        if (b.max != null) o.rss_max_articles_per_feed = Math.min(10000, Math.max(1, Math.round(+b.max) || 50));
+        if (b.on != null) o.rss_processing_enabled = !!b.on;
+        if (b.rules != null) o.rss_auto_downloading_enabled = !!b.rules;
+        await qb(s, '/api/v2/app/setPreferences', { json: JSON.stringify(o) }); audit(me.name, 'RSS settings', JSON.stringify(o));
+        return send(res, 200, {});
+      }
+    }
     if ((r = p.match(/^\/api\/rss\/(\w+)\/feeds$/))) {
       const s = rssOf(r[1]); if (!s) return send(res, 404, { error: 'Not found' });
       return send(res, 200, (await rssItems(s)).map(f => ({ path: f.path, name: f.name, url: f.url, unread: f.articles.filter(a => !a.isRead).length, total: f.articles.length, error: !!f.error })));
@@ -4492,6 +4512,12 @@ const goatServer = http.createServer(async (req, res) => {
       const b = await readBody(req); let u; try { u = new URL(String(b.url || '')); } catch { return send(res, 400, { error: 'Bad address' }); }
       const host = u.hostname.replace(/^www\./, ''), x = db.sites.find(y => { try { const h = new URL(y.url).hostname.replace(/^www\./, ''); return h === host || host.endsWith('.' + h) || h.endsWith('.' + host); } catch { return false; } });
       return send(res, 200, x ? { url: siteOpen(x, me.id, u.href), site: x.name } : { url: u.href, direct: true });
+    }
+    // The trackers in Prowlarr, to search one of them on its own.
+    if (p === '/api/trackers/indexers' && m === 'GET') {
+      const pr = db.services.find(x => x.type === 'prowlarr' && x.managed) || db.services.find(x => x.type === 'prowlarr'); if (!pr) return send(res, 200, []);
+      const l = await ext(pr, '/api/v1/indexer').catch(() => []);
+      return send(res, 200, (Array.isArray(l) ? l : []).filter(x => x.enable !== false).map(x => ({ id: x.id, name: cut(x.name, 80), protocol: x.protocol || '' })).sort((a, b) => a.name.localeCompare(b.name)));
     }
     if (p === '/api/trackers/search' && m === 'GET') {
       const q = new URL(req.url, 'http://x').searchParams, term = cut(q.get('q') || '', 200).trim(), pr = db.services.find(x => x.type === 'prowlarr' && x.managed) || db.services.find(x => x.type === 'prowlarr');

@@ -265,7 +265,9 @@ function create(opts = {}) {
       if (sub === '/api/v2/torrents/removeCategories') { const c = cats(); for (const n of String(data.categories || '').split('\n')) delete c[n]; st.qbCats = c; res.writeHead(200); return res.end(''); }
       if (sub === '/api/v2/torrents/createTags') { st.qbTags = [...new Set([...(st.qbTags || []), ...String(data.tags || '').split(',').map(x => x.trim()).filter(Boolean)])]; res.writeHead(200); return res.end(''); }
       if (sub === '/api/v2/torrents/tags') return json(res, []);
-      if (sub === '/api/v2/app/preferences') return json(res, { scheduler_enabled: false, alt_dl_limit: 1024000, alt_up_limit: 512000, dl_limit: 0, up_limit: 0 });
+      st.qbPrefs = st.qbPrefs || { scheduler_enabled: false, alt_dl_limit: 1024000, alt_up_limit: 512000, dl_limit: 0, up_limit: 0, rss_refresh_interval: 30, rss_max_articles_per_feed: 50, rss_processing_enabled: true, rss_auto_downloading_enabled: true };
+      if (sub === '/api/v2/app/preferences') return json(res, st.qbPrefs);
+      if (sub === '/api/v2/app/setPreferences') { try { Object.assign(st.qbPrefs, JSON.parse(data.json || '{}')); } catch {} res.writeHead(200); return res.end(''); }
       if (sub.startsWith('/api/v2/rss/items') && st.rssItems) return json(res, st.rssItems);
       if (sub === '/api/v2/rss/markAsRead') { st.calls.push('qb rss read ' + data.itemPath + ' ' + (data.articleId || '')); return json(res, {}); }
       if (sub.startsWith('/api/v2/rss/')) return json(res, {});

@@ -36,6 +36,10 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -250,32 +254,65 @@ private fun AddDialog(svc: Service?, h: LookupHit, folders: List<Folder>, profil
     val ctx = LocalCtx.current
     val g = LocalGoat.current
     val scope = rememberCoroutineScope()
-    var folder by remember { mutableStateOf(folders.firstOrNull()) }
-    var profile by remember { mutableStateOf(profiles.firstOrNull()) }
+    val tv = svc?.type == "sonarr"
+    // The last choices on this phone for shows or movies (here and in Discover's requests).
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val mem = remember(svc?.type) { com.bdlnaredi.goatstack.data.AddMemory(context, svc?.type ?: "radarr") }
+    var folder by remember { mutableStateOf(folders.firstOrNull { it.path == mem.folder } ?: folders.firstOrNull()) }
+    var profile by remember { mutableStateOf(profiles.firstOrNull { it.id == mem.profile } ?: profiles.firstOrNull()) }
+    val TVMON = listOf("all" to "All episodes", "future" to "Future episodes", "missing" to "Missing episodes", "existing" to "Existing episodes",
+        "firstSeason" to "First season", "latestSeason" to "Latest season", "pilot" to "Pilot episode", "none" to "None")
+    var monitor by remember { mutableStateOf(mem.monitor.let { m -> if (tv) (if (m == "lastSeason") "latestSeason" else m).takeIf { x -> TVMON.any { it.first == x } } ?: "all" else if (m == "0") "0" else "1" }) }
+    var avail by remember { mutableStateOf(mem.avail.ifEmpty { "released" }) }
+    var stype by remember { mutableStateOf(mem.seriesType) }
+    var sfold by remember { mutableStateOf(mem.seasonFolder) }
+    var search by remember { mutableStateOf(mem.search) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     AlertDialog(
         onDismissRequest = { if (!busy) onDone(null) }, containerColor = g.surface,
         title = { Text("Add ${h.title}") },
         text = {
-            Column {
-                Text("It is added to ${svc?.name ?: "the library"} and searched for right away.", color = g.muted)
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text("It is added to ${svc?.name ?: "the library"}.", color = g.muted)
                 Spacer(Modifier.height(14.dp))
                 Picker("Quality", profiles, profile, { it.name }) { profile = it }
                 Spacer(Modifier.height(10.dp))
                 Picker("Folder", folders, folder, { it.path }) { folder = it }
+                Spacer(Modifier.height(10.dp))
+                if (tv) {
+                    Picker("Monitor", TVMON, TVMON.firstOrNull { it.first == monitor }, { it.second }) { monitor = it.first }
+                    Spacer(Modifier.height(10.dp))
+                    val TYPES = listOf("standard" to "Standard", "daily" to "Daily", "anime" to "Anime")
+                    Picker("Series type", TYPES, TYPES.firstOrNull { it.first == stype }, { it.second }) { stype = it.first }
+                    Row(Modifier.fillMaxWidth().clickable { sfold = !sfold }, verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(sfold, { sfold = it }, colors = CheckboxDefaults.colors(checkedColor = g.primary)); Text("Season folders", color = g.text)
+                    }
+                } else {
+                    val MON = listOf("1" to "Yes, get it", "0" to "No, just list it")
+                    Picker("Monitor", MON, MON.firstOrNull { it.first == monitor }, { it.second }) { monitor = it.first }
+                    Spacer(Modifier.height(10.dp))
+                    val AV = listOf("announced" to "Announced", "inCinemas" to "In cinemas", "released" to "Released")
+                    Picker("Minimum availability", AV, AV.firstOrNull { it.first == avail }, { it.second }) { avail = it.first }
+                }
+                Row(Modifier.fillMaxWidth().clickable { search = !search }, verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(search, { search = it }, colors = CheckboxDefaults.colors(checkedColor = g.primary)); Text("Start searching for it now", color = g.text)
+                }
                 if (error != null) { Spacer(Modifier.height(10.dp)); Text(error!!, color = g.bad) }
             }
         },
         confirmButton = {
             TextButton(enabled = !busy && svc != null && folder != null && profile != null, onClick = {
                 busy = true; error = null
+                mem.profile = profile!!.id; mem.folder = folder!!.path; mem.monitor = monitor; mem.search = search
+                if (tv) { mem.seriesType = stype; mem.seasonFolder = sfold } else mem.avail = avail
                 scope.launch {
                     try {
                         ctx.api.send("POST", "/api/add", buildJsonObject {
-                            put("sid", svc!!.id); put("item", h.raw); put("rootFolderPath", folder!!.path); put("qualityProfileId", profile!!.id)
+                            put("sid", svc!!.id); put("item", h.raw); put("rootFolderPath", folder!!.path); put("qualityProfileId", profile!!.id); put("search", search)
+                            if (tv) { put("monitor", monitor); put("seriesType", stype); put("seasonFolder", sfold) } else { put("monitor", monitor == "1"); put("minAvail", avail) }
                         })
-                        onDone("Added. Searching for it now.")
+                        onDone(if (search) "Added. Searching for it now." else "Added.")
                     } catch (e: Exception) { error = e.message; busy = false }
                 }
             }) { Text(if (busy) "Adding…" else "Add", color = g.primary) }

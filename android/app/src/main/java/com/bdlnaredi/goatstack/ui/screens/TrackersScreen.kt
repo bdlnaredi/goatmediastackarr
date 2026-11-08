@@ -115,11 +115,16 @@ private fun TrackerSearch() {
     GoatField(term, { term = it }, "Movie or show, e.g. Dune 2021 2160p", Icons.Rounded.Search, ime = ImeAction.Search, onDone = { query = term.trim() }, modifier = Modifier.padding(horizontal = 16.dp))
     Spacer(Modifier.height(8.dp))
     ChoiceRow(listOf("" to "Everything", "movie" to "Movies", "tv" to "Shows"), type, { type = it })
+    // One tracker on its own, or all of them (remembered on this phone).
+    val sp = androidx.compose.ui.platform.LocalContext.current.getSharedPreferences("trackers", android.content.Context.MODE_PRIVATE)
+    var ix by rememberSaveable { mutableStateOf(sp.getString("ix", "") ?: "") }
+    val ixs = rememberLoad("trkix") { runCatching { ctx.api.get<List<com.bdlnaredi.goatstack.data.TrkIndexer>>("/api/trackers/indexers") }.getOrDefault(emptyList()) }
+    ixs.value?.takeIf { it.size > 1 }?.let { l -> Spacer(Modifier.height(8.dp)); ChoiceRow(listOf("" to "Every tracker") + l.map { it.id.toString() to it.name }, ix, { ix = it; sp.edit().putString("ix", it).apply() }) }
     val cats = meta.value?.categories.orEmpty()
     if (cats.isNotEmpty()) { Spacer(Modifier.height(8.dp)); ChoiceRow(listOf("" to "No category") + cats.map { it.name to "Into ${it.name}" }, cat, { cat = it }) }
     Spacer(Modifier.height(8.dp))
     if (query.isEmpty()) { EmptyState(Icons.Rounded.Search, "Search your trackers", "Finds releases on the trackers you added to Prowlarr. Download sends one to qBittorrent; Page opens the tracker's page for it."); return }
-    val res = rememberLoad(query, type) { ctx.api.get<List<TrackerHit>>("/api/trackers/search?q=${com.bdlnaredi.goatstack.data.Api.enc(query)}&type=$type") }
+    val res = rememberLoad(query, type, ix) { ctx.api.get<List<TrackerHit>>("/api/trackers/search?q=${com.bdlnaredi.goatstack.data.Api.enc(query)}&type=$type" + if (ix.isNotEmpty()) "&indexer=$ix" else "") }
     LoadView(res) { hits ->
         if (hits.isEmpty()) EmptyState(Icons.Rounded.Search, "Nothing found", "Try fewer words, or another spelling.")
         else LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

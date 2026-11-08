@@ -84,6 +84,7 @@ suspend fun sendRequest(ctx: Ctx, seerr: Service, a: Ask, seasons: List<Int>, op
 @Composable
 fun RequestDialog(a: Ask, onDone: (String?) -> Unit) {
     val ctx = LocalCtx.current
+    val context = LocalContext.current
     val g = LocalGoat.current
     val seerr = services().firstOrNull { it.type == "seerr" }
     val scope = rememberCoroutineScope()
@@ -99,11 +100,17 @@ fun RequestDialog(a: Ask, onDone: (String?) -> Unit) {
     var folder by remember { mutableStateOf("") }
     var monitor by remember { mutableStateOf(if (a.mediaType == "tv") "all" else "1") }
     var avail by remember { mutableStateOf("released") }
+    val mem = remember(a.mediaType) { com.bdlnaredi.goatstack.data.AddMemory(context, com.bdlnaredi.goatstack.data.AddMemory.kindOf(a.mediaType)) }
     LaunchedEffect(a.mediaId, seerr?.id) {
         if (seerr != null && (ctx.user.admin || ctx.user.can("add"))) {
             val o = try { ctx.api.get<com.bdlnaredi.goatstack.data.ReqOptions>("/api/request/options?sid=${seerr.id}&type=${a.mediaType}") } catch (_: Exception) { null }
             options = o
-            o?.servers?.let { l -> (l.firstOrNull { it.isDefault } ?: l.firstOrNull())?.let { sv -> server = sv; profile = sv.profileId; folder = sv.folder; avail = sv.minAvail } }
+            o?.servers?.let { l -> (l.firstOrNull { it.isDefault } ?: l.firstOrNull())?.let { sv -> server = sv; profile = sv.profileId; folder = sv.folder; avail = sv.minAvail
+                // The last choices on this phone (from here or from Search), when this server has them.
+                if (sv.profiles.any { it.id == mem.profile }) profile = mem.profile
+                if (sv.folders.any { it.path == mem.folder }) folder = mem.folder
+                mem.monitor.takeIf { it.isNotEmpty() }?.let { m -> monitor = if (a.mediaType == "tv") (if (m == "latestSeason") "lastSeason" else m) else (if (m == "0") "0" else "1") }
+                mem.avail.takeIf { it.isNotEmpty() }?.let { avail = it } } }
         }
     }
 
@@ -186,6 +193,7 @@ fun RequestDialog(a: Ask, onDone: (String?) -> Unit) {
                         put("serverId", sv.id); if (profile > 0) put("profileId", profile); if (folder.isNotEmpty()) put("rootFolder", folder)
                         if (a.mediaType == "tv") put("monitor", monitor) else { put("monitor", monitor == "1"); put("minAvail", avail) }
                     } else null
+                    if (opts != null) { mem.profile = profile; mem.folder = folder; mem.monitor = if (a.mediaType == "tv" && monitor == "lastSeason") "latestSeason" else monitor; if (a.mediaType != "tv") mem.avail = avail }
                     try { onDone(sendRequest(ctx, seerr!!, a, if (a.mediaType == "tv" && !all) picked.sorted() else emptyList(), opts)) }
                     catch (e: Exception) { error = e.message; busy = false }
                 }

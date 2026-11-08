@@ -4,6 +4,10 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- Adding from Search now asks where it goes, its quality, what to monitor (and for shows the series type and season folders; for movies the minimum availability), and whether to start searching now, on the web and in the app.
+- The last choices for adding or requesting (folder, quality, monitor and the rest) are remembered, for shows and movies apart, and offered again in Search, Discover's request options and Music & books.
+- RSS: set how often qBittorrent checks the feeds, how many articles it keeps, and turn reading the feeds or the download rules on and off (Feeds, for admins; web and app).
+- Search your trackers: pick one tracker to search on its own (remembered), or search all and tap a tracker to see only its results.
 - Sites: pages with tooltips built into their links (BWTorrents' torrent list, for one) showed `', VAUTO, WIDTH, 0, DELAY, 0);}" onmouseout=…` text instead of the names. Pages are now rewritten tag by tag, so text inside an attribute is never cut open, and the tooltip posters load through the site browser (and the VPN) too.
 - Sort downloads by download or upload speed, time left, progress, seeders, peers, ratio, size or name (as well as newest and active first), on the web and in the app. The ⇅ button turns the order around, and your choice is remembered.
 

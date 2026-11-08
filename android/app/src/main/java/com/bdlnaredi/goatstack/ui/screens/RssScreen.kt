@@ -119,7 +119,7 @@ fun RssScreen() {
         Spacer(Modifier.height(8.dp))
         val feeds = rememberLoad(cur.id, adding) { ctx.api.get<List<RssFeed>>("/api/rss/${cur.id}/feeds") }
         when (tab) {
-            "feeds" -> Feeds(cur.id, feeds.value, feeds.reload) { adding = true }
+            "feeds" -> Column(Modifier.fillMaxSize()) { if (ctx.user.admin) RssSettingsCard(cur.id); Feeds(cur.id, feeds.value, feeds.reload) { adding = true } }
             "rules" -> Rules(cur.id, newRule) { newRule = false }
             else -> Articles(cur.id, feeds.value.orEmpty())
         }
@@ -485,4 +485,32 @@ private fun NewRule(sid: String, feeds: List<RssFeedRef>, onDone: (Boolean) -> U
         },
         dismissButton = { TextButton(onClick = { onDone(false) }, enabled = !busy) { Text("Cancel", color = g.muted) } },
     )
+}
+
+/** How often qBittorrent checks the feeds, and whether it reads them and runs the download rules. */
+@Composable
+private fun RssSettingsCard(sid: String) {
+    val ctx = LocalCtx.current
+    val g = LocalGoat.current
+    val scope = rememberCoroutineScope()
+    val toast = toaster()
+    val cfg = rememberLoad("rssset", sid) { runCatching { ctx.api.get<com.bdlnaredi.goatstack.data.RssSettings>("/api/rss/$sid/settings") }.getOrNull() }
+    val c = cfg.value ?: return
+    val save: (kotlinx.serialization.json.JsonObject, String) -> Unit = { body, msg -> scope.launch {
+        try { ctx.api.send("PUT", "/api/rss/$sid/settings", body); toast(msg); cfg.reload() } catch (e: Exception) { toast(e.message ?: "Could not save it") } } }
+    com.bdlnaredi.goatstack.ui.GoatCard(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 8.dp), padding = 14.dp) {
+        Text("Check the feeds every", style = MaterialTheme.typography.titleSmall, color = g.text)
+        Spacer(Modifier.height(6.dp))
+        val steps = (listOf(5, 10, 15, 30, 60, 120, 360, 720) + c.interval).distinct().sorted()
+        ChoiceRow(steps.map { it to if (it < 60) "$it min" else if (it % 60 == 0) "${it / 60} h" else "$it min" }, c.interval, { v -> save(buildJsonObject { put("interval", v) }, "Feeds are checked every ${if (v < 60) "$v minutes" else "${v / 60} hours"}") }, Modifier.padding(start = 0.dp))
+        Spacer(Modifier.height(4.dp))
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("Read the feeds", color = g.text, modifier = Modifier.weight(1f))
+            androidx.compose.material3.Switch(c.on, { v -> save(buildJsonObject { put("on", v) }, if (v) "Reading the feeds" else "Feeds are not read now") })
+        }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("Run the download rules", color = g.text, modifier = Modifier.weight(1f))
+            androidx.compose.material3.Switch(c.rules, { v -> save(buildJsonObject { put("rules", v) }, if (v) "Rules download by themselves" else "Rules are off") })
+        }
+    }
 }

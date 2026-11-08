@@ -172,3 +172,11 @@ data class WrapReq(val made: Int = 0, val ready: Int = 0, val movies: Int = 0, v
 data class WrapPerson(val id: String = "", val name: String = "")
 @kotlinx.serialization.Serializable
 data class Wrapped(val year: Int = 0, val name: String = "", val watch: WrapWatch? = null, val note: String = "", val sid: String = "", val requests: WrapReq = WrapReq(), val people: List<WrapPerson>? = null)
+
+// A tracker in Prowlarr, to search on its own (/api/trackers/indexers).
+@kotlinx.serialization.Serializable
+data class TrkIndexer(val id: Int = 0, val name: String = "", val protocol: String = "")
+
+// How often qBittorrent checks the RSS feeds (/api/rss/:sid/settings).
+@kotlinx.serialization.Serializable
+data class RssSettings(val interval: Int = 30, val max: Int = 50, val on: Boolean = true, val rules: Boolean = true)

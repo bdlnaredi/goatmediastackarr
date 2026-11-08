@@ -1713,6 +1713,33 @@ async function usrView(){
     if(e.target.closest('[data-rp]')){const pw=prompt('New password for this profile (8+ characters):');if(!pw)return;try{await api(`/api/users/${id}/password`,'POST',{password:pw});toast('Password changed. They will need to sign in again.','ok')}catch(x){toast(x.message,'bad')}}
     if(e.target.closest('[data-del]')&&confirm('Delete this profile?')){try{await api('/api/users/'+id,'DELETE');toast('Deleted','ok');usrView()}catch(x){toast(x.message,'bad')}}};
 }
+// Adding a show or movie: where it goes, its quality, what to watch for, and whether to search now. The last choices
+// are remembered for each kind (shows, movies) and used again here, in Discover's request options and in Music & books.
+const lastAdd=k=>{try{return JSON.parse(localStorage.getItem('addopts-'+k)||'null')||JSON.parse(localStorage.getItem('req-'+k)||'{}')}catch{return {}}};
+const keepAdd=(k,o)=>{try{localStorage.setItem('addopts-'+k,JSON.stringify({...lastAdd(k),...o}))}catch{}};
+function addChoices(kind,profiles,folders,title){
+  const tv=kind==='sonarr',last=lastAdd(kind),GB=b=>b>0?` · ${(b/1e9).toFixed(b>1e11?0:1)} GB free`:'';
+  const pid=profiles.some(p=>p.id===+last.profileId)?+last.profileId:(profiles[0]||{}).id,fol=folders.some(f=>f.path===last.rootFolder)?last.rootFolder:(folders[0]||{}).path;
+  const TVMON=[['all','All episodes'],['future','Future episodes'],['missing','Missing episodes'],['existing','Existing episodes'],['firstSeason','First season'],['latestSeason','Latest season'],['pilot','Pilot episode'],['none','None']];
+  const mon=tv?(TVMON.some(m=>m[0]===(last.monitor==='lastSeason'?'latestSeason':last.monitor))?(last.monitor==='lastSeason'?'latestSeason':last.monitor):'all'):(last.monitor===false||last.monitor==='0'?'0':'1');
+  return new Promise(done=>{
+    const o=modal(`<h2 style="margin-top:0">Add ${esc(title||'')}</h2><form id="ado" class="rqo">
+      <label class="mute">Quality<select name="profile">${profiles.map(p=>`<option value="${p.id}" ${p.id===pid?'selected':''}>${esc(p.name)}</option>`).join('')}</select></label>
+      <label class="mute">Folder<select name="folder">${folders.map(f=>`<option value="${esc(f.path)}" ${f.path===fol?'selected':''}>${esc(f.path)}${GB(f.free)}</option>`).join('')}</select></label>
+      <label class="mute">Monitor<select name="monitor">${tv?TVMON.map(([v,n])=>`<option value="${v}" ${v===mon?'selected':''}>${n}</option>`).join(''):`<option value="1" ${mon==='1'?'selected':''}>Yes, get it</option><option value="0" ${mon==='0'?'selected':''}>No, just list it</option>`}</select></label>
+      ${tv?`<label class="mute">Series type<select name="stype">${[['standard','Standard'],['daily','Daily'],['anime','Anime']].map(([v,n])=>`<option value="${v}" ${v===(last.seriesType||'standard')?'selected':''}>${n}</option>`).join('')}</select></label>
+        <label class="chk"><input type="checkbox" name="sfold" ${last.seasonFolder===false?'':'checked'}>Season folders</label>`
+        :`<label class="mute">Minimum availability<select name="avail">${[['announced','Announced'],['inCinemas','In cinemas'],['released','Released']].map(([v,n])=>`<option value="${v}" ${v===(last.minAvail||'released')?'selected':''}>${n}</option>`).join('')}</select></label>`}
+      <label class="chk"><input type="checkbox" name="search" ${last.search===false?'':'checked'}>Start searching for it now</label>
+      <div class="row" style="margin-top:6px"><button class="primary">Add</button><button type="button" data-x>Cancel</button></div></form>`);
+    let ok=false;o.querySelector('[data-x]').onclick=()=>o.close();
+    new MutationObserver((m,ob)=>{if(!document.contains(o)){ob.disconnect();if(!ok)done(null)}}).observe(document.body,{childList:true});
+    const f=o.querySelector('#ado');
+    f.onsubmit=e=>{e.preventDefault();const r={qualityProfileId:+f.profile.value,rootFolderPath:f.folder.value,monitor:tv?f.monitor.value:f.monitor.value==='1',search:f.search.checked,...(tv?{seriesType:f.stype.value,seasonFolder:f.sfold.checked}:{minAvail:f.avail.value})};
+      keepAdd(kind,{profileId:r.qualityProfileId,rootFolder:r.rootFolderPath,monitor:tv?r.monitor:(r.monitor?'1':'0'),search:r.search,...(tv?{seriesType:r.seriesType,seasonFolder:r.seasonFolder}:{minAvail:r.minAvail})});
+      ok=true;o.close();done(r)};
+  });
+}
 let sel='',found=null;
 function findView(){
   const opts=services.filter(s=>['sonarr','radarr'].includes(s.type));
@@ -1728,17 +1755,16 @@ function findView(){
 }
 function showFound(){
   const d=found;
-  $('#r').innerHTML=`<div class="row" style="margin-bottom:12px"><select id="qp">${d.profiles.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select>
-    <select id="rf">${d.folders.map(f=>`<option>${esc(f.path)}</option>`).join('')}</select></div>
-    <div class="grid">${d.results.map((x,i)=>`<div class="card" data-v="${i}">${x.poster?`<img src="${esc(x.poster)}" alt="" style="width:100%;border-radius:6px;aspect-ratio:2/3;object-fit:cover">`:''}
+  $('#r').innerHTML=`<div class="grid">${d.results.map((x,i)=>`<div class="card" data-v="${i}">${x.poster?`<img src="${esc(x.poster)}" alt="" style="width:100%;border-radius:6px;aspect-ratio:2/3;object-fit:cover">`:''}
     <h3>${esc(x.title)} <span class="mute">${x.year||''}</span></h3><div class="mute">${esc((x.overview||'').slice(0,110))}${(x.overview||'').length>110?'…':''}</div>
     <p><button data-dv="${i}">Details</button> ${x.added?'<span class="mute">Already in your library</span>':(can('add')?`<button data-a="${i}">Add</button>`:'<span class="mute">Adding is off for your profile</span>')}</p></div>`).join('')||'<p class="mute">Nothing found.</p>'}</div>`;
   const show=i=>{const x=d.results[i];showDetail({title:x.title,sub:String(x.year||''),poster:x.poster,overview:x.overview})};
   document.querySelectorAll('[data-v]').forEach(c=>c.onclick=e=>{if(!e.target.closest('button'))show(c.dataset.v)});
   document.querySelectorAll('[data-dv]').forEach(b=>b.onclick=()=>show(b.dataset.dv));
   document.querySelectorAll('[data-a]').forEach(b=>b.onclick=async()=>{
+    const x=d.results[b.dataset.a],o=await addChoices(d.kind||(services.find(v=>v.id===sel)||{}).type,d.profiles,d.folders,x.title);if(!o)return;
     b.disabled=true;b.textContent='Adding…';$('#e').textContent='';
-    try{await api('/api/add','POST',{sid:sel,item:d.results[b.dataset.a].raw,rootFolderPath:$('#rf').value,qualityProfileId:$('#qp').value});
+    try{await api('/api/add','POST',{sid:sel,item:x.raw,...o});
       b.replaceWith(Object.assign(document.createElement('span'),{className:'mute',textContent:'Added, now searching for downloads'}))}
     catch(x){b.disabled=false;b.textContent='Add';$('#e').textContent=x.message}});
 }
@@ -2065,6 +2091,12 @@ function rssView(){
       $('#rc').innerHTML=`${admin?`<form id="nf" style="display:flex;gap:8px;flex-wrap:wrap"><input name="url" placeholder="Feed address (https://…)" style="flex:1;min-width:200px" required><input name="path" placeholder="Name (optional)" style="width:180px"><button class="primary">${ic('rq')}Add feed</button></form>`:''}
         ${fs.map(f=>`<div class="box row"><span class="dot ${f.error?'bad':'ok'}" title="${f.error?'This feed has an error':'Feed is working'}"></span><div class="grow"><b>${esc(fp(f.path))}</b><div class="mute" style="word-break:break-all">${esc(f.url||'')}</div></div>
           <span class="pill ${f.unread?'acc':''}">${f.unread} unread of ${f.total}</span>${f.unread?`<button data-mr="${esc(f.path)}">${ic('checks')}Mark all as read</button>`:''}<button class="icon" data-r="${esc(f.path)}" aria-label="Refresh this feed" title="Refresh this feed">${ic('refresh')}</button>${admin?`<button class="danger" data-x="${esc(f.path)}">Remove</button>`:''}</div>`).join('')||empty('No feeds yet',admin?'Add a feed address above to start collecting articles.':'Ask the admin to add a feed in qBittorrent.')}`;
+      if(admin)api(`${base}/settings`).then(c=>{if(!live('fd'))return;$('#rc').insertAdjacentHTML('afterbegin',`<form id="rsf" class="box row" style="gap:10px 16px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+        <label class="mute">Check the feeds every <input name="interval" type="number" min="1" max="1440" value="${c.interval}" style="width:80px"> minutes</label>
+        <label class="mute">Keep <input name="max" type="number" min="1" max="10000" value="${c.max}" style="width:90px"> articles a feed</label>
+        <label class="chk"><input type="checkbox" name="on" ${c.on?'checked':''}>Read the feeds</label><label class="chk"><input type="checkbox" name="rules" ${c.rules?'checked':''}>Run the download rules</label>
+        <button class="primary">Save</button></form>`);
+        $('#rsf').onsubmit=async e=>{e.preventDefault();const f=e.target.elements;try{await api(`${base}/settings`,'PUT',{interval:+f.interval.value,max:+f.max.value,on:f.on.checked,rules:f.rules.checked});toast('Saved','ok')}catch(x){toast(x.message,'bad')}}}).catch(()=>{});
       const nf=$('#nf');if(nf)nf.onsubmit=async e=>{e.preventDefault();$('#e').textContent='';try{await api(`${base}/feed`,'POST',{op:'add',...Object.fromEntries(new FormData(e.target))});toast('Feed added','ok');fd()}catch(x){toast(x.message,'bad')}};
       $('#rc').onclick=async e=>{const r=e.target.closest('[data-r]'),x=e.target.closest('[data-x]'),m=e.target.closest('[data-mr]');
         try{if(m){m.disabled=true;await api(`${base}/read`,'POST',{path:m.dataset.mr});toast('Marked as read','ok');fd()}
@@ -2789,7 +2821,9 @@ async function reqEstimate(el,type,id,seasons){
 async function reqChoices(sid,type){
   let d;try{d=await api(`/api/request/options?sid=${encodeURIComponent(sid)}&type=${type==='tv'?'tv':'movie'}`)}catch{return undefined}
   if(!d.choose||!d.servers||!d.servers.length)return undefined;
-  const key='req-'+d.kind;let last={};try{last=JSON.parse(localStorage.getItem(key)||'{}')}catch{}
+  // The last choices: from here, or from adding in Search (the latest wins); folder and quality are matched by value.
+  const key='req-'+d.kind;let last={};try{last={...JSON.parse(localStorage.getItem(key)||'{}'),...lastAdd(d.kind)}}catch{}
+  if(last.monitor==='0')last.monitor=false;else if(last.monitor==='1')last.monitor=true;else if(last.monitor==='latestSeason')last.monitor='lastSeason';
   const tv=type==='tv',GB=b=>b>0?` · ${(b/1e9).toFixed(b>1e11?0:1)} GB ${T('free')}`:'';
   return new Promise(done=>{
     const o=modal(`<h2 style="margin-top:0">${T('Request options')}</h2><form id="rqo" class="rqo">
@@ -2800,15 +2834,15 @@ async function reqChoices(sid,type){
       ${tv?'':`<label class="mute">${T('Minimum availability')}<select name="avail">${[['announced','Announced'],['inCinemas','In cinemas'],['released','Released']].map(([v,n])=>`<option value="${v}">${T(n)}</option>`).join('')}</select></label>`}
       <div class="row" style="margin-top:6px"><button class="primary">${T('Request')}</button><button type="button" data-x>${T('Cancel')}</button></div></form>`);
     const f=o.querySelector('#rqo'),sv=()=>d.servers.find(v=>String(v.id)===(f.server?f.server.value:String(d.servers[0].id)))||d.servers[0];
-    const fill=()=>{const v=sv(),same=last.serverId===v.id;
-      f.profile.innerHTML=v.profiles.map(p=>`<option value="${p.id}" ${(same&&last.profileId?last.profileId:v.profileId)===p.id?'selected':''}>${esc(p.name)}</option>`).join('');
-      f.folder.innerHTML=v.folders.map(x=>`<option value="${esc(x.path)}" ${(same&&last.rootFolder?last.rootFolder:v.folder)===x.path?'selected':''}>${esc(x.path)}${GB(x.free)}</option>`).join('');
+    const fill=()=>{const v=sv(),same=last.serverId==null||last.serverId===v.id,pp=same&&v.profiles.some(p=>p.id===+last.profileId)?+last.profileId:v.profileId,ff=same&&v.folders.some(x=>x.path===last.rootFolder)?last.rootFolder:v.folder;
+      f.profile.innerHTML=v.profiles.map(p=>`<option value="${p.id}" ${pp===p.id?'selected':''}>${esc(p.name)}</option>`).join('');
+      f.folder.innerHTML=v.folders.map(x=>`<option value="${esc(x.path)}" ${ff===x.path?'selected':''}>${esc(x.path)}${GB(x.free)}</option>`).join('');
       if(f.avail)f.avail.value=same&&last.minAvail?last.minAvail:v.minAvail||'released'};
     fill();if(f.server)f.server.onchange=fill;
     let ok=false;o.querySelector('[data-x]').onclick=()=>o.close();
     new MutationObserver((m,ob)=>{if(!document.contains(o)){ob.disconnect();if(!ok)done(null)}}).observe(document.body,{childList:true});
     f.onsubmit=e=>{e.preventDefault();const v=sv(),r={serverId:v.id,profileId:+f.profile.value||undefined,rootFolder:f.folder.value||undefined,monitor:tv?f.monitor.value:f.monitor.value==='1',...(tv?{}:{minAvail:f.avail.value})};
-      try{localStorage.setItem(key,JSON.stringify(r))}catch{}ok=true;o.close();done(r)};
+      try{localStorage.setItem(key,JSON.stringify(r))}catch{}keepAdd(d.kind,{profileId:r.profileId,rootFolder:r.rootFolder,monitor:tv?r.monitor:(r.monitor?'1':'0'),...(tv?{}:{minAvail:r.minAvail})});ok=true;o.close();done(r)};
   });
 }
 // Sends a request, asking for the choices first when this profile gets them. Null when cancelled.
@@ -3188,10 +3222,12 @@ async function mbView(){
     $('#mb').innerHTML=`<form id="mf" class="row" style="display:flex"><input name="term" placeholder="Search for ${one==='artist'?'an artist':'an author'}" aria-label="Search" style="flex:1;min-width:160px" required><button class="primary">Search</button></form><div class="err" id="e"></div><div id="r"></div>`;
     $('#mf').onsubmit=async e=>{e.preventDefault();$('#e').textContent='';$('#r').innerHTML='<p class="mute">Searching…</p>';
       try{const d=await api(`/api/media/${s.id}/search?term=${encodeURIComponent(e.target.term.value)}`);
-        $('#r').innerHTML=`<div class="row" style="margin:12px 0"><label class="mute">Quality <select id="mp">${d.profiles.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></label>
-          ${d.meta.length?`<label class="mute">Profile <select id="mm">${d.meta.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></label>`:''}<label class="mute">Folder <select id="mf2">${d.folders.map(f=>`<option>${esc(f.path)}</option>`).join('')}</select></label></div>
+        const la=lastAdd('mb-'+s.id);
+        $('#r').innerHTML=`<div class="row" style="margin:12px 0"><label class="mute">Quality <select id="mp">${d.profiles.map(p=>`<option value="${p.id}" ${p.id===+la.profileId?'selected':''}>${esc(p.name)}</option>`).join('')}</select></label>
+          ${d.meta.length?`<label class="mute">Profile <select id="mm">${d.meta.map(p=>`<option value="${p.id}" ${p.id===+la.metaId?'selected':''}>${esc(p.name)}</option>`).join('')}</select></label>`:''}<label class="mute">Folder <select id="mf2">${d.folders.map(f=>`<option ${f.path===la.rootFolder?'selected':''}>${esc(f.path)}</option>`).join('')}</select></label></div>
           <div class="grid">${d.results.map((x,i)=>card(x,i,`<div class="mute">${esc((x.overview||'').slice(0,100))}</div><p>${x.added?'<span class="mute">Already in your library</span>':`<button data-a="${i}">Add</button>`}</p>`)).join('')||'<p class="mute">Nothing found.</p>'}</div>`;
         $('#r').onclick=async ev=>{const b=ev.target.closest('[data-a]');if(!b)return;b.disabled=true;b.textContent='Adding…';
+          keepAdd('mb-'+s.id,{profileId:+$('#mp').value,metaId:$('#mm')?+$('#mm').value:0,rootFolder:$('#mf2').value});
           try{await api(`/api/media/${s.id}/add`,'POST',{item:d.results[b.dataset.a].raw,rootFolderPath:$('#mf2').value,qualityProfileId:+$('#mp').value,metadataProfileId:$('#mm')?+$('#mm').value:1});b.replaceWith(Object.assign(document.createElement('span'),{className:'pill ok',textContent:'Added'}))}
           catch(x){b.disabled=false;b.textContent='Add';$('#e').textContent=x.message}}}
       catch(x){$('#r').innerHTML='';$('#e').textContent=x.message}};
@@ -3495,7 +3531,7 @@ async function trkView(){
   const qbS=ofType('qbittorrent')[0];
   $('#m').innerHTML=`<div class="panel" style="margin-bottom:16px"><h3 style="margin-top:0">Search your trackers</h3>
     <form id="tsf" class="row" style="gap:8px"><input name="q" placeholder="Movie or show, e.g. Dune 2021 2160p" style="flex:1;min-width:200px" required>
-      <select name="type" aria-label="What"><option value="">Everything</option><option value="movie">Movies</option><option value="tv">Shows</option></select><button class="primary">${ic('find')}Search</button></form>
+      <select name="type" aria-label="What"><option value="">Everything</option><option value="movie">Movies</option><option value="tv">Shows</option></select><select name="ix" aria-label="Which tracker"><option value="">Every tracker</option></select><button class="primary">${ic('find')}Search</button></form>
     <div class="row" style="margin-top:8px"><label class="mute">Download into <select id="tcat" aria-label="Category"><option value="">No category</option></select></label><span class="mute" style="font-size:13px">Searches the trackers you added to Prowlarr (Indexers). Prowlarr fetches through the VPN when it uses it.</span></div>
     <div class="err" id="tse"></div><div id="tsr"></div></div>
   <div class="panel"><div class="row"><h3 style="margin:0;flex:1">Tracker websites</h3></div>
@@ -3526,14 +3562,19 @@ async function trkView(){
         try{await api('/api/sites/'+x.id,'PUT',{name:f.name.value,url:f.url.value,vpn:f.vpn.checked,category:f.category.value});o.close();load()}catch(er){o.querySelector('#tee').textContent=er.message}}}};
   $('#taf').onsubmit=async e=>{e.preventDefault();const f=e.target;$('#tae').textContent='';
     try{await api('/api/sites','POST',{name:f.name.value,url:f.url.value,vpn:f.vpn.value==='1',category:f.category.value});f.reset();f.querySelectorAll('.opt').forEach(o=>o.classList.toggle('on',o.querySelector('input').checked));toast('Added','ok');load()}catch(x){$('#tae').textContent=x.message}};
-  let results=[];
-  $('#tsf').onsubmit=async e=>{e.preventDefault();const f=e.target;$('#tse').textContent='';$('#tsr').innerHTML=skel(3);
-    try{results=await api(`/api/trackers/search?q=${encodeURIComponent(f.q.value)}&type=${f.type.value}`);
-      $('#tsr').innerHTML=results.length?`<div class="mute" style="margin:10px 0 4px">${results.length} found, most seeders first</div>`+results.map((x,i)=>`<div class="box row" data-r="${i}" style="gap:8px">
+  let results=[],only='';
+  // Search one tracker on its own (remembered), or all of them; after a search of all, tap a tracker to show only its results.
+  api('/api/trackers/indexers').then(l=>{const sel=$('#tsf')&&$('#tsf').elements.ix;if(!sel)return;let keep='';try{keep=localStorage.getItem('mh-trkix')||''}catch{}
+    sel.innerHTML='<option value="">Every tracker</option>'+l.map(x=>`<option value="${x.id}" ${String(x.id)===keep?'selected':''}>${esc(x.name)}</option>`).join('');
+    sel.onchange=()=>{try{localStorage.setItem('mh-trkix',sel.value)}catch{}}}).catch(()=>{});
+  const drawRes=()=>{const ixs=[...new Set(results.map(x=>x.indexer))].sort(),vis=results.map((x,i)=>[x,i]).filter(([x])=>!only||x.indexer===only);
+    $('#tsr').innerHTML=results.length?`<div class="mute" style="margin:10px 0 4px">${vis.length} found${only?' on '+esc(only):''}, most seeders first</div>${ixs.length>1?`<div class="chips" id="tsx" style="margin-bottom:6px"><button class="pill ${only?'':'acc'}" data-ixf="">All (${results.length})</button>${ixs.map(n=>`<button class="pill ${n===only?'acc':''}" data-ixf="${esc(n)}">${esc(n)} (${results.filter(x=>x.indexer===n).length})</button>`).join('')}</div>`:''}`+vis.map(([x,i])=>`<div class="box row" data-r="${i}" style="gap:8px">
         <div class="grow" style="min-width:220px"><b style="word-break:break-word;font-weight:560">${esc(x.title)}</b><div class="mute">${esc(x.indexer)} · ${fmt(x.size)} · ${x.seeders} seeding · ${x.leechers} getting${x.date?' · '+esc(new Date(x.date).toLocaleDateString()):''}</div></div>
-        ${x.info?`<button data-pg>${ic('ext')}Page</button>`:''}<button class="primary" data-dl>${ic('dl')}Download</button></div>`).join(''):'<p class="mute">Nothing found.</p>'}
+        ${x.info?`<button data-pg>${ic('ext')}Page</button>`:''}<button class="primary" data-dl>${ic('dl')}Download</button></div>`).join(''):'<p class="mute">Nothing found.</p>'};
+  $('#tsf').onsubmit=async e=>{e.preventDefault();const f=e.target;$('#tse').textContent='';$('#tsr').innerHTML=skel(3);only='';
+    try{results=await api(`/api/trackers/search?q=${encodeURIComponent(f.q.value)}&type=${f.type.value}${f.ix.value?'&indexer='+f.ix.value:''}`);drawRes()}
     catch(x){$('#tsr').innerHTML='';$('#tse').textContent=x.message}};
-  $('#tsr').onclick=async e=>{const row=e.target.closest('[data-r]');if(!row)return;const x=results[+row.dataset.r];
+  $('#tsr').onclick=async e=>{const fx=e.target.closest('[data-ixf]');if(fx){only=fx.dataset.ixf;drawRes();return}const row=e.target.closest('[data-r]');if(!row)return;const x=results[+row.dataset.r];
     if(e.target.closest('[data-pg]'))return openTab(async()=>{const r=await api('/api/sites/open-url','POST',{url:x.info});if(r.direct)toast('Add this tracker under Tracker websites to open its pages through GoatMediaStackarr','');return r.url});
     const b=e.target.closest('[data-dl]');if(b){b.disabled=true;try{await api('/api/trackers/grab','POST',{id:x.id,category:$('#tcat').value});toast('Added to qBittorrent','ok');b.textContent='Added'}catch(er){toast(er.message,'bad');b.disabled=false}}};
 }
