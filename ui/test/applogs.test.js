@@ -71,6 +71,14 @@ test('logs of the stack and of added apps, one at a time or together', async () 
   } finally { await s.stop(); srv.close(); }
 });
 
+test('s6-log times are read in the local time zone, to the millisecond', () => {
+  const dir = require('node:fs').mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'lg-')), old = process.env.GOAT_LOGS;
+  require('node:fs').mkdirSync(dir + '/x'); require('node:fs').writeFileSync(dir + '/x/current', '2026-11-09 16:53:33.993392347  [Info] Bootstrap\n');
+  process.env.GOAT_LOGS = dir;
+  try { const [l] = AL.readStack('x'); assert.equal(l.t, new Date(2026, 10, 9, 16, 53, 33, 993).getTime()); assert.equal(l.msg, '[Info] Bootstrap'); }
+  finally { process.env.GOAT_LOGS = old; if (old === undefined) delete process.env.GOAT_LOGS; }
+});
+
 test('qBittorrent marks its own levels', () => {
   assert.equal(AL.guess('(W) 2026-11-09T10:25:00 - Tracker is not working'), 'warn');
   assert.equal(AL.guess('(C) Could not bind to port'), 'error');

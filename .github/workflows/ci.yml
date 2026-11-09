@@ -129,7 +129,7 @@ jobs:
         run: |
           for n in sonarr radarr qbittorrent ui; do
             docker exec goat test -s /config/logs/$n/current || { echo "::error::No log for $n in /config/logs"; docker exec goat ls -la /config/logs/ /config/logs/$n || true; exit 1; }
-            docker exec goat sh -c "head -c 300 /config/logs/$n/current" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T' || { echo "::error::$n's log lines have no time"; docker exec goat head -3 /config/logs/$n/current; exit 1; }
+            docker exec goat sh -c "head -c 300 /config/logs/$n/current" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}' || { echo "::error::$n's log lines have no time"; docker exec goat head -3 /config/logs/$n/current; exit 1; }
           done
           docker logs goat 2>&1 | grep -qi sonarr || { echo "::error::The container's own log lost the apps' lines"; exit 1; }
           echo "::notice::Logs for: $(docker exec goat ls /config/logs | tr '\n' ' ')"

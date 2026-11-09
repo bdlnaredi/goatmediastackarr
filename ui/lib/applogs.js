@@ -30,7 +30,9 @@ function norm(l, msg) {
 
 // Escape codes some apps colour their output with.
 const ANSI = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
-const TS = /^(\d{4}-\d\d-\d\d[T ]\d\d:\d\d:\d\d(?:\.\d+)?)Z?\s+/;
+// s6-log writes "2026-11-09 16:53:33.993392347" in the container's own time zone (TZ); a Z at the end means UTC.
+const TS = /^(\d{4}-\d\d-\d\d)[T ](\d\d:\d\d:\d\d)(\.\d+)?(Z?)\s+/;
+const stamp = m => Date.parse(`${m[1]}T${m[2]}${m[3] ? m[3].slice(0, 4) : ''}${m[4] || ''}`);
 
 /** The apps of the stack that have a log, by folder name. */
 function stackApps() {
@@ -64,7 +66,7 @@ function readStack(name, max = 500) {
   }
   let last = 0;
   return out.map(raw => {
-    const m = raw.match(TS), t = m ? Date.parse(m[1].replace(' ', 'T') + 'Z') : NaN, msg = (m ? raw.slice(m[0].length) : raw).replace(ANSI, '').replace(/\r/g, '').slice(0, 4000);
+    const m = raw.match(TS), t = m ? stamp(m) : NaN, msg = (m ? raw.slice(m[0].length) : raw).replace(ANSI, '').replace(/\r/g, '').slice(0, 4000);
     if (!isNaN(t)) last = t;
     return { t: isNaN(t) ? last : t, src: 'stack:' + name, level: guess(msg), msg };
   });
