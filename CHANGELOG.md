@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+## v1.0.17 — 2026-11-09
+
 - Upcoming leaves out episodes and movies that are already downloaded in the quality they should be (they still show while Sonarr or Radarr wait for a better copy). On the web, in the app and in its widget.
 - Stats: only admins see everyone's viewing. Anyone else sees their own plays, charts and history, and at the bottom the server's most watched movies and shows and most active viewers, counted only in the libraries they can open. Before, someone with a password account (not Sign in with Plex) saw the whole server.
 - Stats and Year in review never show a title hidden from that person: hidden labels, tags (collections), genres or ratings, the label and rating limits set in Plex itself, and kids profiles' ages. It still counts in their own totals.
