@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+## v1.0.18 — 2026-11-09
+
 - Logs (Server menu, admins; also in the app under More): read what every app is writing. Pick one app or all of them together in time order, newest at the bottom, with each line's time, app and level. Show only problems or errors, find a word, follow new lines every 5 seconds, copy or save them as a file. The apps of the stack, the VPN and GoatMediaStackarr itself now each keep their own log in /config/logs/<app>/ (about 3 MB each, and the container's log still has every line). Apps you added are read through their APIs: Sonarr, Radarr, Lidarr, Readarr, Prowlarr, qBittorrent, SABnzbd, Bazarr, Tautulli and Seerr. Each app on the Stack page has a Logs button that opens its log.
 ## v1.0.17 — 2026-11-09
 
