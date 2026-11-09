@@ -27,7 +27,10 @@ data class Stats(
     val days: Int = 30, val own: Boolean = false, val movies: List<TopItem> = emptyList(), val tv: List<TopItem> = emptyList(),
     val users: List<TopUser> = emptyList(), val totals: Totals = Totals(), val byDate: Chart? = null, val byHour: Chart? = null,
     val byPlatform: Chart? = null, val history: List<Watched> = emptyList(),
+    /** For people who are not admins: the server's most watched and most active, in the libraries they can open. */
+    val server: ServerTops? = null, val unknown: Boolean = false,
 )
+@Serializable data class ServerTops(val movies: List<TopItem> = emptyList(), val tv: List<TopItem> = emptyList(), val users: List<TopUser> = emptyList())
 @Serializable data class TopItem(val title: String = "", val plays: Int = 0, val thumb: String = "", val year: JsonElement? = null, val lib: LibLink? = null)
 @Serializable data class TopUser(val title: String = "", val plays: Int = 0, val seconds: Long = 0)
 @Serializable data class Totals(val plays: Long = 0, val seconds: Long = 0)

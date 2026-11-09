@@ -328,7 +328,12 @@ async function wrapped(year, u) {
   else try {
     const id = u ? await tautUserId(s, u) : null;
     if (u && !id) v.note = 'Tautulli does not know your Plex name. An admin can enter it under Users.';
-    else { v.watch = yearStats(await yearRows(s, year, id)); v.sid = s.id; if (u) delete v.watch.people; }
+    else {
+      const rows = await yearRows(s, year, id); v.watch = yearStats(rows); v.sid = s.id;
+      if (u) { delete v.watch.people;
+        // Their totals count everything they watched; the titles shown leave out what they may not see (other libraries, hidden labels).
+        if (u.role !== 'admin') { const w = yearStats(await statsVisible(u, rows, tautKey, true)); Object.assign(v.watch, { topShows: w.topShows, topMovies: w.topMovies, binge: w.binge, first: w.first }); } }
+    }
   } catch (e) { v.note = e.message; }
   if (!u) { const idx = await libIndex().catch(() => null); if (idx) { let mv = 0, tv = 0; for (const k of ['movie', 'tv']) for (const e of idx[k].values()) if (e.added && new Date(e.added).getFullYear() === year) k === 'movie' ? mv++ : tv++; v.added = { movies: mv, shows: tv }; } }
   if (v.watch || !s) wrapCache.set(key, { at: Date.now(), v }); if (wrapCache.size > 60) wrapCache.delete(wrapCache.keys().next().value);
@@ -745,6 +750,25 @@ function isHidden(u, t) {
   if (L('label').length && !L('label').some(v => t.tags.includes(v))) return true;
   if (L('contentRating').length && !ratingIn(t.rating, L('contentRating'))) return true;
   return false;
+}
+// ---------- Watch stats for people who are not admins: only the Plex libraries they can open (null = all of them,
+// [] = none), and never a title their hide rules, Plex's own label and rating limits or a kids profile keep from them.
+const statSections = u => {
+  if (!u || u.role === 'admin') return null;
+  const L = u.plexLibs; if (L && Array.isArray(L.all) && L.all.length) return (L.mine || []).filter(k => L.all.includes(k));
+  const px = db.services.filter(x => x.type === 'plex'); return !px.length || px.some(x => svcOk(u, x)) ? null : [];
+};
+const tautKey = x => String((x && (x.media_type === 'episode' ? x.grandparent_rating_key || x.rating_key : x.rating_key || x.grandparent_rating_key)) || '');
+const statsLimited = u => { if (!u || u.role === 'admin') return false; const r = hideRules(u); return !!(u.kids || r.genre.length || r.label.length || r.rating.length || u.plexRules); };
+// Keeps the rows of l whose title u may see (key(x) is its Plex rating key). Each title is looked up in Plex once.
+// own: their own viewing, which is not narrowed to libraries (they did watch it), only to what they may see.
+async function statsVisible(u, l, key = tautKey, own = false) {
+  const secs = own ? null : statSections(u); if (secs) l = l.filter(x => x.section_id == null || x.section_id === '' || secs.includes(String(x.section_id)));
+  if (!statsLimited(u)) return l;
+  const px = db.services.find(x => x.type === 'plex'); if (!px) return u.kids ? [] : l;
+  const keys = [...new Set(l.map(key).filter(Boolean))], hide = new Set();
+  for (let i = 0; i < keys.length; i += 8) await Promise.all(keys.slice(i, i + 8).map(async k => { try { if (isHidden(u, await plexTags(px, k))) hide.add(k); } catch { if (u.kids) hide.add(k); } }));
+  return l.filter(x => { const k = key(x); return k ? !hide.has(k) : !u.kids; });
 }
 // The restrictions the server owner set on this person inside Plex itself (labels and content ratings), read from plex.tv.
 async function plexRestrict(s, pid, pname) {
@@ -3613,24 +3637,39 @@ const goatServer = http.createServer(async (req, res) => {
       o.history.forEach(x => { x.lib = x.type === 'episode' ? find(x.show, '', true) : x.type === 'movie' ? find(x.title, x.year, false) : null; });
       return o;
     };
+    // The server's most watched movies and shows and most active viewers, counted in the libraries u can open only.
+    const serverTops = async (s, u, days) => {
+      const secs = statSections(u); if (secs && !secs.length) return { movies: [], tv: [], users: [] };
+      const homes = await Promise.all((secs || [null]).map(k => taut(s, 'get_home_stats', `&time_range=${days}&stats_count=25${k ? '&section_id=' + encodeURIComponent(k) : ''}`).catch(() => [])));
+      const im = x => { const v = x && (x.grandparent_thumb || x.thumb); return /^\/library\/[\w\/.-]+$/.test(v || '') && !v.includes('..') ? v : ''; };
+      const merge = (id, kf) => { const g = new Map(); for (const h of homes) for (const x of ((h || []).find(y => y.stat_id === id) || {}).rows || []) { const k = kf(x), e = g.get(k); if (e) { e.total_plays += +x.total_plays || 0; e.total_duration += +x.total_duration || 0; } else g.set(k, { ...x, total_plays: +x.total_plays || 0, total_duration: +x.total_duration || 0 }); } return [...g.values()].sort((a, b) => b.total_plays - a.total_plays); };
+      const key = x => String(x.grandparent_rating_key || x.rating_key || '');
+      const mv = (await statsVisible(u, merge('top_movies', x => x.rating_key || x.title), key)).slice(0, 10), tv = (await statsVisible(u, merge('top_tv', x => x.grandparent_rating_key || x.rating_key || x.title), key)).slice(0, 10);
+      return { movies: mv.map(x => ({ title: cut(x.title, 120), plays: x.total_plays, thumb: im(x), year: x.year || '' })), tv: tv.map(x => ({ title: cut(x.title, 120), plays: x.total_plays, thumb: im(x) })),
+        users: merge('top_users', x => x.user_id || x.user || x.friendly_name).slice(0, 10).map(x => ({ title: cut(x.friendly_name || x.user, 60), plays: x.total_plays, seconds: x.total_duration || 0 })) };
+    };
     if ((r = p.match(/^\/api\/tautulli\/(\w+)\/stats$/))) {
       const s = svcOf(r[1], 'tautulli'); if (!s) return send(res, 404, { error: 'Not found' });
       const days = [7, 30, 90].includes(+new URL(req.url, 'http://x').searchParams.get('days')) ? +new URL(req.url, 'http://x').searchParams.get('days') : 30;
-      const ob = ownNames(me);
-      if (ob) {
+      // Only admins see everyone's viewing. Anyone else gets their own, and the server's most watched titles and most
+      // active viewers counted only in the libraries they can open, without the titles hidden from them.
+      if (me.role !== 'admin') {
+        const ob = [me.plex && me.plex.name, me.plexName, me.name].filter(Boolean).map(x => String(x).trim().toLowerCase());
         let who = null; try { who = ((await taut(s, 'get_users')) || []).find(x => ob.includes(String(x.username || '').trim().toLowerCase()) || ob.includes(String(x.friendly_name || '').trim().toLowerCase())); } catch {}
-        const none = { days, own: true, movies: [], tv: [], users: [], totals: { plays: 0, seconds: 0 }, byDate: null, byHour: null, byPlatform: null, history: [] };
-        if (!who || !who.user_id) return send(res, 200, none);
+        const server = await serverTops(s, me, days).catch(() => ({ movies: [], tv: [], users: [] }));
+        const none = { days, own: true, movies: [], tv: [], users: [], totals: { plays: 0, seconds: 0 }, byDate: null, byHour: null, byPlatform: null, history: [], server, unknown: true };
+        if (!who || !who.user_id) { grant(me, s.id, [...server.movies, ...server.tv].map(x => x.thumb)); return send(res, 200, await libLinks(none).catch(() => none)); }
         const U = '&user_id=' + encodeURIComponent(who.user_id), sf = pr => pr.catch(() => null), im = x => { const v = x && (x.grandparent_thumb || x.thumb); return /^\/library\/[\w\/.-]+$/.test(v || '') && !v.includes('..') ? v : ''; };
         const [hist, byDate, byDur, byHour, byPlat] = await Promise.all([sf(taut(s, 'get_history', '&length=300' + U)), sf(taut(s, 'get_plays_by_date', `&time_range=${days}&y_axis=plays` + U)), sf(taut(s, 'get_plays_by_date', `&time_range=${days}&y_axis=duration` + U)),
           sf(taut(s, 'get_plays_by_hourofday', `&time_range=${days}&y_axis=plays` + U)), sf(taut(s, 'get_plays_by_top_10_platforms', `&time_range=${days}&y_axis=plays` + U))]);
         const ch = (c, n = 6) => c && Array.isArray(c.categories) ? { categories: c.categories.map(x => cut(x, 40)), series: (c.series || []).slice(0, n).map(z => ({ name: cut(z.name, 30), data: (z.data || []).map(v => +v || 0) })) } : null;
-        const sm = c => c ? c.series.reduce((a, z) => a + z.data.reduce((q, v) => q + v, 0), 0) : 0, dur = ch(byDur), plays = ch(byDate), rows = ((hist || {}).data || []).filter(x => (x.date || 0) * 1000 >= Date.now() - days * 864e5);
+        const sm = c => c ? c.series.reduce((a, z) => a + z.data.reduce((q, v) => q + v, 0), 0) : 0, dur = ch(byDur), plays = ch(byDate), all = (hist || {}).data || [];
+        const seen = await statsVisible(me, all, tautKey, true), rows = seen.filter(x => (x.date || 0) * 1000 >= Date.now() - days * 864e5), inPeriod = all.filter(x => (x.date || 0) * 1000 >= Date.now() - days * 864e5);
         const top = (type, key) => { const g = new Map(); for (const x of rows.filter(y => y.media_type === type)) { const t = cut(x[key] || x.title, 120), e = g.get(t) || { title: t, plays: 0, thumb: im(x), year: x.year || '' }; e.plays++; g.set(t, e); } return [...g.values()].sort((a, b) => b.plays - a.plays).slice(0, 10); };
-        const outS = { days, own: true, movies: top('movie', 'title'), tv: top('episode', 'grandparent_title'), users: [{ title: cut(who.friendly_name || who.username, 60), plays: rows.length, seconds: rows.reduce((a, x) => a + (+x.duration || 0), 0) }],
+        const outS = { days, own: true, movies: top('movie', 'title'), tv: top('episode', 'grandparent_title'), users: [{ title: cut(who.friendly_name || who.username, 60), plays: inPeriod.length, seconds: inPeriod.reduce((a, x) => a + (+x.duration || 0), 0) }], server,
           totals: { plays: sm(plays), seconds: sm(dur) }, byDate: plays, byHour: ch(byHour), byPlatform: ch(byPlat),
-          history: ((hist || {}).data || []).slice(0, 14).map(x => ({ user: x.friendly_name || x.user, title: x.full_title || x.title, show: x.grandparent_title || '', year: x.year || '', type: x.media_type, at: (x.date || 0) * 1000, player: x.player, pct: x.percent_complete, thumb: im(x) })) };
-        grant(me, s.id, [...outS.movies, ...outS.tv, ...outS.history].map(x => x.thumb)); return send(res, 200, await libLinks(outS).catch(() => outS));
+          history: seen.slice(0, 14).map(x => ({ user: x.friendly_name || x.user, title: x.full_title || x.title, show: x.grandparent_title || '', year: x.year || '', type: x.media_type, at: (x.date || 0) * 1000, player: x.player, pct: x.percent_complete, thumb: im(x) })) };
+        grant(me, s.id, [...outS.movies, ...outS.tv, ...outS.history, ...server.movies, ...server.tv].map(x => x.thumb)); return send(res, 200, await libLinks(outS).catch(() => outS));
       }
       const soft = pr => pr.catch(() => null), img = x => { const v = x && (x.grandparent_thumb || x.thumb); return /^\/library\/[\w\/.-]+$/.test(v || '') && !v.includes('..') ? v : ''; };
       const [home, hist, byDate, byDur, byHour, byPlat] = await Promise.all([taut(s, 'get_home_stats', `&time_range=${days}&stats_count=10`), taut(s, 'get_history', '&length=14'),
@@ -3876,6 +3915,7 @@ const goatServer = http.createServer(async (req, res) => {
       return send(res, 200, {});
     }
     if (p === '/api/upcoming' && m === 'GET') {
+      const gotIt = (x, tv) => { if (!x.hasFile) return false; const f = tv ? x.episodeFile : x.movieFile; return !(f && f.qualityCutoffNotMet); };
       const qs = new URL(req.url, 'http://x').searchParams, pd = v => { const d = new Date(v); return v && !isNaN(d) ? d : null; };
       const from = pd(qs.get('from')) || new Date(); let to = pd(qs.get('to')) || new Date(+from + 14 * 864e5);
       if (to < from || to - from > 70 * 864e5) to = new Date(+from + 14 * 864e5);
@@ -3885,9 +3925,11 @@ const goatServer = http.createServer(async (req, res) => {
         const tv = s.type === 'sonarr';
         try {
           const [c, q] = await Promise.all([
-            call(s, `/api/v3/calendar?start=${day(from)}&end=${day(to)}${tv ? '&includeSeries=true' : ''}`),
+            call(s, `/api/v3/calendar?start=${day(from)}&end=${day(to)}${tv ? '&includeSeries=true&includeEpisodeFile=true' : ''}`),
             call(s, `/api/v3/queue?page=1&pageSize=50&${tv ? 'includeSeries=true&includeEpisode=true' : 'includeMovie=true'}`)]);
           c.forEach(x => {
+            // Already downloaded in the quality it should be: nothing left to wait for, so it is not "coming up".
+            if (gotIt(x, tv)) return;
             const d = tv ? x.airDateUtc : [x.digitalRelease, x.physicalRelease, x.inCinemas].filter(v => v && v >= day(from)).sort()[0];
             if (d) {
               const o = tv ? x.series || {} : x, img = (o.images || []).find(i => i.coverType === 'poster') || {};

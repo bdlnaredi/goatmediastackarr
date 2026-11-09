@@ -354,6 +354,43 @@ private fun Bars(chart: Chart?, modifier: Modifier = Modifier) {
     }
 }
 
+/** A row of posters: the most watched movies or shows. */
+private fun androidx.compose.foundation.lazy.LazyListScope.topRows(title: String, list: List<com.bdlnaredi.goatstack.data.TopItem>, img: (String) -> String?) {
+    if (list.isEmpty()) return
+    item { SectionTitle(title, Modifier.padding(top = 6.dp)) }
+    item {
+        val ctx = LocalCtx.current
+        val g = LocalGoat.current
+        LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            items(list) { m ->
+                Column(Modifier.width(104.dp).let { md -> m.lib?.let { l -> md.clickable { ctx.item(l.sid, l.kind, l.id) } } ?: md }) {
+                    Poster(img(m.thumb), m.title, Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(6.dp))
+                    Text(m.title, style = MaterialTheme.typography.bodySmall, color = g.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("${m.plays} play${if (m.plays == 1) "" else "s"}", style = MaterialTheme.typography.labelSmall, color = g.muted)
+                }
+            }
+        }
+    }
+}
+
+/** Who watches most, with a bar each. */
+private fun androidx.compose.foundation.lazy.LazyListScope.viewers(title: String, users: List<com.bdlnaredi.goatstack.data.TopUser>) {
+    if (users.isEmpty()) return
+    item { SectionTitle(title, Modifier.padding(top = 6.dp)) }
+    item {
+        val g = LocalGoat.current
+        GoatCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+            val top = users.maxOf { it.plays }.coerceAtLeast(1)
+            users.forEachIndexed { i, u ->
+                if (i > 0) Spacer(Modifier.height(10.dp))
+                Row { Text(u.title, style = MaterialTheme.typography.bodyMedium, color = g.text, modifier = Modifier.weight(1f)); Text("${u.plays} · ${u.seconds / 3600} h", style = MaterialTheme.typography.labelMedium, color = g.muted) }
+                Spacer(Modifier.height(4.dp)); Bar(u.plays.toFloat() / top, color = g.accent, height = 5.dp)
+            }
+        }
+    }
+}
+
 @Composable
 fun StatsScreen() {
     val ctx = LocalCtx.current
@@ -381,38 +418,16 @@ fun StatsScreen() {
                         Bars(s.byDate)
                     }
                 }
-                listOf("Top movies" to s.movies, "Top shows" to s.tv).forEach { (title, list) ->
-                    if (list.isNotEmpty()) {
-                        item { SectionTitle(title, Modifier.padding(top = 6.dp)) }
-                        item {
-                            LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                items(list) { m ->
-                                    Column(Modifier.width(104.dp).let { md -> m.lib?.let { l -> md.clickable { ctx.item(l.sid, l.kind, l.id) } } ?: md }) {
-                                        Poster(img(m.thumb), m.title, Modifier.fillMaxWidth())
-                                        Spacer(Modifier.height(6.dp))
-                                        Text(m.title, style = MaterialTheme.typography.bodySmall, color = g.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        Text("${m.plays} play${if (m.plays == 1) "" else "s"}", style = MaterialTheme.typography.labelSmall, color = g.muted)
-                                    }
-                                }
-                            }
-                        }
-                    }
+                if (s.own) item {
+                    Text(if (s.unknown) "Tautulli does not know your Plex name yet, so your own numbers are empty. An admin can enter it under Users."
+                        else "These are your own numbers. Further down: what is most watched on the server, in the libraries you can open.",
+                        style = MaterialTheme.typography.bodySmall, color = g.muted, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
                 }
-                if (s.users.isNotEmpty()) {
-                    item { SectionTitle("Who watches most", Modifier.padding(top = 6.dp)) }
-                    item {
-                        GoatCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                            val top = s.users.maxOf { it.plays }.coerceAtLeast(1)
-                            s.users.forEachIndexed { i, u ->
-                                if (i > 0) Spacer(Modifier.height(10.dp))
-                                Row { Text(u.title, style = MaterialTheme.typography.bodyMedium, color = g.text, modifier = Modifier.weight(1f)); Text("${u.plays} · ${u.seconds / 3600} h", style = MaterialTheme.typography.labelMedium, color = g.muted) }
-                                Spacer(Modifier.height(4.dp)); Bar(u.plays.toFloat() / top, color = g.accent, height = 5.dp)
-                            }
-                        }
-                    }
-                }
+                topRows(if (s.own) "Your top movies" else "Top movies", s.movies, img)
+                topRows(if (s.own) "Your top shows" else "Top shows", s.tv, img)
+                if (!s.own) viewers("Who watches most", s.users)
                 if (s.history.isNotEmpty()) {
-                    item { SectionTitle("Recently watched", Modifier.padding(top = 6.dp)) }
+                    item { SectionTitle(if (s.own) "You watched lately" else "Recently watched", Modifier.padding(top = 6.dp)) }
                     items(s.history) { h ->
                         Row(Modifier.fillMaxWidth().let { md -> h.lib?.let { l -> md.clickable { ctx.item(l.sid, l.kind, l.id) } } ?: md }.padding(horizontal = 20.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
                             Poster(img(h.thumb), h.title, Modifier.width(40.dp), corner = 8.dp)
@@ -424,6 +439,13 @@ fun StatsScreen() {
                             Text("${h.pct}%", style = MaterialTheme.typography.labelMedium, color = if (h.pct >= 90) g.good else g.muted)
                         }
                     }
+                }
+                s.server?.takeIf { s.own }?.let { sv ->
+                    item { SectionTitle("On the server", Modifier.padding(top = 12.dp)) }
+                    item { Text("Everyone's viewing, counted only in the libraries you can open.", style = MaterialTheme.typography.bodySmall, color = g.muted, modifier = Modifier.padding(horizontal = 16.dp)) }
+                    topRows("Most watched movies", sv.movies, img)
+                    topRows("Most watched shows", sv.tv, img)
+                    viewers("Who watches most", sv.users)
                 }
             }
         }
