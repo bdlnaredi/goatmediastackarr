@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+## v1.0.19 — 2026-11-09
+
 - Alerts from the logs: admins are told when an app keeps writing errors (5 in 15 minutes unless changed under Settings → Alerts → Errors in the logs), with the last error. Once per app, then not again for 6 hours.
 - App updates (Stack page): which apps in the image have a newer release out, from each app's releases on GitHub, with what each one changed. Checked twice a day, with a Check now button, and admins are told once per new version (the "Newer app versions out" alert). The image is rebuilt every Monday with them.
 - Disk space forecast (Health): under each disk, when it fills up at the rate of the last two weeks, with a small chart of free space. Free space is noted once an hour. Admins are told when a disk will be full within 14 days (changeable under Settings → Alerts → Space running out; the "Disk filling up soon" alert).
