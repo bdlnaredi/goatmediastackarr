@@ -238,11 +238,25 @@ function create(opts = {}) {
     if (!act && m === 'DELETE') { one.configured = false; st.calls.push('jackett remove ' + id); res.writeHead(204); return res.end(); }
     return json(res, {}, 404);
   };
+  // "2026-11-09 10:25:00" in the server's own time, as Bazarr and Tautulli write their log times.
+  const localStamp = t => { const d = new Date(t), z = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}:${z(d.getSeconds())}`; };
   async function handle(req, res, rest) {
     const u = new URL(rest, 'http://x'), p = u.pathname, q = u.searchParams, m = req.method, parts = p.split('/').filter(Boolean), type = parts[0], sub = '/' + parts.slice(1).join('/');
     if ((type === 'sonarr' || type === 'radarr') && /^\/MediaCover\/\d+\/fanart\.jpg$/.test(sub)) {   // a stand-in picture so the cached sign-in wallpapers can be tested
       const b = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(6000, 7)]); res.writeHead(200, { 'Content-Type': 'image/jpeg' }); return res.end(b);
     }
+    // Each app's own log, as its API gives it (Settings → Logs).
+    const ago = mins => Date.now() - mins * 60000;
+    if (['sonarr', 'radarr', 'lidarr', 'prowlarr'].includes(type) && /^\/api\/v[13]\/log$/.test(sub)) {
+      if (st.logDown === type) { res.writeHead(500); return res.end('{"message":"Log is not available"}'); }
+      return json(res, { page: 1, pageSize: 50, records: [
+        { time: new Date(ago(2)).toISOString(), level: 'error', logger: 'DownloadedEpisodesImportService', message: `${type}: Import failed, path does not exist`, exception: 'System.IO.DirectoryNotFoundException: /downloads/tv/x' },
+        { time: new Date(ago(9)).toISOString(), level: 'warn', logger: 'IndexerSearch', message: `${type}: Indexer is unavailable due to failures` },
+        { time: new Date(ago(30)).toISOString(), level: 'info', logger: 'RssSyncService', message: `${type}: RSS Sync Completed. Reports found: 50` }] });
+    }
+    if (type === 'qbittorrent' && sub === '/api/v2/log/main') return json(res, [{ id: 1, message: 'qBittorrent v5.0.0 started', timestamp: Math.round(ago(60) / 1000), type: 1 }, { id: 2, message: 'Torrent stalled: Some.Show.S01E02', timestamp: Math.round(ago(5) / 1000), type: 4 }]);
+    if (type === 'sabnzbd' && q.get('mode') === 'warnings') return json(res, { warnings: [{ text: 'Server news.example.com will be ignored for 1 minute', type: 'WARNING', time: Math.round(ago(12) / 1000) }] });
+    if (type === 'bazarr' && sub === '/api/system/logs') return json(res, { data: [{ type: 'ERROR', timestamp: localStamp(ago(3)), message: 'BAZARR Error trying to get subtitles from OpenSubtitles', exception: '' }] });
     if (type === 'sonarr' || type === 'radarr') return arrApp(type, req, res, sub, q);
     if (type === 'lidarr' || type === 'readarr') return musicBooks(type, req, res, sub, q);
     if (type === 'qbittorrent') {
@@ -436,6 +450,7 @@ function create(opts = {}) {
       const cmd = q.get('cmd'), ok = d => json(res, { response: { result: 'success', data: d } }), days = +q.get('time_range') || 30;
       const dates = Array.from({ length: days }, (_, i) => new Date(now - (days - 1 - i) * 864e5).toISOString().slice(0, 10)), wave = (i, a, b) => Math.max(0, Math.round(a + b * Math.sin(i * 0.9) + ((i * 7) % 5)));
       if (cmd === 'pms_image_proxy') { const hue = [...String(q.get('img'))].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 360, 11); res.writeHead(200, { 'Content-Type': 'image/svg+xml' }); return res.end(decodeURIComponent(svg('Demo', hue).split(',')[1])); }
+        if (cmd === 'get_logs') return ok([{ loglevel: 'INFO', msg: 'Tautulli Notifiers :: Notification sent', thread: 'Thread-12', time: localStamp(Date.now() - 7 * 60000) }]);
       if (cmd === 'get_home_stats') {
         // Movies in library 1, shows in 2, one title in the private library 3, and one movie labelled Adult (key 7…).
         const mv = [...st.movies.slice(0, 10).map((x, i) => ({ title: x.title, year: x.year, total_plays: 14 - i, rating_key: String(500 + i), section_id: 1, thumb: '/library/metadata/' + x.id + '/thumb/1' })),

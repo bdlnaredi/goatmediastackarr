@@ -132,6 +132,7 @@ The menu has four groups. In the Cinema style they are drop-downs on the bar acr
 - **Health**: problems the apps report, stuck downloads, and disk space per folder. **Fix problems by itself** (on by default) removes, blocks and searches again for downloads that failed or have not moved for a day, and restarts a built-in app that stops answering; every fix is listed here.
 - **Unraid**: the array, disks and containers, if you add your Unraid server. **Stats**: what gets watched, from Tautulli. Admins see everyone; anyone else sees their own viewing, plus the server's most watched titles and most active viewers counted only in the libraries they can open, never with a title hidden from them (hidden labels, tags, genres or ratings, Plex's own limits, kids profiles).
 - **Settings**: *Account* (password, two-step sign-in, passkeys, Sign in with Plex, devices), *Appearance*, *Apps*, *Discover lists*, *Users* (what each profile can see and do), *Limits* (streaming per month and disk space per person), *Status pages*, *Alerts* (email, ntfy, Discord, Telegram, Pushover, Gotify or any webhook, each with its own list of what it hears about), *Download rules*, *Backup* and *Activity*.
+- **Logs** (admins): what every app is writing, one app at a time or all together in time order, newest at the bottom. The apps of the stack (and the VPN and GoatMediaStackarr itself) each keep their own log in `/config/logs/<app>/`, about 3 MB each; apps you added are read through their own API (Sonarr, Radarr, Lidarr, Readarr, Prowlarr, qBittorrent, SABnzbd, Bazarr, Tautulli, Seerr). Show only problems or errors, find a word, follow new lines as they come, copy or save them. Each app on the Stack page has a *Logs* button too.
 - **Suggestions**: everyone can suggest an idea or report a problem and vote for others'. Admins send them on to [this project's GitHub Issues](https://github.com/bdlnaredi/goatmediastackarr/issues), in one click with a GitHub token (a fine-grained token with *Issues: Read and write* on the repository) or by opening GitHub's new-issue page already filled in. Names stay off GitHub unless you choose otherwise.
 - **Kids profiles** (Settings → Users): a simpler look with only what is in the library and rated for their age, and no searching or requesting.
 - **Invite links** (Settings → Users): a link or QR code that lets people make their own profile, with the apps and rights you choose, for a day, a week, a month or until you remove it. An invite can also share your Plex libraries with their Plex account, make them a Jellyfin account, and greet them with a welcome note and a short how-to the first time they sign in.
@@ -166,7 +167,7 @@ A native app (Kotlin and Jetpack Compose), not a web page in a frame. It has the
 - **Home**: speeds, what is playing and downloading, what is coming, the latest requests, and whether every app and the VPN are fine. A bell with what is new for you.
 - **Discover**, **Search** and **Library**, with each title's page (cast, More like this, seasons, trailer) and actors' filmographies; request through Seerr (the whole show or chosen seasons) or add straight to Sonarr or Radarr.
 - **Downloads** with every client, **RSS** (tick several articles and download them at once), **Upcoming** with a calendar, **Wanted** and **Choose a release**.
-- **More**: every other page in groups like the web page (Watch, Requests, Downloads, Server, You), including **Watchlist**, **Suggestions** and **What's new**.
+- **More**: every other page in groups like the web page (Watch, Requests, Downloads, Server, You), including **Watchlist**, **Suggestions**, **Logs** (admins) and **What's new**.
 - **In your language**: English, Hindi, Spanish, German or French (Settings → Language).
 - **Two home-screen widgets**: the download and upload speeds and what is playing; and what is coming up with the requests (waiting for you, or yours on the way).
 - **Profile**: your picture, your streaming this month, the space your requests take and your watch time.
@@ -273,6 +274,7 @@ What is kept in `appdata/goatmediastackarr/`: each app's own folder; `goat/secre
 | `TZ` | `Etc/UTC` | Time zone |
 | `UMASK` | `002` | New files are group-writable |
 | `GOAT_FILEBROWSER` | `true` | File Browser: your media and downloads folders in the browser (Stack page → File Browser, admins only). `false` turns it off |
+| `GOAT_APP_LOGS` | `true` | Each app of the stack keeps its own log in `/config/logs/<app>/` for the Logs page (the lines still go to the container's log too). `false` turns it off. |
 | `GOAT_DNS` | *(automatic)* | DNS servers for the apps, like `1.1.1.1,8.8.8.8`. Left empty, GoatMediaStackarr checks at every start that TMDB can be looked up and, if your network's DNS fails it, adds public servers after your own. `off` leaves DNS alone |
 | `TORRENT_PORT` | `50413` | qBittorrent's incoming port (6881 is blocked by many trackers) |
 
@@ -285,7 +287,7 @@ What is kept in `appdata/goatmediastackarr/`: each app's own folder; `goat/secre
 - **Tracker websites are slow through the VPN**: pick a VPN server near you, prefer WireGuard, and add sites that allow it *without the VPN*.
 - **Older problems** (Seerr saying "Seerr Updated" on every visit, OpenVPN "TUNSETIFF … busy", WireGuard sending but not receiving, FlareSolverr without its browser or "version not detected", ruTorrent timing out right after a start): all fixed; update the container. [What's new](CHANGELOG.md) says in which version.
 
-Still stuck? [Open an issue](https://github.com/bdlnaredi/goatmediastackarr/issues) with the container's log.
+Still stuck? Look at **Logs** (in the Server menu) with *Problems* picked, then [open an issue](https://github.com/bdlnaredi/goatmediastackarr/issues) with the lines that look wrong (*Save* gives you a file), or with the container's log.
 
 ## Licenses
 

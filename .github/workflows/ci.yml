@@ -125,6 +125,14 @@ jobs:
           done
           echo "::error::Unpackerr is not running, or not watching Sonarr"; docker exec goat sh -c 'tail -20 /config/unpackerr/unpackerr.log' 2>&1 | sed 's/^/::error::/'
           docker logs goat 2>&1 | grep -i unpackerr | tail -10 | sed 's/^/::error::/'; exit 1
+      - name: Every app keeps its own log, and Logs reads them
+        run: |
+          for n in sonarr radarr qbittorrent ui; do
+            docker exec goat test -s /config/logs/$n/current || { echo "::error::No log for $n in /config/logs"; docker exec goat ls -la /config/logs/ /config/logs/$n || true; exit 1; }
+            docker exec goat sh -c "head -c 300 /config/logs/$n/current" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T' || { echo "::error::$n's log lines have no time"; docker exec goat head -3 /config/logs/$n/current; exit 1; }
+          done
+          docker logs goat 2>&1 | grep -qi sonarr || { echo "::error::The container's own log lost the apps' lines"; exit 1; }
+          echo "::notice::Logs for: $(docker exec goat ls /config/logs | tr '\n' ' ')"
       - name: Engines are connected to each other
         run: |
           for i in $(seq 1 60); do

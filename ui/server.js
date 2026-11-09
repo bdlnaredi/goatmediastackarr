@@ -391,6 +391,13 @@ const goatLinks = () => {
 const GOAT_CONFIG = process.env.GOAT_CONFIG_DIR || '/config', GOAT_SOCK = process.env.GOAT_CONTROL_SOCK || path.join(GOAT_RUN, 'control.sock');
 // The container's settings helper (goat/settings.js). Missing when the interface runs on its own, as plain MediaHub.
 // The PIA helper (the region list for the VPN settings), found the same way as the settings.
+const AL2 = require('./lib/applogs');
+const goatEngines = (() => { for (const p of [process.env.GOAT_BIN && path.join(process.env.GOAT_BIN, 'engines.js'), path.join(__dirname, '..', 'bin', 'engines.js'), path.join(__dirname, '..', 'goat', 'engines.js')]) { try { if (p && fs.existsSync(p)) return require(p); } catch {} } return null; })();
+// What each part of the stack is called in Logs (the apps, and the parts that are not apps).
+const STACK_LOG_NAMES = { ui: 'GoatMediaStackarr', vpn: 'VPN', wire: 'App connections', sitefetch: 'Site browser', 'rutorrent-web': 'ruTorrent (web page)', 'deluge-web': 'Deluge (web page)' };
+const stackLogName = n => STACK_LOG_NAMES[n] || ((goatEngines && goatEngines.ENGINES[n] || {}).name) || n;
+// Apps added under Settings → Apps whose logs their API can give.
+const LOG_TYPES = ['sonarr', 'radarr', 'lidarr', 'readarr', 'prowlarr', 'qbittorrent', 'sabnzbd', 'bazarr', 'tautulli', 'seerr'];
 const goatPia = (() => { for (const p of [process.env.GOAT_BIN && path.join(process.env.GOAT_BIN, 'pia.js'), path.join(__dirname, '..', 'bin', 'pia.js'), path.join(__dirname, '..', 'goat', 'pia.js')]) { try { if (p && fs.existsSync(p)) return require(p); } catch {} } return null; })();
 let piaRegions = null;
 // Backups of the whole stack (goat/stackbackup.js): read here for the list and downloads; made and put back by the control service.
@@ -3638,6 +3645,23 @@ const goatServer = http.createServer(async (req, res) => {
       return o;
     };
     // The server's most watched movies and shows and most active viewers, counted in the libraries u can open only.
+    // The newest log lines an added app keeps, through its own API.
+    const appLog = async (s, src, max) => {
+      const t = v => { const n = typeof v === 'number' ? (v < 1e12 ? v * 1000 : v) : Date.parse(/[zZ]|[+-]\d\d:?\d\d$/.test(String(v)) ? v : String(v).replace(' ', 'T')); return isNaN(n) ? 0 : n; };
+      if (['sonarr', 'radarr', 'lidarr', 'readarr', 'prowlarr'].includes(s.type)) {
+        const v = ['sonarr', 'radarr'].includes(s.type) ? 'v3' : 'v1', d = await call(s, `/api/${v}/log?page=1&pageSize=${Math.min(max, 1000)}&sortKey=time&sortDirection=descending`);
+        return AL2.fromRows(src, (d && d.records) || [], x => ({ t: t(x.time), level: x.level, msg: (x.logger ? x.logger + ': ' : '') + (x.message || '') + (x.exception ? '\n' + x.exception : '') }));
+      }
+      if (s.type === 'qbittorrent') {
+        const d = await qb(s, '/api/v2/log/main?last_known_id=-1'), tp = { 1: 'info', 2: 'info', 4: 'warn', 8: 'error' };
+        return AL2.fromRows(src, (Array.isArray(d) ? d : []).slice(-max), x => ({ t: t(x.timestamp), level: tp[x.type] || 'info', msg: x.message }));
+      }
+      if (s.type === 'sabnzbd') { const d = await sabGet(s, 'mode=warnings'); return AL2.fromRows(src, (d && d.warnings) || [], x => typeof x === 'string' ? { t: 0, msg: x } : { t: t(x.time), level: x.type, msg: x.text }); }
+      if (s.type === 'bazarr') { const d = await bz(s, '/api/system/logs'); return AL2.fromRows(src, ((d && d.data) || []).slice(0, max), x => ({ t: t(x.timestamp), level: x.type, msg: (x.message || '') + (x.exception ? '\n' + x.exception : '') })); }
+      if (s.type === 'tautulli') { const d = await taut(s, 'get_logs', `&end=${max}`); return AL2.fromRows(src, Array.isArray(d) ? d : (d && d.data) || [], x => ({ t: t(x.time), level: x.loglevel, msg: (x.thread ? x.thread + ': ' : '') + (x.msg || '') })); }
+      if (s.type === 'seerr') { const d = await call(s, `/api/v1/settings/logs?take=${Math.min(max, 500)}&skip=0&filter=debug`); return AL2.fromRows(src, (d && d.results) || [], x => ({ t: t(x.timestamp), level: x.level, msg: (x.label ? x.label + ': ' : '') + (x.message || '') })); }
+      return [];
+    };
     const serverTops = async (s, u, days) => {
       const secs = statSections(u); if (secs && !secs.length) return { movies: [], tv: [], users: [] };
       const homes = await Promise.all((secs || [null]).map(k => taut(s, 'get_home_stats', `&time_range=${days}&stats_count=25${k ? '&section_id=' + encodeURIComponent(k) : ''}`).catch(() => [])));
@@ -3648,6 +3672,30 @@ const goatServer = http.createServer(async (req, res) => {
       return { movies: mv.map(x => ({ title: cut(x.title, 120), plays: x.total_plays, thumb: im(x), year: x.year || '' })), tv: tv.map(x => ({ title: cut(x.title, 120), plays: x.total_plays, thumb: im(x) })),
         users: merge('top_users', x => x.user_id || x.user || x.friendly_name).slice(0, 10).map(x => ({ title: cut(x.friendly_name || x.user, 60), plays: x.total_plays, seconds: x.total_duration || 0 })) };
     };
+    // ---------- Logs: the stack's apps (their own log files) and the apps added under Settings → Apps (through their APIs),
+    // one at a time or all together, newest at the bottom.
+    if (p === '/api/logs/sources' && m === 'GET') {
+      if (adminOnly()) return;
+      const stack = AL2.stackApps().map(n => ({ id: 'stack:' + n, name: stackLogName(n), kind: 'stack' }));
+      const apps = db.services.filter(x => LOG_TYPES.includes(x.type) && !(x.managed && stack.some(y => y.id === 'stack:' + x.managed))).map(x => ({ id: 'app:' + x.id, name: x.name, kind: 'app', type: x.type }));
+      return send(res, 200, { sources: [...stack, ...apps], dir: AL2.DIR() });
+    }
+    if (p === '/api/logs' && m === 'GET') {
+      if (adminOnly()) return;
+      const u = new URL(req.url, 'http://x');
+      const want = String(u.searchParams.get('src') || 'all').split(',').filter(Boolean), max = Math.min(Math.max(+u.searchParams.get('lines') || 300, 50), 2000);
+      const levels = String(u.searchParams.get('level') || '').split(',').filter(x => AL2.LEVELS.includes(x));
+      const stack = AL2.stackApps(), all = want.includes('all');
+      const ids = all ? [...stack.map(n => 'stack:' + n), ...db.services.filter(x => LOG_TYPES.includes(x.type) && !(x.managed && stack.includes(x.managed))).map(x => 'app:' + x.id)] : want.slice(0, 40);
+      const failed = [];
+      const lists = await Promise.all(ids.map(async id => {
+        const [kind, key] = [id.slice(0, id.indexOf(':')), id.slice(id.indexOf(':') + 1)];
+        if (kind === 'stack') return stack.includes(key) ? AL2.readStack(key, max) : [];
+        const s = db.services.find(x => x.id === key && LOG_TYPES.includes(x.type)); if (!s) return [];
+        try { return await appLog(s, id, max); } catch (e) { failed.push({ id, name: s.name, error: e.message }); return []; }
+      }));
+      return send(res, 200, { lines: AL2.combine(lists, { q: u.searchParams.get('q') || '', levels, max }), failed, at: Date.now() });
+    }
     if ((r = p.match(/^\/api\/tautulli\/(\w+)\/stats$/))) {
       const s = svcOf(r[1], 'tautulli'); if (!s) return send(res, 404, { error: 'Not found' });
       const days = [7, 30, 90].includes(+new URL(req.url, 'http://x').searchParams.get('days')) ? +new URL(req.url, 'http://x').searchParams.get('days') : 30;

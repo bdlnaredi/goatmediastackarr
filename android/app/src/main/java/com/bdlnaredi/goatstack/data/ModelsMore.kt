@@ -189,3 +189,10 @@ data class RssSettings(val interval: Int = 30, val max: Int = 50, val on: Boolea
 @kotlinx.serialization.Serializable data class Suggestion(val id: String = "", val title: String = "", val body: String = "", val kind: String = "feature", val at: Long = 0,
     val status: String = "new", val issue: SugIssue? = null, val votes: Int = 0, val voted: Boolean = false, val mine: Boolean = false, val user: String? = null)
 @kotlinx.serialization.Serializable data class SugList(val items: List<Suggestion> = emptyList(), val repo: String = "", val names: Boolean = false, val token: Boolean = false)
+
+// ---------- Logs (/api/logs) ----------
+@kotlinx.serialization.Serializable data class LogSource(val id: String = "", val name: String = "", val kind: String = "stack", val type: String = "")
+@kotlinx.serialization.Serializable data class LogSources(val sources: List<LogSource> = emptyList(), val dir: String = "")
+@kotlinx.serialization.Serializable data class LogLine(val t: Long = 0, val src: String = "", val level: String = "info", val msg: String = "")
+@kotlinx.serialization.Serializable data class LogFailed(val id: String = "", val name: String = "", val error: String = "")
+@kotlinx.serialization.Serializable data class LogLines(val lines: List<LogLine> = emptyList(), val failed: List<LogFailed> = emptyList(), val at: Long = 0)

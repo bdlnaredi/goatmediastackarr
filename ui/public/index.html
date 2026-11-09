@@ -868,31 +868,31 @@ const ICONS={home:'<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h5v-6h4v6h5V9
  wt:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>',stats:'<path d="M5 20V10M12 20V4M19 20v-7"/>',
  set:'<circle cx="12" cy="12" r="3"/><path d="M12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6 7 7m10 10 1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4"/>',
  tv:'<rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8M12 17v4"/>',film:'<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 4v16M16 4v16M4 9h4M4 15h4M16 9h4M16 15h4"/>',book:'<path d="M5 4h10a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h10"/>',box:'<path d="M3 7.5 12 3l9 4.5v9L12 21l-9-4.5z"/><path d="M3 7.5 12 12l9-4.5M12 12v9"/>',
- disc:'<circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/>',hist:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',trash:'<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',edit:'<path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',x:'<path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',sug:'<path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.6 10.8c.6.5 1 1.2 1 2V16h5.2v-.2c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z"/>',up1:'<path d="M12 19V5M5 12l7-7 7 7"/>'};
+ disc:'<circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/>',hist:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',trash:'<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',edit:'<path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',x:'<path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',logs:'<path d="M4 5h16M4 10h16M4 15h10M4 20h7"/><path d="M17 15l3 3-3 3"/>',copy:'<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>',sug:'<path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.6 10.8c.6.5 1 1.2 1 2V16h5.2v-.2c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z"/>',up1:'<path d="M12 19V5M5 12l7-7 7 7"/>'};
 const ic=k=>`<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${ICONS[k]}</svg>`;
 const LOGO='<img src="/icon-192.png" alt="" width="38" height="38">';
-const PAGES={dash:['',''],sug:['Suggestions','Ideas for GoatMediaStackarr and problems to fix. Vote for the ones you want; the admin sends them on to the project on GitHub.'],wl:['Watchlist','What you want to watch. You hear when each one is in the library.'],find:['Search','Find a show or movie and add it to Sonarr or Radarr.'],disc:['Discover','What is trending, popular and anticipated on Trakt, TMDB and TheTVDB.'],rq:['Requests','Ask for something new, or approve what others asked for.'],lib:['Library','Everything in Sonarr and Radarr, and what is still missing.'],
+const PAGES={dash:['',''],logs:['Logs','What the apps are writing: the ones in the stack and the ones you added. One at a time or all together, newest at the bottom.'],sug:['Suggestions','Ideas for GoatMediaStackarr and problems to fix. Vote for the ones you want; the admin sends them on to the project on GitHub.'],wl:['Watchlist','What you want to watch. You hear when each one is in the library.'],find:['Search','Find a show or movie and add it to Sonarr or Radarr.'],disc:['Discover','What is trending, popular and anticipated on Trakt, TMDB and TheTVDB.'],rq:['Requests','Ask for something new, or approve what others asked for.'],lib:['Library','Everything in Sonarr and Radarr, and what is still missing.'],
  wt:['Wanted','Episodes and movies you are still missing, or that could be a better quality.'],dl:['Downloads','What qBittorrent is fetching right now.'],rss:['RSS','Feeds and auto-download rules from qBittorrent.'],up:['Upcoming','Releases coming soon, and what is downloading.'],
  idx:['Indexers','Search, check, add and remove the indexers in Jackett and Prowlarr.'],trk:['Trackers','Search your trackers, and browse their websites (through the VPN if you like). Downloads go straight to qBittorrent.'],mb:['Music and books','Artists and authors from Lidarr and Readarr.'],sub:['Subtitles','Episodes and movies that are missing subtitles in Bazarr.'],nzb:['Usenet','What SABnzbd is fetching, what finished, and adding NZB files.'],hl:['Health','Problems, disk space and stuck downloads across your apps.'],ur:['Unraid','Server health, disks and containers.'],stats:['Watch stats','Who watches what on Plex.'],goat:['Stack','The apps inside GoatMediaStackarr: VPN, connections, logins and restarts.'],set:['Settings','Apps, profiles, alerts, backups and how GoatMediaStackarr looks.']};
 // The menu: Home on its own, then four groups, each with its icon. Watch is what is there to watch; Add is everything
 // about getting something new (finding it, asking for it, what is still missing, its subtitles); Downloads is how it
 // arrives; Server is running the whole thing. Pages not listed in a group would not show in the menu.
-const NAVG=[['Watch',['disc','lib','wl','up','mb','stats'],'play'],['Add',['find','rq','wt','sub'],'plus'],['Downloads',['dl','nzb','rss','trk','idx'],'dl'],['Server',['hl','goat','ur','sug','set'],'server']];
+const NAVG=[['Watch',['disc','lib','wl','up','mb','stats'],'play'],['Add',['find','rq','wt','sub'],'plus'],['Downloads',['dl','nzb','rss','trk','idx'],'dl'],['Server',['hl','goat','ur','logs','sug','set'],'server']];
 // One line under each menu item, so it is clear what is behind it.
 const NAVD={dash:'Your home page',disc:'Trending and popular',lib:'Everything you have',wl:'What you want to watch',up:'Coming out soon',mb:'Artists and authors',stats:'Who watches what',
   find:'Add a show or movie',rq:'Ask for something, approve',wt:'Still missing or to upgrade',sub:'Missing subtitles',dl:'Torrents right now',nzb:'SABnzbd',rss:'Feeds and auto-download rules',trk:'Search trackers, browse sites',idx:'Jackett and Prowlarr',
-  hl:'Problems and stuck downloads',goat:'Apps, VPN, connections',ur:'Disks and containers',sug:'Ideas and problems to fix',set:'Apps, people, alerts…'};
+  hl:'Problems and stuck downloads',goat:'Apps, VPN, connections',ur:'Disks and containers',logs:'What every app is writing',sug:'Ideas and problems to fix',set:'Apps, people, alerts…'};
 const navGroupOf=k=>{const g=NAVG.find(([,l])=>l.includes(k));return g&&k!=='dash'?g[0]:''};
-const TABS=[['dash','Home'],['find','Search'],['disc','Discover'],['wl','Watchlist'],['rq','Requests'],['lib','Library'],['wt','Wanted'],['dl','Downloads'],['rss','RSS'],['up','Upcoming'],['idx','Indexers'],['trk','Trackers'],['mb','Music & books'],['sub','Subtitles'],['nzb','Usenet'],['hl','Health'],['ur','Unraid'],['stats','Watch stats'],['goat','Stack'],['sug','Suggestions'],['set','Settings']];
+const TABS=[['dash','Home'],['find','Search'],['disc','Discover'],['wl','Watchlist'],['rq','Requests'],['lib','Library'],['wt','Wanted'],['dl','Downloads'],['rss','RSS'],['up','Upcoming'],['idx','Indexers'],['trk','Trackers'],['mb','Music & books'],['sub','Subtitles'],['nzb','Usenet'],['hl','Health'],['ur','Unraid'],['stats','Watch stats'],['goat','Stack'],['logs','Logs'],['sug','Suggestions'],['set','Settings']];
 const TYPE_TABS={trk:['qbittorrent'],find:['sonarr','radarr'],rq:['seerr'],lib:['sonarr','radarr'],wt:['sonarr','radarr'],dl:['qbittorrent','rutorrent','deluge'],rss:['qbittorrent'],up:['sonarr','radarr'],idx:['jackett','prowlarr'],mb:['lidarr','readarr'],sub:['bazarr'],nzb:['sabnzbd'],ur:['unraid'],stats:['tautulli']};
 const PICK={sub:'bazarr',nzb:'sabnzbd',dl:'torrent',rss:'qbittorrent',idx:'jackett',ur:'unraid',rq:'seerr',stats:'tautulli'};
-const visibleTabs=()=>TABS.filter(([k])=>!TYPE_TABS[k]||TYPE_TABS[k].some(t=>ofType(t).length)).filter(([k])=>k!=='disc'||Object.values(me.lists||{}).some(Boolean)).filter(([k])=>k!=='hl'||(me.role==='admin'&&services.some(s=>['sonarr','radarr','lidarr','readarr','prowlarr'].includes(s.type)))).filter(([k])=>k!=='goat'||(GOAT&&me.role==='admin')).filter(([k])=>k!=='trk'||me.role==='admin').filter(([k])=>!me.kids||KIDS_TABS.includes(k));
+const visibleTabs=()=>TABS.filter(([k])=>!TYPE_TABS[k]||TYPE_TABS[k].some(t=>ofType(t).length)).filter(([k])=>k!=='disc'||Object.values(me.lists||{}).some(Boolean)).filter(([k])=>k!=='hl'||(me.role==='admin'&&services.some(s=>['sonarr','radarr','lidarr','readarr','prowlarr'].includes(s.type)))).filter(([k])=>k!=='goat'||(GOAT&&me.role==='admin')).filter(([k])=>k!=='trk'||me.role==='admin').filter(([k])=>k!=='logs'||me.role==='admin').filter(([k])=>!me.kids||KIDS_TABS.includes(k));
 // Kids profiles get a short, simple menu: what is here to watch, and their own settings.
 const KIDS_TABS=['dash','lib','mb','set'],KIDS_DASH=['hero','foryou','ticker','rails'];
 let stSub='acct';
 // ---------- Addresses: every tab and every Settings section has its own address (/downloads, /settings/apps),
 // so the browser's back button, bookmarks and links work.
-const SLUG={dash:'dashboard',wl:'watchlist',find:'search',disc:'discover',rq:'requests',lib:'library',wt:'wanted',dl:'downloads',rss:'rss',up:'upcoming',idx:'indexers',trk:'trackers',mb:'music',sub:'subtitles',nzb:'usenet',hl:'health',ur:'unraid',stats:'stats',goat:'stack',sug:'suggestions',set:'settings'};
+const SLUG={dash:'dashboard',wl:'watchlist',find:'search',disc:'discover',rq:'requests',lib:'library',wt:'wanted',dl:'downloads',rss:'rss',up:'upcoming',idx:'indexers',trk:'trackers',mb:'music',sub:'subtitles',nzb:'usenet',hl:'health',ur:'unraid',stats:'stats',goat:'stack',logs:'logs',sug:'suggestions',set:'settings'};
 const UNSLUG=Object.fromEntries(Object.entries(SLUG).map(([k,v])=>[v,k]));
 const pathFor=()=>tab==='dash'?'/':'/'+(SLUG[tab]||tab)+(tab==='set'&&stSub&&stSub!=='acct'?'/'+encodeURIComponent(stSub):'');
 // Reads the tab (and Settings section) from the address. Returns false when the address names no page.
@@ -962,7 +962,7 @@ $('#rl').onclick=()=>{UI.rail=!UI.rail;saveUI()};$('#qs').onclick=quick;
     $('#pk2').onchange=e=>{UI['pick_'+pt]=e.target.value;saveUI();render()}}
   [].concat(timer||[]).forEach(clearInterval);liveFns=[];LIVE.subs.clear();if(tab!=='dash'&&tab!=='ur')liveStop();
   const on=document.querySelector('.nv.on');if(on&&on.scrollIntoView)on.scrollIntoView({inline:'center',block:'nearest'});
-  ({trk:trkView,wl:wlView,dash:dashView,find:findView,disc:discView,rq:rqView,lib:libView,wt:wtView,dl:dlView,rss:rssView,up:upView,idx:idxView,mb:mbView,sub:subView,nzb:nzbView,hl:hlView,ur:urView,stats:statsView,goat:goatView,sug:sugView,set:setView})[tab]();
+  ({trk:trkView,wl:wlView,dash:dashView,find:findView,disc:discView,rq:rqView,lib:libView,wt:wtView,dl:dlView,rss:rssView,up:upView,idx:idxView,mb:mbView,sub:subView,nzb:nzbView,hl:hlView,ur:urView,stats:statsView,goat:goatView,logs:logsView,sug:sugView,set:setView})[tab]();
   // Keep the address bar in step with what is on screen: a new history entry for each move, none for back/forward.
   {const want=pathFor();if(location.pathname!==want){if(routeQuiet)history.replaceState(null,'',want+location.search);else history.pushState(null,'',want)}routeQuiet=false;
    document.title=(tab==='dash'?'':(PAGES[tab]&&PAGES[tab][0]?PAGES[tab][0]+' · ':''))+'GoatMediaStackarr'}
@@ -2767,6 +2767,50 @@ async function openInLibrary(l){
 const wlToggle=(type,id,on,x)=>on?api('/api/watchlist','POST',{type,id,title:x.title,year:x.year,poster:x.poster}):api(`/api/watchlist/${type}/${id}`,'DELETE');
 // ---------- Suggestions: anyone can suggest something and vote; admins send them to the project's GitHub Issues.
 const SUG_KIND={feature:['Idea','acc'],bug:['Problem','bad'],other:['Other','']},SUG_ST={new:['New',''],sent:['On GitHub','ok'],done:['Done','ok'],declined:['Not planned','bad']};
+// ---------- Logs: every app's log lines (admins). The apps of the stack from their own log files, the added ones through
+// their APIs; one or all together, in time order, newest at the bottom. Follow keeps it up to date.
+const LOGLV={error:['Error','bad'],warn:['Warning','warn'],info:['Info',''],debug:['Debug','mute']};
+async function logsView(){
+  const L=UI.logs||(UI.logs={src:'all',lv:'',q:'',n:300,follow:true});
+  $('#m').innerHTML=skel(2);
+  let src;try{src=(await api('/api/logs/sources')).sources}catch(x){$('#m').innerHTML=`<div class="err">${esc(x.message)}</div>`;return}
+  if(tab!=='logs')return;
+  if(L.src!=='all'&&!src.some(x=>x.id===L.src))L.src='all';
+  const nameOf=Object.fromEntries(src.map(x=>[x.id,x.name])),hue=id=>[...id].reduce((a,c)=>(a*31+c.charCodeAt(0))%360,7);
+  const opt=(x)=>`<option value="${esc(x.id)}" ${L.src===x.id?'selected':''}>${esc(x.name)}</option>`;
+  $('#m').innerHTML=`<div class="panel lgbar">
+      <select id="lgs" aria-label="Which app"><option value="all" ${L.src==='all'?'selected':''}>All apps together</option>
+        ${src.some(x=>x.kind==='stack')?`<optgroup label="In the stack">${src.filter(x=>x.kind==='stack').map(opt).join('')}</optgroup>`:''}
+        ${src.some(x=>x.kind==='app')?`<optgroup label="Apps you added">${src.filter(x=>x.kind==='app').map(opt).join('')}</optgroup>`:''}</select>
+      <div class="seg" id="lgl">${[['','Everything'],['error,warn','Problems'],['error','Errors']].map(([k,n])=>`<button data-v="${k}" class="${L.lv===k?'on':''}">${n}</button>`).join('')}</div>
+      <input id="lgq" type="search" placeholder="Find in the lines" value="${esc(L.q)}" aria-label="Find in the lines">
+      <select id="lgn" aria-label="How many lines">${[100,300,1000,2000].map(n=>`<option value="${n}" ${L.n==n?'selected':''}>${n} lines</option>`).join('')}</select>
+      <label class="chk"><input type="checkbox" id="lgf" ${L.follow?'checked':''}>Follow</label>
+      <button class="ghost" id="lgc" title="Copy these lines">${ic('copy')}Copy</button><button class="ghost" id="lgd" title="Save these lines as a file">${ic('dl')}Save</button></div>
+    <div id="lgw" class="mute" style="font-size:13px;margin:8px 2px"></div><div id="lgo" class="lgo" role="log" aria-live="off"></div>
+    ${src.length?'':`<p class="mute">Nothing writes a log here yet. The apps of the stack keep one in <code>/config/logs</code> once they have started; apps you add show theirs when they are Sonarr, Radarr, Lidarr, Readarr, Prowlarr, qBittorrent, SABnzbd, Bazarr, Tautulli or Seerr.</p>`}`;
+  let lines=[],busy=false;
+  const fmt=t=>{if(!t)return'';const d=new Date(t),today=new Date().toDateString()===d.toDateString();return(today?'':d.toLocaleDateString(undefined,{month:'short',day:'numeric'})+' ')+d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'})};
+  const draw=()=>{const o=$('#lgo');if(!o)return;const end=o.scrollHeight-o.scrollTop-o.clientHeight<40;
+    o.innerHTML=lines.length?lines.map(x=>`<div class="lgl ${x.level}"><span class="lgt">${fmt(x.t)}</span>${L.src==='all'||L.src.includes(',')?`<span class="lgs" style="--h:${hue(x.src)}">${esc(nameOf[x.src]||x.src)}</span>`:''}${x.level!=='info'?`<span class="lgv">${LOGLV[x.level][0]}</span>`:''}<span class="lgm">${esc(x.msg)}</span></div>`).join(''):`<p class="mute" style="padding:14px">${L.q||L.lv?'No lines match.':'No lines yet.'}</p>`;
+    if(end||!o.dataset.seen){o.scrollTop=o.scrollHeight;o.dataset.seen=1}};
+  const load=async()=>{if(busy||tab!=='logs'||!$('#lgo'))return;busy=true;
+    try{const d=await api(`/api/logs?src=${encodeURIComponent(L.src)}&lines=${L.n}${L.lv?'&level='+L.lv:''}${L.q?'&q='+encodeURIComponent(L.q):''}`);
+      lines=d.lines;draw();
+      $('#lgw').innerHTML=`${lines.length} lines${L.follow?' · following, every 5 seconds':''}${d.failed.length?` · <span class="bad">${d.failed.map(f=>esc(f.name)+' did not answer ('+esc(f.error)+')').join('; ')}</span>`:''}`}
+    catch(x){$('#lgw').innerHTML=`<span class="bad">${esc(x.message)}</span>`}busy=false};
+  const set=(k,v)=>{L[k]=v;saveUI();$('#lgo').dataset.seen='';load()};
+  $('#lgs').onchange=e=>set('src',e.target.value);
+  $('#lgn').onchange=e=>set('n',+e.target.value);
+  $('#lgl').onclick=e=>{const b=e.target.closest('[data-v]');if(!b)return;$('#lgl').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));set('lv',b.dataset.v)};
+  let qt;$('#lgq').oninput=e=>{clearTimeout(qt);qt=setTimeout(()=>set('q',e.target.value.trim()),300)};
+  $('#lgf').onchange=e=>{L.follow=e.target.checked;saveUI();load()};
+  const text=()=>lines.map(x=>`${new Date(x.t||0).toISOString()} ${nameOf[x.src]||x.src} ${x.level.toUpperCase()} ${x.msg}`).join('\n');
+  $('#lgc').onclick=async()=>{try{await navigator.clipboard.writeText(text());toast('Copied '+lines.length+' lines','ok')}catch{toast('Could not copy','bad')}};
+  $('#lgd').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text()],{type:'text/plain'}));a.download=`goat-logs-${(L.src==='all'?'all':(nameOf[L.src]||'app')).toLowerCase().replace(/[^a-z0-9]+/g,'-')}-${new Date().toISOString().slice(0,16).replace(/[:T]/g,'-')}.txt`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000)};
+  await load();
+  timer=[tick(()=>{if(L.follow)load()},5000)];
+}
 async function sugView(){
   $('#m').innerHTML=skel(3);
   let d;try{d=await api('/api/suggestions')}catch(x){$('#m').innerHTML=`<div class="err">${esc(x.message)}</div>`;return}
@@ -3486,7 +3530,7 @@ async function goatView(){
   <div class="panel">${st.engines.map(e=>`<div class="row" style="gap:10px;padding:6px 0;border-bottom:1px solid var(--line)">
       <span class="pill ${e.stopped?'':e.ok===true?'ok':e.ok===false?'bad':''}" style="min-width:12px"></span><b>${esc(e.name)}</b>${e.version?`<span class="mute" style="font-size:13px">${esc(e.version)}</span>`:''}${e.stopped?'<span class="pill">Stopped</span>':''}<span class="grow"></span>
       ${goatOpen(e.key)&&!e.stopped?`<a class="btn" href="${goatOpen(e.key)}" target="_blank" rel="noopener">${ic('ext')}Open</a>`:''}
-      ${e.stopped?`<button class="primary" data-gs="${esc(e.key)}">${ic('play')}Start</button>`:`<button data-gr="${esc(e.key)}">${ic('refresh')}Restart</button><button data-gx="${esc(e.key)}">${ic('stop')}Stop</button>`}</div>`).join('')}
+      ${e.stopped?`<button class="primary" data-gs="${esc(e.key)}">${ic('play')}Start</button>`:`<button data-gr="${esc(e.key)}">${ic('refresh')}Restart</button><button data-gx="${esc(e.key)}">${ic('stop')}Stop</button>`}<button class="ghost" data-glog="${esc(e.key)}" title="What ${esc(e.name||e.key)} is writing">${ic('logs')}Logs</button></div>`).join('')}
     <div class="mute" style="margin-top:8px">Each app's own page opens signed in through GoatMediaStackarr. Seerr is used through <a href="#" data-go="rq">Requests</a>.</div>
     ${(st.appUpdates||[]).length?`<h3 style="margin:16px 0 6px">Recent updates</h3>${st.appUpdates.map(u=>`<div style="margin:6px 0"><b>${esc(new Date(u.at).toLocaleDateString())}</b> <span class="mute">${u.changes.map(c=>`${esc(c.name)} ${esc(c.from)} → ${esc(c.to)}`).join(' · ')}</span></div>`).join('')}`:`<div class="mute" style="margin-top:8px;font-size:13px">The image is rebuilt every Monday with the newest version of each app. Update the container in Unraid's Docker tab to get it; what changed is listed here afterwards.</div>`}</div>
   <h2 class="sec">From outside your home</h2>
@@ -3589,6 +3633,7 @@ async function goatView(){
     const gx=e.target.closest('[data-gx],[data-gs]');if(gx){const k=gx.dataset.gx||gx.dataset.gs,stop=!!gx.dataset.gx;
       if(stop&&!confirm(`Stop ${k}? It stays stopped until you start it again or the container restarts.`))return;
       busy(gx,stop?'Stopping…':'Starting…');try{await api('/api/goat/'+(stop?'stop':'start'),'POST',{engine:k});toast((stop?'Stopped ':'Started ')+k,'ok');goatView()}catch(x){toast(x.message,'bad');idle(gx)}return}
+    const lg=e.target.closest('[data-glog]');if(lg){UI.logs={...(UI.logs||{lv:'',q:'',n:300,follow:true}),src:'stack:'+lg.dataset.glog};saveUI();tab='logs';render();return}
     const r=e.target.closest('[data-gr]');if(r){busy(r,'Restarting…');try{await api('/api/goat/restart','POST',{engine:r.dataset.gr});toast('Restarted '+r.dataset.gr,'ok')}catch(x){toast(x.message,'bad')}idle(r);return}
     const g=e.target.closest('[data-go]');if(g){e.preventDefault();goto(g.dataset.go)}};
 }

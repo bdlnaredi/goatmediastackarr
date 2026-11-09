@@ -17,6 +17,13 @@ if [[ "$name" != ui && "$name" != wire && "$name" != sitefetch && "$name" != fil
   exec sleep infinity
 fi
 
+# Each app keeps its own log too (Settings → Logs reads it): /config/logs/<app>/current, about 3 MB, with the lines
+# still going to the container's log as before. GOAT_APP_LOGS=false turns this off.
+if [[ "${GOAT_APP_LOGS:-true}" != false ]] && command -v s6-log >/dev/null 2>&1 && mkdir -p "/config/logs/$name" 2>/dev/null; then
+  # If s6-log cannot start (the folder is still locked by the last run's, say), cat passes the lines on as before.
+  exec > >(s6-log n2 s1000000 T 1 "/config/logs/$name" || exec cat) 2>&1
+fi
+
 groups="$PGID"
 vpn_list="${VPN_APPS,,}"
 # FlareSolverr visits indexer sites on Prowlarr's behalf, so it uses the VPN whenever Prowlarr does.

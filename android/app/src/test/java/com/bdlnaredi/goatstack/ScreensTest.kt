@@ -272,6 +272,7 @@ class ScreensTest {
         openFromMore("Watchlist"); waitFor("Waiting for approval"); shot("73-watchlist"); back()
         openFromMore("Health"); waitFor("to look at"); waitFor("Fix problems by itself"); waitFor("Glass.City.S02E06"); shot("74-health-healing"); back()
         openFromMore("Suggestions"); waitFor("Suggest something"); waitFor("Dark mode for the widget"); shot("76-suggestions"); back()
+        openFromMore("Logs"); waitFor("All apps together"); waitFor("Import failed, path does not exist"); shot("77-logs"); back()
         compose.runOnUiThread { state.setPrefs(state.prefs.value.copy(lang = "hi")) }
         compose.waitForIdle(); waitFor("होम"); shot("75-home-hindi")
         compose.runOnUiThread { state.setPrefs(state.prefs.value.copy(lang = "")) }

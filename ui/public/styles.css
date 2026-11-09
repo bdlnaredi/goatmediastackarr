@@ -470,3 +470,17 @@ button.sm{min-height:30px;padding:4px 10px;font-size:13px}
 .sugv b{color:var(--text);font-size:15px}.sugv.on{background:var(--accent);border-color:var(--accent);color:#111}.sugv.on b{color:inherit}
 .sugt{font-size:15px;word-break:break-word}.sugb{margin-top:6px;white-space:pre-wrap;word-break:break-word;color:var(--text);opacity:.9}
 .sugc select{width:auto;margin:0;padding:6px 10px}
+
+/* Logs: a dark terminal-like box, each line with its time, app and level. */
+.lgbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:12px 14px}
+.lgbar select,.lgbar input[type=search]{width:auto;margin:0}.lgbar input[type=search]{flex:1;min-width:160px}
+.lgbar .chk{margin:0 4px}
+.lgo{background:#0d0f14;color:#d6dae3;border-radius:14px;border:1px solid var(--line);font:12.5px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;height:calc(100vh - 330px);min-height:320px;overflow:auto;padding:8px 0}
+.lgl{display:flex;gap:10px;padding:1px 14px;align-items:baseline}.lgl:hover{background:#ffffff0d}
+.lgt{color:#7b8496;flex:none;white-space:nowrap}
+.lgs{flex:none;padding:0 7px;border-radius:6px;font-size:11.5px;background:hsl(var(--h) 45% 26%);color:hsl(var(--h) 80% 85%);white-space:nowrap;max-width:150px;overflow:hidden;text-overflow:ellipsis}
+.lgv{flex:none;font-size:11.5px;font-weight:600}
+.lgm{white-space:pre-wrap;word-break:break-word;min-width:0}
+.lgl.error{background:#ff4d4f14}.lgl.error .lgv,.lgl.error .lgm{color:#ff8a8a}
+.lgl.warn .lgv,.lgl.warn .lgm{color:#ffcc66}.lgl.debug .lgm,.lgl.debug .lgv{color:#8a93a6}
+@media (max-width:700px){.lgo{height:calc(100vh - 380px);font-size:12px}.lgl{flex-wrap:wrap;gap:2px 8px;padding:3px 12px}.lgm{flex-basis:100%}}

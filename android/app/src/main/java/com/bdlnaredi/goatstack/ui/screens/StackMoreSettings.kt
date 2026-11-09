@@ -26,6 +26,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Lightbulb
 import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Check
@@ -288,6 +289,7 @@ fun MoreScreen() {
             if (has("unraid")) Dest(Icons.Rounded.Storage, "Unraid", "Array, disks, containers") { ctx.go("unraid") } else null,
             Dest(Icons.Rounded.Group, "Users", "Who can sign in") { ctx.go("users") },
             Dest(Icons.Rounded.Notifications, "Alerts", "Channels, triggers and newsletters") { ctx.go("alerts") },
+            Dest(Icons.Rounded.Description, "Logs", "What every app is writing") { ctx.go("logs") },
             if (ctx.me.goat) Dest(Icons.Rounded.MoveDown, "Bring in your setup", "From the apps you use now") { ctx.go("import") } else null,
         ),
         "You" to listOfNotNull(
