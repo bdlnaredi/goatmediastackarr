@@ -7,7 +7,7 @@ eval "$(node "$(dirname "$0")/settings.js" env 2>/dev/null)"
 set -u
 # Its own log for Settings → Logs, as for every app (see engine.sh).
 if [[ "${GOAT_APP_LOGS:-true}" != false ]] && command -v s6-log >/dev/null 2>&1 && mkdir -p /config/logs/vpn 2>/dev/null; then
-  exec > >(s6-log n2 s1000000 T 1 /config/logs/vpn || exec cat) 2>&1
+  exec > >(s6-log 1 n2 s1000000 T /config/logs/vpn || exec cat) 2>&1
 fi
 
 GID="${GOAT_VPN_GID:-9000}"

@@ -19,9 +19,11 @@ fi
 
 # Each app keeps its own log too (Settings → Logs reads it): /config/logs/<app>/current, about 3 MB, with the lines
 # still going to the container's log as before. GOAT_APP_LOGS=false turns this off.
+# s6-log: "1" copies each line to the container's log as it was; the options before the folder (keep 2 old files of
+# 1 MB, put the time in front) apply to the folder only, since each option is for the next action alone.
 if [[ "${GOAT_APP_LOGS:-true}" != false ]] && command -v s6-log >/dev/null 2>&1 && mkdir -p "/config/logs/$name" 2>/dev/null; then
   # If s6-log cannot start (the folder is still locked by the last run's, say), cat passes the lines on as before.
-  exec > >(s6-log n2 s1000000 T 1 "/config/logs/$name" || exec cat) 2>&1
+  exec > >(s6-log 1 n2 s1000000 T "/config/logs/$name" || exec cat) 2>&1
 fi
 
 groups="$PGID"
