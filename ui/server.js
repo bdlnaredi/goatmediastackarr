@@ -108,7 +108,7 @@ const feed = (to, kind, title, body, link = '', ref = '') => {
   if (!db.feed) db.feed = { n: 0, items: [] };
   const f = db.feed; f.n++; f.items.push({ id: f.n, at: Date.now(), to, kind, title: String(title).slice(0, 120), body: String(body || '').slice(0, 500), link: String(link).slice(0, 80), ...(ref ? { ref: String(ref).slice(0, 40) } : {}) });
   if (f.items.length > 600) f.items.splice(0, f.items.length - 600);
-  save();
+  save(); pushOut(f.items[f.items.length - 1]);
 };
 const notifyUser = (u, title, body, kind = 'reqstatus', link = '') => {
   if (u) feed(u.id, kind, title, body, link);
@@ -398,6 +398,39 @@ const STACK_LOG_NAMES = { ui: 'GoatMediaStackarr', vpn: 'VPN', wire: 'App connec
 const stackLogName = n => STACK_LOG_NAMES[n] || ((goatEngines && goatEngines.ENGINES[n] || {}).name) || n;
 // Apps added under Settings → Apps whose logs their API can give.
 const LOG_TYPES = ['sonarr', 'radarr', 'lidarr', 'readarr', 'prowlarr', 'qbittorrent', 'sabnzbd', 'bazarr', 'tautulli', 'seerr'];
+// ---------- Push notifications for the web app (installed on a phone or a computer, or just a browser tab that allowed
+// them): each item of the bell goes to that person's browsers too, encrypted for each one (lib/webpush.js).
+const WP = require('./lib/webpush');
+const PUSH_PATH = { requests: '/requests', stack: '/stack', hl: '/health', health: '/health', settings: '/settings', logs: '/logs', update: '/settings/about', unraid: '/unraid', downloads: '/downloads', suggestions: '/suggestions', upcoming: '/upcoming', notifications: '/' };
+function vapidKeys() { const s = db.settings || (db.settings = {}); if (!s.vapid || !s.vapid.pub || !s.vapid.priv) { s.vapid = WP.keys(); save(); } return s.vapid; }
+function pushOut(x) {
+  const subs = db.pushSubs || []; if (!x || !subs.length) return;
+  const to = x.to === '@admins' ? new Set(db.users.filter(u => u.role === 'admin').map(u => u.id)) : new Set([x.to]);
+  const mine = subs.filter(sb => to.has(sb.uid)); if (!mine.length) return;
+  const k = vapidKeys(), msg = { title: x.title, body: x.body, url: PUSH_PATH[x.link] || '/', tag: x.kind + ':' + (x.ref || x.id), kind: x.kind };
+  for (const sb of mine) WP.send(sb, msg, k, { subject: 'mailto:' + ((db.users.find(u => u.role === 'admin') || {}).email || 'admin@localhost') }).then(r => {
+    if (r.gone) { db.pushSubs = (db.pushSubs || []).filter(y => y !== sb); save(); } else if (r.ok) sb.last = Date.now();
+  }).catch(() => {});
+}
+// ---------- Alerts from the logs: when an app writes errors again and again (5 in 15 minutes unless changed under
+// Alerts), admins hear about it once, then not again for that app for 6 hours.
+async function logAlertTick() {
+  const a = db.alerts || {}, n = a.logCount || 5, mins = a.logMins || 15, since = Date.now() - mins * 60000;
+  if (a.logCount === 0) return;
+  const admin = db.users.find(u => u.role === 'admin'); if (!admin) return;
+  const r = await botApi(admin, 'GET', `/api/logs?src=all&level=error&lines=2000`); if (r.status !== 200) return;
+  const src = (await botApi(admin, 'GET', '/api/logs/sources')).data.sources || [], name = id => (src.find(x => x.id === id) || {}).name || id;
+  const by = {}; for (const l of r.data.lines || []) if (l.t >= since) (by[l.src] = by[l.src] || []).push(l);
+  const seen = db.logAlerted || (db.logAlerted = {}); let changed = false;
+  for (const [id, l] of Object.entries(by)) {
+    if (l.length < n || Date.now() - (seen[id] || 0) < 6 * 3600e3 || (a.logIgnore || []).includes(id)) continue;
+    seen[id] = Date.now(); changed = true;
+    const last = cut(l[l.length - 1].msg.split('\n')[0], 300), app = name(id);
+    feed('@admins', 'problem', `${app} keeps writing errors`, `${l.length} in ${mins} minutes. Last: ${last}`, 'logs');
+    notify('logErrors', `${app} keeps writing errors`, `${app} wrote ${l.length} errors in the last ${mins} minutes. The last one: ${last}`, null, { app, errors: l.length, minutes: mins, last_error: last }).catch(() => {});
+  }
+  if (changed) save();
+}
 const goatPia = (() => { for (const p of [process.env.GOAT_BIN && path.join(process.env.GOAT_BIN, 'pia.js'), path.join(__dirname, '..', 'bin', 'pia.js'), path.join(__dirname, '..', 'goat', 'pia.js')]) { try { if (p && fs.existsSync(p)) return require(p); } catch {} } return null; })();
 let piaRegions = null;
 // Backups of the whole stack (goat/stackbackup.js): read here for the list and downloads; made and put back by the control service.
@@ -491,6 +524,75 @@ function goatVersionCheck() {
   save();
 }
 setTimeout(goatVersionCheck, Number(process.env.GOAT_VERSION_CHECK_MS) || 20000).unref();
+
+// ---------- App updates: for each app in the image, the newest release on GitHub and what it changed. The image is
+// rebuilt every Monday with the newest of each, so updating the container brings them. Checked twice a day.
+const APP_REPOS = { sonarr: 'Sonarr/Sonarr', radarr: 'Radarr/Radarr', lidarr: 'Lidarr/Lidarr', prowlarr: 'Prowlarr/Prowlarr', bazarr: 'morpheus65535/bazarr',
+  sabnzbd: 'sabnzbd/sabnzbd', qbittorrent: 'userdocs/qbittorrent-nox-static', jellyfin: 'jellyfin/jellyfin', seerr: 'seerr-team/seerr', tautulli: 'Tautulli/Tautulli',
+  rutorrent: 'Novik/ruTorrent', rtorrent: 'rakshasa/rtorrent', filebrowser: 'filebrowser/filebrowser', unpackerr: 'Unpackerr/unpackerr', autobrr: 'autobrr/autobrr',
+  'cross-seed': 'cross-seed/cross-seed', flaresolverr: 'FlareSolverr/FlareSolverr' };
+const APP_TITLES = { ...APP_NAME, filebrowser: 'File Browser', unpackerr: 'Unpackerr', autobrr: 'autobrr', 'cross-seed': 'cross-seed', flaresolverr: 'FlareSolverr' };
+const cleanVer = v => String(v || '').trim().replace(/^(v|release-)/i, '').replace(/_v[0-9.]+$/, '');
+// Every number counts (Sonarr has four: 4.0.11.2680); a version with fewer numbers is padded with zeros.
+const verNewer = (a, b) => { const x = cleanVer(a).split(/[.\-+]/).map(n => parseInt(n, 10) || 0), y = cleanVer(b).split(/[.\-+]/).map(n => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); return false; };
+async function appNewsCheck(force) {
+  const have = appVersions(), c = db.appNews || (db.appNews = { at: 0, apps: {} });
+  if (!force && Date.now() - c.at < 12 * 3600e3) return c;
+  c.at = Date.now();
+  const tok = process.env.GITHUB_TOKEN || (db.settings.suggest || {}).token || '', base = process.env.GITHUB_API || 'https://api.github.com';
+  for (const [k, repo] of Object.entries(APP_REPOS)) {
+    if (!have[k]) continue;
+    try {
+      const r = await fetch(`${base}/repos/${repo}/releases/latest`, { signal: AbortSignal.timeout(10000), headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'GoatMediaStackarr', ...(tok ? { Authorization: 'Bearer ' + tok } : {}) } });
+      if (r.status === 403 || r.status === 429) break;   // GitHub's limit for the hour: try again next time
+      if (!r.ok) continue;
+      const d = await r.json(); if (!d.tag_name) continue;
+      c.apps[k] = { latest: cleanVer(d.tag_name), url: /^https:\/\/github\.com\//.test(d.html_url || '') ? d.html_url : `https://github.com/${repo}/releases`, at: d.published_at || '', notes: String(d.body || '').slice(0, 4000) };
+    } catch {}
+  }
+  const newer = Object.entries(c.apps).filter(([k, x]) => have[k] && verNewer(x.latest, have[k]));
+  const fresh = newer.filter(([k, x]) => (c.told || {})[k] !== x.latest);
+  if (fresh.length) {
+    c.told = { ...(c.told || {}), ...Object.fromEntries(fresh.map(([k, x]) => [k, x.latest])) };
+    const text = fresh.map(([k, x]) => `${APP_TITLES[k] || k} ${x.latest} (you have ${cleanVer(have[k])})`).join(', ');
+    feed('@admins', 'update', 'Newer app versions are out', text + '. The next Monday image brings them; update the container then.', 'stack');
+    notify('appNews', 'Newer app versions are out', `Out now: ${text}. The image is rebuilt every Monday with them; update the container in Unraid's Docker tab afterwards.`, null, { apps: text }).catch(() => {});
+  }
+  save(); return c;
+}
+// ---------- Disk space forecast: free space of each disk Sonarr and Radarr see, once an hour, kept for three weeks.
+const DFC = require('./lib/diskfc');
+const diskKey = d => d.path + '|' + d.total;
+async function diskSampleTick() {
+  const seen = {}, now = Date.now();
+  for (const s of db.services.filter(x => ['sonarr', 'radarr'].includes(x.type) && x.url && x.apiKey)) {
+    try {
+      const l = await fetch(`${s.url.replace(/\/+$/, '')}/api/v3/diskspace`, { headers: { 'X-Api-Key': s.apiKey }, signal: AbortSignal.timeout(8000) }).then(r => r.ok ? r.json() : []);
+      for (const d of Array.isArray(l) ? l : []) if (d.totalSpace > 5e9 && d.freeSpace >= 0) { const k = diskKey({ path: d.path, total: d.totalSpace }); if (!seen[k]) seen[k] = { path: d.path, total: d.totalSpace, free: d.freeSpace, name: d.label || DISK_NAMES[String(d.path).replace(/\/+$/, '') || '/'] || d.path }; }
+    } catch {}
+  }
+  const h = db.diskHist || (db.diskHist = {}), gap = +process.env.DISK_SAMPLE_GAP_MS || 50 * 60000;
+  for (const [k, v] of Object.entries(seen)) {
+    const e = h[k] || (h[k] = { path: v.path, total: v.total, pts: [] }); e.name = v.name;
+    const last = e.pts[e.pts.length - 1]; if (!last || now - last[0] >= gap) e.pts.push([now, v.free]);
+    e.pts = e.pts.filter(x => now - x[0] < 21 * DFC.DAY);
+  }
+  for (const k of Object.keys(h)) { const l = h[k].pts; if (!seen[k] && (!l.length || now - l[l.length - 1][0] > 7 * DFC.DAY)) delete h[k]; }
+  // A disk full within the days set under Alerts: admins hear, then not again for that disk for three days.
+  const lim = (db.alerts || {}).fillDays ?? 14, told = db.diskTold || (db.diskTold = {});
+  for (const [k, e] of Object.entries(h)) {
+    const f = DFC.forecast(e.pts); if (!lim || f.days == null || f.days > lim || now - (told[k] || 0) < 3 * DFC.DAY) continue;
+    told[k] = now; const gb = n => n >= 1e12 ? (n / 1e12).toFixed(1) + ' TB' : Math.round(n / 1e9) + ' GB', days = Math.max(1, Math.round(f.days));
+    feed('@admins', 'problem', `${e.name} fills up in about ${days} days`, `${gb(f.free)} free, about ${gb(f.perDay)} more used each day.`, 'hl');
+    notify('diskFill', `${e.name} fills up in about ${days} days`, `${e.name} (${e.path}) has ${gb(f.free)} free and about ${gb(f.perDay)} more is used each day, so it is full in about ${days} days.`, null, { disk: e.name, days, free: gb(f.free), per_day: gb(f.perDay) }).catch(() => {});
+  }
+  save();
+}
+const diskFc = d => { const e = (db.diskHist || {})[diskKey(d)]; return e ? { ...DFC.forecast(e.pts), daily: DFC.daily(e.pts).map(x => x[1]) } : null; };
+const appNewsView = () => { const have = appVersions(), c = db.appNews || { apps: {} };
+  return { checked: c.at || 0, built: (goatRead(GOAT_VERSIONS) || {}).built || '', apps: Object.keys(APP_REPOS).filter(k => have[k]).map(k => { const x = c.apps[k] || {};
+    return { key: k, name: APP_TITLES[k] || k, installed: cleanVer(have[k]), latest: x.latest || '', newer: !!(x.latest && verNewer(x.latest, have[k])), url: x.url || `https://github.com/${APP_REPOS[k]}/releases`, published: x.at || '', notes: x.latest && verNewer(x.latest, have[k]) ? x.notes || '' : '' }; }) }; };
 if (GOAT_MANAGED) setInterval(() => { goatSync(); goatOwnPlex(); }, Number(process.env.GOAT_SYNC_MS) || 15000).unref();
 if (GOAT_MANAGED) setTimeout(() => goatLinks(), 20000).unref();
 // Admins can open each built-in engine's own page at /engines/<name>/ (the "Advanced" pages), signed in through
@@ -2044,8 +2146,11 @@ async function monitor() {
     if (mon.n % 4 === 0) await safe(recentWatch);
     if (mon.n % (+process.env.SYNC_EVERY || 30) === 5) safe(() => syncAll());
     if (mon.n % 4 === 2) await safe(autoImport);
+    { const e = +process.env.LOGALERT_EVERY || 10; if (mon.n % e === 7 % e) await safe(logAlertTick); }
     await safe(nlTick);
     if (mon.n % 120 === 0 && !DEMO) await safe(latestRelease);
+    if (mon.n % 120 === 60 && (!DEMO || process.env.APPNEWS_TEST)) await safe(() => appNewsCheck(false));
+    { const e = +process.env.DISK_SAMPLE_EVERY || 120; if (mon.n % e === 30 % e) await safe(diskSampleTick); }
     if (++mon.n % 2 === 0) await safe(refreshRequests);
     if (mon.n % 10 === 0) await safe(watchTick);
   } finally { mon.busy = false; }
@@ -2174,6 +2279,44 @@ function plexCfg() {
 }
 const plexPend = new Map(), plexAsk = {}, plexBad = {};
 class PlexDeny extends Error { constructor(m, code = 403) { super(m); this.code = code; } }
+// ---------- The friends' status page (/status).
+const STATUS_TYPES = ['plex', 'jellyfin', 'emby', 'seerr', 'tautulli', 'sonarr', 'radarr', 'lidarr', 'prowlarr', 'bazarr', 'qbittorrent', 'sabnzbd', 'deluge', 'rutorrent', 'unraid'];
+const STATUS_DEFAULT = ['plex', 'jellyfin', 'emby', 'seerr'];
+const statusCfg = () => { const c = db.settings.status || {}; return { on: !!c.on, title: c.title || '', note: c.note || '', apps: Array.isArray(c.apps) ? c.apps : null, downloads: c.downloads !== false }; };
+const statusApps = c => db.services.filter(x => STATUS_TYPES.includes(x.type) && (c.apps ? c.apps.includes(x.id) : STATUS_DEFAULT.includes(x.type)));
+const friendStatus = c => {
+  const own = { plex: 'Watching (Plex)', jellyfin: 'Watching (Jellyfin)', emby: 'Watching (Emby)', seerr: 'Requests' };
+  const apps = statusApps(c).map(x => ({ name: own[x.type] && db.services.filter(y => y.type === x.type).length === 1 ? own[x.type] : x.name, ok: health[x.id] ? !!health[x.id].ok : null, since: health[x.id] ? health[x.id].since || null : null, pct: uptPct(x.id), bars: uptBars(x.id) }));
+  if (c.downloads) { const dl = db.services.filter(x => ['sonarr', 'radarr', 'qbittorrent', 'sabnzbd', 'prowlarr'].includes(x.type) && health[x.id]);
+    if (dl.length) apps.push({ name: 'New downloads', ok: dl.every(x => health[x.id].ok), since: null, pct: null, bars: null, group: true }); }
+  const known = apps.filter(a => a.ok != null), down = known.filter(a => !a.ok);
+  return { title: c.title || (db.settings.brand && db.settings.brand.name) || 'Our media server', note: c.note, at: Date.now(), state: !known.length ? 'unknown' : !down.length ? 'up' : down.length === known.length ? 'down' : 'some', apps };
+};
+function friendStatusHtml(d) {
+  const e = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  const head = { up: ['Everything is working', '#3ecf8e'], some: ['Some things are not working', '#ffb347'], down: ['The server is down', '#ff5f6d'], unknown: ['Checking…', '#8a93a6'] }[d.state];
+  const bar = b => b ? `<div class="bars" aria-hidden="true">${b.map(v => `<i style="background:${v == null ? 'var(--empty)' : v >= .99 ? '#3ecf8e' : v >= .9 ? '#ffb347' : '#ff5f6d'}"></i>`).join('')}</div>` : '';
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><meta name="theme-color" content="#0e131d"><link rel="icon" href="/favicon.png">
+<title>${e(d.title)}: status</title><style>
+:root{color-scheme:dark;--bg:#0b0e15;--card:#141925;--line:#ffffff14;--text:#eef1f6;--mute:#8a93a6;--empty:#262b38}
+@media(prefers-color-scheme:light){:root{color-scheme:light;--bg:#f3f4f8;--card:#fff;--line:#0000001a;--text:#141925;--mute:#5d6577;--empty:#e3e6ee}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:max(24px,env(safe-area-inset-top)) 16px 40px}
+main{max-width:640px;margin:0 auto}h1{font-size:20px;margin:0 0 18px;font-weight:650;opacity:.85}
+.hero{display:flex;gap:14px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:20px 22px;margin-bottom:16px}
+.dot{width:16px;height:16px;border-radius:50%;flex:none;box-shadow:0 0 0 6px color-mix(in srgb,currentColor 18%,transparent)}
+.hero b{font-size:21px}.note{background:var(--card);border:1px solid var(--line);border-left:4px solid #ffb347;border-radius:14px;padding:12px 16px;margin-bottom:16px;white-space:pre-wrap}
+.app{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin-bottom:10px}
+.row{display:flex;align-items:center;gap:10px}.grow{flex:1;min-width:0}.mute{color:var(--mute);font-size:14px}
+.st{font-size:14px;font-weight:600;padding:2px 10px;border-radius:999px}.ok{color:#3ecf8e;background:#3ecf8e1f}.bad{color:#ff5f6d;background:#ff5f6d1f}.unk{color:var(--mute);background:#8a93a61f}
+.bars{display:flex;gap:2px;margin-top:10px;height:22px}.bars i{flex:1;border-radius:3px}
+footer{margin-top:22px;color:var(--mute);font-size:13px;text-align:center}</style></head><body><main>
+<h1>${e(d.title)}</h1>
+<div class="hero" style="color:${head[1]}"><span class="dot" style="background:${head[1]}"></span><div><b style="color:var(--text)">${head[0]}</b><div class="mute">Checked every 30 seconds · <span id="t">just now</span></div></div></div>
+${d.note ? `<div class="note">${e(d.note)}</div>` : ''}
+${d.apps.map(a => `<div class="app"><div class="row"><b class="grow">${e(a.name)}</b>${a.pct != null ? `<span class="mute">${a.pct}% up, 2 days</span>` : ''}<span class="st ${a.ok == null ? 'unk' : a.ok ? 'ok' : 'bad'}">${a.ok == null ? 'Unknown' : a.ok ? 'Working' : 'Down'}</span></div>${bar(a.bars)}</div>`).join('') || '<p class="mute">Nothing to show yet.</p>'}
+<footer>Each bar is an hour, newest on the right. This page updates by itself.</footer></main>
+<script>const at=${d.at};setInterval(()=>{const s=Math.round((Date.now()-at)/1000);document.getElementById('t').textContent=s<60?'just now':Math.round(s/60)+' min ago';if(s>=60)location.reload()},10000)</script></body></html>`;
+}
 // Turns a Plex token into a GoatMediaStackarr profile (found, linked or created). The token is thrown away afterwards.
 async function plexProfile(token) {
   const cfg = plexCfg(); if (!cfg.on) throw new PlexDeny('Sign in with Plex is turned off.');
@@ -2230,6 +2373,14 @@ const goatServer = http.createServer(async (req, res) => {
     return goatProxy(req, res, t);
   }
   if (!p.startsWith('/api/')) {
+    // The status page for friends: is everything up? No sign-in, nothing but the apps the admin picked. Off until turned on.
+    if ((p === '/status' || p === '/status.json') && m === 'GET') {
+      const c = statusCfg(); if (!c.on) { res.writeHead(404, { 'Content-Type': 'text/plain' }); return res.end('Not found'); }
+      const d = friendStatus(c);
+      if (p === '/status.json') { res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' }); return res.end(JSON.stringify(d)); }
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Robots-Tag': 'noindex', 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; script-src 'unsafe-inline'; connect-src 'self'" });
+      return res.end(friendStatusHtml(d));
+    }
     if (/^\/s\/[\w-]{20,64}$/.test(p)) { res.writeHead(200, { 'Content-Type': 'text/html', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' }); return res.end(fs.readFileSync(path.join(PUB, 'status.html'))); }
     const fp = path.join(PUB, p), mime = { '.svg': 'image/svg+xml', '.png': 'image/png', '.webmanifest': 'application/manifest+json', '.json': 'application/json', '.js': 'text/javascript', '.css': 'text/css' }[path.extname(fp)];
     if (p !== '/' && mime && fp.startsWith(PUB + path.sep) && fs.existsSync(fp)) {
@@ -3421,6 +3572,38 @@ const goatServer = http.createServer(async (req, res) => {
       notify('reports', 'Problem report', `${me.name} reported a problem with ${x.title}: ${text}${result ? ' (' + result + ')' : ''}`).catch(() => {});
       return send(res, 200, { ok: true, result });
     }
+    // A conversation on a request or a problem report: the person who made it and the admins write back and forth.
+    // Each side hears about the other's message (in the bell, on the phone, and the admins' alert channels).
+    if ((r = p.match(/^\/api\/(requests|reports)\/(\w+)\/messages$/)) && m === 'POST') {
+      const isReq = r[1] === 'requests', x = (isReq ? db.requests : db.reports).find(y => y.id === r[2]);
+      if (!x || (me.role !== 'admin' && x.uid !== me.id)) return send(res, 404, { error: 'Not found' });
+      const b = await readBody(req), text = String(b.text || '').trim().slice(0, 1000); if (!text) return send(res, 400, { error: 'Write something first' });
+      const l = x.msgs || (x.msgs = []); if (l.length >= 200) return send(res, 400, { error: 'This conversation is full' });
+      const msg = { id: uid(), uid: me.id, user: me.name, admin: me.role === 'admin', text, at: Date.now() }; l.push(msg);
+      if (!isReq && x.status === 'done' && me.role !== 'admin') x.status = 'open';    // writing again opens it again
+      save();
+      const about = isReq ? 'your request for ' + x.title : 'your report about ' + x.title, link = isReq ? 'requests' : 'requests';
+      if (me.role === 'admin' && x.uid !== me.id) feed(x.uid, 'request', `${me.name} wrote about ${x.title}`, cut(text, 300), link);
+      else {
+        feed('@admins', 'report', `${me.name} wrote about ${x.title}`, cut(text, 300), link);
+        notify(isReq ? 'requests' : 'reports', `${me.name} wrote about ${x.title}`, `${me.name} wrote about ${isReq ? 'their request for' : 'their problem report about'} ${x.title}: ${text}`).catch(() => {});
+      }
+      audit(me.name, 'Wrote about ' + (isReq ? 'a request' : 'a problem report'), x.title);
+      return send(res, 200, { msgs: l, status: x.status });
+    }
+    // A problem with something in the library (not one of their requests): will not play, wrong language, bad copy…
+    if (p === '/api/reports' && m === 'POST') {
+      if (me.kids) return send(res, 403, { error: 'Not for kids profiles' });
+      const b = await readBody(req), text = String(b.text || '').trim().slice(0, 500), title = String(b.title || '').trim().slice(0, 200);
+      if (!text || !title) return send(res, 400, { error: 'Please say what is wrong' });
+      const kind = ['movie', 'series', 'episode'].includes(b.kind) ? b.kind : '', key = cut(b.key || '', 80);
+      if (db.reports.some(y => !y.rid && y.title === title && y.uid === me.id && y.status === 'open')) return send(res, 400, { error: 'You already reported this. An admin will take a look.' });
+      const rp = { id: uid(), rid: null, uid: me.id, user: me.name, title, kind, key, sid: cut(b.sid || '', 40), text, at: Date.now(), status: 'open', result: '' };
+      db.reports.push(rp); if (db.reports.length > 300) db.reports.splice(0, db.reports.length - 300); save(); audit(me.name, 'Reported a problem', title);
+      feed('@admins', 'report', 'Problem report', `${me.name}: ${title}: ${text}`, 'requests');
+      notify('reports', 'Problem report', `${me.name} reported a problem with ${title}: ${text}`).catch(() => {});
+      return send(res, 200, rp);
+    }
     if (p === '/api/reports' && m === 'GET') return send(res, 200, db.reports.filter(x => me.role === 'admin' || x.uid === me.id).slice(-100).reverse());
     if (p === '/api/requests' && m === 'GET') {
       if (Date.now() - mon.reqT > REQ_MS) { mon.reqT = Date.now(); await refreshRequests().catch(() => {}); }
@@ -3674,6 +3857,16 @@ const goatServer = http.createServer(async (req, res) => {
     };
     // ---------- Logs: the stack's apps (their own log files) and the apps added under Settings → Apps (through their APIs),
     // one at a time or all together, newest at the bottom.
+    if (p === '/api/statuspage' && m === 'GET') { if (adminOnly()) return; const c = statusCfg(); return send(res, 200, { ...c, apps: statusApps(c).map(x => x.id), choices: db.services.filter(x => STATUS_TYPES.includes(x.type)).map(x => ({ id: x.id, name: x.name, type: x.type })), url: baseUrl() + '/status' }); }
+    if (p === '/api/statuspage' && m === 'PUT') {
+      if (adminOnly()) return;
+      const b = await readBody(req), o = db.settings.status || {};
+      db.settings.status = { on: 'on' in b ? !!b.on : !!o.on, title: b.title != null ? cut(String(b.title).trim(), 80) : o.title || '', note: b.note != null ? cut(String(b.note).trim(), 600) : o.note || '',
+        apps: Array.isArray(b.apps) ? b.apps.filter(id => db.services.some(x => x.id === id && STATUS_TYPES.includes(x.type))) : o.apps, downloads: 'downloads' in b ? !!b.downloads : o.downloads !== false };
+      save(); audit(me.name, 'Changed the status page', db.settings.status.on ? 'on' : 'off'); return send(res, 200, {});
+    }
+    if (p === '/api/appupdates' && m === 'GET') { if (adminOnly()) return; return send(res, 200, appNewsView()); }
+    if (p === '/api/appupdates/check' && m === 'POST') { if (adminOnly()) return; await appNewsCheck(true); return send(res, 200, appNewsView()); }
     if (p === '/api/logs/sources' && m === 'GET') {
       if (adminOnly()) return;
       const stack = AL2.stackApps().map(n => ({ id: 'stack:' + n, name: stackLogName(n), kind: 'stack' }));
@@ -3915,6 +4108,18 @@ const goatServer = http.createServer(async (req, res) => {
       save(); if (out.sent.length) audit(me.name, 'Sent suggestions to GitHub', out.sent.length + ' issue(s)');
       return send(res, 200, out);
     }
+    if (p === '/api/push' && m === 'GET') return send(res, 200, { key: vapidKeys().pub, devices: (db.pushSubs || []).filter(x => x.uid === me.id).map(x => ({ id: x.id, ua: x.ua, at: x.at, last: x.last || 0 })) });
+    if (p === '/api/push/subscribe' && m === 'POST') {
+      const b = await readBody(req), ep = String(b.endpoint || ''), k = b.keys || {};
+      if (!/^https:\/\/[^\s]+$/.test(ep) && !(process.env.PUSH_TEST && /^http:\/\/127\.0\.0\.1:\d+\//.test(ep))) return send(res, 400, { error: 'That is not a push address' });
+      try { if (WP.unb64u(k.p256dh).length !== 65 || WP.unb64u(k.auth).length < 16) throw 0; } catch { return send(res, 400, { error: 'The browser sent no keys' }); }
+      const l = db.pushSubs || (db.pushSubs = []), old = l.find(x => x.endpoint === ep);
+      const x = { id: old ? old.id : uid(), uid: me.id, endpoint: ep.slice(0, 1000), p256dh: String(k.p256dh).slice(0, 200), auth: String(k.auth).slice(0, 100), at: Date.now(), ua: cut(String(req.headers['user-agent'] || ''), 160) };
+      db.pushSubs = [...l.filter(y => y.endpoint !== ep), x];
+      const minel = db.pushSubs.filter(y => y.uid === me.id); if (minel.length > 10) db.pushSubs = db.pushSubs.filter(y => y !== minel[0]);   // ten browsers each at most
+      save(); audit(me.name, 'Turned on notifications in a browser', x.ua.slice(0, 60)); return send(res, 200, { id: x.id });
+    }
+    if (p === '/api/push/unsubscribe' && m === 'POST') { const b = await readBody(req); db.pushSubs = (db.pushSubs || []).filter(x => !(x.uid === me.id && (x.endpoint === b.endpoint || x.id === b.id))); save(); return send(res, 200, {}); }
     if (p === '/api/notifications' && m === 'GET') {
       const q = new URL(req.url, 'http://x').searchParams, after = Math.max(0, +q.get('after') || 0), f = db.feed || { n: 0, items: [] };
       const mine = f.items.filter(x => x.to === me.id || (x.to === '@admins' && me.role === 'admin'));
@@ -4255,7 +4460,7 @@ const goatServer = http.createServer(async (req, res) => {
           const [h, d, q, w] = await Promise.all([ext(sv, `/api/${v}/health`), v === 'v3' ? ext(sv, '/api/v3/diskspace').catch(() => []) : [], v === 'v3' ? ext(sv, '/api/v3/queue?page=1&pageSize=50').catch(() => null) : null,
             sv.type === 'prowlarr' ? null : ext(sv, `/api/${v}/wanted/missing?pageSize=1`).catch(() => null)]);
           o.issues = (Array.isArray(h) ? h : []).map(x => ({ level: x.type === 'error' ? 'bad' : 'warn', text: x.message || x.source }));
-          o.disks = (Array.isArray(d) ? d : []).filter(x => x.totalSpace > 0).map(x => ({ path: x.path, label: DISK_NAMES[String(x.path).replace(/\/+$/, '') || '/'] || '', free: x.freeSpace, total: x.totalSpace }))
+          o.disks = (Array.isArray(d) ? d : []).filter(x => x.totalSpace > 0).map(x => ({ path: x.path, label: DISK_NAMES[String(x.path).replace(/\/+$/, '') || '/'] || '', free: x.freeSpace, total: x.totalSpace })).map(x => ({ ...x, fc: diskFc(x) }))
             .sort((p, q) => DISK_ORDER.indexOf(p.label) - DISK_ORDER.indexOf(q.label));
           o.queue = ((q && q.records) || []).filter(x => ['warning', 'error'].includes(x.trackedDownloadStatus) || x.status === 'warning').slice(0, 10).map(x => ({ title: x.title, downloadId: x.downloadId || '', message: ((x.statusMessages || [])[0] || {}).messages ? x.statusMessages[0].messages[0] : x.errorMessage || 'Needs attention' }));
           o.missing = w && w.totalRecords != null ? w.totalRecords : null; o.ok = true;
@@ -4394,13 +4599,15 @@ const goatServer = http.createServer(async (req, res) => {
     if (p === '/api/alerts' && m === 'GET') {
       const a = db.alerts || {}, pub = c => ({ id: c.id, type: c.type, where: c.target ? (() => { try { return new URL(c.target).origin + '/…'; } catch { return '…'; } })() : '', chat: c.type === 'telegram' || c.type === 'pushover' ? c.chat : '',
         host: c.host || '', port: c.port || '', secure: c.secure || '', user: c.user || '', from: c.from || '', to: c.to || '', hasSecret: !!(c.token || c.pass), name: c.name || '', events: chanEvents(c), tpl: c.tpl || {}, conds: c.conds || [], condMode: c.condMode === 'any' ? 'any' : 'all' });
-      return send(res, 200, { finished: !!a.finished, offline: !!a.offline, disk: !!a.disk, vpn: !!a.vpn, requests: !!a.requests, reports: a.reports !== false, diskPct: a.diskPct || 90, diskTemp: a.diskTemp || 55, events: ALERT_EVENTS, meta: Object.fromEntries(ALERT_EVENTS.map(k => [k, { ...AL.EVENTS[k], params: AL.paramsOf(k) }])), ops: AL.OPS, channels: (a.channels || []).map(pub) });
+      return send(res, 200, { finished: !!a.finished, offline: !!a.offline, disk: !!a.disk, vpn: !!a.vpn, requests: !!a.requests, reports: a.reports !== false, diskPct: a.diskPct || 90, diskTemp: a.diskTemp || 55, logCount: a.logCount ?? 5, logMins: a.logMins || 15, fillDays: a.fillDays ?? 14, events: ALERT_EVENTS, meta: Object.fromEntries(ALERT_EVENTS.map(k => [k, { ...AL.EVENTS[k], params: AL.paramsOf(k) }])), ops: AL.OPS, channels: (a.channels || []).map(pub) });
     }
     if (p === '/api/alerts' && m === 'PUT') {
       const b = await readBody(req), o = db.alerts || { channels: [] };
       // The old on/off switches only matter to channels saved before each had its own list; keep them unless sent.
       const keep = (k, v) => k in b ? v : o[k];
-      db.alerts = { ...o, finished: keep('finished', !!b.finished), offline: keep('offline', !!b.offline), disk: keep('disk', !!b.disk), vpn: keep('vpn', !!b.vpn), requests: keep('requests', !!b.requests), reports: keep('reports', b.reports !== false), diskPct: Math.min(99, Math.max(50, +b.diskPct || o.diskPct || 90)), diskTemp: Math.min(80, Math.max(35, +b.diskTemp || o.diskTemp || 55)) };
+      db.alerts = { ...o, finished: keep('finished', !!b.finished), offline: keep('offline', !!b.offline), disk: keep('disk', !!b.disk), vpn: keep('vpn', !!b.vpn), requests: keep('requests', !!b.requests), reports: keep('reports', b.reports !== false), diskPct: Math.min(99, Math.max(50, +b.diskPct || o.diskPct || 90)), diskTemp: Math.min(80, Math.max(35, +b.diskTemp || o.diskTemp || 55)),
+        logCount: 'logCount' in b ? Math.min(100, Math.max(0, Math.round(+b.logCount) || 0)) : o.logCount, logMins: 'logMins' in b ? Math.min(240, Math.max(5, Math.round(+b.logMins) || 15)) : o.logMins,
+        fillDays: 'fillDays' in b ? Math.min(90, Math.max(0, Math.round(+b.fillDays) || 0)) : o.fillDays };
       save(); audit(me.name, 'Changed alert settings', ''); return send(res, 200, {});
     }
     const chanFields = (b, o = {}) => { const g = k => b[k] != null && String(b[k]).trim() !== '' ? String(b[k]).trim().slice(0, 500) : o[k];

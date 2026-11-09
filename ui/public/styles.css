@@ -484,3 +484,9 @@ button.sm{min-height:30px;padding:4px 10px;font-size:13px}
 .lgl.error{background:#ff4d4f14}.lgl.error .lgv,.lgl.error .lgm{color:#ff8a8a}
 .lgl.warn .lgv,.lgl.warn .lgm{color:#ffcc66}.lgl.debug .lgm,.lgl.debug .lgv{color:#8a93a6}
 @media (max-width:700px){.lgo{height:calc(100vh - 380px);font-size:12px}.lgl{flex-wrap:wrap;gap:2px 8px;padding:3px 12px}.lgm{flex-basis:100%}}
+
+/* A conversation on a request or a report. */
+.tkl{max-height:46vh;overflow:auto;display:flex;flex-direction:column;gap:10px;padding:4px 2px}
+.tkm{max-width:85%;align-self:flex-start}.tkm.me{align-self:flex-end;text-align:right}
+.tkb{display:inline-block;padding:8px 12px;border-radius:14px 14px 14px 4px;background:var(--s2);border:1px solid var(--line);white-space:pre-wrap;word-break:break-word;text-align:left}
+.tkm.me .tkb{border-radius:14px 14px 4px 14px;background:var(--accent);color:#111;border-color:transparent}

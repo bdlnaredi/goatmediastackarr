@@ -695,6 +695,33 @@ async function syncPanel(){
   if($('#lboff'))$('#lboff').onclick=async()=>{await api('/api/me/sync','PUT',{letterboxd:''}).catch(()=>{});syncPanel()};
 }
 // Account → Passkeys: the ones you have, add one on this device, remove one.
+// Notifications in this browser (push), and installing the site as an app. iPhones need it added to the Home Screen first.
+let INSTALL_EV=null;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();INSTALL_EV=e;const b=$('#pshi');if(b)b.hidden=false});
+const PUSH_OK=()=>'serviceWorker'in navigator&&'PushManager'in window&&'Notification'in window;
+const IOS=/iP(hone|ad|od)/.test(navigator.userAgent),STANDALONE=matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+async function pushPanel(){
+  const el=$('#pshp');if(!el)return;
+  let d={devices:[]};try{d=await api('/api/push')}catch{}
+  let sub=null;try{const r=await navigator.serviceWorker.ready;sub=await r.pushManager.getSubscription()}catch{}
+  if(!document.contains(el))return;
+  const here=!!(sub&&Notification.permission==='granted'),denied=PUSH_OK()&&Notification.permission==='denied';
+  el.innerHTML=`<h3 style="margin-top:0">Notifications on this device</h3>
+    <p class="mute">What GoatMediaStackarr tells you (a request is ready, a download finished${me.role==='admin'?', new requests, problems on the server':''}) as notifications here, even with the page closed.${IOS&&!STANDALONE?' <b>On an iPhone or iPad, first add this site to the Home Screen</b> (Share → Add to Home Screen), open it from there, and turn them on in it.':''}</p>
+    ${!PUSH_OK()?'<p class="mute">This browser cannot show notifications from websites.</p>':denied?'<p class="err">Notifications are blocked for this site. Allow them in the browser\'s site settings, then come back.</p>':''}
+    <div class="row">${PUSH_OK()&&!denied?(here?`<button id="psht">${ic('al')}Send a test</button><button class="ghost" id="psho">Turn off here</button>`:`<button class="primary" id="pshn">${ic('al')}Turn on notifications here</button>`):''}
+      <button class="ghost" id="pshi" ${INSTALL_EV?'':'hidden'}>${ic('dl')}Install as an app</button></div>
+    ${d.devices.length?`<div class="mute" style="font-size:13px;margin-top:10px">On for ${d.devices.length} ${d.devices.length===1?'browser':'browsers'}: ${d.devices.map(x=>esc(uaName(x.ua))).join(', ')}</div>`:''}<div class="err" id="pshe"></div>`;
+  const on=el.querySelector('#pshn'),off=el.querySelector('#psho'),t=el.querySelector('#psht'),ins=el.querySelector('#pshi'),err=m=>{el.querySelector('#pshe').textContent=m};
+  if(on)on.onclick=async()=>{on.disabled=true;try{
+    if(await Notification.requestPermission()!=='granted')throw new Error('Notifications were not allowed.');
+    const r=await navigator.serviceWorker.ready,k=b64d(d.key);
+    const s=(await r.pushManager.getSubscription())||await r.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:k});
+    await api('/api/push/subscribe','POST',s.toJSON());toast('Notifications are on here','ok');pushPanel()}catch(x){err(x.message);on.disabled=false}};
+  if(off)off.onclick=async()=>{try{await api('/api/push/unsubscribe','POST',{endpoint:sub.endpoint});await sub.unsubscribe();toast('Turned off here','ok');pushPanel()}catch(x){err(x.message)}};
+  if(t)t.onclick=async()=>{try{await api('/api/notifications/test','POST');toast('Sent. It should show in a moment.','ok')}catch(x){err(x.message)}};
+  if(ins)ins.onclick=async()=>{if(!INSTALL_EV)return;INSTALL_EV.prompt();try{await INSTALL_EV.userChoice}catch{}INSTALL_EV=null;ins.hidden=true};
+}
+const uaName=u=>{u=String(u||'');const b=/Edg\//.test(u)?'Edge':/Firefox\//.test(u)?'Firefox':/Chrome\//.test(u)?'Chrome':/Safari\//.test(u)?'Safari':'A browser',o=/Android/.test(u)?'Android':/iPhone|iPad/.test(u)?'iPhone':/Windows/.test(u)?'Windows':/Mac OS X/.test(u)?'Mac':/Linux/.test(u)?'Linux':'';return b+(o?' on '+o:'')};
 async function pkPanel(){
   const el=$('#pkp');if(!el)return;let l=[];try{l=await api('/api/passkeys')}catch{}
   if(!document.contains(el))return;
@@ -868,7 +895,7 @@ const ICONS={home:'<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h5v-6h4v6h5V9
  wt:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>',stats:'<path d="M5 20V10M12 20V4M19 20v-7"/>',
  set:'<circle cx="12" cy="12" r="3"/><path d="M12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6 7 7m10 10 1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4"/>',
  tv:'<rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8M12 17v4"/>',film:'<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 4v16M16 4v16M4 9h4M4 15h4M16 9h4M16 15h4"/>',book:'<path d="M5 4h10a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h10"/>',box:'<path d="M3 7.5 12 3l9 4.5v9L12 21l-9-4.5z"/><path d="M3 7.5 12 12l9-4.5M12 12v9"/>',
- disc:'<circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/>',hist:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',trash:'<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',edit:'<path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',x:'<path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',logs:'<path d="M4 5h16M4 10h16M4 15h10M4 20h7"/><path d="M17 15l3 3-3 3"/>',copy:'<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>',sug:'<path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.6 10.8c.6.5 1 1.2 1 2V16h5.2v-.2c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z"/>',up1:'<path d="M12 19V5M5 12l7-7 7 7"/>'};
+ disc:'<circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/>',hist:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',trash:'<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',edit:'<path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',x:'<path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',logs:'<path d="M4 5h16M4 10h16M4 15h10M4 20h7"/><path d="M17 15l3 3-3 3"/>',chat:'<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>',copy:'<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>',sug:'<path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.6 10.8c.6.5 1 1.2 1 2V16h5.2v-.2c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z"/>',up1:'<path d="M12 19V5M5 12l7-7 7 7"/>'};
 const ic=k=>`<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${ICONS[k]}</svg>`;
 const LOGO='<img src="/icon-192.png" alt="" width="38" height="38">';
 const PAGES={dash:['',''],logs:['Logs','What the apps are writing: the ones in the stack and the ones you added. One at a time or all together, newest at the bottom.'],sug:['Suggestions','Ideas for GoatMediaStackarr and problems to fix. Vote for the ones you want; the admin sends them on to the project on GitHub.'],wl:['Watchlist','What you want to watch. You hear when each one is in the library.'],find:['Search','Find a show or movie and add it to Sonarr or Radarr.'],disc:['Discover','What is trending, popular and anticipated on Trakt, TMDB and TheTVDB.'],rq:['Requests','Ask for something new, or approve what others asked for.'],lib:['Library','Everything in Sonarr and Radarr, and what is still missing.'],
@@ -1182,7 +1209,7 @@ function dashView(){
   checks();upt();slow();attn();rq();
   timer=[tick(fallback,4000),setInterval(glide,1000),tick(slow,60000),tick(attn,60000),tick(rq,60000),tick(upt,300000),tick(()=>{if(!LIVE.ok)checks()},30000)];
 }
-const ST_SECTIONS=[['acct','Account',false,'Your password, sign-in and devices','usr','You'],['look','Appearance',false,'Theme, colours and layout','pal','You'],['apps','Apps',true,'The apps GoatMediaStackarr connects to','svc','Server'],['lists','Discover lists',true,'Keys for the Trakt, TMDB and TheTVDB lists','find','Server'],['users','Users',true,'Profiles and what each can do','usr','Server'],['limits','Limits',true,'How much each person may stream and keep, and who is using what','dl','Server'],['alerts','Alerts',true,'Email, phone messages and reports','al','Care'],['rules','Download rules',true,'Speed schedule and stream throttling','dl','Care'],['backup','Backup',true,'Save and restore your setup','pw','Care'],['audit','Activity',true,'Who did what, and when','hl','Care'],['about','About',false,'Version and where you are connected','eye','Help']];
+const ST_SECTIONS=[['acct','Account',false,'Your password, sign-in and devices','usr','You'],['look','Appearance',false,'Theme, colours and layout','pal','You'],['apps','Apps',true,'The apps GoatMediaStackarr connects to','svc','Server'],['lists','Discover lists',true,'Keys for the Trakt, TMDB and TheTVDB lists','find','Server'],['users','Users',true,'Profiles and what each can do','usr','Server'],['limits','Limits',true,'How much each person may stream and keep, and who is using what','dl','Server'],['alerts','Alerts',true,'Email, phone messages and reports','al','Care'],['status','Status page',true,'A page friends can open to see if everything is up','eye','Care'],['rules','Download rules',true,'Speed schedule and stream throttling','dl','Care'],['backup','Backup',true,'Save and restore your setup','pw','Care'],['audit','Activity',true,'Who did what, and when','hl','Care'],['about','About',false,'Version and where you are connected','eye','Help']];
 function setView(){
   const admin=me.role==='admin',secs=ST_SECTIONS.filter(s=>admin||!s[2]);
   if(!secs.some(s=>s[0]===stSub))stSub='acct';
@@ -1194,7 +1221,7 @@ function setView(){
   mm.insertAdjacentHTML('beforebegin',`<div class="sxt"><h2>${cur[1]}</h2><p class="mute">${cur[3]}</p></div>`);
   $('#sn').onclick=e=>{const b=e.target.closest('[data-k]');if(!b||newTabClick(e))return;e.preventDefault();stSub=b.dataset.k;render()};
   const ob=$('#sn .on');if(ob&&ob.scrollIntoView)ob.scrollIntoView({inline:'center',block:'nearest'});
-  ({limits:stLimits,acct:stAcct,look:stLook,apps:svcView,lists:stLists,users:usrView,alerts:alView,rules:stRules,backup:stBackup,audit:stAudit,about:stAbout})[stSub]();
+  ({limits:stLimits,acct:stAcct,look:stLook,apps:svcView,lists:stLists,users:usrView,alerts:alView,status:stStatus,rules:stRules,backup:stBackup,audit:stAudit,about:stAbout})[stSub]();
 }
 // Settings → Limits: request rules. A request that fits one is approved without waiting for an admin.
 async function reqRulesPanel(users){
@@ -1271,7 +1298,7 @@ async function stAcct(){
   $('#m').innerHTML=`<div class="panel" style="max-width:560px"><h3 style="margin-top:0">Password</h3><form id="pf" style="max-width:360px;margin:0">
       <input name="old" type="password" placeholder="Current password" autocomplete="current-password" required><input name="new" type="password" placeholder="New password (8+ characters)" autocomplete="new-password" required>
       <input name="again" type="password" placeholder="New password again" autocomplete="new-password" required><div class="row"><button class="primary">Change password</button></div><div class="err" id="pe"></div></form></div>
-    ${me.plex&&me.role!=='admin'?'':'<div class="panel" id="pkp" style="max-width:560px;margin-top:16px"></div>'}
+    ${me.plex&&me.role!=='admin'?'':'<div class="panel" id="pkp" style="max-width:560px;margin-top:16px"></div>'}<div class="panel" id="pshp" style="max-width:560px;margin-top:16px"></div>
     <div class="panel" id="syp" style="max-width:560px;margin-top:16px"></div>
     ${services.some(x=>x.type==='tautulli')?`<div class="panel row" style="max-width:560px;margin-top:16px;gap:10px"><div class="grow"><h3 style="margin:0">Year in review</h3><p class="mute" style="margin:4px 0 0">What you watched this year, your top shows and movies, and your requests.</p></div><button id="wrac">Open</button></div>`:''}
     <div class="panel" style="max-width:560px;margin-top:16px"><h3 style="margin-top:0">Phone messages for you</h3>
@@ -1294,7 +1321,7 @@ async function stAcct(){
   if($('#pll'))$('#pll').onclick=plexLink;
   if($('#plu'))$('#plu').onclick=async()=>{if(!confirm('Unlink your Plex account? You then sign in with your password only.'))return;try{me=await api('/api/me/plex','DELETE');stAcct()}catch(x){toast(x.message,'bad')}};
   if($('#wrac'))$('#wrac').onclick=()=>wrappedOpen();
-  pkPanel();syncPanel();
+  pkPanel();syncPanel();pushPanel();
   $('#pf').onsubmit=async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target)),m=$('#pe');m.textContent='';
     if(f.new!==f.again){m.textContent='The new passwords do not match';return}
     try{await api('/api/password','POST',{old:f.old,new:f.new});e.target.reset();toast('Password changed','ok')}catch(x){m.textContent=x.message}};
@@ -2411,12 +2438,15 @@ function showDetail(x){
     ${x.sid&&x.id&&x.scope!=='series'?'<div id="fs" class="chips" style="margin:8px 0" role="status"></div>':''}
     ${x.sid&&x.id&&ofType('bazarr').length?'<div id="sbz" class="sbz"></div>':''}
     <p>${esc(x.overview||'No description available yet.')}</p>${x.mon?`<label class="tgl" style="margin:4px 0 10px"><input type="checkbox" id="mon" ${x.mon.monitored?'checked':''} ${can('add')?'':'disabled'}><span>Monitored</span></label>`:''}${x.about?`<h3>About the series</h3><p class="mute">${esc(x.about)}</p>`:''}
-    <div class="row">${x.sid&&x.id&&can('add')?`<button id="au">${x.scope==='series'?'Search missing episodes':'Auto search'}</button>${x.scope==='series'?'':'<button id="in">Interactive search</button>'}`:''}${x.del?'<button id="rm">Remove</button>':''}<button class="primary" id="cl">Close</button></div>
+    <div class="row">${x.sid&&x.id&&can('add')?`<button id="au">${x.scope==='series'?'Search missing episodes':'Auto search'}</button>${x.scope==='series'?'':'<button id="in">Interactive search</button>'}`:''}${x.del?'<button id="rm">Remove</button>':''}${x.sid&&x.id&&!me.kids?`<button class="ghost" id="rpb" title="Tell the admin it will not play, has the wrong language, a bad copy…">${ic('chat')}Report a problem</button>`:''}<button class="primary" id="cl">Close</button></div>
     <div class="mute" id="st" role="status" style="margin-top:8px"></div></div><div id="rl" style="flex-basis:100%"></div><div id="cx" style="flex-basis:100%;min-width:0"></div></div>`;
   const k=e=>{if(e.key==='Escape')close()},close=()=>{o.remove();document.removeEventListener('keydown',k)};
   document.addEventListener('keydown',k);
   document.body.append(o);const q=s=>o.querySelector(s),st=q('#st');q('#cl').onclick=close;q('#bk').onclick=close;q('#bk').focus();
   pageBg(o,x.fanart||x.poster);
+  if(q('#rpb'))q('#rpb').onclick=()=>{const m=modal(`<h2 style="margin-top:0">Report a problem</h2><p class="mute">With ${esc(x.title)}: what is wrong? (Will not play, no sound, wrong language, bad picture, missing episode…) The admin is told and can write back.</p><form id="rpf"><textarea name="text" rows="3" maxlength="500" required style="width:100%" placeholder="What is wrong?"></textarea><div class="err" id="rpe"></div><div class="row"><button class="primary">Send report</button><button type="button" data-x>Cancel</button></div></form>`);
+    m.querySelector('[data-x]').onclick=m.close;m.querySelector('textarea').focus();
+    m.querySelector('#rpf').onsubmit=async e=>{e.preventDefault();try{await api('/api/reports','POST',{title:x.title+(x.sub&&/^\d{4}$/.test(x.sub)?' ('+x.sub+')':''),text:e.target.text.value,sid:x.sid,key:String(x.id),kind:x.fkind||(x.scope==='series'?'series':'')});m.close();toast('Sent to the admin. You can follow it under Requests.','ok')}catch(y){m.querySelector('#rpe').textContent=y.message}}};
   if(q('#fs'))api(`/api/filestatus?sid=${encodeURIComponent(x.sid)}&id=${x.id}`).then(f=>{const b=q('#fs');if(!b)return;
     if(f.have){const fl=f.file||{};b.innerHTML=`<span class="pill ok">File available</span>${fl.quality?`<span class="pill">${esc(fl.quality)}</span>`:''}${fl.codec?`<span class="pill">${esc(fl.codec)}</span>`:''}${(fl.langs||[]).length?`<span class="pill">${esc(fl.langs.join(', '))}</span>`:''}${fl.size?`<span class="pill">${fmt(fl.size)}</span>`:''}${fl.path||fl.name?`<div class="mute fpath" title="Where the file is saved">${ic('dl')}<span>${esc(fl.path||fl.name)}</span></div>`:''}${me.role==='admin'&&fl.id?`<button class="danger sm" id="dfile" style="flex-basis:auto">${ic('trash')}Delete file</button>`:''}`}
     else b.innerHTML=!f.released?'<span class="pill">Not released yet</span>':`<span class="pill bad">No file yet</span><span class="mute">${f.monitored?'Monitored, waiting for a download.':'Not monitored, so nothing will be downloaded.'}</span>`;if(!f.have&&f.folder)b.insertAdjacentHTML('beforeend',`<div class="mute fpath" title="Where it will be saved">${ic('dl')}<span>${esc(f.folder)}</span></div>`);
@@ -2811,6 +2841,20 @@ async function logsView(){
   await load();
   timer=[tick(()=>{if(L.follow)load()},5000)];
 }
+// The Stack page's App updates: which apps have a newer release out, with what it changed.
+async function appNews(force){
+  const el=$('#gnews');if(!el)return;
+  let d;try{d=force?await api('/api/appupdates/check','POST'):await api('/api/appupdates')}catch(x){el.innerHTML=`<div class="err">${esc(x.message)}</div>`;return}
+  if(!$('#gnews'))return;
+  const nw=d.apps.filter(x=>x.newer),md=t=>esc(t).replace(/^#+\s*(.*)$/gm,'<b>$1</b>').replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/^\s*[-*]\s+/gm,'• ').replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g,'$1');
+  el.innerHTML=`<div class="row" style="margin-bottom:8px"><span class="grow mute">${nw.length?`<b style="color:var(--text)">${nw.length} ${nw.length===1?'app has':'apps have'} a newer version out.</b> `:'Every app is on its newest version. '}${d.built?`This image was built ${esc(new Date(d.built).toLocaleDateString())}; it is rebuilt every Monday with the newest of each, so update the container in Unraid's Docker tab after that.`:''}</span>
+    <button class="ghost" id="gnc">${ic('refresh')}Check now</button></div>
+    ${nw.map(x=>`<details class="box" style="margin:8px 0"><summary class="row" style="gap:8px;cursor:pointer"><b>${esc(x.name)}</b><span class="mute">${esc(x.installed)} → </span><span class="pill acc">${esc(x.latest)}</span><span class="grow"></span>${x.published?`<span class="mute" style="font-size:13px">${ago(Date.parse(x.published))}</span>`:''}</summary>
+      <div class="mute" style="white-space:pre-wrap;font-size:13px;max-height:320px;overflow:auto;margin-top:8px">${md(x.notes)||'No notes given.'}</div><a href="${esc(x.url)}" target="_blank" rel="noopener">${ic('ext')}On GitHub</a></details>`).join('')}
+    <div class="mute" style="font-size:13px;margin-top:6px">${d.apps.filter(x=>!x.newer).map(x=>`${esc(x.name)} ${esc(x.installed)}${x.latest?'':' (not checked)'}`).join(' · ')}</div>
+    <div class="mute" style="font-size:12px;margin-top:4px">${d.checked?'Checked '+ago(d.checked):'Not checked yet'} · from each app's releases on GitHub</div>`;
+  $('#gnc').onclick=e=>{e.target.disabled=true;e.target.textContent='Checking…';appNews(true)};
+}
 async function sugView(){
   $('#m').innerHTML=skel(3);
   let d;try{d=await api('/api/suggestions')}catch(x){$('#m').innerHTML=`<div class="err">${esc(x.message)}</div>`;return}
@@ -3046,6 +3090,22 @@ function discOpen(x){
 const SL_SRC=[['trakt','Trakt','Client ID','Sign in at trakt.tv, open Settings, then Your API Apps, then New Application. Any name works, and urn:ietf:wg:oauth:2.0:oob is fine for the redirect address. Copy the Client ID.'],
   ['tmdb','TMDB','API key or Read Access Token','Sign in at themoviedb.org, open Settings, then API. Copy the API Key, or the longer API Read Access Token. Either works.'],
   ['tvdb','TheTVDB','API key','Make one at thetvdb.com/api-information. TheTVDB may ask for a small subscription for personal use. It has Popular and Anticipated shows, and Popular movies.']];
+// The friends' status page: on or off, its name, a message on top, and which apps it shows.
+async function stStatus(){
+  let c;try{c=await api('/api/statuspage')}catch(e){$('#m').innerHTML=`<div class="panel err">${esc(e.message)}</div>`;return}
+  $('#m').innerHTML=`<form id="spf" class="panel nlform" style="max-width:720px"><div class="row"><h3 style="margin:0" class="grow">Status page</h3><label class="tgl" title="Turn the status page on or off"><input type="checkbox" name="on" ${c.on?'checked':''} aria-label="Status page on"></label></div>
+    <p class="mute">A page anyone with the address can open, without signing in, to see whether the server is working: so friends can look before they message you. It shows only the apps you tick, as "working" or "down", with the last two days. Nothing else about the server.</p>
+    ${c.on?`<div class="box row" style="gap:8px"><code class="grow" style="word-break:break-all">${esc(c.url)}</code><button type="button" id="spc">${ic('copy')}Copy</button><a class="btn" href="/status" target="_blank" rel="noopener">${ic('ext')}Open</a></div>`:''}
+    <label class="mute">Name at the top <input name="title" maxlength="80" value="${esc(c.title)}" placeholder="Our media server"></label>
+    <label class="mute">A message for everyone (optional) <textarea name="note" rows="2" maxlength="600" placeholder="Plex is being updated tonight from 11 to 12.">${esc(c.note)}</textarea></label>
+    <div class="mute" style="margin:10px 0 4px">Show these apps</div><div class="row" style="gap:6px 14px;flex-wrap:wrap">${c.choices.map(x=>`<label class="chk"><input type="checkbox" name="app" value="${esc(x.id)}" ${c.apps.includes(x.id)?'checked':''}>${esc(x.name)}</label>`).join('')||'<span class="mute">Add Plex, Jellyfin or Seerr under Apps first.</span>'}</div>
+    <label class="chk" style="margin-top:8px"><input type="checkbox" name="downloads" ${c.downloads?'checked':''}>One line for "New downloads" (working when Sonarr, Radarr and the download apps all are)</label>
+    <div class="row" style="margin-top:12px"><button class="primary">Save</button></div><div class="err" id="spe"></div></form>`;
+  const f=$('#spf');
+  if($('#spc'))$('#spc').onclick=async()=>{try{await navigator.clipboard.writeText(c.url);toast('Copied','ok')}catch{toast(c.url)}};
+  f.onsubmit=async e=>{e.preventDefault();const g=f.elements;try{await api('/api/statuspage','PUT',{on:g.on.checked,title:g.title.value,note:g.note.value,downloads:g.downloads.checked,apps:[...f.querySelectorAll('[name=app]:checked')].map(x=>x.value)});toast('Saved','ok');stStatus()}catch(x){$('#spe').textContent=x.message}};
+  f.querySelector('[name=on]').onchange=()=>f.requestSubmit();
+}
 async function stLists(){
   let c;try{c=await api('/api/listsettings')}catch(e){$('#m').innerHTML=`<div class="panel err">${esc(e.message)}</div>`;return}
   $('#m').innerHTML=`<p class="mute" style="max-width:640px">Add a free key from any of these sites and a <b>Discover</b> tab appears with their Trending, Popular and Anticipated lists. Keys stay on your server. Trakt has no pictures of its own, so they come from TMDB (if you add a key) or from Seerr.</p>`+SL_SRC.map(([k,n,lab,help])=>`<div class="panel" style="max-width:640px;margin-top:14px"><div class="row"><h3 style="margin:0" class="grow">${n}</h3>${c[k].on?`<span class="pill ok">Saved ${esc(c[k].hint)}</span>`:'<span class="pill">Not set</span>'}</div>
@@ -3056,6 +3116,14 @@ async function stLists(){
     const ts=$('#tsec');if(ts){ts.onsubmit=e=>{e.preventDefault();const v=ts.v.value.trim();if(v)put({traktSecret:v})};const rm=$('#tsecrm');if(rm)rm.onclick=()=>put({traktSecret:''})}}
   document.querySelectorAll('form[data-k]').forEach(f=>f.onsubmit=e=>{e.preventDefault();const v=f.v.value.trim();if(!v){$('#le').textContent='Paste the key first.';return}put({[f.dataset.k]:v})});
   document.querySelectorAll('[data-rm]').forEach(b=>b.onclick=()=>put({[b.dataset.rm]:''}));
+}
+// A conversation on a request or a problem report, between the person who made it and the admins.
+function talk(kind,x,after){
+  const draw=l=>(l||[]).map(m=>`<div class="tkm${m.uid===me.id?' me':''}"><div class="mute" style="font-size:12px">${esc(m.user)}${m.admin&&!/^admin$/i.test(m.user)?' · admin':''} · ${ago(m.at)}</div><div class="tkb">${esc(m.text)}</div></div>`).join('')||`<p class="mute">No messages yet. ${me.role==='admin'?'Ask or tell '+esc(x.user)+' something about it.':'Ask the admin something about it, like a different version or a language.'}</p>`;
+  const o=modal(`<h2 style="margin-top:0">${esc(x.title)}</h2><p class="mute" style="margin-top:-6px">${kind==='requests'?'Request by '+esc(x.user):'Problem reported by '+esc(x.user)}${x.text?': '+esc(x.text):''}</p>
+    <div class="tkl" id="tkl">${draw(x.msgs)}</div><form id="tkf" class="row" style="margin-top:10px;flex-wrap:nowrap"><input name="t" maxlength="1000" placeholder="Write a message" required style="margin:0" aria-label="Message"><button class="primary">Send</button></form><div class="err" id="tke"></div><div class="row"><button type="button" data-x>Close</button></div>`);
+  const l=o.querySelector('#tkl');l.scrollTop=l.scrollHeight;o.querySelector('[data-x]').onclick=()=>{o.close();after&&after()};o.querySelector('input').focus();
+  o.querySelector('#tkf').onsubmit=async e=>{e.preventDefault();const i=e.target.t;try{const r=await api(`/api/${kind}/${x.id}/messages`,'POST',{text:i.value});x.msgs=r.msgs;l.innerHTML=draw(r.msgs);l.scrollTop=l.scrollHeight;i.value=''}catch(y){o.querySelector('#tke').textContent=y.message}};
 }
 function rqView(){
   const sv=services.filter(s=>s.type==='seerr'),admin=me.role==='admin';
@@ -3068,7 +3136,9 @@ function rqView(){
       <div style="flex:1;min-width:0"><b>${esc(x.title)}</b> <span class="mute">${esc(x.year||'')}</span><div class="mute">Requested by ${esc(x.user)}${x.est?` · about ${gbs(x.est)}`:''}${x.rule?` · approved by the rule “${esc(x.rule)}”`:''}</div></div>
       ${x.seasons&&x.seasons.length?`<span class="mute" title="Seasons requested">S${x.seasons.join(', ')}</span>`:''}
       ${admin&&x.status==='pending'?`<button class="primary" data-ap="${x.id}">Approve</button><button data-dc="${x.id}">Decline</button>`:stagePill(x)}
-      ${x.status==='approved'&&(admin||x.uid===me.id)?`<button data-rp="${x.id}" title="Tell the admin something is wrong and search again">Report a problem</button>`:''}</div>`).join('')||'<p class="mute">No requests yet.</p>';
+      ${x.status==='approved'&&(admin||x.uid===me.id)?`<button data-rp="${x.id}" title="Tell the admin something is wrong and search again">Report a problem</button>`:''}
+      <button class="ghost" data-tk="${x.id}" title="Write to ${admin?esc(x.user):'the admin'} about it">${ic('chat')}${(x.msgs||[]).length?(x.msgs||[]).length:'Message'}</button></div>`).join('')||'<p class="mute">No requests yet.</p>';
+    document.querySelectorAll('#q [data-tk]').forEach(b=>b.onclick=()=>talk('requests',l.find(y=>y.id===b.dataset.tk),loadQ));
     document.querySelectorAll('[data-rp]').forEach(b=>b.onclick=()=>{const o=modal(`<h2 style="margin-top:0">Report a problem</h2><p class="mute">Say what is wrong (no sound, wrong language, will not play…). The admin is told, and GoatMediaStackarr searches for a new copy.</p><form id="rf4"><textarea name="text" rows="3" maxlength="500" placeholder="What is wrong?" required style="width:100%"></textarea><div class="err" id="re4"></div><div class="row"><button class="primary">Send report</button><button type="button" data-x>Cancel</button></div></form>`);
       o.querySelector('[data-x]').onclick=o.close;o.querySelector('textarea').focus();
       o.querySelector('#rf4').onsubmit=async e=>{e.preventDefault();try{const r=await api(`/api/requests/${b.dataset.rp}/report`,'POST',{text:e.target.text.value});o.close();toast(r.result?'Sent. '+r.result:'Sent to the admin','ok');loadR()}catch(x){o.querySelector('#re4').textContent=x.message}}});
@@ -3077,7 +3147,8 @@ function rqView(){
   }catch(x){$('#e').textContent=x.message}};
   const loadR=async()=>{try{const l=await api('/api/reports');if(tab!=='rq'||!$('#rpt'))return;
     $('#rpt').innerHTML=l.length?`<h2 class="sec">Problem reports</h2>${l.slice(0,20).map(x=>`<div class="box row"><div class="grow" style="min-width:0"><b>${esc(x.title)}</b> <span class="mute">reported by ${esc(x.user)}, ${ago(x.at)}</span><div>${esc(x.text)}</div>${x.result?`<div class="mute">${esc(x.result)}</div>`:''}</div>
-      <span class="pill ${x.status==='open'?'warn':'ok'}">${x.status==='open'?'Open':'Done'}</span>${admin&&x.status==='open'?`<button data-rd="${x.id}">Mark as done</button>`:''}</div>`).join('')}`:'';
+      <span class="pill ${x.status==='open'?'warn':'ok'}">${x.status==='open'?'Open':'Done'}</span><button class="ghost" data-tr="${x.id}">${ic('chat')}${(x.msgs||[]).length||'Message'}</button>${admin&&x.status==='open'?`<button data-rd="${x.id}">Mark as done</button>`:''}</div>`).join('')}`:'';
+    document.querySelectorAll('#rpt [data-tr]').forEach(b=>b.onclick=()=>talk('reports',l.find(y=>y.id===b.dataset.tr),loadR));
     document.querySelectorAll('[data-rd]').forEach(b=>b.onclick=async()=>{try{await api(`/api/reports/${b.dataset.rd}/resolve`,'POST');loadR()}catch(x){toast(x.message,'bad')}})}catch{}};
   const send=async(x,seasons,b)=>{b.disabled=true;b.textContent='Sending…';
     try{const r=await requestWith({sid,mediaType:x.mediaType,mediaId:x.id,title:x.title,year:x.year,poster:x.poster,seasons});if(!r){b.disabled=false;b.textContent='Request';return}
@@ -3259,6 +3330,11 @@ function chView(a){
     <div class="row" style="gap:16px;flex-wrap:wrap"><label class="mute">The array counts as full at (%) <input name="diskPct" type="number" min="50" max="99" value="${a.diskPct||90}" style="width:80px"></label>
     <label class="mute">A disk is too hot at (°C) <input name="diskTemp" type="number" min="35" max="80" value="${a.diskTemp||55}" style="width:80px"></label></div>
     <p class="mute" style="font-size:13px;margin:4px 0 0">Unraid's own hot limit for a disk is used when it has one. You also hear when a disk is disabled or missing, gets read/write errors or a SMART warning, and when a parity check ends.</p>
+    <h3>Errors in the logs</h3><div class="row" style="gap:16px;flex-wrap:wrap"><label class="mute">Tell me when an app writes <input name="logCount" type="number" min="0" max="100" value="${a.logCount??5}" style="width:70px"> errors</label>
+    <label class="mute">within <input name="logMins" type="number" min="5" max="240" value="${a.logMins||15}" style="width:70px"> minutes</label></div>
+    <p class="mute" style="font-size:13px;margin:4px 0 0">Read from <a href="/logs">Logs</a>. Once per app, then not again for 6 hours. 0 turns it off.</p>
+    <h3>Space running out</h3><label class="mute">Tell me when a disk will be full within <input name="fillDays" type="number" min="0" max="90" value="${a.fillDays??14}" style="width:70px"> days</label>
+    <p class="mute" style="font-size:13px;margin:4px 0 0">From how fast free space has been shrinking over the last two weeks (see Health). 0 turns it off.</p>
     <div class="row"><button class="primary">Save</button></div><div class="err" id="e"></div></form><div id="botp"></div>`;
   const msg=(t,ok)=>{const m=$('#e');m.style.color=ok?'var(--ok-t)':'';m.textContent=t};
   botPanel();
@@ -3275,7 +3351,7 @@ function chView(a){
     const cx=e.target.closest('[data-cx]');if(cx){cx.closest('.cnd').remove()}
     if(e.target.closest('[data-cs]')){const conds=readConds(row),condMode=row.querySelector('[data-cm]').value;
       try{await api('/api/alerts/channels/'+c.id,'PUT',{type:c.type,conds,condMode});c.conds=conds;c.condMode=condMode;toast('Conditions saved','ok');alView()}catch(x){toast(x.message,'bad')}}};
-  $('#f').onsubmit=async e=>{e.preventDefault();const f=e.target.elements,o={...a,diskPct:f.diskPct.value,diskTemp:f.diskTemp.value};['channels','events','meta','ops'].forEach(k=>delete o[k]);
+  $('#f').onsubmit=async e=>{e.preventDefault();const f=e.target.elements,o={...a,diskPct:f.diskPct.value,diskTemp:f.diskTemp.value,logCount:f.logCount.value,logMins:f.logMins.value,fillDays:f.fillDays.value};['channels','events','meta','ops'].forEach(k=>delete o[k]);
     try{await api('/api/alerts','PUT',o);msg('Saved',true)}catch(x){msg(x.message)}};
   $('#cl').onchange=async e=>{const t=e.target;if(!t.matches('[data-ev]'))return;const row=t.closest('[data-c]'),c=chOf(row);
     const ev=[...row.querySelectorAll('[data-ev]:checked')].map(x=>x.dataset.ev);
@@ -3533,6 +3609,7 @@ async function goatView(){
       ${e.stopped?`<button class="primary" data-gs="${esc(e.key)}">${ic('play')}Start</button>`:`<button data-gr="${esc(e.key)}">${ic('refresh')}Restart</button><button data-gx="${esc(e.key)}">${ic('stop')}Stop</button>`}<button class="ghost" data-glog="${esc(e.key)}" title="What ${esc(e.name||e.key)} is writing">${ic('logs')}Logs</button></div>`).join('')}
     <div class="mute" style="margin-top:8px">Each app's own page opens signed in through GoatMediaStackarr. Seerr is used through <a href="#" data-go="rq">Requests</a>.</div>
     ${(st.appUpdates||[]).length?`<h3 style="margin:16px 0 6px">Recent updates</h3>${st.appUpdates.map(u=>`<div style="margin:6px 0"><b>${esc(new Date(u.at).toLocaleDateString())}</b> <span class="mute">${u.changes.map(c=>`${esc(c.name)} ${esc(c.from)} → ${esc(c.to)}`).join(' · ')}</span></div>`).join('')}`:`<div class="mute" style="margin-top:8px;font-size:13px">The image is rebuilt every Monday with the newest version of each app. Update the container in Unraid's Docker tab to get it; what changed is listed here afterwards.</div>`}</div>
+  <h2 class="sec">App updates</h2><div class="panel" id="gnews"><p class="mute" style="margin:0">Looking…</p></div>
   <h2 class="sec">From outside your home</h2>
   <div class="panel"><p class="mute" style="margin-top:0">Sonarr, Radarr and the other apps open through this page's own address, so they work wherever this page works (a Cloudflare tunnel or Tailscale). Phone apps for them (nzb360, LunaSea and similar) use this address plus <code>/engines/sonarr</code> (or radarr, prowlarr…) and that app's API key.</p>
     <p class="mute">Jellyfin, Seerr and Plex use their own ports. With Tailscale those work as they are. With a Cloudflare tunnel, give each one its own hostname in the tunnel (for example jellyfin.example.com to http://<i>Unraid's address</i>:8096) and enter it here, so the Open buttons use it when you are away.</p>
@@ -3553,6 +3630,7 @@ async function goatView(){
       <button id="gic">Check</button></div>
     <div class="mute">The API key is in the old app under Settings → General.</div>
     <div id="gip"></div><div class="err" id="gie"></div></div>`;
+  appNews(false);
   // While connecting, look again every 8 seconds, but never while something on the page is being typed in.
   if(wiring){const again=()=>{if(tab!=='goat')return;const a=document.activeElement;if(a&&a.closest&&a.closest('#m')&&/^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)){goatPoll=setTimeout(again,8000);return}goatQuiet=true;goatView()};goatPoll=setTimeout(again,8000)}
   const busy=(b,t)=>{b.disabled=true;b.dataset.t=b.innerHTML;b.textContent=t};
@@ -3775,6 +3853,13 @@ async function healPanel(){
     try{await api('/api/heal','PUT',{on:v('on').checked,stuck:v('stuck').checked,failed:v('failed').checked,apps:v('apps')?v('apps').checked:c.apps,hours:v('hours').value});toast('Saved','ok');healPanel()}catch(x){toast(x.message,'bad')}};
   el.querySelectorAll('[data-h]').forEach(i=>i.onchange=save);
 }
+// Under each disk on Health: how soon it fills up at the rate of the last two weeks, with a small chart of free space.
+function fcLine(d){const f=d.fc;if(!f)return'';
+  if(!f.enough)return`<div class="mute" style="font-size:12.5px;margin-top:4px">Fill-up forecast after two days of samples (one an hour).</div>`;
+  const spark=(v=>{if(v.length<2)return'';const mx=Math.max(...v),mn=Math.min(...v),w=90,h=22,r=mx-mn||1;return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true" style="vertical-align:middle"><polyline fill="none" stroke="currentColor" stroke-width="1.6" points="${v.map((y,i)=>`${(i/(v.length-1)*w).toFixed(1)},${(h-2-(y-mn)/r*(h-4)).toFixed(1)}`).join(' ')}"/></svg>`})(f.daily||[]);
+  const gb=n=>n>=1e12?(n/1e12).toFixed(1)+' TB':Math.round(n/1e9)+' GB';
+  const t=f.days==null?(f.perDay<0?`Getting freer: about ${gb(-f.perDay)} a day.`:'Not filling up.'):`<b class="${f.days<=14?'bad':f.days<=45?'warn':''}">Full in about ${f.days<1?'a day':Math.round(f.days)+' days'}</b> (${new Date(f.full).toLocaleDateString(undefined,{month:'short',day:'numeric'})}), about ${gb(f.perDay)} a day.`;
+  return `<div class="row mute" style="font-size:12.5px;margin-top:4px;gap:8px">${spark}<span>${t}</span></div>`}
 async function hlView(){
   $('#m').innerHTML=skel(4);
   let l;try{l=await api('/api/libhealth')}catch(x){$('#m').innerHTML=`<div class="err">${esc(x.message)}</div>`;return}
@@ -3782,7 +3867,7 @@ async function hlView(){
   const total=l.reduce((a,x)=>a+x.issues.length+x.queue.length+(x.ok?0:1),0);
   // Every app reports the same disks, so they are shown once, with what each folder is for.
   const seen=new Set(),disks=l.flatMap(x=>x.disks||[]).filter(d=>{const k=d.path+'|'+d.total;if(seen.has(k))return false;seen.add(k);return true});
-  const diskRow=d=>{const used=(1-d.free/d.total)*100;return `<div style="margin:10px 0"><div class="row" style="gap:4px 12px"><span class="grow"><b style="font-weight:560">${esc(d.label||d.path)}</b>${d.label?` <span class="mute">${esc(d.path)}</span>`:''}</span><span class="mute">${fmt(d.free)} free of ${fmt(d.total)} · ${used.toFixed(0)}% used</span></div><div class="bar" role="img" aria-label="${used.toFixed(0)} percent used"><i class="${used>90?'bad':''}" style="width:${used.toFixed(0)}%"></i></div></div>`};
+  const diskRow=d=>{const used=(1-d.free/d.total)*100;return `<div style="margin:10px 0"><div class="row" style="gap:4px 12px"><span class="grow"><b style="font-weight:560">${esc(d.label||d.path)}</b>${d.label?` <span class="mute">${esc(d.path)}</span>`:''}</span><span class="mute">${fmt(d.free)} free of ${fmt(d.total)} · ${used.toFixed(0)}% used</span></div><div class="bar" role="img" aria-label="${used.toFixed(0)} percent used"><i class="${used>90?'bad':''}" style="width:${used.toFixed(0)}%"></i></div>${fcLine(d)}</div>`};
   $('#m').innerHTML=`<div class="panel" id="warns" style="margin-bottom:14px"><b style="font-size:16px">Needs attention</b><div class="mute" style="margin-top:6px">Asking every app…</div></div><div class="panel" id="heal" style="margin-bottom:14px"></div>`+(disks.length?`<div class="panel" style="margin-bottom:14px"><b style="font-size:16px">Disk space</b>${disks.map(diskRow).join('')}</div>`:'')+l.map(x=>{
     const n=x.issues.length+x.queue.length+(x.ok?0:1);
     return `<div class="panel" style="margin-bottom:14px"><div class="row"><b style="font-size:16px">${esc(x.name)}</b>${String(TYPES[x.type]||x.type).toLowerCase()===String(x.name).toLowerCase()?'':`<span class="mute">${esc(TYPES[x.type]||x.type)}</span>`}<span class="grow"></span>${x.missing!=null?`<span class="mute">${x.missing} missing</span>`:''}<span class="pill ${!x.ok?'bad':n?'warn':'ok'}">${!x.ok?'Not reachable':n?n+' to check':'Healthy'}</span></div>

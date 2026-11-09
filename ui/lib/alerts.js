@@ -29,6 +29,9 @@ const EVENTS = {
   backup: { name: 'Backup failed', group: 'Server', params: [] },
   update: { name: 'GoatMediaStackarr update', group: 'Server', params: [] },
   appUpdates: { name: 'App updates in the stack', group: 'Server', params: [] },
+  appNews: { name: 'Newer app versions out', group: 'Server', params: ['apps'] },
+  logErrors: { name: 'An app keeps writing errors', group: 'Server', params: ['app', 'errors', 'minutes', 'last_error'], subject: '{app} keeps writing errors', body: '{app} wrote {errors} errors in the last {minutes} minutes. The last one: {last_error}' },
+  diskFill: { name: 'Disk filling up soon', group: 'Server', params: ['disk', 'days', 'free', 'per_day'], subject: '{disk} fills up in about {days} days', body: '{disk} has {free} free and gains about {per_day} a day, so it is full in about {days} days.' },
   weekly: { name: 'Weekly newsletter', group: 'Newsletters', params: [] },
 };
 const KEYS = Object.keys(EVENTS);

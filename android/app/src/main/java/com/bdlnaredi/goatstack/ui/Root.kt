@@ -91,7 +91,7 @@ class Ctx(val app: AppState, val me: Me, val user: User, val nav: NavHostControl
             l == "profile" -> profile()
             l == "watchlist" -> go("watchlist")
             l in listOf("requests", "downloads", "health", "stack", "users", "unraid", "notifications", "upcoming") -> go(l)
-            l == "suggestions" -> go(l)
+            l == "suggestions" || l == "logs" -> go(l)
             else -> go("notifications")
         }
     }

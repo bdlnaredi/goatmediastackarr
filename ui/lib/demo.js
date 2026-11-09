@@ -245,6 +245,8 @@ function create(opts = {}) {
     if ((type === 'sonarr' || type === 'radarr') && /^\/MediaCover\/\d+\/fanart\.jpg$/.test(sub)) {   // a stand-in picture so the cached sign-in wallpapers can be tested
       const b = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(6000, 7)]); res.writeHead(200, { 'Content-Type': 'image/jpeg' }); return res.end(b);
     }
+    // st.down = 'sonarr' makes that app stop answering (for tests of what happens when an app is down).
+    if (st.down && st.down === type) { res.writeHead(503, { 'Content-Type': 'text/plain' }); return res.end('Service Unavailable'); }
     // Each app's own log, as its API gives it (Settings → Logs).
     const ago = mins => Date.now() - mins * 60000;
     if (['sonarr', 'radarr', 'lidarr', 'prowlarr'].includes(type) && /^\/api\/v[13]\/log$/.test(sub)) {

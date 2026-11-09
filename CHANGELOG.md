@@ -4,6 +4,13 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- Alerts from the logs: admins are told when an app keeps writing errors (5 in 15 minutes unless changed under Settings → Alerts → Errors in the logs), with the last error. Once per app, then not again for 6 hours.
+- App updates (Stack page): which apps in the image have a newer release out, from each app's releases on GitHub, with what each one changed. Checked twice a day, with a Check now button, and admins are told once per new version (the "Newer app versions out" alert). The image is rebuilt every Monday with them.
+- Disk space forecast (Health): under each disk, when it fills up at the rate of the last two weeks, with a small chart of free space. Free space is noted once an hour. Admins are told when a disk will be full within 14 days (changeable under Settings → Alerts → Space running out; the "Disk filling up soon" alert).
+- Conversations on requests and problem reports: the person who asked and the admins write back and forth ("can you get the 4K one?"), and each side is told in the bell, on the phone and through the admins' alert channels. A done report opens again when its person writes.
+- Report a problem with any title in the library (on its page): will not play, wrong language, bad copy. The admins are told and can write back. Before, only your own requests could be reported.
+- Status page for friends (Settings → Status page, off until turned on): /status shows, without signing in, whether Plex or Jellyfin, Requests and new downloads are working, with the last two days and your own message. You pick the apps; nothing else about the server is shown.
+- Notifications in the browser: Settings → Account → Turn on notifications here sends what the bell says to that browser even with the page closed, on a computer, Android, and iPhone or iPad (iOS 16.4 or newer, added to the Home Screen). Tapping one opens the page it is about. Install as an app is on the same panel where the browser allows it.
 ## v1.0.18 — 2026-11-09
 
 - Logs (Server menu, admins; also in the app under More): read what every app is writing. Pick one app or all of them together in time order, newest at the bottom, with each line's time, app and level. Show only problems or errors, find a word, follow new lines every 5 seconds, copy or save them as a file. The apps of the stack, the VPN and GoatMediaStackarr itself now each keep their own log in /config/logs/<app>/ (about 3 MB each, and the container's log still has every line). Apps you added are read through their APIs: Sonarr, Radarr, Lidarr, Readarr, Prowlarr, qBittorrent, SABnzbd, Bazarr, Tautulli and Seerr. Each app on the Stack page has a Logs button that opens its log.
