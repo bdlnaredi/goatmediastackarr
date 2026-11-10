@@ -4,6 +4,7 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- Health: pressing Test indexers again (or any button, or anywhere on the page) no longer also opens an empty Import to library window that said it could not import. The button now only tests the indexers.
 ## v1.0.19 — 2026-11-09
 
 - Alerts from the logs: admins are told when an app keeps writing errors (5 in 15 minutes unless changed under Settings → Alerts → Errors in the logs), with the last error. Once per app, then not again for 6 hours.

@@ -3876,7 +3876,9 @@ async function hlView(){
       ${x.queue.length?`<div class="mute" style="margin-top:12px">Downloads that are stuck</div>${x.queue.map(i=>`<div class="box row" style="gap:8px"><div class="grow" style="min-width:0"><b style="word-break:break-word">${esc(i.title)}</b><div class="mute">${esc(i.message)}</div></div>${i.downloadId&&['sonarr','radarr'].includes(x.type)?`<button data-qi="${esc(x.id)}" data-qd="${esc(i.downloadId)}" data-qn="${esc(i.title)}">Import</button>`:''}</div>`).join('')}`:''}
       </div>`}).join('');
   healPanel();warnPanel();
-  const mm=$('#m');if(!mm.dataset.qi){mm.dataset.qi=1;mm.addEventListener('click',e=>{const b=e.target.closest('[data-qi]');if(b&&tab==='hl')importDialog({sid:b.dataset.qi,downloadId:b.dataset.qd,name:b.dataset.qn,after:hlView})})}
+  // Listened for once. The mark is a property, not a data-qi attribute: one on #m would make every click on the page
+  // look like an Import button (closest('[data-qi]') finds #m itself) and open an empty import window.
+  const mm=$('#m');if(!mm._qiOn){mm._qiOn=true;mm.addEventListener('click',e=>{const b=e.target.closest('button[data-qi]');if(b&&tab==='hl')importDialog({sid:b.dataset.qi,downloadId:b.dataset.qd,name:b.dataset.qn,after:hlView})})}
 }
 // Every app's warnings in one list (Sonarr, Radarr, Prowlarr, Bazarr, SABnzbd, qBittorrent, and any app that stopped
 // answering), errors first, with a button that does what can be done from here.
