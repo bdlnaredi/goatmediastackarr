@@ -545,7 +545,7 @@ async function api(url,method='GET',body){
 }
 let DEMO=false;
 let REC=false,PLEXLOGIN=false;
-let VER='',GOAT=false;const APPMODE=/MediaHubApp\//.test(navigator.userAgent);
+let VER='',GOAT=false,CROSSSEED=false;const APPMODE=/MediaHubApp\//.test(navigator.userAgent);
 // Tells an admin, once per version, that a newer GoatMediaStackarr is out and how to get it.
 async function updNote(){
   let u;try{u=await api('/api/updates')}catch{return}
@@ -561,7 +561,7 @@ async function updNote(){
 async function start(){
   await loadLang();
   const s=await api('/api/me');
-  VER=s.version||'';GOAT=!!s.goat;DEMO=!!s.demo;REC=!!s.recovery;PLEXLOGIN=!!s.plexLogin;ICONB=s.iconBase?s.iconBase.replace(/\/*$/,'/'):'';
+  VER=s.version||'';GOAT=!!s.goat;CROSSSEED=!!s.crossSeed;DEMO=!!s.demo;REC=!!s.recovery;PLEXLOGIN=!!s.plexLogin;ICONB=s.iconBase?s.iconBase.replace(/\/*$/,'/'):'';
   const rt=(location.hash.match(/^#reset=([\w-]{20,80})$/)||[])[1];
   if(rt)return resetView(rt);
   const iv=(location.hash.match(/^#invite=([\w-]{16,64})$/)||[])[1];
@@ -2093,7 +2093,7 @@ async function openTorrent(s,x,meta,after){
   const o=modal(`<div class="row"><h2 style="margin:0;flex:1;min-width:0;word-break:break-word">${esc(x.name)}</h2><button data-x>Close</button></div>
     <div class="seg" id="tb" style="margin:12px 0"><button class="on" data-k="g">General</button><button data-k="f">Files</button><button data-k="t">Trackers</button><button data-k="p">Peers</button></div>
     <div id="tc"><p class="mute">Loading…</p></div>
-    <div class="row" style="margin-top:14px">${!can('control')?'':[['force','Force start'],['recheck','Recheck'],['reannounce','Reannounce'],['top','Queue top'],['up','Queue up'],['down','Queue down'],['bottom','Queue bottom'],['rename','Rename']].map(([k,n])=>`<button data-a="${k}">${n}</button>`).join('')}${admin?'<button data-a="location">Move</button>':''}${can('remove')?'<button data-a="delete">Remove</button>':''}${admin&&x.progress>=1&&s.type==='qbittorrent'?`<button data-imp>${ic('lib')}Import to library</button>`:''}</div>
+    <div class="row" style="margin-top:14px">${!can('control')?'':[['force','Force start'],['recheck','Recheck'],['reannounce','Reannounce'],['top','Queue top'],['up','Queue up'],['down','Queue down'],['bottom','Queue bottom'],['rename','Rename']].map(([k,n])=>`<button data-a="${k}">${n}</button>`).join('')}${admin?'<button data-a="location">Move</button>':''}${can('remove')?'<button data-a="delete">Remove</button>':''}${admin&&x.progress>=1&&s.type==='qbittorrent'?`<button data-imp>${ic('lib')}Import to library</button>`:''}${CROSSSEED&&can('control')&&x.progress>=1&&s.type==='qbittorrent'?`<button data-cs title="cross-seed looks for this same torrent on your other trackers and seeds it there too">${ic('trk')}Find on other trackers</button>`:''}</div>
     <div class="err" id="te"></div>`);
   const $o=q=>o.querySelector(q),err=m=>{$o('#te').textContent=m||''};
   const tags=()=>x.tags?x.tags.split(',').map(g=>g.trim()).filter(Boolean):[];
@@ -2110,6 +2110,7 @@ async function openTorrent(s,x,meta,after){
   const load=async()=>{try{info=await api(`/api/qb/${s.id}/info?hash=${x.hash}`);show()}catch(ex){$o('#tc').innerHTML='';err(ex.message)}};
   $o('[data-x]').onclick=o.close;
   if($o('[data-imp]'))$o('[data-imp]').onclick=()=>importDialog({qb:s.id,hash:x.hash,name:x.name,after});
+  if($o('[data-cs]'))$o('[data-cs]').onclick=async e=>{const b=e.currentTarget;b.disabled=true;try{const r=await api('/api/crossseed/search','POST',{hash:x.hash,name:x.name});toast(r.done,'ok')}catch(y){err(y.message);b.disabled=false}};
   $o('#tb').onclick=e=>{const b=e.target.closest('[data-k]');if(!b)return;cur=b.dataset.k;o.querySelectorAll('#tb [data-k]').forEach(z=>z.classList.toggle('on',z===b));if(cur==='p')load();else show()};
   o.addEventListener('click',async e=>{
     const rt=e.target.closest('[data-rt]');if(rt){e.preventDefault();try{await act({action:'rmtag',value:rt.dataset.rt});x.tags=tags().filter(g=>g!==rt.dataset.rt).join(', ');show();after()}catch(ex){err(ex.message)}return}

@@ -1180,6 +1180,21 @@ async function ext(s, path, opt = {}) {
   if (!r.ok) throw new Error((Array.isArray(d) && d[0] && d[0].errorMessage) || (d && d.message) || 'Request failed (' + r.status + ')');
   return d;
 }
+// ---------- cross-seed: asked to look for a torrent on the other trackers the moment it finishes in qBittorrent (its
+// own schedule only searches once a day, and leaves single episodes out), and on demand from Downloads.
+const csKeyFile = () => path.join(process.env.GOAT_CONFIG_DIR || '/config', 'cross-seed', 'goat-api-key');
+const csOn = () => fs.existsSync(csKeyFile());
+async function crossSeedAsk(hash, now = false) {
+  let k; try { k = fs.readFileSync(csKeyFile(), 'utf8').trim(); } catch { return { ok: false, error: 'cross-seed is not running here. Add cross-seed to Apps to run.' }; }
+  if (!/^[a-f0-9]{40}$/i.test(String(hash || ''))) return { ok: false, error: 'Not a torrent' };
+  try {
+    const r = await fetch((process.env.CROSSSEED_URL || 'http://127.0.0.1:2468') + '/api/webhook', { method: 'POST', signal: AbortSignal.timeout(15000), headers: { 'X-Api-Key': k, 'Content-Type': 'application/json' },
+      // Single episodes too (only this one torrent is searched), and on demand also ones searched lately or older ones.
+      body: JSON.stringify({ infoHash: hash.toLowerCase(), includeSingleEpisodes: true, ...(now ? { ignoreExcludeRecentSearch: true, ignoreExcludeOlder: true } : {}) }) });
+    if (r.status === 204 || r.ok) return { ok: true };
+    return { ok: false, error: r.status === 401 ? 'cross-seed did not accept its key; restart cross-seed on the Stack page' : cut(await r.text().catch(() => ''), 200) || 'cross-seed said ' + r.status };
+  } catch (e) { return { ok: false, error: 'cross-seed is not answering (' + ((e.cause && e.cause.code) || e.message) + ')' }; }
+}
 // ---------- Replace cam copies: a movie that only has a cam, telesync, telecine or workprint copy loses that file a day
 // (or as many as chosen) before its digital or Blu-ray release, and Radarr searches for a proper one, so the bad copy
 // is gone and a good one comes in on release day. Off until turned on (Settings → Download rules).
@@ -2117,6 +2132,7 @@ async function monitor() {
             db.history.push({ hash: x.hash, name: x.name, size: x.size, at: x.completion_on * 1000, cat: x.category || '', svc: s.id });
             if (!first) feed('@admins', 'download', 'Download finished', x.name, 'downloads');
             if (!first) await notify('finished', 'Download finished', x.name).catch(() => {});
+            if (!first && s.managed && csOn()) crossSeedAsk(x.hash).catch(() => {});
           }
         }
       }
@@ -2448,7 +2464,7 @@ const goatServer = http.createServer(async (req, res) => {
     // What changed in each version, for the "What's new" page.
     if (p === '/api/changelog' && m === 'GET') return send(res, 200, { current: VERSION, versions: changelog.read(VERSION) });
     if (p === '/api/wallpapers' && m === 'GET') { if (!DEMO && wpMode() === 'library' && !wpList().some(f => LIBWP.test(f)) && !wpBusy) wpKick(); return send(res, 200, wpMode() === 'scenes' ? [] : DEMO ? demo.fanarts() : wpList()); }
-    if (p === '/api/me') return send(res, 200, { setup, setupCode: setup && !!SETUP_TOKEN, version: VERSION, demo: DEMO, goat: !!GOAT_MANAGED, plexLogin: plexCfg().on, iconBase: String(process.env.ICON_BASE == null ? 'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/' : process.env.ICON_BASE).replace(/[^\w:/.@-]/g, ''), recovery: !DEMO && !!(mailer() && baseUrl()), user: me ? pubUser(me) : null });
+    if (p === '/api/me') return send(res, 200, { setup, setupCode: setup && !!SETUP_TOKEN, version: VERSION, demo: DEMO, goat: !!GOAT_MANAGED, crossSeed: !!GOAT_MANAGED && csOn(), plexLogin: plexCfg().on, iconBase: String(process.env.ICON_BASE == null ? 'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/' : process.env.ICON_BASE).replace(/[^\w:/.@-]/g, ''), recovery: !DEMO && !!(mailer() && baseUrl()), user: me ? pubUser(me) : null });
 
     if (p === '/api/setup' && m === 'POST') {
       if (!setup) return send(res, 403, { error: 'Already set up' });
@@ -3901,6 +3917,13 @@ const goatServer = http.createServer(async (req, res) => {
     };
     // ---------- Logs: the stack's apps (their own log files) and the apps added under Settings → Apps (through their APIs),
     // one at a time or all together, newest at the bottom.
+    // Downloads → a torrent → Find on other trackers: cross-seed searches it now.
+    if (p === '/api/crossseed/search' && m === 'POST') {
+      if (deny('control', 'control downloads')) return;
+      const b = await readBody(req), r2 = await crossSeedAsk(String(b.hash || ''), true);
+      if (r2.ok) audit(me.name, 'Asked cross-seed to search', cut(b.name || b.hash, 120));
+      return send(res, r2.ok ? 200 : 400, r2.ok ? { done: 'cross-seed is searching your other trackers. Matches show in Downloads, and the steps in Logs → cross-seed.' } : { error: r2.error });
+    }
     if (p === '/api/camrules' && m === 'GET') { if (adminOnly()) return; const c = camCfg(); return send(res, 200, { ...c, kinds: c.kinds, all: CAM_KINDS, waiting: await camList(c), log: (db.healLog || []).filter(x => / copy was removed| copy: /.test(x.what)).slice(0, 20) }); }
     if (p === '/api/camrules' && m === 'PUT') {
       if (adminOnly()) return;
