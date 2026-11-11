@@ -134,7 +134,7 @@ Anyone can ask for a show or movie. Admins approve or decline, or let a profile 
 
 qBittorrent, ruTorrent, Deluge and SABnzbd in one list: pause, resume, remove, categories and tags, files, trackers, peers, speed limits and schedules, and adding links or `.torrent` files. Sort by speed, time left, progress, seeders, ratio, size or name.
 
-- **Speed limits per category** (Downloads → Speed limit settings): a download and upload limit for all of a category's torrents together, say 2 MB/s for `movies` so TV episodes still come in fast. It is shared among the category's torrents that are moving data and checked every minute; take it off and their own limits go too.
+- **Speed limits per category** (Downloads → **Categories and tags** → *Speed limit* on a category, or Speed limit settings): a download and upload limit for all of a category's torrents together, say 2 MB/s for `movies` so TV episodes still come in fast. It is shared among the category's torrents that are moving data and checked every minute; take it off and their own limits go too.
 
 | | |
 |---|---|

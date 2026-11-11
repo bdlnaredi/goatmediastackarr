@@ -4,10 +4,13 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- A category's speed limit can also be set in Downloads → **Categories and tags**: each category shows its limit and has a **Speed limit** button.
+
 ## v1.0.23 — 2026-11-11
 
 - Speed limits per category for qBittorrent (Downloads → Speed limit settings → Per category): a download and an upload limit in KB/s for all of a category's torrents together. qBittorrent itself only has one limit for everything and one per torrent, so every minute GoatMediaStackarr shares the category's limit out among its torrents that are moving data (a stalled one doesn't take a part away from the others). A torrent moved to another category, or a limit taken off, gets its own limit removed again.
 - RSS shows new articles by itself, on the web page and in the Android app: the articles and the feeds' unread counts are checked again every minute (and when you come back to the page), and a few times in the seconds after **Refresh feeds**, as qBittorrent fetches them. Before, the list stayed as it was when opened, and Refresh feeds in the app didn't reload it at all. What you typed in the filter, ticked or scrolled to stays as it is.
+
 ## v1.0.22 — 2026-11-11
 
 - The README is rewritten: a tour led by new screenshots (Logs, Suggestions, a request's conversation, Year in review, Replace cam copies, the status page) and the Android app, a section for the people who use your server, and answers to common questions. Nothing was left out.

@@ -2154,19 +2154,26 @@ async function limDialog(s){
 function catDialog(s,getMeta,reload){
   const o=modal('<div id="cb"></div>');
   const post=(k,b)=>api(`/api/qb/${s.id}/${k}`,'POST',b);
+  // Each category's own speed limit (a total for its torrents together, see Speed limit settings → Per category).
+  let lim={},edit=null;api(`/api/qb/${s.id}/catlimits`).then(r=>{lim=r.limits||{};draw()}).catch(()=>{});
+  const limTxt=c=>{const l=lim[c];return l&&(l.dl||l.up)?`↓ ${l.dl?l.dl+' KB/s':'no limit'} · ↑ ${l.up?l.up+' KB/s':'no limit'}`:'No speed limit'};
   const draw=()=>{const m=getMeta();
     o.querySelector('#cb').innerHTML=`<div class="row"><h2 style="margin:0;flex:1">Categories and tags</h2><button data-x>Close</button></div>
-      <h3>Categories</h3>${m.categories.map(c=>`<div class="box row"><b>${esc(c.name)}</b><span class="mute" style="flex:1;word-break:break-all">${esc(c.path||'default folder')}</span><button data-rc="${esc(c.name)}">Remove</button></div>`).join('')||'<p class="mute">None yet.</p>'}
+      <h3>Categories</h3>${m.categories.map(c=>`<div class="box"><div class="row"><b>${esc(c.name)}</b><span class="mute" style="flex:1;word-break:break-all">${esc(c.path||'default folder')}</span><span class="pill${lim[c.name]?' acc':''}">${limTxt(c.name)}</span><button data-sl="${esc(c.name)}">Speed limit</button><button data-rc="${esc(c.name)}">Remove</button></div>
+        ${edit===c.name?`<form class="row" data-lf="${esc(c.name)}" style="display:flex;margin-top:8px;align-items:end"><label class="mute" style="display:grid;gap:4px">Download KB/s<input type="number" min="0" name="dl" value="${(lim[c.name]||{}).dl||0}" style="width:120px"></label><label class="mute" style="display:grid;gap:4px">Upload KB/s<input type="number" min="0" name="up" value="${(lim[c.name]||{}).up||0}" style="width:120px"></label><button class="primary">Save</button><span class="mute" style="flex-basis:100%;font-size:13px">For all of this category's torrents together; 0 is no limit.</span></form>`:''}</div>`).join('')||'<p class="mute">None yet.</p>'}
       <form id="cf" class="row" style="display:flex"><input name="name" placeholder="Category name" required><input name="path" placeholder="Save folder (optional)" style="flex:1;min-width:160px"><button class="primary">Add category</button></form>
       <h3>Tags</h3><div class="row">${m.tags.map(g=>`<span class="pill">${esc(g)}<a href="#" data-rg="${esc(g)}" aria-label="Delete tag ${esc(g)}">×</a></span>`).join('')||'<span class="mute">None yet.</span>'}</div>
       <form id="tf" class="row" style="display:flex;margin-top:10px"><input name="name" placeholder="New tag" required><button class="primary">Add tag</button></form><div class="err" id="ce"></div>`;
     o.querySelector('[data-x]').onclick=o.close;
   };
   const go=async(k,b)=>{try{await post(k,b);await reload();draw()}catch(x){o.querySelector('#ce').textContent=x.message}};
-  o.addEventListener('click',e=>{const r=e.target.closest('[data-rc]'),g=e.target.closest('[data-rg]');
+  o.addEventListener('click',e=>{const r=e.target.closest('[data-rc]'),g=e.target.closest('[data-rg]'),sl=e.target.closest('[data-sl]');
+    if(sl){edit=edit===sl.dataset.sl?null:sl.dataset.sl;draw();const i=o.querySelector('[data-lf] input');if(i)i.focus();return}
     if(r&&confirm('Remove this category? Torrents keep their files.'))go('cat',{op:'remove',name:r.dataset.rc});
     if(g){e.preventDefault();go('tag',{op:'remove',name:g.dataset.rg})}});
-  o.addEventListener('submit',e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target));
+  o.addEventListener('submit',async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target));
+    if(e.target.dataset.lf!=null){const c=e.target.dataset.lf,next={...lim,[c]:{dl:+f.dl||0,up:+f.up||0}};
+      try{lim=(await api(`/api/qb/${s.id}/catlimits`,'PUT',{limits:next})).limits||{};edit=null;draw();toast('Speed limit saved','ok')}catch(x){o.querySelector('#ce').textContent=x.message}return}
     if(e.target.id==='cf')go('cat',{op:'create',...f});else go('tag',{op:'create',...f})});
   draw();
 }
