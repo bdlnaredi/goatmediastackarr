@@ -618,6 +618,16 @@ const goatAdmin = req => {
   const sess = token && sessions.get(th(token)), me = sess && db.users.find(u => u.id === sess.uid);
   return !!(me && me.role === 'admin');
 };
+// File Browser's share links work for anyone who has the link, like File Browser's own: the share page, its
+// scripts and pictures, and the shared file or folder (by its random link name, and a password if one was set).
+// Nothing else of File Browser is reachable without signing in as an admin.
+const fbPublic = (req, t) => {
+  if (t.key !== 'filebrowser' || !['GET', 'HEAD'].includes(req.method)) return false;
+  const p = String(req.url).split('?')[0];
+  let d; try { d = decodeURIComponent(p); } catch { return false; }
+  if (/(^|\/)\.\.(\/|$)|\\|\0/.test(d)) return false;
+  return /^\/engines\/filebrowser\/(share\/[A-Za-z0-9_-]{6,}(\/.*)?|static\/[\w./-]+|api\/public\/(share|dl)\/[A-Za-z0-9_-]{6,}(\/.*)?)$/.test(p);
+};
 // Phone apps for Sonarr, Radarr and the others (nzb360, LunaSea, Ruddarr…) cannot sign in to GoatMediaStackarr, so a
 // request that carries that app's own API key is let through: the app checks the same key itself.
 const goatKeyOk = (req, t) => {
@@ -2476,7 +2486,7 @@ const goatServer = http.createServer(async (req, res) => {
   if (p.startsWith('/engines/')) {
     const t = goatTarget(req.url);
     if (!t) return send(res, 404, { error: 'Not found' });
-    if (!goatAdmin(req) && !goatKeyOk(req, t)) { res.writeHead(302, { Location: '/' }); return res.end(); }
+    if (!goatAdmin(req) && !goatKeyOk(req, t) && !fbPublic(req, t)) { res.writeHead(302, { Location: '/' }); return res.end(); }
     if (t.bare) { res.writeHead(301, { Location: '/engines/' + t.key + '/' }); return res.end(); }
     return goatProxy(req, res, t);
   }

@@ -195,7 +195,9 @@ case "$name" in
     if [[ ! -f "$db" ]]; then
       as "$fb" -d "$db" config init "${opts[@]}" >/dev/null && as "$fb" -d "$db" users add goat "$(head -c 24 /dev/urandom | base64 | tr -dc A-Za-z0-9)" --perm.admin >/dev/null
     else as "$fb" -d "$db" config set "${opts[@]}" >/dev/null; fi
-    cmd=("$fb" -d "$db") ;;
+    # /files/media and /files/downloads point at your folders; newer File Browser versions only follow such links when
+    # told to (without it the folders open as "403 Forbidden").
+    cmd=("$fb" -d "$db" --followExternalSymlinks) ;;
   cross-seed)
     mkdir -p /config/cross-seed && chown -R "$PUID:$PGID" /config/cross-seed
     export CONFIG_DIR=/config/cross-seed

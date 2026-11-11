@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- File Browser opens your media and downloads folders again. Newer File Browser versions refuse to follow its links to them ("403 Forbidden") unless told to, and now they are.
+- File Browser's share links work for anyone you send them to, without signing in to GoatMediaStackarr: the share page and the file's direct download link (`…/engines/filebrowser/api/public/dl/…`). Everything else in File Browser is still for admins only.
 - cross-seed: restarting it (on the Stack page, or the container) starts every tracker afresh. cross-seed pauses a tracker for an hour or more after an error or "too many requests" and remembered that across restarts, so new torrents were skipped as "filtered by temporarily disabled indexers" with no way to undo it.
 - A category's speed limit can also be set in Downloads → **Categories and tags**: each category shows its limit and has a **Speed limit** button.
 
