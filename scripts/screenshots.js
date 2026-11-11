@@ -20,7 +20,15 @@ function goatDemo() {
   const ok = r => ({ ok: true, result: r });
   fs.writeFileSync(path.join(cfg, 'goat', 'wired.json'), JSON.stringify({ at: Date.now(), steps: { sonarr: ok({}), radarr: ok({}), lidarr: ok({}), prowlarr: ok({}), jellyfin: ok({}), seerr: ok({}) } }));
   const mf = path.join(cfg, 'goat', 'managed.json'); fs.writeFileSync(mf, JSON.stringify({ services: [] }));
-  return { GOAT_MANAGED: mf, GOAT_RUN: run, GOAT_CONFIG_DIR: cfg, GOAT_WIRED: path.join(cfg, 'goat', 'wired.json'), GOAT_BIN: path.join(__dirname, '..', 'goat') };
+  // A little of what the apps of the stack write, for the Logs page (it reads /config/logs/<app>/current).
+  const logs = path.join(d, 'logs'), t = m => new Date(Date.now() - m * 60000).toISOString();
+  const lines = { vpn: [[52, '[goat-vpn] Connecting to PIA (netherlands)'], [52, '[goat-vpn] PIA region: Netherlands'], [51, '[goat-vpn] Forwarded port 51234 set in qBittorrent.'], [6, '[goat-vpn] Port forwarding: 51234 renewed']],
+    sonarr: [[48, '[Info] RssSyncService: RSS Sync Completed. Reports found: 100, Reports grabbed: 2'], [31, '[Info] DownloadDecisionMaker: Processing 100 releases'],
+      [17, '[Warn] IndexerSearch: Indexer Broken Tracker is unavailable due to failures'], [9, '[Error] DownloadedEpisodesImportService: Import failed, path does not exist or is not accessible by Sonarr: /downloads/torrents/Glass.City.S02E06'], [2, '[Info] EpisodeImport: Imported Glass City S02E07 (1080p WEB-DL)']],
+    qbittorrent: [[40, '(N) qBittorrent v5.0.2 started'], [25, '(N) Added new torrent. Torrent: "Glass.City.S02E07.1080p.WEB-DL"'], [12, '(W) Tracker is not working: tracker.example.org']],
+    ui: [[55, 'GoatMediaStackarr listening on 2806'], [20, '[wire] Sonarr, Radarr and Lidarr connected to qBittorrent and Prowlarr']] };
+  for (const [k, l] of Object.entries(lines)) { fs.mkdirSync(path.join(logs, k), { recursive: true }); fs.writeFileSync(path.join(logs, k, 'current'), l.map(([m, x]) => t(m) + ' ' + x).join('\n') + '\n'); }
+  return { GOAT_LOGS: logs, GOAT_MANAGED: mf, GOAT_RUN: run, GOAT_CONFIG_DIR: cfg, GOAT_WIRED: path.join(cfg, 'goat', 'wired.json'), GOAT_BIN: path.join(__dirname, '..', 'goat') };
 }
 
 (async () => {
@@ -90,6 +98,27 @@ function goatDemo() {
     await page.evaluate(() => document.querySelectorAll('.ov').forEach(o => o.close && o.close()));
     await page.evaluate(() => appearance()); await shot(page, 'appearance');
     await ctx.close();
+
+    // Pages added later: Logs, Suggestions, a request's conversation, Year in review, Replace cam copies, the status page.
+    {
+      const { ctx, page } = await open('cinema'), api = (m, u, data) => ctx.request.fetch(BASE + u, { method: m, data });
+      await go(page, '/logs'); await page.waitForSelector('.lgl'); await shot(page, 'logs');
+      for (const [title, body, kind] of [['Dark mode for the home-screen widget', 'It is very bright at night.', 'feature'], ['Search crashes when I type an emoji', '', 'bug'], ['Show who requested a title on its page', 'So I know who to ask about it.', 'feature']])
+        await api('POST', '/api/suggestions', { title, body, kind });
+      await go(page, '/suggestions'); await shot(page, 'suggestions');
+      const rq = await (await api('GET', '/api/requests')).json(), r1 = Array.isArray(rq) && rq[0];
+      if (r1) {
+        await api('POST', `/api/requests/${r1.id}/messages`, { text: 'On its way! The 4K copy comes out next month, so I will swap it in then.' });
+        await go(page, '/requests'); await page.locator('#q [data-tk]').first().click(); await shot(page, 'request-talk');
+        await page.evaluate(() => document.querySelectorAll('.ov').forEach(o => o.close && o.close()));
+      }
+      if (await page.evaluate(() => typeof wrappedOpen === 'function')) { await page.evaluate(() => wrappedOpen(wrapYear(), 'all')); await shot(page, 'year-in-review'); await page.evaluate(() => document.querySelectorAll('.ov').forEach(o => o.close && o.close())); }
+      await go(page, '/settings/rules'); const cp = page.locator('#camp'); if (await cp.count()) { await cp.scrollIntoViewIfNeeded(); await sleep(600); await cp.screenshot({ path: path.join(OUT, 'cam-copies.png') }); console.log('saved cam-copies'); }
+      await api('PUT', '/api/statuspage', { on: true, title: 'Family Movies', note: 'Plex restarts tonight at 11 for an update.' });
+      await ctx.close();
+      const anon2 = await browser.newContext({ viewport: { width: 760, height: 900 }, colorScheme: 'dark' }), sp = await anon2.newPage();
+      await sleep(4000); await sp.goto(BASE + '/status'); await shot(sp, 'status-page'); await anon2.close();
+    }
 
     // Phone: the menu sheet.
     const ph = await open('cinema', { phone: true }); await go(ph.page, '/dashboard'); await ph.page.click('#dm'); await shot(ph.page, 'phone-menu'); await ph.ctx.close();
