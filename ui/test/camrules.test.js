@@ -32,6 +32,8 @@ test('cam copies go a day before release, proper ones and ones without a date st
     d = (await a.get('/api/camrules')).data;
     assert.match(d.log[0].what, /telesync copy was removed before its home release.*searching for a proper one/);
     await sleep(600); assert.equal(fake.state.deleted.length, 1, 'not again');
+    const told = (await a.get('/api/notifications')).data.items.filter(x => x.title === `${m1.title}${m1.year ? ' (' + m1.year + ')' : ''} is being replaced with a better copy`);
+    assert.equal(told.length, 1, 'everyone who can watch is told why it is gone'); assert.match(told[0].body, /telesync copy \(filmed in a cinema.*proper one is being looked for/);
 
     // Telesync left out of the kinds: kept.
     await a.put('/api/camrules', { kinds: ['cam'], days: 10 });

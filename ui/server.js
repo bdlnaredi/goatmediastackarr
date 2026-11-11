@@ -1199,6 +1199,7 @@ async function crossSeedAsk(hash, now = false) {
 // (or as many as chosen) before its digital or Blu-ray release, and Radarr searches for a proper one, so the bad copy
 // is gone and a good one comes in on release day. Off until turned on (Settings → Download rules).
 const CAM_KINDS = { cam: 'Cam', telesync: 'Telesync', telecine: 'Telecine', workprint: 'Workprint' };
+const CAM_WHY = { cam: 'filmed in a cinema, with poor picture and sound', telesync: 'filmed in a cinema, with poor picture', telecine: 'copied from a cinema film reel, not the final quality', workprint: 'an unfinished version of the film' };
 const camCfg = () => ({ on: false, days: 1, kinds: ['cam', 'telesync', 'telecine'], search: true, ...(db.settings.cam || {}) });
 // What kind of copy a Radarr file is (cam, telesync…), from its quality's source or name, or '' for a proper one.
 const camKind = f => { const q = (f && f.quality && f.quality.quality) || {}, v = String(q.source || q.name || '').toLowerCase().replace(/[^a-z]/g, '');
@@ -1212,10 +1213,21 @@ async function camList(c = camCfg()) {
     for (const mv of Array.isArray(l) ? l : []) {
       const k = mv.hasFile && camKind(mv.movieFile); if (!k || !c.kinds.includes(k)) continue;
       const rel = homeRelease(mv);
-      out.push({ sid: sv.id, app: sv.name, id: mv.id, fileId: mv.movieFile.id, title: mv.title + (mv.year ? ` (${mv.year})` : ''), kind: k, release: rel, removeAt: rel == null ? null : rel - c.days * DAY, monitored: mv.monitored !== false });
+      out.push({ sid: sv.id, app: sv.name, id: mv.id, tmdbId: mv.tmdbId, fileId: mv.movieFile.id, title: mv.title + (mv.year ? ` (${mv.year})` : ''), kind: k, release: rel, removeAt: rel == null ? null : rel - c.days * DAY, monitored: mv.monitored !== false });
     }
   }
   return out.sort((a, b) => (a.removeAt ?? Infinity) - (b.removeAt ?? Infinity));
+}
+// Tells everyone who can watch (not kids profiles) why the movie is gone for now, in a few words; whoever requested it
+// is told it is their request. In the bell, on the phone and in the browser.
+function camTell(x) {
+  const day = new Date(x.release).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' });
+  const asked = new Set((db.requests || []).filter(r => r.mediaType === 'movie' && x.tmdbId && +r.mediaId === +x.tmdbId).map(r => r.uid));
+  for (const u of db.users.filter(u => !u.kids)) {
+    const mine = asked.has(u.id);
+    feed(u.id, 'reqstatus', `${x.title} is being replaced with a better copy`,
+      `${mine ? 'The movie you asked for' : 'It'} was only there as a ${CAM_KINDS[x.kind].toLowerCase()} copy (${CAM_WHY[x.kind]}). It comes out digitally or on Blu-ray on ${day}, so that copy was removed and a proper one is being looked for. It will be back in the library soon after.`, 'library');
+  }
 }
 async function camTick() {
   const c = camCfg(); if (!c.on) return;
@@ -1233,6 +1245,7 @@ async function camTick() {
     }
     const when = new Date(x.release).toISOString().slice(0, 10);
     healNote('download', sv.name, x.title, `The ${CAM_KINDS[x.kind].toLowerCase()} copy was removed before its home release (${when})${searched ? ', and Radarr is searching for a proper one' : ''}.`);
+    camTell(x);
     audit('GoatMediaStackarr', 'Removed a cam copy', x.title);
   }
   for (const k of Object.keys(done)) if (Date.now() - done[k] > 120 * DAY) delete done[k];
