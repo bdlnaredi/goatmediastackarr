@@ -1180,6 +1180,49 @@ async function ext(s, path, opt = {}) {
   if (!r.ok) throw new Error((Array.isArray(d) && d[0] && d[0].errorMessage) || (d && d.message) || 'Request failed (' + r.status + ')');
   return d;
 }
+// ---------- Replace cam copies: a movie that only has a cam, telesync, telecine or workprint copy loses that file a day
+// (or as many as chosen) before its digital or Blu-ray release, and Radarr searches for a proper one, so the bad copy
+// is gone and a good one comes in on release day. Off until turned on (Settings → Download rules).
+const CAM_KINDS = { cam: 'Cam', telesync: 'Telesync', telecine: 'Telecine', workprint: 'Workprint' };
+const camCfg = () => ({ on: false, days: 1, kinds: ['cam', 'telesync', 'telecine'], search: true, ...(db.settings.cam || {}) });
+// What kind of copy a Radarr file is (cam, telesync…), from its quality's source or name, or '' for a proper one.
+const camKind = f => { const q = (f && f.quality && f.quality.quality) || {}, v = String(q.source || q.name || '').toLowerCase().replace(/[^a-z]/g, '');
+  return v.includes('telesync') || v === 'ts' ? 'telesync' : v.includes('telecine') || v === 'tc' ? 'telecine' : v.includes('workprint') ? 'workprint' : v.includes('cam') ? 'cam' : ''; };
+// The first day it comes out at home: digital or Blu-ray, whichever is first.
+const homeRelease = mv => { const t = [mv.digitalRelease, mv.physicalRelease].map(x => Date.parse(x || '')).filter(x => !isNaN(x)); return t.length ? Math.min(...t) : null; };
+async function camList(c = camCfg()) {
+  const out = [];
+  for (const sv of db.services.filter(x => x.type === 'radarr')) {
+    let l; try { l = await ext(sv, '/api/v3/movie'); } catch { continue; }
+    for (const mv of Array.isArray(l) ? l : []) {
+      const k = mv.hasFile && camKind(mv.movieFile); if (!k || !c.kinds.includes(k)) continue;
+      const rel = homeRelease(mv);
+      out.push({ sid: sv.id, app: sv.name, id: mv.id, fileId: mv.movieFile.id, title: mv.title + (mv.year ? ` (${mv.year})` : ''), kind: k, release: rel, removeAt: rel == null ? null : rel - c.days * DAY, monitored: mv.monitored !== false });
+    }
+  }
+  return out.sort((a, b) => (a.removeAt ?? Infinity) - (b.removeAt ?? Infinity));
+}
+async function camTick() {
+  const c = camCfg(); if (!c.on) return;
+  const done = db.camDone || (db.camDone = {});
+  for (const x of await camList(c)) {
+    if (x.removeAt == null || Date.now() < x.removeAt) continue;
+    const key = `${x.sid}:${x.id}:${x.fileId}`; if (done[key]) continue;
+    const sv = db.services.find(y => y.id === x.sid); if (!sv) continue;
+    try { await ext(sv, `/api/v3/moviefile/${x.fileId}`, { method: 'DELETE' }); } catch (e) { healNote('download', sv.name, x.title, `Could not remove the ${CAM_KINDS[x.kind].toLowerCase()} copy: ${e.message}`); done[key] = Date.now(); continue; }
+    done[key] = Date.now();
+    let searched = false;
+    if (c.search) {
+      if (!x.monitored) await ext(sv, '/api/v3/movie/editor', { method: 'PUT', body: JSON.stringify({ movieIds: [x.id], monitored: true }) }).catch(() => {});
+      searched = await ext(sv, '/api/v3/command', { method: 'POST', body: JSON.stringify({ name: 'MoviesSearch', movieIds: [x.id] }) }).then(() => true, () => false);
+    }
+    const when = new Date(x.release).toISOString().slice(0, 10);
+    healNote('download', sv.name, x.title, `The ${CAM_KINDS[x.kind].toLowerCase()} copy was removed before its home release (${when})${searched ? ', and Radarr is searching for a proper one' : ''}.`);
+    audit('GoatMediaStackarr', 'Removed a cam copy', x.title);
+  }
+  for (const k of Object.keys(done)) if (Date.now() - done[k] > 120 * DAY) delete done[k];
+  save();
+}
 // ---------- Self-healing: downloads that are stuck or failed, and built-in apps that stop answering ----------
 // Settings → Download rules → Fix problems by itself. Every fix is written to db.healLog and shown on the Health page.
 const HEAL_MS = Math.max(200, +process.env.HEAL_MS || 300000), HEAL_HOUR = +process.env.HEAL_HOUR_MS || 3600e3;
@@ -2146,6 +2189,7 @@ async function monitor() {
     if (mon.n % 4 === 0) await safe(recentWatch);
     if (mon.n % (+process.env.SYNC_EVERY || 30) === 5) safe(() => syncAll());
     if (mon.n % 4 === 2) await safe(autoImport);
+    { const e = +process.env.CAM_EVERY || 120; if (mon.n % e === 90 % e) await safe(camTick); }
     { const e = +process.env.LOGALERT_EVERY || 10; if (mon.n % e === 7 % e) await safe(logAlertTick); }
     await safe(nlTick);
     if (mon.n % 120 === 0 && !DEMO) await safe(latestRelease);
@@ -3857,6 +3901,14 @@ const goatServer = http.createServer(async (req, res) => {
     };
     // ---------- Logs: the stack's apps (their own log files) and the apps added under Settings → Apps (through their APIs),
     // one at a time or all together, newest at the bottom.
+    if (p === '/api/camrules' && m === 'GET') { if (adminOnly()) return; const c = camCfg(); return send(res, 200, { ...c, kinds: c.kinds, all: CAM_KINDS, waiting: await camList(c), log: (db.healLog || []).filter(x => / copy was removed| copy: /.test(x.what)).slice(0, 20) }); }
+    if (p === '/api/camrules' && m === 'PUT') {
+      if (adminOnly()) return;
+      const b = await readBody(req), o = camCfg();
+      db.settings.cam = { on: 'on' in b ? !!b.on : o.on, days: 'days' in b ? Math.min(30, Math.max(0, Math.round(+b.days) || 0)) : o.days,
+        kinds: Array.isArray(b.kinds) ? b.kinds.filter(k => CAM_KINDS[k]) : o.kinds, search: 'search' in b ? !!b.search : o.search };
+      save(); audit(me.name, 'Changed Replace cam copies', db.settings.cam.on ? 'on' : 'off'); return send(res, 200, db.settings.cam);
+    }
     if (p === '/api/statuspage' && m === 'GET') { if (adminOnly()) return; const c = statusCfg(); return send(res, 200, { ...c, apps: statusApps(c).map(x => x.id), choices: db.services.filter(x => STATUS_TYPES.includes(x.type)).map(x => ({ id: x.id, name: x.name, type: x.type })), url: baseUrl() + '/status' }); }
     if (p === '/api/statuspage' && m === 'PUT') {
       if (adminOnly()) return;

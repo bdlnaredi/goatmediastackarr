@@ -4,6 +4,7 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- Replace cam copies (Settings → Download rules, off until turned on): a movie you only have as a cam, telesync or telecine copy (workprint can be ticked too) has that file deleted a day before its digital or Blu-ray release, whichever is first (the number of days can be changed), and Radarr searches for a proper copy. Checked every hour; the page lists each such copy and when it goes, and what was done shows there and on Health. Movies without a release date are kept.
 - ruTorrent starts again when its session folder belongs to another user ("Could not lock session directory: Permission denied"), after a restore or copy done as root, say. At every start, folders inside each app's folder are now given back to the user the apps run as, not only the app folder itself and the files directly in it; and rTorrent's whole folder is checked before it starts.
 ## v1.0.21 — 2026-11-11
 

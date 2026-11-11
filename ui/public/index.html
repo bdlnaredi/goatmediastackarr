@@ -1479,7 +1479,7 @@ const PERMS=[['add','Add downloads and things to the library'],['control','Pause
 const presetOf=u=>{if(!u.perms)return 'std';const v=PERMS.map(([k])=>u.perms[k]!==false);return v.every(Boolean)?'std':v.every(x=>!x)?'view':'custom'};
 
 async function stRules(){
-  const s=first('qbittorrent');if(!s){$('#m').innerHTML=`<div class="panel">Connect qBittorrent for the speed schedule and seeding limits.</div>`;seedGoalsPanel([]);langPrefPanel();importPanel();return}
+  const s=first('qbittorrent');if(!s){$('#m').innerHTML=`<div class="panel">Connect qBittorrent for the speed schedule and seeding limits.</div>`;seedGoalsPanel([]);langPrefPanel();importPanel();camPanel();return}
   $('#m').innerHTML=skel(3);
   let sch,rules,meta;
   try{[sch,rules,meta]=await Promise.all([api(`/api/qb/${s.id}/schedule`),api('/api/seedrules'),api(`/api/qb/${s.id}/meta`)])}catch(x){$('#m').innerHTML=`<div class="err">${esc(x.message)}</div>`;return}
@@ -1508,7 +1508,7 @@ async function stRules(){
   $('#rl3').onclick=e=>{const d=e.target.closest('[data-d]');if(d)d.closest('[data-rr]').remove()};
   $('#sr3').onclick=async()=>{const list=[...document.querySelectorAll('[data-rr]')].map(r=>({sid:s.id,category:r.querySelector('[data-c]').value,ratio:r.querySelector('[data-r]').value,minutes:r.querySelector('[data-m]').value}));
     try{await api('/api/seedrules','PUT',{rules:list});toast('Rules saved. They apply within a minute.','ok')}catch(x){toast(x.message,'bad')}};
-  seedGoalsPanel(meta.categories.map(c=>c.name));langPrefPanel();importPanel();
+  seedGoalsPanel(meta.categories.map(c=>c.name));langPrefPanel();importPanel();camPanel();
 }
 // Tracker seeding goals: each tracker's own rule (ratio, days, or both); finished movies and shows are removed once it is met.
 // Preferred audio languages: the order to prefer them in, set up in Radarr and Sonarr, and marked in interactive search.
@@ -1574,6 +1574,24 @@ async function importDialog(src){
   draw();
 }
 // Settings → Download rules: importing finished downloads by themselves, and the ones that wait for you.
+// Replace cam copies: movies with only a cam/telesync/telecine copy lose it shortly before the home release, and Radarr
+// searches for a proper one. Lists the ones waiting and when each goes.
+async function camPanel(){
+  if(!first('radarr'))return;
+  let d;try{d=await api('/api/camrules')}catch{return}
+  if(tab!=='set'||stSub!=='rules')return;
+  const el=document.createElement('div');el.className='panel';el.style.cssText='max-width:760px;margin-top:16px';el.id='camp';
+  const old=$('#camp');if(old)old.replaceWith(el);else $('#m').appendChild(el);
+  const fd=t=>new Date(t).toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'});
+  el.innerHTML=`<div class="row"><h3 style="margin:0" class="grow">Replace cam copies</h3><label class="tgl" title="Turn it on or off"><input type="checkbox" id="cmon" ${d.on?'checked':''} aria-label="Replace cam copies"></label></div>
+    <p class="mute">A movie you only have as a cam, telesync or telecine copy has that file deleted <input id="cmd" type="number" min="0" max="30" value="${d.days}" style="width:60px;margin:0 4px;padding:4px 8px" aria-label="Days before"> ${d.days===1?'day':'days'} before it comes out digitally or on Blu-ray (whichever is first), and Radarr searches for a proper copy, so the good one comes in on release day. Checked every hour.</p>
+    <div class="row" style="gap:6px 16px;flex-wrap:wrap">${Object.entries(d.all).map(([k,n])=>`<label class="chk"><input type="checkbox" data-ck="${k}" ${d.kinds.includes(k)?'checked':''}>${n}</label>`).join('')}<label class="chk"><input type="checkbox" id="cms" ${d.search?'checked':''}>Search for a proper copy after deleting</label></div>
+    <div class="mute" style="margin:12px 0 4px">${d.waiting.length?`${d.waiting.length} ${d.waiting.length===1?'movie has':'movies have'} such a copy now`:'No movie has such a copy now.'}</div>
+    ${d.waiting.map(x=>`<div class="box row" style="gap:8px"><span class="pill warn">${esc(d.all[x.kind])}</span><b class="grow" style="word-break:break-word">${esc(x.title)}</b><span class="mute" style="font-size:13px">${x.release==null?'No home release date yet: kept':x.removeAt<=Date.now()?(d.on?'Deleted at the next check':'Would be deleted now'):(d.on?'Deleted on ':'Would be deleted on ')+fd(x.removeAt)+' (out '+fd(x.release)+')'}</span></div>`).join('')}
+    ${d.log.length?`<details class="tbv" style="margin-top:10px"><summary>Done so far (${d.log.length})</summary>${d.log.map(x=>`<div class="box" style="padding:8px 10px"><b>${esc(x.title)}</b> <span class="mute">${esc(fdt(x.at))}</span><div class="mute">${esc(x.what)}</div></div>`).join('')}</details>`:''}`;
+  const save=async()=>{try{await api('/api/camrules','PUT',{on:$('#cmon').checked,days:$('#cmd').value,search:$('#cms').checked,kinds:[...el.querySelectorAll('[data-ck]:checked')].map(x=>x.dataset.ck)});toast('Saved','ok');camPanel()}catch(x){toast(x.message,'bad')}};
+  el.querySelectorAll('input').forEach(i=>i.onchange=save);
+}
 async function importPanel(){
   let d;try{d=await api('/api/import/settings')}catch{return}
   if(tab!=='set'||stSub!=='rules')return;
