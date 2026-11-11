@@ -65,6 +65,8 @@ case "$name" in
     export TERM=xterm
     # A lock left behind when the container stopped would keep it from starting.
     rm -f /config/rutorrent/session/rtorrent.lock
+    # rTorrent must be able to write its session (it locks it); a folder or file in it owned by someone else stops it.
+    find /config/rutorrent \( ! -user "$PUID" -o ! -group "$PGID" \) -exec chown -h "$PUID:$PGID" {} + 2>/dev/null
     cmd=(/opt/rtorrent/bin/rtorrent -n -D -o import=/config/rutorrent/rtorrent.rc) ;;
   rutorrent-web)
     # ruTorrent's page on port 8090, served by PHP's own web server behind a small gatekeeper that asks for the login

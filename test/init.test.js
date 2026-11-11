@@ -120,3 +120,14 @@ test('ruTorrent and Deluge: settings written when turned on, logins made, and th
   assert.deepEqual(init.run({ ...env, VPN_ENABLED: 'false' }).managed.vpn.apps, []);
   assert.deepEqual(init.run({ ...env, VPN_APPS: 'sabnzbd' }).managed.vpn.apps, ['sabnzbd'], 'not on the VPN when qBittorrent is not');
 });
+
+test('a folder inside an app folder owned by someone else is handed back (rutorrent/session after a restore as root)', { skip: process.getuid() !== 0 && 'needs root' }, () => {
+  const env = { PUID: '99', PGID: '100', GOAT_ENGINES: 'qbittorrent,rutorrent', VPN_ENABLED: 'false' };
+  init.run(env);
+  const ses = path.join(root, 'config', 'rutorrent', 'session'), deep = path.join(ses, 'old');
+  fs.mkdirSync(deep, { recursive: true }); fs.writeFileSync(path.join(deep, 'x.torrent'), 'x');
+  for (const p of [ses, deep, path.join(deep, 'x.torrent')]) fs.chownSync(p, 0, 0);
+  assert.equal(fs.statSync(path.join(root, 'config', 'rutorrent')).uid, 99, 'the app folder itself is right, so before only its own files were checked');
+  init.run(env);
+  for (const p of [ses, deep, path.join(deep, 'x.torrent')]) { const st = fs.statSync(p); assert.deepEqual([st.uid, st.gid], [99, 100], p); }
+});

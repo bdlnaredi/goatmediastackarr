@@ -4,6 +4,7 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- ruTorrent starts again when its session folder belongs to another user ("Could not lock session directory: Permission denied"), after a restore or copy done as root, say. At every start, folders inside each app's folder are now given back to the user the apps run as, not only the app folder itself and the files directly in it; and rTorrent's whole folder is checked before it starts.
 ## v1.0.21 — 2026-11-11
 
 - VPN with PIA: when PIA's website cannot be reached to sign in (the network's DNS fails or blocks privateinternetaccess.com), it signs in through the region's own PIA server by its address instead, as PIA's own scripts did, so it can still connect. And the reason a PIA connection fails is written to the VPN's log (Logs → VPN) and shown on the Stack page; before, it could be left out of both, with only "Connecting to PIA" again and again.

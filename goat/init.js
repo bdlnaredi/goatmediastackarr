@@ -335,7 +335,9 @@ function run(env = process.env) {
     for (const k of [...Object.keys(E.ENGINES), 'ui', 'vpn', 'goat']) {
       const d = `${C}/${k}`; let st; try { st = fs.statSync(d); } catch { continue; }
       if (st.uid !== puid || st.gid !== pgid) chownTree(d);
-      else for (const f of fs.readdirSync(d)) { const q = path.join(d, f); try { const s2 = fs.statSync(q); if (s2.isFile() && (s2.uid !== puid || s2.gid !== pgid)) fs.chownSync(q, puid, pgid); } catch {} }
+      // A folder inside it with the wrong owner (rutorrent/session after a restore done as root, say) is fixed too,
+      // or the app cannot write there ("Could not lock session directory: Permission denied").
+      else for (const f of fs.readdirSync(d)) { const q = path.join(d, f); try { const s2 = fs.lstatSync(q); if (s2.uid === puid && s2.gid === pgid) continue; if (s2.isDirectory()) chownTree(q); else if (s2.isFile()) fs.chownSync(q, puid, pgid); } catch {} }
     }
     for (const d of made.filter(d => !d.startsWith(C + '/'))) try { fs.chownSync(d, puid, pgid); } catch {}
   }
