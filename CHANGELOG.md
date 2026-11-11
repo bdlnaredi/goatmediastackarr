@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+## v1.0.20 — 2026-11-11
+
 - Unraid template: the overview now names every app the container can run (ruTorrent, Deluge, Unpackerr, cross-seed, autobrr and File Browser too), Apps through VPN says which apps follow qBittorrent and Prowlarr onto the VPN, and five settings that were only in the README are in it now: VPN DNS, DNS for the apps, File Browser, Logs for each app and UMASK.
 - Health: pressing Test indexers again (or any button, or anywhere on the page) no longer also opens an empty Import to library window that said it could not import. The button now only tests the indexers.
 
