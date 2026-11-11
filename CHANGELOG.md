@@ -4,6 +4,7 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- cross-seed: restarting it (on the Stack page, or the container) starts every tracker afresh. cross-seed pauses a tracker for an hour or more after an error or "too many requests" and remembered that across restarts, so new torrents were skipped as "filtered by temporarily disabled indexers" with no way to undo it.
 - A category's speed limit can also be set in Downloads → **Categories and tags**: each category shows its limit and has a **Speed limit** button.
 
 ## v1.0.23 — 2026-11-11

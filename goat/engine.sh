@@ -202,6 +202,12 @@ case "$name" in
     node /opt/goat/bin/crossseed.js; rc=$?
     if (( rc == 3 )); then sleep 300; exit 1; fi
     (( rc == 0 )) || { sleep 60; exit 1; }
+    # cross-seed pauses a tracker after an error or "too many requests" and remembers that across restarts (an hour
+    # or more), which leaves new torrents "filtered by temporarily disabled indexers". A restart starts them afresh.
+    if [[ -s /config/cross-seed/cross-seed.db ]]; then
+      /opt/cross-seed/node_modules/.bin/cross-seed clear-indexer-failures >/dev/null 2>&1 \
+        && echo "[goat] cross-seed: paused trackers cleared, every tracker is searched again" || true
+    fi
     chown -R "$PUID:$PGID" /config/cross-seed "${DOWNLOADS_DIR:-/downloads}/cross-seed" 2>/dev/null || true
     cmd=(/opt/cross-seed/node_modules/.bin/cross-seed daemon) ;;
   autobrr)
