@@ -183,7 +183,11 @@ forward_port() {
 # PIA: sign in, pick the region (the fastest one unless one was chosen) and write a fresh WireGuard file for it.
 pia_up() {
   local msg
-  msg=$(node /opt/goat/bin/pia.js connect "$RUN/pia.conf" "$RUN/pia.json" 2>&1 >/dev/null) || { status error "${msg##*$'\n'}"; return 1; }
+  # Why it did not connect goes in the log and on the Stack page (it was only on the page before, and could be empty).
+  msg=$(node /opt/goat/bin/pia.js connect "$RUN/pia.conf" "$RUN/pia.json" 2>&1 >/dev/null) || {
+    msg=$(printf '%s\n' "$msg" | sed '/^[[:space:]]*$/d' | tail -n 1); msg="${msg:-Connecting to PIA failed, without a reason given.}"
+    log "$msg"; status error "$msg"; return 1; }
+  [ -n "$msg" ] && log "$msg"   # a note, such as signing in through the region's server
   PIA_PAYLOAD=""; PIA_SIG=""; PIA_BOUND=0
   log "PIA region: $(jq -r .name "$RUN/pia.json")"
   wg_up "$RUN/pia.conf"

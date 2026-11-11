@@ -4,6 +4,7 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- VPN with PIA: when PIA's website cannot be reached to sign in (the network's DNS fails or blocks privateinternetaccess.com), it signs in through the region's own PIA server by its address instead, as PIA's own scripts did, so it can still connect. And the reason a PIA connection fails is written to the VPN's log (Logs → VPN) and shown on the Stack page; before, it could be left out of both, with only "Connecting to PIA" again and again.
 - FlareSolverr no longer stops with "Error getting browser User-Agent ... Temporary failure in name resolution". Its Linux build downloaded a chromedriver at every start, through the VPN, and gave up when that lookup failed. The container now downloads the matching chromedriver itself, once per browser version and outside the VPN, so FlareSolverr starts without going online.
 ## v1.0.20 — 2026-11-11
 

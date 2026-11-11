@@ -48,6 +48,20 @@ async function token(user, pass) {
   return j.token;
 }
 
+/** A token from a region's own server, by its address (no DNS, not the website): what PIA's manual scripts did first.
+ *  Used when the website cannot be reached, as when the network's DNS fails or blocks privateinternetaccess.com. */
+async function metaToken(r, user, pass) {
+  let last;
+  for (const m of (r.meta || []).slice(0, 3)) {
+    try {
+      const j = await piaGet(m.ip, m.cn, +process.env.PIA_META_PORT || 443, '/authv3/generateToken', { Authorization: 'Basic ' + Buffer.from(`${user}:${pass}`).toString('base64') });
+      if (j.token) return j.token;
+      last = fail('PIA did not accept that username and password. Use the one starting with p (like p1234567), not your email.');
+    } catch (e) { last = last || e; }
+  }
+  throw last || fail('This PIA region has no sign-in server.');
+}
+
 /** How long a TCP connection to the region takes, in ms (or Infinity). */
 const latency = (ip, ms = 1200) => new Promise(ok => {
   const t = Date.now(), s = net.connect({ host: ip, port: +process.env.PIA_PING_PORT || 443, timeout: ms });
@@ -66,16 +80,16 @@ async function pick(list, want, needPf) {
 }
 
 /** HTTPS to a PIA server by its address, checking its certificate against PIA's own authority (like curl --connect-to). */
-function piaGet(ip, host, port, pathAndQuery) {
+function piaGet(ip, host, port, pathAndQuery, headers = {}) {
   return new Promise((ok, no) => {
-    const req = https.request({ host: ip, port, path: pathAndQuery, method: 'GET', servername: host, ca: CA(), timeout: 10000,
+    const req = https.request({ host: ip, port, path: pathAndQuery, method: 'GET', headers, servername: host, ca: CA(), timeout: 10000,
       // PIA's servers are named in the certificate's common name (like "london401"); the certificate must also come from
       // PIA's own authority (ca above), so nobody else can answer in its place.
       checkServerIdentity: (h, cert) => {
         const names = [cert.subject && cert.subject.CN, ...String(cert.subjectaltname || '').split(',').map(x => x.trim().replace(/^DNS:/, ''))];
         return names.includes(host) ? undefined : new Error(`The server is not ${host}`);
       } }, res => {
-      let b = ''; res.on('data', c => { b += c; }); res.on('end', () => { try { ok(JSON.parse(b)); } catch { no(fail('PIA answered something unexpected.')); } });
+      let b = ''; res.on('data', c => { b += c; }); res.on('end', () => { try { ok(JSON.parse(b)); } catch { no(fail(res.statusCode === 401 || res.statusCode === 403 ? 'PIA did not accept that username and password. Use the one starting with p (like p1234567), not your email.' : 'PIA answered something unexpected.')); } });
     });
     req.on('timeout', () => req.destroy(new Error('timed out'))); req.on('error', e => no(fail('Could not reach the PIA server (' + (e.code || e.message) + ').')));
     req.end();
@@ -92,8 +106,17 @@ function keys() {
 /** Signs in, picks the region, registers a new key there and writes the WireGuard file. */
 async function connect(out, state, env = process.env) {
   const needPf = String(env.VPN_PORT_FORWARD || '').toLowerCase() === 'pia';
-  const [list, tk] = await Promise.all([regions(), token(env.VPN_USER, env.VPN_PASS)]);
+  if (!env.VPN_USER || !env.VPN_PASS) throw fail('Enter your PIA username (like p1234567) and password.');
+  const [list, web] = await Promise.all([regions(), token(env.VPN_USER, env.VPN_PASS).then(t => ({ t }), e => ({ e }))]);
   const r = await pick(list, String(env.VPN_REGION || '').trim(), needPf);
+  // The website did not give a token: a wrong password is said as it is; anything else (no DNS, blocked, down) is
+  // tried again through the region's own sign-in server.
+  let tk = web.t;
+  if (!tk) {
+    if (/did not accept/.test(web.e.message)) throw web.e;
+    try { tk = await metaToken(r, env.VPN_USER, env.VPN_PASS); process.stderr.write(`PIA's website could not be reached (${web.e.message.replace(/^Could not reach PIA to sign in /, '')}); signed in through the ${r.name} server instead.\n`); }
+    catch (e) { throw fail(`${web.e.message} Signing in through the ${r.name} server did not work either: ${e.message}`); }
+  }
   if (needPf && !r.pf) throw fail(`PIA does not allow port forwarding in ${r.name}. Pick a region marked with port forwarding, or turn it off.`);
   const s = r.wg[Math.floor(Math.random() * r.wg.length)], k = keys();
   const j = await piaGet(s.ip, s.cn, WG_PORT(), `/addKey?pt=${encodeURIComponent(tk)}&pubkey=${encodeURIComponent(k.pub)}`);
@@ -118,7 +141,7 @@ async function port(env = process.env) {
   return { port: info.port, expires: info.expires_at, payload, signature };
 }
 
-module.exports = { regions, token, pick, connect, port, keys, latency };
+module.exports = { regions, token, metaToken, pick, connect, port, keys, latency };
 
 if (require.main === module) {
   const [cmd, a, b] = process.argv.slice(2);

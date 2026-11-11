@@ -22,6 +22,8 @@ const piaApi = cert => https.createServer({ key: fs.readFileSync(path.join(dir, 
   if (u.pathname === '/addKey') return u.searchParams.get('pt') === 'TOKEN-1' && u.searchParams.get('pubkey').length === 44
     ? j({ status: 'OK', server_key: 'SERVERKEY=', server_port: 1337, server_ip: '127.0.0.1', server_vip: '127.0.0.1', peer_ip: '10.9.8.7', dns_servers: ['10.0.0.243'] })
     : j({ status: 'ERROR', message: 'Login failed!' });
+  if (u.pathname === '/authv3/generateToken') { const ok = req.headers.authorization === 'Basic ' + Buffer.from('p1234567:right').toString('base64');
+    res.writeHead(ok ? 200 : 401, { 'Content-Type': 'application/json' }); return res.end(ok ? JSON.stringify({ status: 'OK', token: 'TOKEN-1' }) : 'Unauthorized'); }
   if (u.pathname === '/getSignature') return j(u.searchParams.get('token') === 'TOKEN-1' ? { status: 'OK', payload, signature: 'SIG' } : { status: 'ERROR' });
   if (u.pathname === '/bindPort') return j(u.searchParams.get('signature') === 'SIG' ? { status: 'OK', message: 'port scheduled for add' } : { status: 'ERROR' });
   res.writeHead(404); res.end();
@@ -87,6 +89,17 @@ test('PIA: regions, sign-in, a WireGuard file for the chosen region, and the for
     await assert.rejects(pia.port({ PIA_HOST: st.host, PIA_VIP: st.vip, PIA_TOKEN: st.token }), /Could not reach the PIA server/);
     process.env.PIA_PF_PORT = String(wp);
     await assert.rejects(pia.port({ PIA_HOST: 'otherserver9', PIA_VIP: st.vip, PIA_TOKEN: st.token }), /Could not reach the PIA server/);
+
+    // PIA's website cannot be reached (no DNS, blocked): signed in through the region's own server by its address.
+    const web = process.env.PIA_TOKEN_URL; process.env.PIA_TOKEN_URL = 'http://127.0.0.1:1/token'; process.env.PIA_META_PORT = String(wp);
+    try {
+      assert.deepEqual(await pia.connect(out, state, env), { region: 'swiss', name: 'Switzerland' }, 'connected without the website');
+      assert.equal(JSON.parse(fs.readFileSync(state, 'utf8')).token, 'TOKEN-1');
+      assert.equal(await pia.metaToken(list.find(r => r.id === 'swiss'), 'p1234567', 'right'), 'TOKEN-1');
+      await assert.rejects(pia.connect(out, state, { ...env, VPN_PASS: 'wrong' }), /Could not reach PIA to sign in.*did not work either: PIA did not accept that username and password/);
+      process.env.PIA_META_PORT = String(ep);   // not PIA's certificate: refused there too
+      await assert.rejects(pia.connect(out, state, env), /did not work either: Could not reach the PIA server/);
+    } finally { process.env.PIA_TOKEN_URL = web; delete process.env.PIA_META_PORT; }
 
     // The real authority file ships with the helper.
     assert.match(fs.readFileSync(path.join(__dirname, '..', 'goat', 'pia-ca.crt'), 'utf8'), /^-----BEGIN CERTIFICATE-----/);
