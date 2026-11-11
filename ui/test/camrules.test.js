@@ -28,6 +28,7 @@ test('cam copies go a day before release, proper ones and ones without a date st
     await a.put('/api/camrules', { on: true });
     for (let i = 0; i < 60 && !(fake.state.deleted || []).length; i++) await sleep(100);
     assert.deepEqual(fake.state.deleted, ['moviefile ' + (700 + m1.id)], 'only the one out within a day');
+    for (let i = 0; i < 30 && !fake.state.calls.some(c => /MoviesSearch/.test(c)); i++) await sleep(100);
     assert.ok(fake.state.calls.some(c => /MoviesSearch/.test(c) && c.includes(String(m1.id))), 'and Radarr searches for it: ' + fake.state.calls.slice(-5).join(' | '));
     d = (await a.get('/api/camrules')).data;
     assert.match(d.log[0].what, /telesync copy was removed before its home release.*searching for a proper one/);

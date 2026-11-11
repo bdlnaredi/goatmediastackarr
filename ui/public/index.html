@@ -2168,10 +2168,14 @@ function rssView(){
   $('#m').innerHTML=`<div class="seg" id="sg"><button data-k="art" class="on">Articles</button><button data-k="fd">Feeds</button><button data-k="ru">Rules</button></div><div class="err" id="e" style="margin-top:8px"></div><div id="rc" style="margin-top:12px"></div>`;
   api(`/api/qb/${s.id}/meta`).then(m=>{meta=m}).catch(()=>{});
   const live=k=>tab==='rss'&&sub===k;
-  let selR=new Set();
-  async function art(){
-    $('#rc').innerHTML=skel(6);selR.clear();
+  let selR=new Set(),sig='';
+  // quiet: the page checking again by itself (every minute, and a few times after Refresh feeds). It redraws only when
+  // something changed, and keeps what was typed, ticked and scrolled to.
+  async function art(quiet){
+    if(!quiet){$('#rc').innerHTML=skel(6);selR.clear()}
     try{const [fs,list]=await Promise.all([api(`${base}/feeds`),api(`${base}/articles${feed?'?feed='+encodeURIComponent(feed):''}`)]);if(!live('art'))return;
+      const ns=JSON.stringify([fs,list]);if(quiet&&ns===sig)return;sig=ns;
+      const keep=quiet&&$('#aq')?{q:$('#aq').value,uo:$('#uo').checked,f:document.activeElement===$('#aq'),y:scrollY}:null;
       $('#rc').innerHTML=`<div class="row" style="margin-bottom:12px"><select id="af2" aria-label="Feed"><option value="">All feeds</option>${fs.map(f=>`<option value="${esc(f.path)}" ${f.path===feed?'selected':''}>${esc(fp(f.path))}${f.unread?' ('+f.unread+' new)':''}</option>`).join('')}</select>
         <input id="aq" type="search" placeholder="Filter articles" aria-label="Filter articles" style="flex:1;min-width:140px"><select id="ac" aria-label="Download into category"><option value="">No category</option>${meta.categories.map(c=>`<option>${esc(c.name)}</option>`).join('')}</select></div>
         <div class="row" style="margin-bottom:4px"><label class="chk"><input type="checkbox" id="ma" aria-label="Select all shown articles">Select all</label><label class="chk"><input type="checkbox" id="uo">Unread only</label><span class="mute" id="uc"></span><span style="flex:1"></span>
@@ -2203,14 +2207,25 @@ function rssView(){
           a.read=true;ok++}catch(x){bad++;last=x.message}}
         selR.clear();draw();
         if(ok)toast(b.dataset.bd!==undefined?`Added ${ok} to downloads`:`Marked ${ok} as read`,'ok');if(bad)toast(`${bad} failed: ${last}`,'bad')};
+      if(keep){$('#aq').value=keep.q;$('#uo').checked=keep.uo}
       draw();$('#aq').oninput=draw;$('#uo').onchange=draw;$('#af2').onchange=e=>{feed=e.target.value;art()};
+      if(keep){scrollTo(0,keep.y);if(keep.f)$('#aq').focus()}
       $('#mr').onclick=async()=>{const b=$('#mr');b.disabled=true;
         try{const paths=feed?[feed]:fs.filter(f=>f.unread>0).map(f=>f.path);await Promise.all(paths.map(pth=>api(`${base}/read`,'POST',{path:pth})));
           list.forEach(a=>{if(!feed||a.feed===feed)a.read=true});toast('Marked as read','ok');art()}catch(x){b.disabled=false;toast(x.message,'bad')}};
-      $('#ar').onclick=async()=>{const b=$('#ar');b.disabled=true;try{await Promise.all(fs.map(f=>api(`${base}/refresh`,'POST',{path:f.path})));toast('Refreshing feeds','ok')}catch(x){toast(x.message,'bad')}setTimeout(()=>live('art')&&art(),1500)};
-    }catch(x){$('#rc').innerHTML='';$('#e').textContent=x.message}
+      $('#ar').onclick=async()=>{const b=$('#ar');b.disabled=true;try{await Promise.all(fs.map(f=>api(`${base}/refresh`,'POST',{path:f.path})));toast('Refreshing feeds','ok')}catch(x){toast(x.message,'bad')}
+        // qBittorrent fetches the feeds in the background, so look again a few times as they come in.
+        b.disabled=false;[2000,6000,15000].forEach(ms=>setTimeout(()=>live('art')&&art(true),ms))};
+    }catch(x){if(!quiet){$('#rc').innerHTML='';$('#e').textContent=x.message}}
   }
-  async function fd(){
+  async function fd(quiet){
+    if(quiet){
+      // Only the counts and the working/error dot change by themselves, so update those in place.
+      try{const fs=await api(`${base}/feeds`);if(!live('fd'))return;
+        for(const f of fs){const b=[...document.querySelectorAll('#rc [data-r]')].find(x=>x.dataset.r===f.path),row=b&&b.closest('.box');if(!row)continue;
+          const pl=row.querySelector('.pill');if(pl){pl.textContent=`${f.unread} unread of ${f.total}`;pl.classList.toggle('acc',!!f.unread)}
+          const d=row.querySelector('.dot');if(d){d.className='dot '+(f.error?'bad':'ok');d.title=f.error?'This feed has an error':'Feed is working'}}}catch{}
+      return}
     $('#rc').innerHTML=skel(3);
     try{const fs=await api(`${base}/feeds`);if(!live('fd'))return;
       $('#rc').innerHTML=`${admin?`<form id="nf" style="display:flex;gap:8px;flex-wrap:wrap"><input name="url" placeholder="Feed address (https://…)" style="flex:1;min-width:200px" required><input name="path" placeholder="Name (optional)" style="width:180px"><button class="primary">${ic('rq')}Add feed</button></form>`:''}
@@ -2225,7 +2240,7 @@ function rssView(){
       const nf=$('#nf');if(nf)nf.onsubmit=async e=>{e.preventDefault();$('#e').textContent='';try{await api(`${base}/feed`,'POST',{op:'add',...Object.fromEntries(new FormData(e.target))});toast('Feed added','ok');fd()}catch(x){toast(x.message,'bad')}};
       $('#rc').onclick=async e=>{const r=e.target.closest('[data-r]'),x=e.target.closest('[data-x]'),m=e.target.closest('[data-mr]');
         try{if(m){m.disabled=true;await api(`${base}/read`,'POST',{path:m.dataset.mr});toast('Marked as read','ok');fd()}
-          if(r){r.disabled=true;await api(`${base}/refresh`,'POST',{path:r.dataset.r});toast('Refreshing feed','ok');setTimeout(()=>live('fd')&&fd(),1200)}
+          if(r){r.disabled=true;await api(`${base}/refresh`,'POST',{path:r.dataset.r});toast('Refreshing feed','ok');r.disabled=false;[2000,6000,15000].forEach(ms=>setTimeout(()=>live('fd')&&fd(true),ms))}
           if(x&&confirm('Remove this feed from qBittorrent?')){await api(`${base}/feed`,'POST',{op:'remove',path:x.dataset.x});toast('Feed removed','ok');fd()}}catch(ex){toast(ex.message,'bad')}};
     }catch(x){$('#rc').innerHTML='';$('#e').textContent=x.message}
   }
@@ -2244,8 +2259,10 @@ function rssView(){
     }catch(x){$('#rc').innerHTML='';$('#e').textContent=x.message}
   }
   const views={art,fd,ru};
-  $('#sg').onclick=e=>{const b=e.target.closest('[data-k]');if(!b)return;sub=b.dataset.k;$('#e').textContent='';document.querySelectorAll('#sg [data-k]').forEach(z=>z.classList.toggle('on',z===b));views[sub]()};
+  $('#sg').onclick=e=>{const b=e.target.closest('[data-k]');if(!b)return;sub=b.dataset.k;sig='';$('#e').textContent='';document.querySelectorAll('#sg [data-k]').forEach(z=>z.classList.toggle('on',z===b));views[sub]()};
   art();
+  // New articles show up by themselves: checked every minute (and when you come back to the page).
+  timer=[tick(()=>{if(sub==='art')art(true);else if(sub==='fd')fd(true)},60000)];
 }
 const matchHtml=m=>{const ks=Object.keys(m||{});return ks.length?ks.map(k=>`<h3>${esc(k)}</h3>${m[k].map(t=>`<div class="box">${esc(t)}</div>`).join('')}`).join(''):'<p class="mute">No articles match right now.</p>'};
 function ruleEditor(s,d,rule,done,meta){

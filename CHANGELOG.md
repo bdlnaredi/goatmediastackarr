@@ -4,6 +4,7 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- RSS shows new articles by itself, on the web page and in the Android app: the articles and the feeds' unread counts are checked again every minute (and when you come back to the page), and a few times in the seconds after **Refresh feeds**, as qBittorrent fetches them. Before, the list stayed as it was when opened, and Refresh feeds in the app didn't reload it at all. What you typed in the filter, ticked or scrolled to stays as it is.
 ## v1.0.22 — 2026-11-11
 
 - The README is rewritten: a tour led by new screenshots (Logs, Suggestions, a request's conversation, Year in review, Replace cam copies, the status page) and the Android app, a section for the people who use your server, and answers to common questions. Nothing was left out.

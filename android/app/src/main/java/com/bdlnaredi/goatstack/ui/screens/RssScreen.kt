@@ -41,6 +41,8 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -66,6 +68,7 @@ import com.bdlnaredi.goatstack.ui.LoadView
 import com.bdlnaredi.goatstack.ui.LocalCtx
 import com.bdlnaredi.goatstack.ui.rememberLoad
 import com.bdlnaredi.goatstack.ui.theme.LocalGoat
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
@@ -100,12 +103,14 @@ fun RssScreen() {
     var newRule by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val toast = toaster()
+    // Bumped by "Check the feeds now", so the lists look again a few times while qBittorrent fetches them.
+    var checked by remember { mutableIntStateOf(0) }
 
     Column(Modifier.fillMaxSize()) {
         BackPage("RSS", cur?.name ?: "Feeds and auto-downloads") {
             if (cur != null) IconButton(onClick = {
                 scope.launch {
-                    try { ctx.api.send("POST", "/api/rss/${cur.id}/refresh", buildJsonObject { put("path", "") }); toast("Checking every feed for new articles") }
+                    try { ctx.api.send("POST", "/api/rss/${cur.id}/refresh", buildJsonObject { put("path", "") }); toast("Checking every feed for new articles"); checked++ }
                     catch (e: Exception) { toast(e.message ?: "That did not work") }
                 }
             }) { Icon(Icons.Rounded.Refresh, "Check the feeds now", tint = g.text) }
@@ -118,10 +123,13 @@ fun RssScreen() {
         ChoiceRow(listOf("articles" to "Articles", "feeds" to "Feeds", "rules" to "Rules"), tab, { tab = it })
         Spacer(Modifier.height(8.dp))
         val feeds = rememberLoad(cur.id, adding) { ctx.api.get<List<RssFeed>>("/api/rss/${cur.id}/feeds") }
+        // New articles show up by themselves: every minute, and a few times after checking the feeds now.
+        LaunchedEffect(cur.id) { if (!com.bdlnaredi.goatstack.ui.Tuning.still) while (true) { delay(60_000); feeds.reload() } }
+        LaunchedEffect(checked) { if (checked > 0) for (ms in listOf(2_000L, 4_000L, 9_000L)) { delay(ms); feeds.reload() } }
         when (tab) {
             "feeds" -> Column(Modifier.fillMaxSize()) { if (ctx.user.admin) RssSettingsCard(cur.id); Feeds(cur.id, feeds.value, feeds.reload) { adding = true } }
             "rules" -> Rules(cur.id, newRule) { newRule = false }
-            else -> Articles(cur.id, feeds.value.orEmpty())
+            else -> Articles(cur.id, feeds.value.orEmpty(), checked)
         }
     }
     if (adding && cur != null) AddFeed(cur.id) { ok -> adding = false; if (ok) toast("Feed added. Its articles arrive in a moment.") }
@@ -129,7 +137,7 @@ fun RssScreen() {
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-private fun Articles(sid: String, feeds: List<RssFeed>) {
+private fun Articles(sid: String, feeds: List<RssFeed>, checked: Int) {
     val ctx = LocalCtx.current
     val g = LocalGoat.current
     val scope = rememberCoroutineScope()
@@ -138,6 +146,8 @@ private fun Articles(sid: String, feeds: List<RssFeed>) {
     var unreadOnly by rememberSaveable { mutableStateOf(false) }
     var open by remember { mutableStateOf<RssArticle?>(null) }
     val data = rememberLoad(sid, feed) { ctx.api.get<List<RssArticle>>("/api/rss/$sid/articles" + if (feed.isNotEmpty()) "?feed=${com.bdlnaredi.goatstack.data.Api.enc(feed)}" else "") }
+    LaunchedEffect(sid, feed) { if (!com.bdlnaredi.goatstack.ui.Tuning.still) while (true) { delay(60_000); data.reload() } }
+    LaunchedEffect(checked) { if (checked > 0) for (ms in listOf(2_000L, 4_000L, 9_000L)) { delay(ms); data.reload() } }
     val readNow = remember { androidx.compose.runtime.mutableStateMapOf<String, Boolean>() }
     val names = feeds.associate { it.path to it.name }
     // Selecting several: "Select" (or a long press on an article) shows a tick box on each one.
