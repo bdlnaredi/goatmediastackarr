@@ -142,6 +142,27 @@ case "$name" in
       grep -Eq '[0-9]+\.[0-9]+\.' <<<"$v" || { echo "[goat] FlareSolverr's browser still does not start: ${v:-no answer}. Trying again in 5 minutes."; sleep 300; exit 1; }
     fi
     echo "[goat] FlareSolverr's browser: $v"
+    # FlareSolverr's Linux build downloads a chromedriver for its browser at every start, through the VPN when the VPN
+    # is on, and stops ("Error getting browser User-Agent ... name resolution") when that lookup fails. Fetch the
+    # matching one here instead, once per browser version and outside the VPN, and put it where FlareSolverr looks
+    # first (/app/chromedriver, as in its own Docker image); then it starts without going online at all.
+    major=$(grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' <<<"$v" | head -n1 | cut -d. -f1)
+    cd_dir=/config/flaresolverr/chromedriver/$major
+    if [[ -n "$major" && ! -x "$cd_dir/chromedriver" ]]; then
+      if s6-applyuidgid -u "$PUID" -g "$PGID" -G "$PGID" bash -c '
+          set -e; d="$1"; m="$2"; t=$(mktemp -d); trap "rm -rf $t" EXIT
+          ver=$(curl -fsSL --retry 3 --max-time 30 "https://googlechromelabs.github.io/chrome-for-testing/LATEST_RELEASE_$m")
+          curl -fsSL --retry 3 --max-time 180 -o "$t/cd.zip" "https://storage.googleapis.com/chrome-for-testing-public/$ver/linux64/chromedriver-linux64.zip"
+          unzip -q "$t/cd.zip" -d "$t" && mkdir -p "$d" && install -m 755 "$t/chromedriver-linux64/chromedriver" "$d/chromedriver.new" && mv "$d/chromedriver.new" "$d/chromedriver"
+          echo "$ver" > "$d/VERSION"' _ "$cd_dir" "$major"; then
+        echo "[goat] FlareSolverr's chromedriver $(cat "$cd_dir/VERSION" 2>/dev/null) is ready."
+        find /config/flaresolverr/chromedriver -mindepth 1 -maxdepth 1 -type d ! -name "$major" -exec rm -rf {} + 2>/dev/null
+      else
+        echo "[goat] Could not download FlareSolverr's chromedriver; FlareSolverr will try to fetch it itself."
+      fi
+    fi
+    if [[ -x "$cd_dir/chromedriver" ]]; then mkdir -p /app && ln -sfn "$cd_dir/chromedriver" /app/chromedriver
+    else rm -f /app/chromedriver; fi
     export HOST=127.0.0.1 PORT=8191 HEADLESS=true LOG_LEVEL="${FLARESOLVERR_LOG_LEVEL:-info}" TZ="${TZ:-UTC}"
     cd /config/flaresolverr/app/flaresolverr || exit 1
     cmd=(./flaresolverr) ;;

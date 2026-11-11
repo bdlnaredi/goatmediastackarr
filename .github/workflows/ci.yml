@@ -293,6 +293,18 @@ jobs:
           echo "$r" | jq -c '{status, message, title: (.solution.response // "" | capture("<title>(?<t>[^<]*)").t?)}'
           echo "$r" | jq -e '.status == "ok"' >/dev/null || { echo "::error::FlareSolverr could not open a page: $(echo "$r" | jq -r .message)"; exit 1; }
           echo "::notice::FlareSolverr $(docker logs goatfs 2>&1 | grep -o "FlareSolverr's browser: .*" | tail -1)"
+          docker exec goatfs test -x /app/chromedriver || { echo "::error::No chromedriver was put in place for FlareSolverr"; docker logs goatfs 2>&1 | grep -i chromedriver | tail -5; exit 1; }
+          # It must start again with no working DNS at all (as when the VPN's DNS does not answer): before, its own
+          # chromedriver download failed with "Error getting browser User-Agent ... Temporary failure in name resolution".
+          docker exec goatfs sh -c 'cp /etc/resolv.conf /tmp/resolv.ok && echo "nameserver 192.0.2.1" > /etc/resolv.conf'
+          docker exec goatfs /command/s6-svc -r /run/service/flaresolverr; sleep 10
+          ok=""
+          for i in $(seq 1 60); do
+            if docker exec goatfs curl -fsS http://127.0.0.1:8191/health 2>/dev/null | grep -q ok; then ok=1; break; fi
+            sleep 5
+          done
+          [ -n "$ok" ] || { echo "::error::FlareSolverr does not start without DNS"; docker logs goatfs 2>&1 | grep -iE 'chrom|user-agent|error|resolution' | tail -8; exit 1; }
+          echo "::notice::FlareSolverr starts without DNS too"
           docker rm -f goatfs >/dev/null; sudo rm -rf /tmp/goatfs
       - name: VPN on without a VPN file keeps the download apps offline
         run: |

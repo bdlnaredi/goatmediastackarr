@@ -4,6 +4,7 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- FlareSolverr no longer stops with "Error getting browser User-Agent ... Temporary failure in name resolution". Its Linux build downloaded a chromedriver at every start, through the VPN, and gave up when that lookup failed. The container now downloads the matching chromedriver itself, once per browser version and outside the VPN, so FlareSolverr starts without going online.
 ## v1.0.20 — 2026-11-11
 
 - Unraid template: the overview now names every app the container can run (ruTorrent, Deluge, Unpackerr, cross-seed, autobrr and File Browser too), Apps through VPN says which apps follow qBittorrent and Prowlarr onto the VPN, and five settings that were only in the README are in it now: VPN DNS, DNS for the apps, File Browser, Logs for each app and UMASK.
