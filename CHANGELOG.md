@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+## v1.0.22 — 2026-11-11
+
 - The README is rewritten: a tour led by new screenshots (Logs, Suggestions, a request's conversation, Year in review, Replace cam copies, the status page) and the Android app, a section for the people who use your server, and answers to common questions. Nothing was left out.
 - cross-seed looks for a torrent on your other trackers the moment it finishes in qBittorrent, single episodes included. Before, it only searched on its daily schedule and left single episodes out, so a torrent you had just downloaded, already on another tracker, could wait a day or never be cross-seeded. Downloads → a torrent → Find on other trackers asks it to search that torrent now, even one searched lately or older than two weeks.
 - Replace cam copies (Settings → Download rules, off until turned on): a movie you only have as a cam, telesync or telecine copy (workprint can be ticked too) has that file deleted a day before its digital or Blu-ray release, whichever is first (the number of days can be changed), and Radarr searches for a proper copy. Checked every hour; the page lists each such copy and when it goes, and what was done shows there and on Health. Movies without a release date are kept. Everyone who can watch (not kids profiles) is told in a few words why the movie is gone for now and when the proper copy comes; whoever requested it is told it was their request.
