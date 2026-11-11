@@ -2050,6 +2050,40 @@ const streamSummary = u => {
 // Each private tracker has its own rule (a ratio, a number of days seeding, or either/both). Only torrents in the
 // chosen categories (Sonarr's and Radarr's), finished, and already imported by Sonarr or Radarr are touched.
 const SEED_MS = Math.max(200, +process.env.SEED_GOALS_MS || 600000);
+// Speed limits per category (qBittorrent has only one limit for everything, and one per torrent): a category's
+// download and upload limits (KB/s, 0 = none) are a total for all its torrents together. Every minute the total is
+// shared out as limits on its torrents: evenly among those moving data right now (a stalled or paused one cannot use
+// its part, so it does not take one away from the others), and the same part for the rest, so a torrent that starts
+// moving is limited from its first second. Torrents that leave the category, or whose category no longer has a limit,
+// get their own limit taken off again (only the ones GoatMediaStackarr limited).
+const catLimits = sid => ((db.settings.catLimits || {})[sid]) || {};
+const DL_ON = /^(downloading|forcedDL|metaDL|forcedMetaDL)$/, UP_ON = /^(uploading|forcedUP)$/;
+async function catLimitTick(only) {
+  for (const s of db.services.filter(x => x.type === 'qbittorrent' && (!only || x.id === only))) try {
+    const lim = catLimits(s.id), heldAll = db.settings.catLimitHeld || {}, held = new Set(heldAll[s.id] || []);
+    if (!Object.keys(lim).length && !held.size) continue;
+    const list = await qb(s, '/api/v2/torrents/info'); if (!Array.isArray(list)) continue;
+    const part = (kb, moving) => kb > 0 ? Math.max(1024, Math.floor(kb * 1024 / Math.max(1, moving))) : 0;
+    const want = new Map();   // hash -> { dl, up } in bytes/s (0 = no limit of its own)
+    for (const [c, l] of Object.entries(lim)) {
+      const ts = list.filter(t => (t.category || '') === c); if (!ts.length) continue;
+      const dl = part(+l.dl, ts.filter(t => DL_ON.test(t.state) || (t.progress < 1 && t.dlspeed > 0)).length);
+      const up = part(+l.up, ts.filter(t => UP_ON.test(t.state) || t.upspeed > 0).length);
+      for (const t of ts) want.set(t.hash, { dl, up });
+    }
+    // Ours that no longer need one: no limit of their own again.
+    for (const t of list) if (held.has(t.hash) && !want.has(t.hash)) want.set(t.hash, { dl: 0, up: 0 });
+    const have = v => (+v > 0 ? +v : 0), near = (a, b) => a === b || (a > 0 && b > 0 && Math.abs(a - b) / b < 0.05);
+    const groups = { dl: new Map(), up: new Map() };
+    for (const t of list) { const w = want.get(t.hash); if (!w) continue;
+      if (!near(have(t.dl_limit), w.dl)) groups.dl.set(w.dl, [...(groups.dl.get(w.dl) || []), t.hash]);
+      if (!near(have(t.up_limit), w.up)) groups.up.set(w.up, [...(groups.up.get(w.up) || []), t.hash]); }
+    for (const [k, path] of [['dl', '/api/v2/torrents/setDownloadLimit'], ['up', '/api/v2/torrents/setUploadLimit']])
+      for (const [v, hs] of groups[k]) await qb(s, path, { hashes: hs.join('|'), limit: String(v) });
+    const now = [...want].filter(([, w]) => w.dl || w.up).map(([h]) => h).sort();
+    if (JSON.stringify(now) !== JSON.stringify([...held].sort())) { db.settings.catLimitHeld = { ...heldAll, [s.id]: now }; if (!now.length) delete db.settings.catLimitHeld[s.id]; save(); }
+  } catch {}
+}
 const seedCfg = () => ({ on: false, cats: ['tv', 'movies'], files: true, rules: [], other: null, ...(db.settings.seedGoals || {}) });
 const trackerHost = u => { try { return new URL(String(u)).hostname.toLowerCase().replace(/^(tracker|announce|t|tr)\d*\./, ''); } catch { return ''; } };
 const trkCache = new Map();   // hash -> tracker host (a torrent's tracker does not change)
@@ -2218,6 +2252,7 @@ async function monitor() {
     if (mon.n % 4 === 0) await safe(recentWatch);
     if (mon.n % (+process.env.SYNC_EVERY || 30) === 5) safe(() => syncAll());
     if (mon.n % 4 === 2) await safe(autoImport);
+    if (mon.n % 2 === 1) await safe(() => catLimitTick());
     { const e = +process.env.CAM_EVERY || 120; if (mon.n % e === 90 % e) await safe(camTick); }
     { const e = +process.env.LOGALERT_EVERY || 10; if (mon.n % e === 7 % e) await safe(logAlertTick); }
     await safe(nlTick);
@@ -3064,6 +3099,20 @@ const goatServer = http.createServer(async (req, res) => {
       const b = await readBody(req), kb = v => Math.max(0, Math.round(+v || 0)) * 1024;
       await qb(s, '/api/v2/app/setPreferences', { json: JSON.stringify({ dl_limit: kb(b.dl), up_limit: kb(b.up), alt_dl_limit: kb(b.altDl), alt_up_limit: kb(b.altUp) }) });
       return send(res, 200, {});
+    }
+    // Speed limits per category: { limits: { [category]: { dl, up } } } in KB/s.
+    if ((r = p.match(/^\/api\/qb\/(\w+)\/catlimits$/))) {
+      if (adminOnly()) return;
+      const s = svcOf(r[1], 'qbittorrent'); if (!s) return send(res, 404, { error: 'Not found' });
+      if (m === 'GET') return send(res, 200, { limits: catLimits(s.id) });
+      if (m !== 'PUT') return send(res, 405, { error: 'Method not allowed' });
+      const b = await readBody(req), out = {}, kb = v => Math.min(10e6, Math.max(0, Math.round(+v || 0)));
+      for (const [c, l] of Object.entries((b && b.limits) || {}).slice(0, 200)) { const n = cut(c, 100).trim(); if (!n || !l) continue;
+        const dl = kb(l.dl), up = kb(l.up); if (dl || up) out[n] = { dl, up }; }
+      db.settings.catLimits = { ...(db.settings.catLimits || {}), [s.id]: out }; if (!Object.keys(out).length) delete db.settings.catLimits[s.id]; save();
+      audit(me.name, 'Changed speed limits per category', Object.entries(out).map(([c, l]) => `${c}: ${l.dl ? '↓' + l.dl + ' KB/s' : '↓ no limit'} ${l.up ? '↑' + l.up + ' KB/s' : '↑ no limit'}`).join(', ') || 'none');
+      await catLimitTick(s.id).catch(() => {});
+      return send(res, 200, { limits: out });
     }
     if ((r = p.match(/^\/api\/qb\/(\w+)\/alt$/)) && m === 'POST') {
       if (deny('control', 'change speed limits')) return;

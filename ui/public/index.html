@@ -2135,12 +2135,21 @@ async function histDialog(s){
   o.querySelector('[data-x]').onclick=o.close;
 }
 async function limDialog(s){
-  let p;try{p=await api(`/api/qb/${s.id}/prefs`)}catch(x){toast(x.message,'bad');return}
+  let p,cl={limits:{}},meta={categories:[]};
+  try{[p,cl,meta]=await Promise.all([api(`/api/qb/${s.id}/prefs`),api(`/api/qb/${s.id}/catlimits`).catch(()=>({limits:{}})),api(`/api/qb/${s.id}/meta`).catch(()=>({categories:[]}))])}catch(x){toast(x.message,'bad');return}
+  const cats=[...new Set([...meta.categories.map(c=>c.name),...Object.keys(cl.limits||{})])].sort((x,y)=>x.localeCompare(y));
   const o=modal(`<h2 style="margin-top:0">Speed limit settings</h2><p class="mute">Limits in KB/s. Use 0 for no limit. The alternative limits apply when "Speed limits" is On.</p>
-    <form id="lf" style="max-width:360px">${[['dl','Download limit',p.dl],['up','Upload limit',p.up],['altDl','Alternative download limit',p.altDl],['altUp','Alternative upload limit',p.altUp]].map(([k,n,v])=>`<label class="mute">${n}<input type="number" min="0" name="${k}" value="${v}"></label>`).join('')}
-    <div class="err" id="le"></div><div class="row"><button class="primary">Save</button><button type="button" data-x>Cancel</button></div></form>`);
+    <form id="lf">${[['dl','Download limit',p.dl],['up','Upload limit',p.up],['altDl','Alternative download limit',p.altDl],['altUp','Alternative upload limit',p.altUp]].map(([k,n,v])=>`<label class="mute" style="display:grid;gap:4px;max-width:360px;margin-bottom:8px">${n}<input type="number" min="0" name="${k}" value="${v}"></label>`).join('')}
+    <h3 style="margin-bottom:4px">Per category</h3><p class="mute" style="margin-top:0">A limit for all of a category's torrents together, for example to keep movies from taking all the speed. It is shared among the torrents that are moving data, checked every minute, and comes on top of the limits above.</p>
+    ${cats.length?`<div style="display:grid;grid-template-columns:minmax(0,1fr) 110px 110px;gap:6px 10px;align-items:center;max-width:460px"><span class="mute">Category</span><span class="mute">Download KB/s</span><span class="mute">Upload KB/s</span>
+      ${cats.map(c=>{const l=(cl.limits||{})[c]||{};return`<b style="word-break:break-word">${esc(c)}</b><input type="number" min="0" data-cd="${esc(c)}" value="${l.dl||0}" aria-label="Download limit for ${esc(c)}"><input type="number" min="0" data-cu="${esc(c)}" value="${l.up||0}" aria-label="Upload limit for ${esc(c)}">`}).join('')}</div>`
+      :'<p class="mute">No categories yet. Add them under Categories and tags.</p>'}
+    <div class="err" id="le"></div><div class="row" style="margin-top:12px"><button class="primary">Save</button><button type="button" data-x>Cancel</button></div></form>`);
   o.querySelector('[data-x]').onclick=o.close;
-  o.querySelector('#lf').onsubmit=async e=>{e.preventDefault();try{await api(`/api/qb/${s.id}/prefs`,'POST',Object.fromEntries(new FormData(e.target)));o.close()}catch(x){o.querySelector('#le').textContent=x.message}};
+  o.querySelector('#lf').onsubmit=async e=>{e.preventDefault();const f=e.target,limits={};
+    f.querySelectorAll('[data-cd]').forEach(i=>{const c=i.dataset.cd,u=f.querySelector(`[data-cu="${CSS.escape(c)}"]`);limits[c]={dl:+i.value||0,up:+(u&&u.value)||0}});
+    try{await api(`/api/qb/${s.id}/prefs`,'POST',{dl:f.elements.dl.value,up:f.elements.up.value,altDl:f.elements.altDl.value,altUp:f.elements.altUp.value});
+      if(cats.length)await api(`/api/qb/${s.id}/catlimits`,'PUT',{limits});toast('Saved','ok');o.close()}catch(x){o.querySelector('#le').textContent=x.message}};
 }
 function catDialog(s,getMeta,reload){
   const o=modal('<div id="cb"></div>');

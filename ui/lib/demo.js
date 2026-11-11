@@ -281,6 +281,8 @@ function create(opts = {}) {
       if (sub === '/api/v2/torrents/removeCategories') { const c = cats(); for (const n of String(data.categories || '').split('\n')) delete c[n]; st.qbCats = c; res.writeHead(200); return res.end(''); }
       if (sub === '/api/v2/torrents/createTags') { st.qbTags = [...new Set([...(st.qbTags || []), ...String(data.tags || '').split(',').map(x => x.trim()).filter(Boolean)])]; res.writeHead(200); return res.end(''); }
       if (sub === '/api/v2/torrents/tags') return json(res, []);
+      if (sub === '/api/v2/torrents/setDownloadLimit' || sub === '/api/v2/torrents/setUploadLimit') { const k = sub.endsWith('DownloadLimit') ? 'dl_limit' : 'up_limit', hs = String(data.hashes || '').split('|');
+        st.torrents.forEach(t => { if (hs.includes(t.hash)) t[k] = +data.limit || 0; }); st.calls.push(`qb ${k} ${data.hashes} ${data.limit}`); res.writeHead(200); return res.end(''); }
       st.qbPrefs = st.qbPrefs || { scheduler_enabled: false, alt_dl_limit: 1024000, alt_up_limit: 512000, dl_limit: 0, up_limit: 0, rss_refresh_interval: 30, rss_max_articles_per_feed: 50, rss_processing_enabled: true, rss_auto_downloading_enabled: true };
       if (sub === '/api/v2/app/preferences') return json(res, st.qbPrefs);
       if (sub === '/api/v2/app/setPreferences') { try { Object.assign(st.qbPrefs, JSON.parse(data.json || '{}')); } catch {} res.writeHead(200); return res.end(''); }
