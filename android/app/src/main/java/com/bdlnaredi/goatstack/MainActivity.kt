@@ -25,6 +25,10 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // Away for more than a minute (or the app opened again from the launcher): the PIN, if there is one.
+    override fun onStop() { super.onStop(); (application as GoatApp).state.wentAway() }
+    override fun onStart() { super.onStart(); (application as GoatApp).state.cameBack() }
+
     // A notification tapped while the app is already open.
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)

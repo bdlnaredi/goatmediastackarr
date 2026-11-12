@@ -169,7 +169,7 @@ Something always breaks eventually: a tracker goes down, an import fails, a disk
 - **File Browser** (admins): the media and downloads folders in the browser, opened from the Stack page: upload, download, rename, move and delete files. **Share** a file or folder to get a link anyone can open without signing in (with an expiry and a password if you like); the share page also has its direct download link.
 - **Unraid**: the array, disks and containers, if you add your Unraid server.
 - **Backups of the whole stack** (Settings → Backup): every app's settings and databases in one file, daily or weekly, and a guided *Put back* that restores only the apps you pick (with a copy of how they were just before).
-- **Settings**: *Account* (password, two-step sign-in, passkeys, Sign in with Plex, devices, notifications on this device), *Appearance*, *Apps*, *Discover lists*, *Users*, *Limits*, *Status page*, *Alerts*, *Download rules*, *Backup* and *Activity*.
+- **Settings**: *Account* (password, a **PIN** asked for whenever the page or app is opened, two-step sign-in, passkeys, Sign in with Plex, devices, notifications on this device), *Appearance*, *Apps*, *Discover lists*, *Users*, *Limits*, *Status page*, *Alerts*, *Download rules*, *Backup* and *Activity*.
 
 | | |
 |---|---|
@@ -233,7 +233,7 @@ A native app (Kotlin and Jetpack Compose), not a web page in a frame. Same four 
 - **Address at home** (Settings → Server): on your Wi-Fi the app talks to the server's local address, anywhere else the outside one, by itself.
 - **Profile**: your picture, your streaming this month, the space your requests take and your watch time.
 - **In your language**: English, Hindi, Spanish, German or French (Settings → Language).
-- **Sign in** with your name and password (two-step codes work), a **passkey** (fingerprint or face), or **Sign in with Plex**.
+- **Sign in** with your name and password (two-step codes work), a **passkey** (fingerprint or face), or **Sign in with Plex**. With a **PIN** (Settings → Account → PIN), the app asks for it each time it opens, and after a minute away.
 - **Android TV**: the same app installs on a TV, shows on its home screen, and works with the remote's D-pad.
 
 **Install:** download `goatmediastackarr.apk` from the [latest release](https://github.com/bdlnaredi/goatmediastackarr/releases/latest) on your phone and open it. Then enter the address you use in the browser, for example `192.168.1.10:2806`. Android 8 or newer; newer versions install over older ones, and the app tells you when one is out.

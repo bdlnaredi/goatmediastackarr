@@ -34,6 +34,7 @@ import androidx.compose.material.icons.rounded.Email
 import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Pin
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Forum
 import androidx.compose.material.icons.rounded.Celebration
@@ -268,6 +269,7 @@ fun SettingsScreen() {
                 if (hasPassword) SettingRow(Icons.Rounded.Lock, "Change password", "Signs you out on your other devices", onClick = { dialog = "password" })
                 if (hasPassword) SettingRow(Icons.Rounded.Email, "Recovery email", ctx.user.email.ifEmpty { "Not set. Needed to reset a forgotten password." }, onClick = { dialog = "email" })
                 if (ctx.user.admin && ctx.me.plexLogin) PlexLinkRow()
+                SettingRow(Icons.Rounded.Pin, "PIN", if (ctx.user.pin) "On · asked for when the app opens. Tap to change or turn off" else "Off. Tap to create a 4-digit PIN asked for when the app opens", onClick = { dialog = "pin" })
                 SettingRow(Icons.Rounded.Security, "Two-step sign-in", if (ctx.user.twofa) "On" else if (hasPassword) "Off. Turn it on from the web page under Settings → Account." else "Plex looks after your sign-in")
                 SettingRow(Icons.Rounded.Notifications, "Phone messages", ctx.user.notify.ifEmpty { "Get told when a request is ready (ntfy, Gotify, or any web address)" }, onClick = { dialog = "notify" })
                 SettingRow(Icons.Rounded.Devices, "Signed-in devices", "See them, and sign out the ones you do not use", onClick = { ctx.go("devices") })
@@ -311,6 +313,7 @@ fun SettingsScreen() {
         "password" -> PasswordDialog { dialog = null }
         "email" -> EmailDialog { dialog = null }
         "notify" -> NotifyDialog { dialog = null }
+        "pin" -> PinDialog { dialog = null }
     }
 }
 

@@ -27,6 +27,8 @@ data class User(
     val role: String = "user",
     val email: String = "",
     val twofa: Boolean = false,
+    /** A PIN is asked for when the app opens. */
+    val pin: Boolean = false,
     val perms: Perms? = null,
     val plex: PlexName? = null,
     val lists: Lists = Lists(),

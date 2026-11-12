@@ -36,6 +36,22 @@ class AppState(val store: Store) {
     private val _updates = MutableStateFlow<Updates?>(null)
     /** The newest release, asked of the server once per start (an older server without the check just leaves it empty). */
     val updates: StateFlow<Updates?> = _updates
+    private val _locked = MutableStateFlow(false)
+    /** The PIN is to be entered before anything else (the app was opened, or came back after a minute away). */
+    val locked: StateFlow<Boolean> = _locked
+    // Signed in with the password (or a passkey, or Plex) just now: no PIN for that.
+    private var freshSignIn = false
+    private var awayAt = 0L
+    fun wentAway() { awayAt = System.currentTimeMillis() }
+    fun cameBack() {
+        val p = _phase.value
+        if (awayAt > 0 && System.currentTimeMillis() - awayAt > 60_000 && p is Phase.Ready && p.user.pin) _locked.value = true
+        awayAt = 0
+    }
+    /** Null when the PIN is right; otherwise what to say (5 wrong ones sign this phone out). */
+    suspend fun checkPin(pin: String): String? = try {
+        api.send("POST", "/api/pin/check", buildJsonObject { put("pin", pin) }); _locked.value = false; null
+    } catch (e: Exception) { e.message ?: "That did not work" }
     private val _prefs = MutableStateFlow(Prefs())
     val prefs: StateFlow<Prefs> = _prefs
     var server: String = ""
@@ -127,8 +143,14 @@ class AppState(val store: Store) {
             try {
                 val me = api.get<Me>("/api/me")
                 val u = me.user
-                if (u == null) _phase.value = Phase.NeedLogin(me)
-                else { loadServices(); _phase.value = Phase.Ready(me, u) }
+                val opening = _phase.value is Phase.Starting || _phase.value is Phase.NeedServer
+                if (u == null) { _locked.value = false; _phase.value = Phase.NeedLogin(me) }
+                else {
+                    if (u.pin && opening && !freshSignIn) _locked.value = true
+                    if (!u.pin) _locked.value = false
+                    freshSignIn = false
+                    loadServices(); _phase.value = Phase.Ready(me, u)
+                }
             } catch (e: Exception) {
                 _phase.value = Phase.Offline(e.message ?: "Could not reach the server")
             }
@@ -159,16 +181,16 @@ class AppState(val store: Store) {
     suspend fun login(name: String, password: String): String? {
         val r = api.post<LoginReply>("/api/login", buildJsonObject { put("name", name); put("password", password) })
         if (r.twofa) return r.ticket ?: ""
-        refresh(); return null
+        freshSignIn = true; refresh(); return null
     }
 
     suspend fun twoStep(ticket: String, code: String) {
         api.post<LoginReply>("/api/login/2fa", buildJsonObject { put("ticket", ticket); put("code", code) })
-        refresh()
+        freshSignIn = true; refresh()
     }
 
     /** Passkey sign-in (Android's Credential Manager), then load the profile it signed in to. */
-    suspend fun passkeySignIn(context: android.content.Context) { Passkeys.signIn(context, api); refresh() }
+    suspend fun passkeySignIn(context: android.content.Context) { Passkeys.signIn(context, api); freshSignIn = true; refresh() }
 
     suspend fun plexStart(): PlexStart = api.post("/api/plexlogin/start")
 
@@ -186,7 +208,7 @@ class AppState(val store: Store) {
     suspend fun plexPoll(ticket: String): Boolean {
         val r = api.get<PlexPoll>("/api/plexlogin/poll?t=${Api.enc(ticket)}")
         if (r.pending) return false
-        refresh(); return true
+        freshSignIn = true; refresh(); return true
     }
 
     fun logout() {

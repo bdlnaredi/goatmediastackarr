@@ -346,6 +346,19 @@ main.sx #m .panel{max-width:760px!important}
 #stage .capd button:hover::before{background:rgba(255,255,255,.7)}
 #stage .capd button:focus-visible{outline:2px solid #fff;outline-offset:1px}
 #stage .capd button{width:34px}
+.pinlock{position:fixed;inset:0;z-index:9999;display:grid;place-items:center;padding:24px 16px;background:radial-gradient(120% 90% at 50% 20%,#262145 0%,#0d0c1a 55%,#060609 100%);overflow:auto}
+html.pinon body>*:not(.pinlock){visibility:hidden}
+.pinbox{text-align:center;justify-items:center;width:min(360px,100%)}
+.pinbox .pinin{position:absolute;opacity:0;pointer-events:none;width:1px;height:1px}
+.pindots{display:flex;gap:16px;margin:8px 0 2px}.pindots i{width:16px;height:16px;border-radius:50%;border:2px solid currentColor;opacity:.7;transition:background .15s}
+.pindots i.on{background:currentColor;opacity:1}
+.pinpad{display:grid;grid-template-columns:repeat(3,72px);gap:12px;justify-content:center;margin-top:6px}
+.pinpad button{height:64px;border-radius:50%;font-size:22px;font-weight:600;display:grid;place-items:center;padding:0;text-align:center;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);color:#fff}
+.pinpad button:hover{background:rgba(255,255,255,.18)}
+.pinpad button:active{transform:scale(.95)}
+.pinbox.shake{animation:pinshake .35s}
+@keyframes pinshake{20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}
+@media(prefers-reduced-motion:reduce){.pinbox.shake{animation:none}}
 .gate{pointer-events:none;position:relative;z-index:1;min-height:100vh;min-height:100dvh;display:grid;place-items:center;padding:24px 16px}
 .login{pointer-events:auto;width:min(420px,100%);max-width:none;margin:0;padding:34px 30px 28px;border-radius:32px;background:rgba(14,15,32,.26);border:1px solid rgba(255,255,255,.24);box-shadow:inset 0 1px 0 rgba(255,255,255,.14),0 40px 90px -24px rgba(0,0,0,.75);-webkit-backdrop-filter:blur(22px) saturate(1.4) brightness(.85);backdrop-filter:blur(22px) saturate(1.4) brightness(.85);color:#f1f0fb;text-shadow:0 1px 10px rgba(0,0,0,.45);display:grid;gap:12px;animation:rise .7s cubic-bezier(.2,.8,.2,1) both}
 @keyframes rise{from{opacity:0;transform:translateY(18px) scale(.985)}}
@@ -566,9 +579,12 @@ async function start(){
   if(rt)return resetView(rt);
   const iv=(location.hash.match(/^#invite=([\w-]{16,64})$/)||[])[1];
   if(iv&&!s.user)return inviteView(iv);
-  if(!s.user)return authView(s.setup,s.setupCode);
+  if(!s.user){PIN_FRESH=true;return authView(s.setup,s.setupCode)}
   DEMO=!!s.demo;me=s.user;
   if(me.need2fa)return tfaGate();
+  // Just signed in with the password: no PIN this time. Opened again later (a new tab or window, the browser
+  // reopened, or back after 5 minutes away): the PIN first.
+  if(PIN_FRESH)pinMark();else if(me.pin&&!pinOpen())await pinLock();
   await load();
   // An address like /downloads opens that page; the plain address opens the dashboard.
   const fromUrl=readPath();routeQuiet=true;
@@ -1299,7 +1315,7 @@ async function stAcct(){
       <input name="old" type="password" placeholder="Current password" autocomplete="current-password" required><input name="new" type="password" placeholder="New password (8+ characters)" autocomplete="new-password" required>
       <input name="again" type="password" placeholder="New password again" autocomplete="new-password" required><div class="row"><button class="primary">Change password</button></div><div class="err" id="pe"></div></form></div>
     ${me.plex&&me.role!=='admin'?'':'<div class="panel" id="pkp" style="max-width:560px;margin-top:16px"></div>'}<div class="panel" id="pshp" style="max-width:560px;margin-top:16px"></div>
-    <div class="panel" id="syp" style="max-width:560px;margin-top:16px"></div>
+    <div class="panel" id="pinp" style="max-width:560px;margin-top:16px"></div><div class="panel" id="syp" style="max-width:560px;margin-top:16px"></div>
     ${services.some(x=>x.type==='tautulli')?`<div class="panel row" style="max-width:560px;margin-top:16px;gap:10px"><div class="grow"><h3 style="margin:0">Year in review</h3><p class="mute" style="margin:4px 0 0">What you watched this year, your top shows and movies, and your requests.</p></div><button id="wrac">Open</button></div>`:''}
     <div class="panel" style="max-width:560px;margin-top:16px"><h3 style="margin-top:0">Phone messages for you</h3>
       <p class="mute">GoatMediaStackarr can message you when a request of yours is approved or ready to watch. Use an ntfy topic address (like https://ntfy.sh/my-topic) or a Discord webhook address.</p>
@@ -1334,7 +1350,7 @@ async function stAcct(){
     $('#wkon').onchange=async e=>{try{const r=await api('/api/me/weekly','PUT',{on:e.target.checked});me.weekly=r.weekly;toast('Saved','ok')}catch(x){toast(x.message,'bad')}};
     $('#wkp').onclick=()=>{$('#wko').hidden=!$('#wko').hidden;$('#wko').innerHTML=w.html}}).catch(()=>{});
   if(me.role==='admin')signinPanel();
-  tfaPanel();
+  tfaPanel();pinPanel();
   if(me.plex){['#pf','#ef','#tf'].forEach(i=>{const e=$(i);if(e)(e.closest('.panel')||e).remove()});
     $('#m').insertAdjacentHTML('afterbegin',`<div class="panel" style="max-width:560px;margin-bottom:16px"><h3 style="margin-top:0">You sign in with Plex</h3><p class="mute" style="margin:0">Your Plex account (${esc(me.plex.name)}) is how you sign in here, so there is no GoatMediaStackarr password to change. To stop, ask the server owner to remove your profile.</p></div>`)}
   const loadD=async()=>{try{const all=$('#sall')&&$('#sall').checked,l=await api('/api/sessions'+(all?'?all=1':''));if(tab!=='set'||stSub!=='acct')return;
@@ -1392,6 +1408,61 @@ async function tfaPolicyPanel(){
     ${d.missing.length?`<p class="mute" style="margin-bottom:0">${T('Still to set it up')}: ${esc(d.missing.join(', '))}</p>`:''}`;
     el.querySelectorAll('[name=t2pol]').forEach(r=>r.onchange=async()=>{try{d=await api('/api/settings/2fa','PUT',{policy:r.value});toast(T('Saved'),'ok');draw()}catch(x){toast(x.message,'bad')}})};
   draw();
+}
+// ---------- The PIN: asked for when the page is opened on a browser that is already signed in.
+let PIN_FRESH=false,pinAway=0,pinUp=false;
+const PIN_KEY='goatPinOk';
+function pinMark(){try{sessionStorage.setItem(PIN_KEY,'1')}catch{}}
+function pinOpen(){try{return sessionStorage.getItem(PIN_KEY)==='1'}catch{return false}}
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden){pinAway=Date.now();return}
+  if(me&&me.pin&&pinAway&&Date.now()-pinAway>5*60e3&&!pinUp){try{sessionStorage.removeItem(PIN_KEY)}catch{}pinLock()}
+  pinAway=0;
+});
+function pinLock(){
+  pinUp=true;
+  return new Promise(done=>{
+    const o=document.createElement('div');o.className='pinlock';o.setAttribute('role','dialog');o.setAttribute('aria-modal','true');
+    o.innerHTML=`<form class="login box pinbox" autocomplete="off"><span class="logo big">${LOGO}</span><h2 style="margin:0">${T('Enter your PIN')}</h2>
+      <p class="mute" style="margin:0">${esc(me.name)}</p><div class="pindots" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      <input class="pinin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" aria-label="${T('PIN')}">
+      <div class="err" id="pinE" role="alert"></div>
+      <div class="pinpad">${[1,2,3,4,5,6,7,8,9,'',0,'⌫'].map(k=>k===''?'<span></span>':`<button type="button" data-k="${k}">${k}</button>`).join('')}</div>
+      <button type="button" class="lnk" id="pinOut">${T('Forgot your PIN? Sign out')}</button></form>`;
+    document.body.appendChild(o);document.documentElement.classList.add('pinon');
+    const inp=o.querySelector('.pinin'),dots=[...o.querySelectorAll('.pindots i')],err=o.querySelector('#pinE');let busy=false;
+    const show=()=>dots.forEach((d,i)=>d.classList.toggle('on',i<inp.value.length));
+    const go=async()=>{if(busy||inp.value.length<4)return;busy=true;
+      try{await api('/api/pin/check','POST',{pin:inp.value});pinMark();pinUp=false;o.remove();document.documentElement.classList.remove('pinon');done()}
+      catch(x){inp.value='';show();err.textContent=x.message;o.querySelector('.pinbox').classList.remove('shake');void o.offsetWidth;o.querySelector('.pinbox').classList.add('shake');
+        if(/signed out/i.test(x.message))setTimeout(()=>location.reload(),1800)}
+      busy=false;inp.focus()};
+    inp.oninput=()=>{inp.value=inp.value.replace(/\D/g,'').slice(0,4);err.textContent='';show();if(inp.value.length===4)go()};
+    o.querySelector('form').onsubmit=e=>{e.preventDefault();go()};
+    o.querySelector('.pinpad').onclick=e=>{const b=e.target.closest('[data-k]');if(!b)return;const k=b.dataset.k;
+      inp.value=k==='⌫'?inp.value.slice(0,-1):(inp.value+k).slice(0,4);inp.oninput()};
+    o.querySelector('#pinOut').onclick=async()=>{try{await api('/api/logout','POST')}catch{}location.reload()};
+    setTimeout(()=>inp.focus(),50);
+  });
+}
+// Settings → Account: make, change or turn off the PIN.
+function pinPanel(){
+  const box=$('#pinp');if(!box)return;
+  const on=!!me.pin;
+  box.innerHTML=`<div class="row"><h3 style="margin:0;flex:1">${T('PIN')}</h3><span class="pill${on?' ok':''}">${on?T('On'):T('Off')}</span></div>
+    <p class="mute">${T('A 4-digit PIN asked for whenever GoatMediaStackarr is opened on a device that is already signed in: the web page, the installed web app and the Android app. Your password is still what signs you in. 5 wrong PINs sign that device out.')}</p>
+    <form id="pinf" style="max-width:360px;margin:0" autocomplete="off">
+      ${on?`<input name="current" type="password" placeholder="${T('Current PIN or password')}" autocomplete="current-password"><p class="mute" style="margin:0 0 8px;font-size:13px">${T('Forgot it? Within 15 minutes of signing in, you can leave this empty.')}</p>`:''}
+      <input name="pin" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="${on?T('New PIN (4 digits)'):T('PIN (4 digits)')}" autocomplete="new-password" required>
+      <input name="again" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="${T('The same PIN again')}" autocomplete="new-password" required>
+      <div class="row"><button class="primary">${on?T('Change PIN'):T('Create PIN')}</button>${on?`<button type="button" id="pinoff">${T('Turn off')}</button>`:''}</div><div class="err" id="pinpe"></div></form>`;
+  const f=$('#pinf'),er=$('#pinpe');
+  f.onsubmit=async e=>{e.preventDefault();er.textContent='';
+    if(!/^\d{4}$/.test(f.pin.value))return er.textContent=T('The PIN is 4 digits');
+    if(f.pin.value!==f.again.value)return er.textContent=T('The two PINs are not the same');
+    try{await api('/api/pin','POST',{pin:f.pin.value,current:f.current?f.current.value:''});pinMark();toast(on?T('PIN changed'):T('PIN created'),'ok');me.pin=true;pinPanel()}catch(x){er.textContent=x.message}};
+  const off=$('#pinoff');if(off)off.onclick=async()=>{er.textContent='';
+    try{await api('/api/pin','DELETE',{current:f.current.value});me.pin=false;toast(T('PIN turned off'),'ok');pinPanel()}catch(x){er.textContent=x.message}};
 }
 function tfaGate(){
   Cinema.stopAmbient();showStage();

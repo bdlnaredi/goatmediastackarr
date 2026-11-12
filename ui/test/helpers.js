@@ -27,7 +27,7 @@ function client(base) {
     let data = null; const txt = await r.text(); try { data = JSON.parse(txt); } catch { data = txt; }
     return { status: r.status, data, headers: r.headers };
   };
-  return Object.assign(c, { get: (u, h) => call('GET', u, null, h), post: (u, b, h) => call('POST', u, b, h), put: (u, b) => call('PUT', u, b), del: u => call('DELETE', u) });
+  return Object.assign(c, { get: (u, h) => call('GET', u, null, h), post: (u, b, h) => call('POST', u, b, h), put: (u, b) => call('PUT', u, b), del: (u, b) => call('DELETE', u, b || null) });
 }
 const setup = async (c, name = 'admin', password = 'correct-horse') => c.post('/api/setup', { name, password });
 module.exports = { free, tmp, sleep, boot, client, setup };

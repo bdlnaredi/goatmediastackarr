@@ -116,7 +116,11 @@ fun GoatRoot(state: AppState) {
                 is Phase.NeedServer -> ServerScreen(state)
                 is Phase.NeedLogin -> LoginScreen(state, p.me)
                 is Phase.Offline -> OfflineScreen(state, p.message)
-                is Phase.Ready -> MainShell(state, p.me, p.user)
+                is Phase.Ready -> Box(Modifier.fillMaxSize()) {
+                    MainShell(state, p.me, p.user)
+                    val locked by state.locked.collectAsStateWithLifecycle()
+                    if (locked && p.user.pin) com.bdlnaredi.goatstack.ui.screens.PinLock(state, p.user)
+                }
             }
         }
     }

@@ -161,7 +161,7 @@ const APP_HASHES = APP_CERTS.map(x => Buffer.from(x.replace(/:/g, ''), 'hex').to
 const rpOf = req => String((TRUST && req.headers['x-forwarded-host']) || req.headers.host || 'localhost').split(',')[0].trim().replace(/:\d+$/, '').replace(/^\[|\]$/g, '').toLowerCase();
 const tfaRequired = u => !!u && (u.require2fa || tfaPolicy() === 'everyone' || (tfaPolicy() === 'admins' && u.role === 'admin')) && !(u.plex && u.role !== 'admin');
 const need2fa = u => tfaRequired(u) && !(u.totp && u.totp.on) && !(u.passkeys || []).length;
-const pubUser = u => ({ passkeys: (u.passkeys || []).length, email: u.email || '', weekly: !u.noWeekly, readyMail: !!u.readyMail, need2fa: need2fa(u), require2fa: !!u.require2fa, tfaRequired: tfaRequired(u), twofa: !!(u.totp && u.totp.on), id: u.id, name: u.name, role: u.role, access: u.access, perms: u.perms || null, notify: u.notify || '', dash: u.dash || null, reqLimit: u.reqLimit || null, autoApprove: !!u.autoApprove, plex: u.plex ? { name: u.plex.name } : null, hide: cleanHide(u.hide), restr: u.plexRules ? Object.fromEntries(['contentRating', 'contentRating!', 'label', 'label!'].filter(k => (u.plexRules[k] || []).length).map(k => [k, u.plexRules[k]])) : null, libs: u.plex ? { n: ((u.plexLibs || {}).mine || []).length, of: ((u.plexLibs || {}).all || []).length, limited: libLimited(u) } : null, plexName: u.plexName || '', lists: lists.enabled(), avatar: u.avatar ? `/api/avatar/${u.id}?v=${u.avatar.v}` : '', dataLimit: u.dataLimit || 0, streamLimit: u.streamLimit == null ? null : u.streamLimit, kids: u.kids ? { age: u.kids.age } : null });
+const pubUser = u => ({ pin: !!u.pin, passkeys: (u.passkeys || []).length, email: u.email || '', weekly: !u.noWeekly, readyMail: !!u.readyMail, need2fa: need2fa(u), require2fa: !!u.require2fa, tfaRequired: tfaRequired(u), twofa: !!(u.totp && u.totp.on), id: u.id, name: u.name, role: u.role, access: u.access, perms: u.perms || null, notify: u.notify || '', dash: u.dash || null, reqLimit: u.reqLimit || null, autoApprove: !!u.autoApprove, plex: u.plex ? { name: u.plex.name } : null, hide: cleanHide(u.hide), restr: u.plexRules ? Object.fromEntries(['contentRating', 'contentRating!', 'label', 'label!'].filter(k => (u.plexRules[k] || []).length).map(k => [k, u.plexRules[k]])) : null, libs: u.plex ? { n: ((u.plexLibs || {}).mine || []).length, of: ((u.plexLibs || {}).all || []).length, limited: libLimited(u) } : null, plexName: u.plexName || '', lists: lists.enabled(), avatar: u.avatar ? `/api/avatar/${u.id}?v=${u.avatar.v}` : '', dataLimit: u.dataLimit || 0, streamLimit: u.streamLimit == null ? null : u.streamLimit, kids: u.kids ? { age: u.kids.age } : null });
 // What the folders the apps report mean, in words (these are the container's own folders).
 const DISK_NAMES = { '/media': 'Media library', '/data': 'Media library', '/downloads': 'Downloads', '/config': 'App data', '/': 'Container (Docker image)' };
 const DISK_ORDER = ['Media library', 'Downloads', '', 'App data', 'Container (Docker image)'];
@@ -2697,6 +2697,36 @@ const goatServer = http.createServer(async (req, res) => {
     if (!me) return send(res, 401, { error: 'Sign in first' });
     // Two-step sign-in is required and not set up yet: only setting it up (and signing out) works until it is.
     if (need2fa(me) && !['/api/2fa/start', '/api/2fa/enable', '/api/changelog'].includes(p)) return send(res, 403, { error: 'Set up two-step sign-in first. It is required for your profile.', need2fa: true });
+    // The PIN: 4 digits asked for whenever the web page or the app is opened on a device that is already signed in
+    // (it does not replace the password, which is still needed to sign in). Wrong 5 times on one device and that
+    // device is signed out, so it cannot be guessed. Changing or removing it takes the PIN now or the password (or
+    // having just signed in on that device, for a forgotten PIN: "Forgot your PIN? Sign out", sign in, set a new one).
+    if (p.startsWith('/api/pin')) {
+      const okPin = v => /^\d{4}$/.test(String(v || '')), isPin = v => !!me.pin && hash(String(v || ''), me.pin.salt) === me.pin.hash;
+      // Just signed in (with the password, a passkey or Plex) on this device: that is proof enough, for a forgotten PIN.
+      const proof = v => isPin(v) || (!!v && hash(String(v), me.salt) === me.hash) || Date.now() - (sess.at || 0) < (+process.env.PIN_FRESH_MS || 15 * 60e3);
+      if (p === '/api/pin/check' && m === 'POST') {
+        const b = await readBody(req); if (!me.pin) return send(res, 200, { ok: true });
+        if (isPin(b.pin)) { sess.pinBad = 0; saveSess(); return send(res, 200, { ok: true }); }
+        sess.pinBad = (sess.pinBad || 0) + 1;
+        if (sess.pinBad >= 5) { sessions.delete(th(token)); saveSess(); audit(me.name, 'Signed out after 5 wrong PINs', ''); return send(res, 401, { error: 'Wrong PIN 5 times, so you were signed out. Sign in with your password.', out: true }, { 'Set-Cookie': 'sid=; Path=/; Max-Age=0' }); }
+        saveSess(); return send(res, 400, { error: `Wrong PIN. ${5 - sess.pinBad} ${5 - sess.pinBad === 1 ? 'try' : 'tries'} left.`, left: 5 - sess.pinBad });
+      }
+      if (p === '/api/pin' && m === 'POST') {
+        const b = await readBody(req);
+        if (!okPin(b.pin)) return send(res, 400, { error: 'The PIN is 4 digits' });
+        if (DEMO) return send(res, 403, { error: 'This is turned off in the demo' });
+        if (me.pin && !proof(b.current)) return send(res, 400, { error: 'Your current PIN or password is wrong' });
+        const had = !!me.pin, sl = crypto.randomBytes(8).toString('hex'); me.pin = { salt: sl, hash: hash(String(b.pin), sl) }; save();
+        audit(me.name, had ? 'Changed their PIN' : 'Set a PIN', ''); return send(res, 200, { pin: true });
+      }
+      if (p === '/api/pin' && m === 'DELETE') {
+        const b = await readBody(req); if (!me.pin) return send(res, 200, { pin: false });
+        if (!proof(b.current)) return send(res, 400, { error: 'Your current PIN or password is wrong' });
+        me.pin = undefined; save(); audit(me.name, 'Turned off their PIN', ''); return send(res, 200, { pin: false });
+      }
+      return send(res, 404, { error: 'Not found' });
+    }
     if (DEMO && m !== 'GET' && /^\/api\/(bots|users|password|2fa|backups?|stack\/backups|restore|alerts|statuslinks|signin|services|weekly|throttle|me\/notify|me\/email|me\/weekly|me\/readymail|me\/avatar|plexsettings|listsettings)/.test(p)) return send(res, 403, { error: 'This is turned off in the demo' });
 
     if (p === '/api/2fa/start' && m === 'POST') {
