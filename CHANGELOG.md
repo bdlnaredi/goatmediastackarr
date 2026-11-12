@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+## v1.0.25 — 2026-11-12
+
 - **PIN**: a 4-digit PIN asked for whenever GoatMediaStackarr is opened on a device that is already signed in. Create, change or turn it off under Settings → Account (web page) or Settings → Account → PIN (app). The web page asks for it in a new tab or window, when the browser is opened again, and after 5 minutes away; the app when it is opened and when it comes back after a minute away. Your password still signs you in, and right after signing in no PIN is asked for. 5 wrong PINs sign that device out. Forgot it? *Forgot your PIN? Sign out*, sign in again, and set a new one (within 15 minutes of signing in, the current one isn't needed).
 ## v1.0.24 — 2026-11-11
 
