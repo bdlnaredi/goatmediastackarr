@@ -182,6 +182,8 @@ data class Playing(
     val id: String = "", val user: String = "", val player: String = "", val device: String = "", val state: String = "",
     val title: String = "", val sub: String = "", val kind: String = "", val progress: Double = 0.0, val thumb: String = "",
     val decision: String = "", val res: String = "",
+    /** Why it is being converted ("video HEVC → H264, by the processor (slow)"). */
+    val why: String = "", val kbps: Int = 0,
 )
 
 // Where a movie's (or an episode's) file is saved (/api/filestatus).

@@ -11,7 +11,7 @@ async function world() {
   await new Promise(r => srv.once('listening', r));
   const s = await boot({ MONITOR_MS: '500', LIVE_MS: '300' }), a = client(s.base); await setup(a);
   const id = (await a.post('/api/services', { type: 'jellyfin', name: 'Jelly', url: `http://127.0.0.1:${srv.address().port}/jellyfin`, apiKey: 'k' })).data.id;
-  return { s, a, id, stop: async () => { await s.stop(); srv.close(); } };
+  return { s, a, id, fake, stop: async () => { await s.stop(); srv.close(); } };
 }
 
 test('jellyfin: can be added, shows who is watching, recently added, artwork, and can end a stream', async () => {
@@ -28,7 +28,13 @@ test('jellyfin: can be added, shows who is watching, recently added, artwork, an
     assert.equal(img.status, 200); assert.match(img.headers.get('content-type'), /image/);
     assert.equal((await a.get(`/api/jellyfin/${id}/img?p=../../etc/passwd`)).status, 400, 'only item ids are accepted');
     assert.equal((await a.post(`/api/jellyfin/${id}/terminate`, { session: 'not valid!' })).status, 400);
-    assert.equal((await a.post(`/api/jellyfin/${id}/terminate`, { session: x.id })).status, 200);
+    assert.equal((await a.post(`/api/jellyfin/${id}/terminate`, { session: x.id, reason: 'Server restarting' })).status, 200);
+    assert.ok(w.fake.state.calls.some(c => c === 'jellyfin Message ' + x.id), 'the reason is shown on their screen first');
+    assert.equal((await a.post(`/api/jellyfin/${id}/message`, { session: x.id, text: '' })).status, 400);
+    assert.equal((await a.post(`/api/jellyfin/${id}/message`, { session: x.id, text: 'Dinner in 5' })).status, 200);
+    { const k = client(w.s.base); await a.post('/api/users', { name: 'kid', password: 'kidkidkid', role: 'user' }); await k.post('/api/login', { name: 'kid', password: 'kidkidkid' });
+      assert.ok([400, 403].includes((await k.post(`/api/jellyfin/${id}/terminate`, { session: x.id })).status), 'admins only');
+      assert.equal((await k.post(`/api/jellyfin/${id}/message`, { session: x.id, text: 'hi' })).status, 403, 'admins only'); }
     const live = await liveOnce(w.s.base, a.cookie);
     assert.ok((live.plex[id] || []).length === 1, 'the live stream carries Jellyfin sessions in the same place as Plex');
     let ok; for (let i = 0; i < 12 && ok !== true; i++) { await sleep(500); ok = (await liveOnce(w.s.base, a.cookie)).health[id]; }

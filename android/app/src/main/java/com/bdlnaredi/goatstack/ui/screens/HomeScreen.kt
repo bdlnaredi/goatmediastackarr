@@ -3,6 +3,7 @@ package com.bdlnaredi.goatstack.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -76,6 +77,9 @@ fun HomeScreen() {
     val upcoming = rememberLoad { ctx.api.get<Upcoming>("/api/upcoming") }
     val requests = rememberLoad { ctx.api.get<List<MediaRequest>>("/api/requests") }
     val stack = rememberLoad(ctx.user.admin) { if (ctx.user.admin && ctx.me.goat) ctx.api.get<GoatStatus>("/api/goat/status") else null }
+    // An admin ending someone's stream (with a reason they see), or sending a Jellyfin viewer a message.
+    var streamAsk by remember { mutableStateOf<Pair<Triple<String, String, com.bdlnaredi.goatstack.data.Playing>, String>?>(null) }
+    streamAsk?.let { (w, kind) -> StreamDialog(w.first, w.second, w.third, kind) { streamAsk = null } }
 
     val l = live
     val dl = (l?.qb?.values?.sumOf { it.dl } ?: 0L) + (l?.sab?.values?.sumOf { it.speed.toLong() } ?: 0L)
@@ -179,8 +183,17 @@ fun HomeScreen() {
                                     }
                                 }
                             }
-                            Spacer(Modifier.height(10.dp))
+                            Spacer(Modifier.height(8.dp))
+                            val dec = when (p.decision) { "transcode" -> "Converting"; "stream" -> "Direct stream"; else -> "Direct play" }
+                            Text(listOf(dec, p.res, if (p.kbps > 0) "%.1f Mbps".format(p.kbps / 1000.0) else "").filter { it.isNotEmpty() }.joinToString(" · ") +
+                                if (p.decision == "transcode" && p.why.isNotEmpty()) "\n" + p.why.replaceFirstChar { it.uppercase() } else "",
+                                style = MaterialTheme.typography.labelSmall, color = if (p.decision == "transcode") g.warn else g.muted, maxLines = 3)
+                            Spacer(Modifier.height(6.dp))
                             Bar(p.progress.toFloat(), height = 4.dp)
+                            if (ctx.user.admin && p.id.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                if (type == "jellyfin") androidx.compose.material3.TextButton(onClick = { streamAsk = Triple(sid, type, p) to "message" }) { Text("Message", color = g.primary) }
+                                androidx.compose.material3.TextButton(onClick = { streamAsk = Triple(sid, type, p) to "end" }) { Text("End stream", color = g.bad) }
+                            }
                         }
                     }
                 }
@@ -354,3 +367,39 @@ private fun UpdateCard(u: com.bdlnaredi.goatstack.data.Updates, appOld: Boolean,
 fun releaseNotes(md: String): List<String> = md.lines().map { it.trim() }.filter { it.startsWith("- ") || it.startsWith("* ") }
     .map { it.drop(2).replace(Regex("""\*\*([^*]+)\*\*"""), "$1").replace(Regex("""\*([^*]+)\*"""), "$1").replace(Regex("""`([^`]+)`"""), "$1")
         .replace(Regex("""\[([^\]]+)]\([^)]*\)"""), "$1").trim() }.filter { it.isNotEmpty() }.take(20)
+
+/** Ends a stream (the reason is shown to the viewer) or, for Jellyfin, shows them a message. */
+@Composable
+private fun StreamDialog(sid: String, type: String, p: com.bdlnaredi.goatstack.data.Playing, kind: String, onClose: () -> Unit) {
+    val ctx = LocalCtx.current
+    val g = LocalGoat.current
+    val toast = toaster()
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val end = kind == "end"
+    var text by remember { mutableStateOf(if (end) "Stopped by the server owner" else "") }
+    var busy by remember { mutableStateOf(false) }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = { if (!busy) onClose() }, containerColor = g.surface,
+        title = { Text(if (end) "End this stream?" else "Message ${p.user.ifEmpty { "the viewer" }}") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("${p.user.ifEmpty { "Someone" }} is watching ${p.title}${if (p.sub.isNotEmpty()) " · " + p.sub else ""}", color = g.muted, style = MaterialTheme.typography.bodySmall)
+                GoatField(text, { text = it.take(200) }, if (end) "Reason shown to them" else "Message", Icons.Rounded.PlayCircle)
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(enabled = !busy && (end || text.isNotBlank()), onClick = {
+                busy = true
+                scope.launch {
+                    try {
+                        ctx.api.send("POST", "/api/$type/$sid/" + (if (end) "terminate" else "message"), kotlinx.serialization.json.buildJsonObject {
+                            put("session", kotlinx.serialization.json.JsonPrimitive(p.id)); put(if (end) "reason" else "text", kotlinx.serialization.json.JsonPrimitive(text))
+                        })
+                        toast(if (end) "Stream ended" else "Message sent"); onClose()
+                    } catch (e: Exception) { toast(e.message ?: "That did not work"); busy = false }
+                }
+            }) { Text(if (end) "End stream" else "Send", color = if (end) g.bad else g.primary) }
+        },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onClose, enabled = !busy) { Text("Cancel", color = g.muted) } },
+    )
+}

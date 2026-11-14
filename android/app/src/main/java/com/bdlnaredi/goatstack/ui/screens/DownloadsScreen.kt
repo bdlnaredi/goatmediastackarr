@@ -195,6 +195,7 @@ private fun Torrents(sid: String, qbit: Boolean = true) {
     val toast = toaster()
     var filter by rememberSaveable { mutableStateOf("active") }
     var deleting by remember { mutableStateOf<Torrent?>(null) }
+    var early by remember { mutableStateOf<Triple<Torrent, Boolean, String>?>(null) }
     var withFiles by remember { mutableStateOf(false) }
     var cat by rememberSaveable { mutableStateOf<String?>(null) }
     var managing by remember { mutableStateOf(false) }
@@ -212,14 +213,18 @@ private fun Torrents(sid: String, qbit: Boolean = true) {
     var sort by remember { mutableStateOf(sp.getString("sort", "added")?.takeIf { k -> DL_SORTS.any { it.first == k } } ?: "added") }
     var rev by remember { mutableStateOf(sp.getBoolean("rev", false)) }
 
-    fun act(action: String, hashes: Any, ok: String, files: Boolean = false) {
+    fun act(action: String, hashes: Any, ok: String, files: Boolean = false, force: Boolean = false) {
         scope.launch {
             try {
                 ctx.api.send("POST", "/api/qb/$sid/act", buildJsonObject {
                     put("action", action); if (hashes is String) put("hashes", hashes) else put("hash", (hashes as Torrent).hash)
-                    if (files) put("files", true)
+                    if (files) put("files", true); if (force) put("force", true)
                 })
                 toast(ok)
+            } catch (e: com.bdlnaredi.goatstack.data.ApiError) {
+                // Not seeded long enough for its tracker yet: asked again (removing now can be a hit and run).
+                if (e.code == 409 && action == "delete" && hashes is Torrent) early = Triple(hashes, files, e.message ?: "")
+                else toast(e.message ?: "That did not work")
             } catch (e: Exception) { toast(e.message ?: "That did not work") }
         }
     }
@@ -318,6 +323,10 @@ private fun Torrents(sid: String, qbit: Boolean = true) {
             try { ctx.api.send("POST", "/api/qb/$sid/act", buildJsonObject { put("action", "category"); put("hash", t.hash); put("value", c) }); toast(if (c.isEmpty()) "Category removed" else "Moved to $c"); data.reload() }
             catch (e: Exception) { toast(e.message ?: "That did not work") }
         } }, onClose = { moving = null })
+    }
+    early?.let { (t, files, why) ->
+        Confirm("Not seeded long enough yet", "$why. Removing it now can count as a hit and run, which trackers warn or ban for.\n\n${t.name}", "Remove anyway", danger = true,
+            onYes = { early = null; act("delete", t, "Removed", files = files, force = true) }, onNo = { early = null; toast("Kept, so it can finish seeding") })
     }
     deleting?.let { t ->
         Confirm("Remove this download?", t.name, "Remove", danger = true,

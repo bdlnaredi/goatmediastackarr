@@ -553,7 +553,7 @@ async function api(url,method='GET',body){
   const r=await fetch(url,{method,headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});
   const d=await r.json().catch(()=>({}));
   if(!r.ok&&d.need2fa&&!api.gated){api.gated=true;location.reload()}
-  if(!r.ok)throw new Error(d.error||'Something went wrong');
+  if(!r.ok){const e=new Error(d.error||'Something went wrong');e.status=r.status;e.data=d;throw e}
   return d;
 }
 let DEMO=false;
@@ -1184,15 +1184,18 @@ function dashView(){
       const all=[];for(const s of plx)for(const x of (d.plex[s.id]||[]))all.push({...x,svc:s.id});
       const playing=all.filter(x=>x.state==='playing'||x.state==='buffering'),kb=all.reduce((a,x)=>a+(x.kbps||0),0),tc=all.filter(x=>x.decision==='transcode').length;
       tw($('#v-w'),playing.length,n=>String(Math.round(n)));set('#v-ws',all.length?`${kb?(kb/1000).toFixed(1)+' Mbps, ':''}${tc?tc+' transcoding':'no transcoding'}${all.length>playing.length?', '+(all.length-playing.length)+' paused':''}`:T('Nobody is watching'));
-      const sig=JSON.stringify(all.map(x=>[x.svc,x.id,x.state,x.decision,x.res,Math.round((x.kbps||0)/100),x.title,x.sub]));
+      const sig=JSON.stringify(all.map(x=>[x.svc,x.id,x.state,x.decision,x.res,Math.round((x.kbps||0)/100),x.title,x.sub,x.why]));
       for(const x of all)np[x.svc+x.id]={off:x.offset,dur:x.duration,state:x.state,at:Date.now()};
       const el=$('#np');if(el&&seen.np!==sig){seen.np=sig;
         const dc={direct:['Direct play','ok'],stream:['Direct stream','acc'],transcode:['Transcoding','warn']};
         el.innerHTML=all.length?`<h2 class="sec">Watching now</h2><div class="npg">${all.map(x=>`<div class="np" data-k="${esc(x.svc+x.id)}"><div class="npi">${x.thumb?`<img src="${msBase(x.svc)}/img?p=${encodeURIComponent(x.thumb)}" alt="" loading="lazy">`:''}</div>
           <div class="npb"><div><b>${esc(x.title)}</b> <span class="mute">${esc(x.sub)}</span></div><div class="mute">${esc(x.user||'Someone')} on ${esc(x.player||x.device||'a device')}${x.where?', '+(x.where==='lan'?T('home network'):T('remote')):''}</div>
-          <div class="row" style="gap:6px;margin:8px 0"><span class="pill ${dc[x.decision][1]}">${T(dc[x.decision][0])}</span>${x.res?`<span class="pill">${esc(x.res)}</span>`:''}${x.kbps?`<span class="pill">${(x.kbps/1000).toFixed(1)} Mbps</span>`:''}${x.state!=='playing'?`<span class="pill">${esc(x.state==='paused'?T('Paused'):x.state==='buffering'?T('Buffering'):x.state)}</span>`:''}</div>
+          <div class="row" style="gap:6px;margin:8px 0"><span class="pill ${dc[x.decision][1]}"${x.why?` title="${esc(x.why)}"`:''}>${T(dc[x.decision][0])}</span>${x.res?`<span class="pill">${esc(x.res)}</span>`:''}${x.kbps?`<span class="pill">${(x.kbps/1000).toFixed(1)} Mbps</span>`:''}${x.state!=='playing'?`<span class="pill">${esc(x.state==='paused'?T('Paused'):x.state==='buffering'?T('Buffering'):x.state)}</span>`:''}</div>
+          ${x.decision==='transcode'&&x.why?`<div class="mute" style="font-size:12.5px;margin:-2px 0 6px">${esc(x.why[0].toUpperCase()+x.why.slice(1))}</div>`:''}
           <progress class="npp" value="${x.progress}" max="1" aria-label="Playback position"></progress><div class="mute npt">${clock(x.offset)} / ${clock(x.duration)}</div></div>
-          ${me.role==='admin'&&x.id?`<button data-end="${esc(x.id)}" data-svc="${x.svc}">End stream</button>`:''}</div>`).join('')}</div>`:'';
+          ${me.role==='admin'&&x.id?`<div class="row" style="gap:6px">${(services.find(z=>z.id===x.svc)||{}).type==='jellyfin'?`<button data-msg="${esc(x.id)}" data-svc="${x.svc}">Message</button>`:''}<button data-end="${esc(x.id)}" data-svc="${x.svc}">End stream</button></div>`:''}</div>`).join('')}</div>`:'';
+        el.querySelectorAll('[data-msg]').forEach(b=>b.onclick=async()=>{const t=prompt('Message to show on their screen:','');if(!t)return;
+          try{await api(`${msBase(b.dataset.svc)}/message`,'POST',{session:b.dataset.msg,text:t});toast('Message sent','ok')}catch(x){toast(x.message,'bad')}});
         el.querySelectorAll('[data-end]').forEach(b=>b.onclick=async()=>{const why=prompt('Message shown to the viewer:','Stopped by the server owner');if(why===null)return;
           try{await api(`${msBase(b.dataset.svc)}/terminate`,'POST',{session:b.dataset.end,reason:why});toast('Stream ended','ok')}catch(x){toast(x.message,'bad')}})}}
   };
@@ -2052,14 +2055,14 @@ async function trafficPanel(){
 function dlView(){
   const s=first('torrent');if(!s)return noSvc('qBittorrent, ruTorrent or Deluge');
   const QB=s.type==='qbittorrent';
-  const admin=me.role==='admin',act=b=>api(`/api/qb/${s.id}/act`,'POST',b);
+  const admin=me.role==='admin',act=b=>qbAct(s.id,b);
   dlH.length=ulH.length=0;dlSel.clear();setTimeout(trafficPanel,0);
   $('#m').innerHTML=`<div class="panel"><div class="row" style="gap:30px;align-items:flex-end"><div><div class="mute">Download</div><b id="dv" style="font-size:28px;letter-spacing:-.03em;color:var(--link)">–</b></div>
     <div><div class="mute">Upload</div><b id="uv" style="font-size:22px;color:var(--ok-t)">–</b></div><span class="mute" id="pk" style="margin-left:auto"></span><span class="mute" id="fr"></span><span class="pill" id="vp">VPN</span></div>
     <div id="gr" style="margin-top:10px"></div><div class="row mute" style="justify-content:space-between"><span>2 minutes ago</span><span>now</span></div></div>
     <div class="panel" id="trf" style="margin-top:14px"></div>
     <div class="row" style="margin:14px 0">${QB?'<button id="alt">Speed limits</button>':''}<button id="pa">${ic('pause')}Pause all</button><button id="ra">${ic('play')}Resume all</button><button id="hs">${ic('hist')}History</button>
-    ${admin&&QB?`<button id="lm">Speed limit settings</button><button id="cm">Categories and tags</button>`:''}${!QB?`<span class="mute" style="font-size:13px">${s.type==='deluge'?'Deluge':'ruTorrent'}: categories are its labels. Speed limits and schedules stay in its own page.</span>`:''}</div>
+    ${admin?`<button id="rsb">Ratio and seeding</button>`:''}${admin&&QB?`<button id="lm">Speed limit settings</button><button id="cm">Categories and tags</button>`:''}${!QB?`<span class="mute" style="font-size:13px">${s.type==='deluge'?'Deluge':'ruTorrent'}: categories are its labels. Speed limits and schedules stay in its own page.</span>`:''}</div>
     <div class="row" style="margin-bottom:12px"><input id="sq" type="search" placeholder="Search torrents" aria-label="Search torrents" style="flex:1;min-width:150px">
     <select id="sc" aria-label="Category"></select><select id="so" aria-label="Sort">${DL_SORTS.map(([k,n])=>`<option value="${k}">${n}</option>`).join('')}</select><button class="icon${dlRev?' on':''}" id="sor" title="Reverse the order" aria-label="Reverse the order" aria-pressed="${dlRev}">⇅</button>
     ${can('add')?`<button class="primary" id="ad">${ic('rq')}Add downloads</button>`:''}</div>
@@ -2138,6 +2141,7 @@ function dlView(){
   if($('#ad'))$('#ad').onclick=()=>addDialog(s,meta,()=>{toast('Added to downloads','ok');draw()});
   $('#hs').onclick=()=>histDialog(s);
   if(!can('control'))['#alt','#pa','#ra'].forEach(i=>{$(i).disabled=true});
+  if(admin&&$('#rsb'))$('#rsb').onclick=ratioDialog;
   if(admin&&QB){$('#lm').onclick=()=>limDialog(s);$('#cm').onclick=()=>catDialog(s,()=>meta,loadMeta)}
   draw();loadMeta();timer=[tick(draw,1000),tick(loadMeta,30000)];
 }
@@ -2162,7 +2166,7 @@ function addDialog(s,meta,done){
 }
 async function openTorrent(s,x,meta,after){
   if(!x)return;
-  const admin=me.role==='admin',act=b=>api(`/api/qb/${s.id}/act`,'POST',{hashes:[x.hash],...b});
+  const admin=me.role==='admin',act=b=>qbAct(s.id,{hashes:[x.hash],...b});
   const o=modal(`<div class="row"><h2 style="margin:0;flex:1;min-width:0;word-break:break-word">${esc(x.name)}</h2><button data-x>Close</button></div>
     <div class="seg" id="tb" style="margin:12px 0"><button class="on" data-k="g">General</button><button data-k="f">Files</button><button data-k="t">Trackers</button><button data-k="p">Peers</button></div>
     <div id="tc"><p class="mute">Loading…</p></div>
@@ -2212,6 +2216,33 @@ const DAYS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 function limWhen(l){
   const d=l.days&&l.days.length<7?l.days:null,dt=!d?'':d.join()==='1,2,3,4,5'?'Mon–Fri':d.join()==='0,6'?'weekends':d.map(i=>DAYS[i]).join(' ');
   return [l.from?`${l.from}–${l.to}`:'',dt].filter(Boolean).join(', ')||'all the time';
+}
+// Torrent actions; removing ones that have not met their tracker's seeding rule yet asks first.
+async function qbAct(sid,b){
+  try{return await api(`/api/qb/${sid}/act`,'POST',b)}
+  catch(e){
+    if(e.status!==409||!e.data||!e.data.risk)throw e;
+    const l=e.data.risk;
+    if(!confirm(`${l.length===1?'This torrent has':`These ${l.length} torrents have`} not been seeded long enough for ${l.length===1?'its tracker':'their trackers'} yet:\n\n${l.slice(0,6).map(x=>`• ${x.name}\n   ${x.host}: needs ${x.need}`).join('\n')}${l.length>6?`\n…and ${l.length-6} more`:''}\n\nRemoving now can count as a hit and run, which trackers warn or ban for. Remove anyway?`))throw new Error('Kept, so it can finish seeding');
+    return api(`/api/qb/${sid}/act`,'POST',{...b,force:true});
+  }
+}
+// Ratio and seeding per tracker, and the torrents that still need seeding before they can go.
+async function ratioDialog(){
+  const o=modal(`<h2 style="margin-top:0">Ratio and seeding</h2><p class="mute">Per tracker, counted from the torrents still in your download apps. A torrent removed before it meets its tracker's seeding rule can count as a <b>hit and run</b>.</p><div id="rtb">${skel(4)}</div><div class="row" style="margin-top:12px"><button type="button" data-x>Close</button></div>`);
+  o.querySelector('[data-x]').onclick=o.close;
+  const draw=async()=>{let d;try{d=await api('/api/ratio')}catch(x){o.querySelector('#rtb').innerHTML=`<div class="err">${esc(x.message)}</div>`;return}
+    const rl=r=>!r?'<span class="mute">No rule</span>':[r.ratio?`ratio ${r.ratio}`:'',r.days?`${r.days} day${r.days>1?'s':''}`:''].filter(Boolean).join(r.how==='both'?' and ':' or ');
+    const age=s=>s>=86400?Math.floor(s/86400)+' d':s>=3600?Math.floor(s/3600)+' h':Math.floor(s/60)+' min';
+    o.querySelector('#rtb').innerHTML=(d.rules?'':`<div class="box" style="margin-bottom:10px">Set each tracker's seeding rule (the ratio or days it asks for) in <a href="/settings/rules" data-go>Settings → Download rules → Seeding goals</a>. Removing by itself can stay off; the rules are used here, and to ask before a torrent is removed too early.</div>`)+
+      `<div style="overflow-x:auto"><table class="tbl" style="width:100%"><thead><tr><th>Tracker</th><th>Torrents</th><th>Seeding</th><th>Uploaded</th><th>Downloaded</th><th>Ratio</th><th>Its rule</th><th>Not seeded enough</th></tr></thead><tbody>
+      ${d.trackers.map(t=>`<tr><td><b>${esc(t.host||'Unknown tracker')}</b></td><td>${t.n}</td><td>${t.seeding}</td><td>${fmt(t.up)}</td><td>${fmt(t.down)}</td><td>${t.ratio==null?'–':t.ratio.toFixed(2)}</td><td>${rl(t.rule)}</td><td>${t.risk?`<span class="pill${t.stopped?' bad':' warn'}">${t.risk}${t.stopped?`, ${t.stopped} not seeding`:''}</span>`:'<span class="mute">None</span>'}</td></tr>`).join('')||'<tr><td colspan="8" class="mute">No torrents.</td></tr>'}</tbody></table></div>
+      <h3>Still seeding for their tracker (${d.risk.length})</h3>
+      ${d.risk.length?d.risk.map(x=>`<div class="box row" style="margin:6px 0;gap:6px 10px;flex-wrap:wrap"><div style="flex:1 1 240px;min-width:0"><b style="word-break:break-word">${esc(x.name)}</b><div class="mute" style="font-size:13px">${esc(x.host)} · needs ${esc(x.need)} · seeding ${age(x.seedSecs)}</div></div>${x.stopped?`<span class="pill bad">Not seeding (${esc(x.state)})</span><button data-rs="${esc(x.sid)}|${esc(x.hash)}">${ic('play')}Resume</button>`:'<span class="pill ok">Seeding</span>'}</div>`).join(''):'<p class="mute">None: every finished torrent has met its tracker\'s rule.</p>'}`;
+  };
+  o.addEventListener('click',async e=>{const b=e.target.closest('[data-rs]');if(b){const [sid,h]=b.dataset.rs.split('|');b.disabled=true;try{await api(`/api/qb/${sid}/act`,'POST',{action:'resume',hashes:[h]});toast('Resumed','ok');setTimeout(draw,1500)}catch(x){toast(x.message,'bad');b.disabled=false}}
+    const g=e.target.closest('[data-go]');if(g){e.preventDefault();o.close();goto('st:rules')}});
+  draw();
 }
 async function limDialog(s){
   let p,cl={limits:{}},meta={categories:[]};
@@ -3987,6 +4018,23 @@ async function trkView(){
     if(e.target.closest('[data-pg]'))return openTab(async()=>{const r=await api('/api/sites/open-url','POST',{url:x.info});if(r.direct)toast('Add this tracker under Tracker websites to open its pages through GoatMediaStackarr','');return r.url});
     const b=e.target.closest('[data-dl]');if(b){b.disabled=true;try{await api('/api/trackers/grab','POST',{id:x.id,category:$('#tcat').value});toast('Added to qBittorrent','ok');b.textContent='Added'}catch(er){toast(er.message,'bad');b.disabled=false}}};
 }
+// Duplicate copies: extra videos in a movie's or show's folder, and a movie in two Radarrs.
+async function dupPanel(again){
+  const el=$('#dupp');if(!el)return;let d;try{d=await api('/api/dupes')}catch(x){el.innerHTML=`<div class="err">${esc(x.message)}</div>`;return}
+  const when=t=>new Date(t).toLocaleString(undefined,{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+  el.innerHTML=`<div class="row"><b style="font-size:16px" class="grow">Duplicate copies</b>${d.at&&!d.running?`<span class="pill${d.total?' warn':' ok'}">${d.total?fmt(d.total)+' to free':'None'}</span>`:''}<button id="dups"${d.running?' disabled':''}>${d.running?'Looking…':d.at?'Look again':'Look for duplicates'}</button></div>
+    <p class="mute" style="margin:6px 0 0">A second video in a movie's folder (an old copy left after an upgrade), an episode twice in a show's folder, or a movie in two Radarrs. Only copies Sonarr and Radarr do not use can be deleted here; a movie in two Radarrs can be taken out of one of them.${d.at?` Last looked ${when(d.at)}.`:''}</p>
+    ${d.error?`<div class="err">${esc(d.error)}</div>`:''}
+    ${d.groups.map((g,gi)=>`<div class="box" style="margin-top:10px"><div class="row" style="gap:6px 10px"><b class="grow" style="word-break:break-word">${esc(g.title)}${g.year&&g.kind!=='episode'?` <span class="mute">(${g.year})</span>`:''}</b><span class="pill">${g.kind==='twice'?'In two Radarrs':g.kind==='episode'?esc(g.app)+' · episode':esc(g.app)}</span></div>
+      ${g.files.map((f,fi)=>`<div class="row" style="gap:6px 10px;margin-top:6px;flex-wrap:wrap"><span class="mute" style="flex:1 1 260px;word-break:break-all;font-size:13px">${esc(f.path)}</span><span>${fmt(f.size)}</span>
+        ${g.kind==='twice'?`<span class="pill">${esc(f.app)}${f.quality?' · '+esc(f.quality):''}</span><button class="danger" data-dt="${gi}:${fi}">Remove from ${esc(f.app)}</button>`:f.tracked?`<span class="pill ok">Used by ${esc(g.app)}</span>`:`<button class="danger" data-dp="${gi}:${fi}">Delete</button>`}</div>`).join('')}</div>`).join('')}
+    ${d.at&&!d.groups.length&&!d.running?'<p class="mute">No duplicate copies.</p>':''}`;
+  el.querySelector('#dups').onclick=async()=>{try{await api('/api/dupes/scan','POST',{});dupPanel(true)}catch(x){toast(x.message,'bad')}};
+  if(d.running){setTimeout(()=>{if($('#dupp'))dupPanel(true)},2000);return}
+  el.onclick=async e=>{const b=e.target.closest('[data-dp],[data-dt]');if(!b)return;const [gi,fi]=(b.dataset.dp||b.dataset.dt).split(':').map(Number),g=d.groups[gi],f=g.files[fi];
+    if(!confirm(b.dataset.dp?`Delete this file for good?\n\n${f.path}\n\n${g.app} keeps using the other copy.`:`Take ${g.title} out of ${f.app}?\n\nIts file there is deleted and ${f.app} will not add it again. The copy in the other Radarr stays.`))return;
+    b.disabled=true;try{await api('/api/dupes/remove','POST',b.dataset.dp?{path:f.path}:{sid:f.sid,fileId:f.fileId});toast(`Deleted, ${fmt(f.size)} freed`,'ok');dupPanel(true)}catch(x){toast(x.message,'bad');b.disabled=false}};
+}
 // File Browser's share links: the ones made, how often each was downloaded, copy or remove them.
 async function fbShares(){
   const o=modal(`<h2 style="margin-top:0">Shared links</h2><p class="mute">Links made with <b>Share</b> in File Browser. Anyone with a link can open it without signing in. Downloads are counted from today on.</p><div id="fsl">${skel(3)}</div>
@@ -4038,14 +4086,14 @@ async function hlView(){
   // Every app reports the same disks, so they are shown once, with what each folder is for.
   const seen=new Set(),disks=l.flatMap(x=>x.disks||[]).filter(d=>{const k=d.path+'|'+d.total;if(seen.has(k))return false;seen.add(k);return true});
   const diskRow=d=>{const used=(1-d.free/d.total)*100;return `<div style="margin:10px 0"><div class="row" style="gap:4px 12px"><span class="grow"><b style="font-weight:560">${esc(d.label||d.path)}</b>${d.label?` <span class="mute">${esc(d.path)}</span>`:''}</span><span class="mute">${fmt(d.free)} free of ${fmt(d.total)} · ${used.toFixed(0)}% used</span></div><div class="bar" role="img" aria-label="${used.toFixed(0)} percent used"><i class="${used>90?'bad':''}" style="width:${used.toFixed(0)}%"></i></div>${fcLine(d)}</div>`};
-  $('#m').innerHTML=`<div class="panel" id="warns" style="margin-bottom:14px"><b style="font-size:16px">Needs attention</b><div class="mute" style="margin-top:6px">Asking every app…</div></div><div class="panel" id="heal" style="margin-bottom:14px"></div>`+(disks.length?`<div class="panel" style="margin-bottom:14px"><b style="font-size:16px">Disk space</b>${disks.map(diskRow).join('')}</div>`:'')+l.map(x=>{
+  $('#m').innerHTML=`<div class="panel" id="warns" style="margin-bottom:14px"><b style="font-size:16px">Needs attention</b><div class="mute" style="margin-top:6px">Asking every app…</div></div><div class="panel" id="heal" style="margin-bottom:14px"></div>${me.role==='admin'?'<div class="panel" id="dupp" style="margin-bottom:14px"></div>':''}`+(disks.length?`<div class="panel" style="margin-bottom:14px"><b style="font-size:16px">Disk space</b>${disks.map(diskRow).join('')}</div>`:'')+l.map(x=>{
     const n=x.issues.length+x.queue.length+(x.ok?0:1);
     return `<div class="panel" style="margin-bottom:14px"><div class="row"><b style="font-size:16px">${esc(x.name)}</b>${String(TYPES[x.type]||x.type).toLowerCase()===String(x.name).toLowerCase()?'':`<span class="mute">${esc(TYPES[x.type]||x.type)}</span>`}<span class="grow"></span>${x.missing!=null?`<span class="mute">${x.missing} missing</span>`:''}<span class="pill ${!x.ok?'bad':n?'warn':'ok'}">${!x.ok?'Not reachable':n?n+' to check':'Healthy'}</span></div>
       ${!x.ok?`<div class="err">${esc(x.error||'')}</div>`:''}
       ${x.issues.map(i=>`<div class="box row" style="margin-top:8px"><span class="pill ${i.level==='bad'?'bad':'warn'}">${i.level==='bad'?'Error':'Warning'}</span><span class="grow" style="word-break:break-word">${esc(i.text)}</span></div>`).join('')}
       ${x.queue.length?`<div class="mute" style="margin-top:12px">Downloads that are stuck</div>${x.queue.map(i=>`<div class="box row" style="gap:8px"><div class="grow" style="min-width:0"><b style="word-break:break-word">${esc(i.title)}</b><div class="mute">${esc(i.message)}</div></div>${i.downloadId&&['sonarr','radarr'].includes(x.type)?`<button data-qi="${esc(x.id)}" data-qd="${esc(i.downloadId)}" data-qn="${esc(i.title)}">Import</button>`:''}</div>`).join('')}`:''}
       </div>`}).join('');
-  healPanel();warnPanel();
+  healPanel();warnPanel();dupPanel();
   // Listened for once. The mark is a property, not a data-qi attribute: one on #m would make every click on the page
   // look like an Import button (closest('[data-qi]') finds #m itself) and open an empty import window.
   const mm=$('#m');if(!mm._qiOn){mm._qiOn=true;mm.addEventListener('click',e=>{const b=e.target.closest('button[data-qi]');if(b&&tab==='hl')importDialog({sid:b.dataset.qi,downloadId:b.dataset.qd,name:b.dataset.qn,after:hlView})})}

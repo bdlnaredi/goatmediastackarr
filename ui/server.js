@@ -773,7 +773,18 @@ function plexMap(x) {
   return { id: ss.id || '', sid: ss.id || '', user: (x.User || {}).title || '', player: pl.title || '', device: pl.product || pl.platform || '', state: pl.state || '',
     title: ep ? x.grandparentTitle : x.title, sub: ep ? `S${pad2(x.parentIndex)}E${pad2(x.index)} ${x.title}` : String(x.year || ''), kind: ep ? 'episode' : x.type === 'track' ? 'track' : 'movie',
     progress: x.duration ? Math.min(1, (x.viewOffset || 0) / x.duration) : 0, offset: x.viewOffset || 0, duration: x.duration || 0,
-    thumb: x.grandparentThumb || x.parentThumb || x.thumb || '', decision: dec, res, kbps: +ss.bandwidth || 0, where: ss.location || '' };
+    thumb: x.grandparentThumb || x.parentThumb || x.thumb || '', decision: dec, res, kbps: +ss.bandwidth || 0, where: ss.location || '', why: plexWhy(ts, md) };
+}
+// Why Plex is converting the video or sound, in words ("video HEVC → H264, by the graphics chip").
+function plexWhy(ts, md) {
+  if (!ts) return '';
+  const up = v => String(v || '').toUpperCase(), parts = [];
+  if (ts.videoDecision === 'transcode') parts.push(`video ${up(ts.sourceVideoCodec || md.videoCodec)} → ${up(ts.videoCodec)}`.replace(/^video\s+→/, 'video →'));
+  if (ts.audioDecision === 'transcode') parts.push(`sound ${up(ts.sourceAudioCodec || md.audioCodec)} → ${up(ts.audioCodec)}`);
+  if (ts.subtitleDecision === 'burn') parts.push('subtitles burned in');
+  if (ts.videoDecision === 'transcode') parts.push(ts.transcodeHwFullPipeline || ts.transcodeHwEncoding ? 'by the graphics chip' : 'by the processor (slow)');
+  if (ts.throttled) parts.push('ahead, resting');
+  return parts.join(', ');
 }
 // Jellyfin (and Emby) report sessions in their own shape; this turns one into the same shape Plex sessions use, so every page treats them alike.
 const jfTicks = t => Math.round((+t || 0) / 1e4);
@@ -784,7 +795,18 @@ function jfMap(x) {
     title: cut(ep ? n.SeriesName : n.Name, 120), sub: ep ? `S${pad2(n.ParentIndexNumber)}E${pad2(n.IndexNumber)} ${cut(n.Name, 100)}` : String(n.ProductionYear || ''),
     kind: ep ? 'episode' : n.Type === 'Audio' ? 'track' : 'movie', progress: dur ? Math.min(1, off / dur) : 0, offset: off, duration: dur, thumb: (ep && n.SeriesId) || n.Id || '',
     decision: ps.PlayMethod === 'Transcode' ? 'transcode' : ps.PlayMethod === 'DirectStream' ? 'stream' : 'direct', res,
-    kbps: Math.round(((ti && ti.Bitrate) || n.Bitrate || 0) / 1000), where: x.RemoteEndPoint && !/^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|127\.|::1|fe80|fd)/i.test(x.RemoteEndPoint) ? 'wan' : 'lan' };
+    kbps: Math.round(((ti && ti.Bitrate) || n.Bitrate || 0) / 1000), where: x.RemoteEndPoint && !/^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|127\.|::1|fe80|fd)/i.test(x.RemoteEndPoint) ? 'wan' : 'lan',
+    why: ps.PlayMethod === 'Transcode' && ti ? jfWhy(ti) : '' };
+}
+// Jellyfin's reasons for converting, in words.
+const JF_WHY = { ContainerNotSupported: 'the file type', VideoCodecNotSupported: 'the video format', AudioCodecNotSupported: 'the sound format', SubtitleCodecNotSupported: 'the subtitles',
+  ContainerBitrateExceedsLimit: 'too big for the connection', VideoBitrateNotSupported: 'too big for the connection', AudioChannelsNotSupported: 'the sound channels', VideoResolutionNotSupported: 'the resolution',
+  VideoLevelNotSupported: 'the video level', VideoProfileNotSupported: 'the video profile', VideoRangeTypeNotSupported: 'HDR', AudioBitrateNotSupported: 'the sound bitrate', DirectPlayError: 'direct play failed' };
+function jfWhy(ti) {
+  const r = [...new Set((ti.TranscodeReasons || []).map(k => JF_WHY[k] || k))];
+  const parts = [r.length ? 'because of ' + r.join(', ') : '', ti.IsVideoDirect === false && ti.VideoCodec ? `video → ${String(ti.VideoCodec).toUpperCase()}` : '', ti.IsAudioDirect === false && ti.AudioCodec ? `sound → ${String(ti.AudioCodec).toUpperCase()}` : '',
+    ti.HardwareAccelerationType ? 'by the graphics chip' : ti.IsVideoDirect === false ? 'by the processor (slow)' : ''];
+  return parts.filter(Boolean).join(', ');
 }
 const jfGet = async (s, pth, opt = {}) => {
   const x = await fetch(s.url.replace(/\/+$/, '') + pth, { signal: AbortSignal.timeout(8000), ...opt, headers: { 'X-Emby-Token': s.apiKey || '', Accept: 'application/json', ...(opt.headers || {}) } });
@@ -1641,6 +1663,65 @@ function backupNow(kind = 'auto', toCloud = true) {
   return name;
 }
 // Copies a backup to the cloud storage set under Settings → Backup (S3-compatible or WebDAV), and remembers how it went.
+// ---------- Duplicate copies ----------
+// A movie's folder holding more than one video (an old copy left after an upgrade, a second release copied in by
+// hand), a show's folder with an episode twice, and a movie with a file in two Radarrs. Only files that are not the
+// one Sonarr or Radarr knows are offered for removal (deleting those changes nothing in the apps); a movie in two
+// Radarrs is taken out of the Radarr chosen, with its file, and kept out of it.
+const VIDEO = /\.(mkv|mp4|m4v|avi|mov|wmv|ts|m2ts|webm|mpg|mpeg|iso)$/i, NOT_MAIN = /(^|[\s._-])(sample|trailer|featurette|extras?|behind[\s._-]?the[\s._-]?scenes|deleted[\s._-]?scenes)([\s._-]|$)/i;
+const SKIP_DIRS = /^(extras?|featurettes?|behind the scenes|deleted scenes|interviews|scenes|shorts|trailers|samples?|subs|subtitles|other|\..*)$/i;
+const DUP_MIN = 150 * 1024 * 1024;
+let dupState = { at: 0, running: false, groups: [], error: '' };
+function videosIn(dir, depth = 2) {
+  const out = [];
+  let l; try { l = fs.readdirSync(dir, { withFileTypes: true }); } catch { return out; }
+  for (const e of l) {
+    const f = path.join(dir, e.name);
+    if (e.isDirectory()) { if (depth > 1 && !SKIP_DIRS.test(e.name)) out.push(...videosIn(f, depth - 1)); continue; }
+    if (!e.isFile() || !VIDEO.test(e.name) || NOT_MAIN.test(e.name)) continue;
+    let st; try { st = fs.statSync(f); } catch { continue; }
+    if (st.size >= DUP_MIN) out.push({ path: f, size: st.size, at: st.mtimeMs });
+  }
+  return out;
+}
+const SE = /S(\d{1,3})[ ._-]?E(\d{1,3})(?:[ ._-]?-?E(\d{1,3}))?|(\d{1,2})x(\d{2,3})/i;
+async function dupScan() {
+  if (dupState.running) return; dupState.running = true;
+  const groups = [], byTmdb = new Map();
+  try {
+    for (const s of db.services.filter(x => x.type === 'radarr')) { try {
+      for (const x of await arrGet(s, '/api/v3/movie')) {
+        if (!x.hasFile || !x.movieFile) continue;
+        if (+x.tmdbId > 0) byTmdb.set(+x.tmdbId, [...(byTmdb.get(+x.tmdbId) || []), { s, x }]);
+        if (!x.path || !fs.existsSync(x.path)) continue;
+        const known = path.join(x.path, x.movieFile.relativePath || ''), v = videosIn(x.path);
+        if (v.length < 2) continue;
+        const files = v.map(f => ({ ...f, tracked: f.path === known || f.path === x.movieFile.path }));
+        if (!files.some(f => f.tracked)) continue;   // the known file is not where it should be: leave it to Radarr
+        groups.push({ kind: 'movie', sid: s.id, app: s.name, id: x.id, title: x.title, year: x.year || 0, files, extra: files.filter(f => !f.tracked).reduce((a, f) => a + f.size, 0) });
+      }
+    } catch {} }
+    // The same movie in two Radarrs (a 4K one and another, say).
+    for (const [, l] of byTmdb) if (l.length > 1) {
+      const files = l.map(({ s, x }) => ({ path: x.movieFile.path || path.join(x.path || '', x.movieFile.relativePath || ''), size: +x.movieFile.size || +x.sizeOnDisk || 0, tracked: true,
+        sid: s.id, app: s.name, fileId: x.movieFile.id, movieId: x.id, quality: (((x.movieFile.quality || {}).quality) || {}).name || '' }));
+      groups.push({ kind: 'twice', title: l[0].x.title, year: l[0].x.year || 0, files, extra: Math.min(...files.map(f => f.size)) });
+    }
+    for (const s of db.services.filter(x => x.type === 'sonarr')) { try {
+      for (const x of await arrGet(s, '/api/v3/series')) {
+        if (!x.path || !((x.statistics || {}).episodeFileCount > 0) || !fs.existsSync(x.path)) continue;
+        const by = new Map();
+        for (const f of videosIn(x.path, 3)) { const m = SE.exec(path.basename(f.path)); if (!m) continue;
+          const k = m[1] ? `S${pad2(+m[1])}E${pad2(+m[2])}` : `S${pad2(+m[4])}E${pad2(+m[5])}`; by.set(k, [...(by.get(k) || []), f]); }
+        const twice = [...by].filter(([, l]) => l.length > 1); if (!twice.length) continue;
+        const known = new Set(((await arrGet(s, '/api/v3/episodefile?seriesId=' + x.id)) || []).map(e => e.path));
+        for (const [k, l] of twice) { const files = l.map(f => ({ ...f, tracked: known.has(f.path) })); if (!files.some(f => f.tracked)) continue;
+          groups.push({ kind: 'episode', sid: s.id, app: s.name, id: x.id, title: `${x.title} ${k}`, year: x.year || 0, files, extra: files.filter(f => !f.tracked).reduce((a, f) => a + f.size, 0) }); }
+      }
+    } catch {} }
+    dupState = { at: Date.now(), running: false, groups: groups.sort((a, b) => b.extra - a.extra), error: '' };
+  } catch (e) { dupState = { ...dupState, running: false, error: e.message }; }
+}
 async function cloudCopy(file, name) {
   const c = CLOUD.clean({}, db.settings.cloud || {}); if (!c.on || CLOUD.problem(c) || DEMO) return null;
   try { const r = await CLOUD.send(c, file, name); db.settings.cloud = { ...db.settings.cloud, last: { at: Date.now(), ok: true, name } }; save(); return r; }
@@ -2162,6 +2243,42 @@ const goalMet = (r, x) => {
   if (!(r.ratio > 0) && !(r.days > 0)) return false;
   return r.how === 'both' ? (!(r.ratio > 0) || okR) && (!(r.days > 0) || okD) : okR || okD;
 };
+// What a torrent still needs to meet its tracker's rule, in words ("ratio 1.0 (now 0.42) or 7 days seeding (now 2)").
+function seedNeed(r, x) {
+  const parts = [r.ratio > 0 ? `ratio ${r.ratio} (now ${(+x.ratio || 0).toFixed(2)})` : '', r.days > 0 ? `${r.days} day${r.days === 1 ? '' : 's'} seeding (now ${Math.floor((x.seedSecs || 0) / 86400)})` : ''].filter(Boolean);
+  return parts.join(r.how === 'both' ? ' and ' : ' or ');
+}
+// Every torrent of every torrent app, with its tracker, what it uploaded and downloaded, and whether it has met its
+// tracker's seeding rule yet (the rules of Settings → Download rules → Seeding goals; it does not matter whether
+// removing by itself is on). A finished one that has not is "at risk": removed now, the tracker can count it as a hit
+// and run. One that is also not seeding (paused, stopped, failed) is not getting any closer.
+async function ratioItems(only) {
+  const cfg = seedCfg(), out = [], STOP = /paused|stopped|error|missing/i;
+  for (const s of db.services.filter(x => x.type === 'qbittorrent' && (!only || x.id === only.sid))) { try {
+    for (const x of await qb(s, '/api/v2/torrents/info' + (only ? '?hashes=' + only.hashes.join('|') : ''))) {
+      let host = trkCache.get(x.hash) || trackerHost(x.tracker);
+      if (!host) { try { host = trackerHost(((await qb(s, '/api/v2/torrents/trackers?hash=' + x.hash)) || []).map(t => t.url).find(u => /^(https?|udp):/.test(u))); } catch {} }
+      if (host) trkCache.set(x.hash, host);
+      const fin = x.completion_on > 0 ? x.completion_on * 1000 : 0;
+      out.push({ sid: s.id, app: s.name, hash: x.hash, name: x.name, cat: x.category || '', host: host || '', done: x.progress >= 1, state: String(x.state || ''),
+        up: +x.uploaded || 0, down: +x.downloaded || 0, ratio: +x.ratio || 0, seedSecs: +x.seeding_time || (fin ? (Date.now() - fin) / 1000 : 0), size: +x.size || 0 });
+    }
+  } catch {} }
+  for (const s of db.services.filter(x => tclients.TYPES.includes(x.type) && (!only || x.id === only.sid))) { try {
+    const c = tclients.clientFor(s);
+    for (const x of (await c.list()).torrents) {
+      if (only && !only.hashes.includes(x.hash)) continue;
+      let host = trkCache.get(x.hash);
+      if (!host) { try { const i = await c.info(x.hash); host = trackerHost(((i.trackers || [])[0] || {}).url); } catch {} }
+      if (host) trkCache.set(x.hash, host);
+      const h = db.history.find(y => y.hash === x.hash), got = (+x.size || 0) * (+x.progress || 0);
+      out.push({ sid: s.id, app: s.name, hash: x.hash, name: x.name, cat: x.category || '', host: host || '', done: x.progress >= 1, state: String(x.state || ''),
+        up: Math.round((+x.ratio || 0) * got), down: Math.round(got), ratio: +x.ratio || 0, seedSecs: h ? (Date.now() - h.at) / 1000 : 0, size: +x.size || 0 });
+    }
+  } catch {} }
+  return out.map(x => { const r = x.done && x.host ? ruleFor(cfg, x.host) : null, met = !r || goalMet(r, x);
+    return { ...x, rule: r ? { ratio: r.ratio || 0, days: r.days || 0, how: r.how || 'either' } : null, risk: !met, need: met ? '' : seedNeed(r, x), stopped: !met && STOP.test(x.state) }; });
+}
 // Every finished torrent in the chosen categories, from every torrent app, with its tracker, ratio and seeding time.
 async function seedItems(cfg) {
   const out = [], cats = cfg.cats.map(c => c.toLowerCase()), want = c => cats.includes(String(c || '').toLowerCase());
@@ -3154,6 +3271,11 @@ const goatServer = http.createServer(async (req, res) => {
       const hashes = b.hashes === 'all' ? 'all' : hs(b.hashes || b.hash);
       if (!s || !hashes) return send(res, 400, { error: 'Bad request' });
       if (hashes === 'all' && !['pause', 'resume'].includes(act)) return send(res, 400, { error: 'Bad request' });
+      // Removing torrents that have not met their tracker's seeding rule yet: asked first (a hit and run otherwise).
+      if (act === 'delete' && !b.force && hashes !== 'all') {
+        const risk = (await ratioItems({ sid: s.id, hashes: hashes.split('|').map(h => h.toLowerCase()) }).catch(() => [])).filter(x => x.risk);
+        if (risk.length) return send(res, 409, { error: `${risk.length === 1 ? 'This torrent has' : risk.length + ' torrents have'} not been seeded long enough for ${risk.length === 1 ? 'its tracker' : 'their trackers'} yet`, risk: risk.map(x => ({ name: x.name, host: x.host, need: x.need })) });
+      }
       if (s.type !== 'qbittorrent') {
         if (act === 'location' && adminOnly()) return;
         await tclients.clientFor(s).act(act, hashes === 'all' ? 'all' : hashes.split('|'), { value: b.value, files: !!b.files });
@@ -3991,8 +4113,17 @@ const goatServer = http.createServer(async (req, res) => {
     }
     if ((r = p.match(/^\/api\/jellyfin\/(\w+)\/terminate$/)) && m === 'POST') {
       const s = svcOf(r[1], 'jellyfin'), b = await readBody(req); if (!s || !/^[0-9a-fA-F-]{8,64}$/.test(b.session || '')) return send(res, 400, { error: 'Bad request' });
+      // The reason first, as a message on their screen (Plex shows its own), then stop.
+      if (b.reason) await jfGet(s, `/Sessions/${b.session}/Message`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ Header: 'GoatMediaStackarr', Text: cut(b.reason, 200), TimeoutMs: 10000 }) }).catch(() => {});
       await jfGet(s, `/Sessions/${b.session}/Playing/Stop`, { method: 'POST' });
       audit(me.name, 'Ended a Jellyfin stream', s.name); return send(res, 200, {});
+    }
+    // A message on a Jellyfin viewer's screen, without stopping (Plex has no way to do this).
+    if ((r = p.match(/^\/api\/jellyfin\/(\w+)\/message$/)) && m === 'POST') {
+      if (adminOnly()) return;
+      const s = svcOf(r[1], 'jellyfin'), b = await readBody(req); if (!s || !/^[0-9a-fA-F-]{8,64}$/.test(b.session || '') || !String(b.text || '').trim()) return send(res, 400, { error: 'Bad request' });
+      await jfGet(s, `/Sessions/${b.session}/Message`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ Header: cut(b.header || 'GoatMediaStackarr', 60), Text: cut(b.text, 300), TimeoutMs: 15000 }) });
+      audit(me.name, 'Sent a message to a Jellyfin viewer', s.name); return send(res, 200, {});
     }
     const taut = async (s, cmd, extra = '') => {
       const x = await fetch(`${s.url.replace(/\/+$/, '')}/api/v2?apikey=${encodeURIComponent(s.apiKey)}&cmd=${cmd}${extra}`, { signal: AbortSignal.timeout(10000) });
@@ -4702,6 +4833,32 @@ const goatServer = http.createServer(async (req, res) => {
       if (db.settings.fbHits) { delete db.settings.fbHits[r[1]]; save(); }
       audit(me.name, 'Removed a File Browser share link', r[1]); return send(res, 200, { ok: true });
     }
+    if (p.startsWith('/api/dupes')) {
+      if (adminOnly()) return;
+      if (p === '/api/dupes' && m === 'GET') return send(res, 200, { ...dupState, total: dupState.groups.reduce((a, g) => a + g.extra, 0) });
+      if (p === '/api/dupes/scan' && m === 'POST') { dupScan(); await new Promise(r => setTimeout(r, 50)); return send(res, 200, { running: true }); }
+      if (p === '/api/dupes/remove' && m === 'POST') {
+        const b = await readBody(req);
+        // Only a file the last look found, and not one Sonarr or Radarr knows: nothing else can be deleted this way.
+        if (b.path) {
+          const g = dupState.groups.find(x => x.kind !== 'twice' && x.files.some(f => f.path === b.path && !f.tracked));
+          if (!g) return send(res, 400, { error: 'Look for duplicates again first' });
+          try { fs.unlinkSync(b.path); } catch (e) { return send(res, 500, { error: 'Could not delete it: ' + e.code }); }
+          g.files = g.files.filter(f => f.path !== b.path); g.extra = g.files.filter(f => !f.tracked).reduce((a, f) => a + f.size, 0);
+          if (g.files.length < 2) dupState.groups = dupState.groups.filter(x => x !== g);
+          audit(me.name, 'Deleted a duplicate copy', b.path); return send(res, 200, { ok: true });
+        }
+        const g = dupState.groups.find(x => x.kind === 'twice' && x.files.some(f => f.sid === b.sid && f.fileId === +b.fileId));
+        const sv = g && db.services.find(x => x.id === b.sid && x.type === 'radarr');
+        if (!g || !sv || g.files.length < 2) return send(res, 400, { error: 'Look for duplicates again first' });
+        // Taken out of that Radarr with its file, and kept out (an import exclusion), so it is not downloaded again.
+        const f = g.files.find(x => x.sid === b.sid && x.fileId === +b.fileId);
+        await call(sv, `/api/v3/movie/${f.movieId}?deleteFiles=true&addImportExclusion=true`, { method: 'DELETE' });
+        g.files = g.files.filter(f => !(f.sid === b.sid && f.fileId === +b.fileId)); if (g.files.length < 2) dupState.groups = dupState.groups.filter(x => x !== g);
+        audit(me.name, 'Deleted a duplicate copy', `${g.title} in ${sv.name}`); return send(res, 200, { ok: true });
+      }
+      return send(res, 404, { error: 'Not found' });
+    }
     if (p === '/api/warnings' && m === 'GET') {
       const out = [], add = (sv, level, text, extra = {}) => out.push({ sid: sv.id, app: sv.name, type: sv.type, level, text: cut(text, 400), ...extra });
       await Promise.all(db.services.map(async sv => { try {
@@ -4712,6 +4869,10 @@ const goatServer = http.createServer(async (req, res) => {
         else if (sv.type === 'qbittorrent') { const d = await qb(sv, '/api/v2/transfer/info'); if (d && d.connection_status === 'firewalled') add(sv, 'warn', 'qBittorrent is firewalled: other people cannot connect to it, so torrents are slower. Open the incoming port (or turn on port forwarding in the VPN).');
           else if (d && d.connection_status === 'disconnected') add(sv, 'bad', 'qBittorrent has no connection to the internet.'); }
       } catch {} }));
+      // Finished torrents that have not met their tracker's seeding rule and are not seeding (paused, stopped, failed).
+      if (seedCfg().rules.length || seedCfg().other) { const st = (await ratioItems().catch(() => [])).filter(x => x.stopped);
+        for (const x of st.slice(0, 5)) add({ id: x.sid, name: x.app, type: 'qbittorrent' }, 'warn', `"${x.name}" is not seeding but still needs ${x.need} for ${x.host}. Removing it before then can count as a hit and run. Resume it under Downloads.`, {});
+        if (st.length > 5) add({ id: st[0].sid, name: st[0].app, type: 'qbittorrent' }, 'warn', `${st.length - 5} more torrents are not seeding but have not met their tracker's seeding rule yet. See Downloads → Ratio and seeding.`, {}); }
       if (GOAT_MANAGED && csOn()) { const ps = csPaused(); if (ps.length) {
         const pr = db.services.find(x => x.type === 'prowlarr'); let names = {};
         if (pr && ps.some(x => !x.name)) try { for (const x of await ext(pr, '/api/v1/indexer')) names[x.id] = x.name; } catch {}
@@ -5243,6 +5404,18 @@ const goatServer = http.createServer(async (req, res) => {
       histKeys.clear(); db.history.forEach(h => histKeys.add(h.hash + ':' + Math.round(h.at / 1000)));
       sessions.clear(); saveSess(); save(); audit('System', 'Restored a backup', 'started by ' + me.name);
       return send(res, 200, {});
+    }
+    // Ratio and seeding, per tracker: what was uploaded and downloaded (by the torrents still in the apps), and the
+    // ones that have not met the tracker's seeding rule yet.
+    if (p === '/api/ratio' && m === 'GET') {
+      if (adminOnly()) return;
+      const l = await ratioItems(), by = new Map(), cfg = seedCfg();
+      for (const x of l) { const k = x.host || ''; const t = by.get(k) || { host: k, n: 0, seeding: 0, up: 0, down: 0, risk: 0, stopped: 0 };
+        t.n++; t.up += x.up; t.down += x.down; if (x.done && !/paused|stopped|error|missing/i.test(x.state)) t.seeding++; if (x.risk) t.risk++; if (x.stopped) t.stopped++; by.set(k, t); }
+      const rule = h => { const r = h && ruleFor(cfg, h); return r ? { tracker: r.tracker, ratio: r.ratio || 0, days: r.days || 0, how: r.how || 'either' } : null; };
+      return send(res, 200, { trackers: [...by.values()].map(t => ({ ...t, ratio: t.down ? Math.round(t.up / t.down * 100) / 100 : null, rule: rule(t.host) })).sort((a, b) => b.up - a.up),
+        risk: l.filter(x => x.risk).sort((a, b) => (b.stopped - a.stopped) || (a.seedSecs - b.seedSecs)).slice(0, 300).map(x => ({ sid: x.sid, app: x.app, hash: x.hash, name: x.name, host: x.host, need: x.need, stopped: x.stopped, state: x.state, ratio: x.ratio, seedSecs: Math.round(x.seedSecs) })),
+        rules: cfg.rules.length > 0 || !!cfg.other });
     }
     if (p === '/api/seedgoals' && m === 'GET') return send(res, 200, { cfg: seedCfg(), log: (db.seedLog || []).slice(0, 50) });
     if (p === '/api/seedgoals' && m === 'PUT') {

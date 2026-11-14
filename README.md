@@ -99,7 +99,7 @@ It works on a phone as well as a computer. Every page has its own address (`/dow
 
 ### Find something to watch
 
-The dashboard is the front door: what's playing and who is watching, download and upload speed, the server's health and what needs you. Below that, a drifting poster wall of your library, featured titles, *Continue watching* from Plex or Jellyfin, *Recently added to Plex* (ready now), *Recently added to Radarr and Sonarr* (maybe still downloading), top rated and coming up. **Customize** chooses what it shows and in which order.
+The dashboard is the front door: what's playing and who is watching (and, for admins, why a stream is being converted, with *End stream* and a message to Jellyfin viewers), download and upload speed, the server's health and what needs you. Below that, a drifting poster wall of your library, featured titles, *Continue watching* from Plex or Jellyfin, *Recently added to Plex* (ready now), *Recently added to Radarr and Sonarr* (maybe still downloading), top rated and coming up. **Customize** chooses what it shows and in which order.
 
 | | |
 |---|---|
@@ -145,6 +145,7 @@ qBittorrent, ruTorrent, Deluge and SABnzbd in one list: pause, resume, remove, c
 - **Replace cam copies** (Settings → Download rules, off until you turn it on): a movie you only have as a cam, telesync or telecine copy has that file deleted a day (or as many as you choose) before it comes out digitally or on Blu-ray, and Radarr searches for a proper copy, so the good one arrives on release day. Everyone who can watch is told in a few words why it is gone for now. The page lists every such copy and when it goes; movies without a release date are kept.
 
   <img src="docs/screenshots/cam-copies.png" alt="Replace cam copies" width="620">
+- **Ratio and seeding**: per tracker, uploaded, downloaded and ratio, and every torrent that has not met its tracker's seeding rule yet. Removing one of those asks first, so there are no accidental hit and runs.
 - **RSS**: qBittorrent's feeds and auto-download rules, and how often the feeds are checked.
 - **Usenet**: SABnzbd's queue and history, and your provider's news servers (add, test, change, remove).
 - **Trackers** (admins): search all your Prowlarr trackers at once (or one on its own) and send a result to qBittorrent; or browse a tracker's own website inside GoatMediaStackarr, through the VPN or not, signed in once, with every download or magnet button going straight to qBittorrent.
@@ -159,6 +160,7 @@ Something always breaks eventually: a tracker goes down, an import fails, a disk
 - **Logs** (admins): what every app is writing, one at a time or **all together in time order**, newest at the bottom. Show only problems or errors, find a word, follow new lines as they come, copy or save them. The apps of the stack (and the VPN and GoatMediaStackarr itself) each keep their own log in `/config/logs/<app>/`, about 3 MB each; apps you added are read through their own API (Sonarr, Radarr, Lidarr, Readarr, Prowlarr, qBittorrent, SABnzbd, Bazarr, Tautulli, Seerr). Each app on the Stack page has a *Logs* button too.
 - **Alerts from the logs**: admins are told when an app **keeps writing errors** (5 in 15 minutes unless changed under Alerts).
 - **Health**: problems the apps report, stuck downloads, and disk space per folder, with a **forecast** of when each disk fills up at the rate of the last two weeks (and a small chart). **Fix problems by itself** (on by default) removes, blocks and searches again for downloads that failed or haven't moved for a day, and restarts a built-in app that stops answering. Every fix is listed there. *Needs attention* also names any tracker **cross-seed has paused** (after an error or "too many requests"), why and until when, with a button to restart it.
+- **Duplicate copies**: an old copy left in a movie's folder after an upgrade, an episode twice, or a movie in two Radarrs, with the space it frees. Copies Sonarr and Radarr use are never touched.
 - **Alerts** to email, ntfy, Discord, Telegram, Pushover, Gotify or any webhook, each with its own list of what it hears about: a disk filling up within two weeks, an app down, a newer app version out, a VPN that dropped, a parity check that ended.
 
 <p align="center"><img src="docs/screenshots/health.png" alt="Health" width="760"></p>
