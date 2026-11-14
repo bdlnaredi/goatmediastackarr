@@ -29,6 +29,7 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Sell
 import androidx.compose.material.icons.rounded.ArrowUpward
@@ -197,6 +198,7 @@ private fun Torrents(sid: String, qbit: Boolean = true) {
     var withFiles by remember { mutableStateOf(false) }
     var cat by rememberSaveable { mutableStateOf<String?>(null) }
     var managing by remember { mutableStateOf(false) }
+    var limits by remember { mutableStateOf(false) }
     var adding by remember { mutableStateOf(false) }
     var moving by remember { mutableStateOf<Torrent?>(null) }
     var importing by remember { mutableStateOf<Torrent?>(null) }
@@ -243,6 +245,9 @@ private fun Torrents(sid: String, qbit: Boolean = true) {
             if (ctx.user.can("add")) GhostButton("Add a link", icon = Icons.Rounded.Add, modifier = Modifier.weight(1f), onClick = { adding = true })
             // ruTorrent and Deluge make their labels themselves when one is first used; managing them is qBittorrent's.
             if (ctx.user.admin && qbit) GhostButton("Categories", icon = Icons.Rounded.Folder, modifier = Modifier.weight(1f), onClick = { managing = true })
+        }
+        if (ctx.user.admin && qbit) Row(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp)) {
+            GhostButton("Speed limits", icon = Icons.Rounded.Speed, modifier = Modifier.fillMaxWidth(), onClick = { limits = true })
         }
         // How they are ordered (kept on this phone), and the ⇅ button turns it around.
         Row(Modifier.fillMaxWidth().padding(end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -305,6 +310,7 @@ private fun Torrents(sid: String, qbit: Boolean = true) {
             }
         }
     }
+    if (limits) SpeedLimitsDialog(sid, cats.map { it.name }) { limits = false }
     if (managing) CategoriesDialog(sid, meta.value ?: QbMeta(), onChanged = { meta.reload() }) { managing = false }
     if (adding) AddLinkDialog(sid, cats) { ok -> adding = false; if (ok) data.reload() }
     moving?.let { t ->

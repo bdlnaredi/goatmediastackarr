@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Backspace
+import androidx.compose.material.icons.rounded.Fingerprint
 import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Pin
@@ -30,6 +31,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -55,12 +58,32 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
+/** Whether this phone can unlock with a fingerprint or face (one is set up in Android's settings). */
+fun biometricReady(context: android.content.Context): Boolean = try {
+    androidx.biometric.BiometricManager.from(context).canAuthenticate(androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_WEAK) == androidx.biometric.BiometricManager.BIOMETRIC_SUCCESS
+} catch (_: Exception) { false }
+
+/** Shows Android's fingerprint/face prompt; onOk when it recognised the owner. Cancelling just leaves the PIN. */
+fun askBiometric(activity: androidx.fragment.app.FragmentActivity, title: String, onOk: () -> Unit) {
+    val prompt = androidx.biometric.BiometricPrompt(activity, androidx.core.content.ContextCompat.getMainExecutor(activity),
+        object : androidx.biometric.BiometricPrompt.AuthenticationCallback() {
+            override fun onAuthenticationSucceeded(result: androidx.biometric.BiometricPrompt.AuthenticationResult) { onOk() }
+        })
+    prompt.authenticate(androidx.biometric.BiometricPrompt.PromptInfo.Builder().setTitle(title).setSubtitle("GoatMediaStackarr")
+        .setNegativeButtonText("Use PIN").setAllowedAuthenticators(androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_WEAK).build())
+}
+
 /** The PIN, asked for over everything when the app opens (and when it comes back after a minute away). */
 @Composable
 fun PinLock(state: AppState, user: User) {
     val g = LocalGoat.current
     val scope = rememberCoroutineScope()
     val activity = LocalContext.current as? Activity
+    val prefs by state.prefs.collectAsState()
+    val bio = prefs.biometric && activity is androidx.fragment.app.FragmentActivity && biometricReady(activity)
+    val askBio = { if (bio) askBiometric(activity as androidx.fragment.app.FragmentActivity, "Unlock GoatMediaStackarr") { state.unlockedByBiometric() } }
+    // Straight away when the lock shows; the PIN pad stays underneath for "Use PIN".
+    LaunchedEffect(bio) { if (bio) askBio() }
     var pin by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
@@ -86,10 +109,10 @@ fun PinLock(state: AppState, user: User) {
             Text(error ?: " ", color = g.bad, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().height(40.dp))
             for (row in listOf(listOf("1", "2", "3"), listOf("4", "5", "6"), listOf("7", "8", "9"), listOf("", "0", "<"))) {
                 Row(horizontalArrangement = Arrangement.spacedBy(20.dp), modifier = Modifier.padding(vertical = 8.dp)) {
-                    for (k in row) Box(Modifier.size(72.dp).clip(CircleShape).then(if (k.isEmpty()) Modifier else Modifier.background(g.card).clickable { press(k) }),
+                    for (k in row) Box(Modifier.size(72.dp).clip(CircleShape).then(if (k.isEmpty()) (if (bio) Modifier.clickable { askBio() } else Modifier) else Modifier.background(g.card).clickable { press(k) }),
                         contentAlignment = Alignment.Center) {
                         when (k) {
-                            "" -> {}
+                            "" -> if (bio) Icon(Icons.Rounded.Fingerprint, "Unlock with fingerprint or face", tint = g.primary, modifier = Modifier.size(32.dp))
                             "<" -> Icon(Icons.AutoMirrored.Rounded.Backspace, "Delete", tint = g.text)
                             else -> Text(k, fontSize = 26.sp, fontWeight = FontWeight.SemiBold, color = g.text)
                         }

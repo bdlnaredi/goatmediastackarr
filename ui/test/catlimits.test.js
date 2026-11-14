@@ -30,6 +30,16 @@ test('a category limit is shared among its moving torrents, follows changes, and
     // The limit removed: the rest are freed too.
     await a.put(`/api/qb/${id}/catlimits`, { limits: {} });
     assert.equal(t1.dl_limit, 0); assert.equal(t1.up_limit, 0);
+    // Only at some hours: outside them no limit; the days list keeps only real days.
+    const hh = h => String((new Date().getHours() + h + 24) % 24).padStart(2, '0') + ':00';
+    r = await a.put(`/api/qb/${id}/catlimits`, { limits: { tv: { dl: 1000, from: hh(2), to: hh(3), days: [0, 1, 2, 9, 'x'] } } });
+    assert.deepEqual(r.data.limits.tv, { dl: 1000, up: 0, from: hh(2), to: hh(3), days: [0, 1, 2] }); assert.equal(r.data.now.tv, false);
+    assert.equal(t1.dl_limit, 0, 'outside its hours');
+    r = await a.put(`/api/qb/${id}/catlimits`, { limits: { tv: { dl: 1000, from: hh(-1), to: hh(1) } } });
+    assert.equal(r.data.now.tv, true); assert.ok(t1.dl_limit > 0, 'inside its hours');
+    r = await a.put(`/api/qb/${id}/catlimits`, { limits: { tv: { dl: 1000, days: [(new Date().getDay() + 1) % 7] } } });
+    assert.equal(r.data.now.tv, false); assert.equal(t1.dl_limit, 0, 'not today');
+    await a.put(`/api/qb/${id}/catlimits`, { limits: {} });
     const k = client(s.base); await a.post('/api/users', { name: 'kid', password: 'kidkidkid', role: 'user' }); await k.post('/api/login', { name: 'kid', password: 'kidkidkid' });
     assert.equal((await k.get(`/api/qb/${id}/catlimits`)).status, 403, 'admins only');
   } finally { await s.stop(); srv.close(); }

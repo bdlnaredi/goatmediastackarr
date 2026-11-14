@@ -1,7 +1,6 @@
 package com.bdlnaredi.goatstack
 
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.getValue
@@ -11,7 +10,8 @@ import com.bdlnaredi.goatstack.data.Phase
 import com.bdlnaredi.goatstack.ui.GoatRoot
 import com.bdlnaredi.goatstack.ui.theme.GoatTheme
 
-class MainActivity : ComponentActivity() {
+// A FragmentActivity (still a ComponentActivity) so the fingerprint/face prompt can be shown over it.
+class MainActivity : androidx.fragment.app.FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         val state = (application as GoatApp).state
         installSplashScreen().setKeepOnScreenCondition { state.phase.value is Phase.Starting }

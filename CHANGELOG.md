@@ -4,6 +4,11 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- **Speed limits on a schedule**: a category's limit can be for some hours and days only (Downloads → Categories and tags → *Speed limit*: From, To and the days), say 09:00–23:00 on weekdays. Past midnight works (22:00 to 07:00). Outside those hours the category has no limit of its own; the list says "(not now)".
+- **Speed limits in the Android app**: Downloads → **Speed limits** sets qBittorrent's own limits (and the alternative ones) and each category's, with its hours and days.
+- **Unlock with fingerprint or face** in the Android app (Settings → Account, once a PIN is set): the PIN screen asks for your fingerprint or face straight away; *Use PIN* or the keypad still work.
+- **cross-seed's paused trackers on Health**: *Needs attention* names each tracker cross-seed has paused, why ("too many requests", or an error) and until when, with **Restart** to search it again now.
+- **Shared links** (Stack page → File Browser → *Shared links*): every File Browser share link with its end date, whether it has a password, and how often it was downloaded (counted from this version on); copy the link or its direct download link, open it, or remove it.
 ## v1.0.25 — 2026-11-12
 
 - **PIN**: a 4-digit PIN asked for whenever GoatMediaStackarr is opened on a device that is already signed in. Create, change or turn it off under Settings → Account (web page) or Settings → Account → PIN (app). The web page asks for it in a new tab or window, when the browser is opened again, and after 5 minutes away; the app when it is opened and when it comes back after a minute away. Your password still signs you in, and right after signing in no PIN is asked for. 5 wrong PINs sign that device out. Forgot it? *Forgot your PIN? Sign out*, sign in again, and set a new one (within 15 minutes of signing in, the current one isn't needed).

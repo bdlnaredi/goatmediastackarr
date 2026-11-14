@@ -70,6 +70,8 @@ data class Prefs(
     val seenVersion: String = "",
     /** The app's language: "" follows the phone, or en, hi, es, de, fr. */
     val lang: String = "",
+    /** Unlock with a fingerprint or face instead of typing the PIN (the PIN still works). */
+    val biometric: Boolean = false,
 ) {
     fun wants(kind: String) = notify && (kind == "test" || kind in kinds.split(','))
     /** How wide a poster is in the grids. */
@@ -77,7 +79,7 @@ data class Prefs(
     /** How often the downloads list asks again, in milliseconds. */
     val refreshMs get() = when (refresh) { "fast" -> 1500L; "slow" -> 6000L; else -> 2500L }
 
-    fun text() = "start=$start\nposters=$posters\nrefresh=$refresh\nspoilers=$spoilers\nconfirmRemove=$confirmRemove\ndismissedUpdate=$dismissedUpdate\nnotify=$notify\nkinds=$kinds\nevery=$every\naskedNotify=$askedNotify\nstyle=$style\nseenVersion=$seenVersion\nlang=$lang"
+    fun text() = "start=$start\nposters=$posters\nrefresh=$refresh\nspoilers=$spoilers\nconfirmRemove=$confirmRemove\ndismissedUpdate=$dismissedUpdate\nnotify=$notify\nkinds=$kinds\nevery=$every\naskedNotify=$askedNotify\nstyle=$style\nseenVersion=$seenVersion\nlang=$lang\nbiometric=$biometric"
 
     companion object {
         val STARTS = listOf("home", "discover", "library", "downloads")
@@ -102,6 +104,7 @@ data class Prefs(
                 style = m["style"]?.takeIf { it in STYLES } ?: d.style,
                 seenVersion = m["seenVersion"]?.take(40) ?: "",
                 lang = m["lang"]?.takeIf { it in listOf("en", "hi", "es", "de", "fr") } ?: "",
+                biometric = m["biometric"]?.toBooleanStrictOrNull() ?: false,
             )
         }
     }

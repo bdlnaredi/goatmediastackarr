@@ -2205,6 +2205,12 @@ async function histDialog(s){
     ${d.items.map(x=>`<div class="box row"><div class="grow" style="min-width:0"><b style="word-break:break-word;font-weight:560">${esc(x.name)}</b><div class="mute">${esc(fdt(x.at))}${x.cat?', '+esc(x.cat):''}</div></div><span class="mute">${fmt(x.size)}</span></div>`).join('')||empty('No finished downloads yet','Finished downloads show up here after GoatMediaStackarr sees them.')}`);
   o.querySelector('[data-x]').onclick=o.close;
 }
+const DAYS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+/** When a category's limit applies, in words ("22:00–07:00, Mon–Fri"). */
+function limWhen(l){
+  const d=l.days&&l.days.length<7?l.days:null,dt=!d?'':d.join()==='1,2,3,4,5'?'Mon–Fri':d.join()==='0,6'?'weekends':d.map(i=>DAYS[i]).join(' ');
+  return [l.from?`${l.from}–${l.to}`:'',dt].filter(Boolean).join(', ')||'all the time';
+}
 async function limDialog(s){
   let p,cl={limits:{}},meta={categories:[]};
   try{[p,cl,meta]=await Promise.all([api(`/api/qb/${s.id}/prefs`),api(`/api/qb/${s.id}/catlimits`).catch(()=>({limits:{}})),api(`/api/qb/${s.id}/meta`).catch(()=>({categories:[]}))])}catch(x){toast(x.message,'bad');return}
@@ -2213,12 +2219,13 @@ async function limDialog(s){
     <form id="lf">${[['dl','Download limit',p.dl],['up','Upload limit',p.up],['altDl','Alternative download limit',p.altDl],['altUp','Alternative upload limit',p.altUp]].map(([k,n,v])=>`<label class="mute" style="display:grid;gap:4px;max-width:360px;margin-bottom:8px">${n}<input type="number" min="0" name="${k}" value="${v}"></label>`).join('')}
     <h3 style="margin-bottom:4px">Per category</h3><p class="mute" style="margin-top:0">A limit for all of a category's torrents together, for example to keep movies from taking all the speed. It is shared among the torrents that are moving data, checked every minute, and comes on top of the limits above.</p>
     ${cats.length?`<div style="display:grid;grid-template-columns:minmax(0,1fr) 110px 110px;gap:6px 10px;align-items:center;max-width:460px"><span class="mute">Category</span><span class="mute">Download KB/s</span><span class="mute">Upload KB/s</span>
-      ${cats.map(c=>{const l=(cl.limits||{})[c]||{};return`<b style="word-break:break-word">${esc(c)}</b><input type="number" min="0" data-cd="${esc(c)}" value="${l.dl||0}" aria-label="Download limit for ${esc(c)}"><input type="number" min="0" data-cu="${esc(c)}" value="${l.up||0}" aria-label="Upload limit for ${esc(c)}">`}).join('')}</div>`
+      ${cats.map(c=>{const l=(cl.limits||{})[c]||{};return`<b style="word-break:break-word">${esc(c)}${l.from||l.days?`<br><span class="mute" style="font-weight:400;font-size:12px">${esc(limWhen(l))}</span>`:''}</b><input type="number" min="0" data-cd="${esc(c)}" value="${l.dl||0}" aria-label="Download limit for ${esc(c)}"><input type="number" min="0" data-cu="${esc(c)}" value="${l.up||0}" aria-label="Upload limit for ${esc(c)}">`}).join('')}</div>`
       :'<p class="mute">No categories yet. Add them under Categories and tags.</p>'}
+    ${cats.length?'<p class="mute" style="font-size:13px">To limit a category only at some hours or on some days, use <b>Speed limit</b> on it under Categories and tags.</p>':''}
     <div class="err" id="le"></div><div class="row" style="margin-top:12px"><button class="primary">Save</button><button type="button" data-x>Cancel</button></div></form>`);
   o.querySelector('[data-x]').onclick=o.close;
   o.querySelector('#lf').onsubmit=async e=>{e.preventDefault();const f=e.target,limits={};
-    f.querySelectorAll('[data-cd]').forEach(i=>{const c=i.dataset.cd,u=f.querySelector(`[data-cu="${CSS.escape(c)}"]`);limits[c]={dl:+i.value||0,up:+(u&&u.value)||0}});
+    f.querySelectorAll('[data-cd]').forEach(i=>{const c=i.dataset.cd,u=f.querySelector(`[data-cu="${CSS.escape(c)}"]`),o=(cl.limits||{})[c]||{};limits[c]={...o,dl:+i.value||0,up:+(u&&u.value)||0}});
     try{await api(`/api/qb/${s.id}/prefs`,'POST',{dl:f.elements.dl.value,up:f.elements.up.value,altDl:f.elements.altDl.value,altUp:f.elements.altUp.value});
       if(cats.length)await api(`/api/qb/${s.id}/catlimits`,'PUT',{limits});toast('Saved','ok');o.close()}catch(x){o.querySelector('#le').textContent=x.message}};
 }
@@ -2226,12 +2233,16 @@ function catDialog(s,getMeta,reload){
   const o=modal('<div id="cb"></div>');
   const post=(k,b)=>api(`/api/qb/${s.id}/${k}`,'POST',b);
   // Each category's own speed limit (a total for its torrents together, see Speed limit settings → Per category).
-  let lim={},edit=null;api(`/api/qb/${s.id}/catlimits`).then(r=>{lim=r.limits||{};draw()}).catch(()=>{});
-  const limTxt=c=>{const l=lim[c];return l&&(l.dl||l.up)?`↓ ${l.dl?l.dl+' KB/s':'no limit'} · ↑ ${l.up?l.up+' KB/s':'no limit'}`:'No speed limit'};
+  let lim={},edit=null;api(`/api/qb/${s.id}/catlimits`).then(r=>{lim=r.limits||{};now=r.now||{};draw()}).catch(()=>{});
+  let now={};
+  const limTxt=c=>{const l=lim[c];return l&&(l.dl||l.up)?`↓ ${l.dl?l.dl+' KB/s':'no limit'} · ↑ ${l.up?l.up+' KB/s':'no limit'}${l.from||l.days?` · ${limWhen(l)}${now[c]===false?' (not now)':''}`:''}`:'No speed limit'};
   const draw=()=>{const m=getMeta();
     o.querySelector('#cb').innerHTML=`<div class="row"><h2 style="margin:0;flex:1">Categories and tags</h2><button data-x>Close</button></div>
-      <h3>Categories</h3>${m.categories.map(c=>`<div class="box"><div class="row"><b>${esc(c.name)}</b><span class="mute" style="flex:1;word-break:break-all">${esc(c.path||'default folder')}</span><span class="pill${lim[c.name]?' acc':''}">${limTxt(c.name)}</span><button data-sl="${esc(c.name)}">Speed limit</button><button data-rc="${esc(c.name)}">Remove</button></div>
-        ${edit===c.name?`<form class="row" data-lf="${esc(c.name)}" style="display:flex;margin-top:8px;align-items:end"><label class="mute" style="display:grid;gap:4px">Download KB/s<input type="number" min="0" name="dl" value="${(lim[c.name]||{}).dl||0}" style="width:120px"></label><label class="mute" style="display:grid;gap:4px">Upload KB/s<input type="number" min="0" name="up" value="${(lim[c.name]||{}).up||0}" style="width:120px"></label><button class="primary">Save</button><span class="mute" style="flex-basis:100%;font-size:13px">For all of this category's torrents together; 0 is no limit.</span></form>`:''}</div>`).join('')||'<p class="mute">None yet.</p>'}
+      <h3>Categories</h3>${m.categories.map(c=>`<div class="box"><div class="row" style="flex-wrap:wrap"><b>${esc(c.name)}</b><span class="mute" style="flex:1 1 160px;word-break:break-all">${esc(c.path||'default folder')}</span><span class="pill${lim[c.name]?' acc':''}">${limTxt(c.name)}</span><button data-sl="${esc(c.name)}">Speed limit</button><button data-rc="${esc(c.name)}">Remove</button></div>
+        ${edit===c.name?`<form class="row" data-lf="${esc(c.name)}" style="display:flex;margin-top:8px;align-items:end"><label class="mute" style="display:grid;gap:4px">Download KB/s<input type="number" min="0" name="dl" value="${(lim[c.name]||{}).dl||0}" style="width:120px"></label><label class="mute" style="display:grid;gap:4px">Upload KB/s<input type="number" min="0" name="up" value="${(lim[c.name]||{}).up||0}" style="width:120px"></label>
+        <label class="mute" style="display:grid;gap:4px">From<input type="time" name="from" value="${esc((lim[c.name]||{}).from||'')}" style="width:120px"></label><label class="mute" style="display:grid;gap:4px">To<input type="time" name="to" value="${esc((lim[c.name]||{}).to||'')}" style="width:120px"></label>
+        <div class="row" style="flex-basis:100%;gap:6px;flex-wrap:wrap" role="group" aria-label="Days">${DAYS.map((d,i)=>{const ds=(lim[c.name]||{}).days;return`<label class="chip"><input type="checkbox" name="day" value="${i}" ${!ds||ds.includes(i)?'checked':''}> ${d}</label>`}).join('')}</div>
+        <button class="primary">Save</button><span class="mute" style="flex-basis:100%;font-size:13px">For all of this category's torrents together; 0 is no limit. Leave From and To empty for all day; past midnight works (22:00 to 07:00). Times are the server's.</span></form>`:''}</div>`).join('')||'<p class="mute">None yet.</p>'}
       <form id="cf" class="row" style="display:flex"><input name="name" placeholder="Category name" required><input name="path" placeholder="Save folder (optional)" style="flex:1;min-width:160px"><button class="primary">Add category</button></form>
       <h3>Tags</h3><div class="row">${m.tags.map(g=>`<span class="pill">${esc(g)}<a href="#" data-rg="${esc(g)}" aria-label="Delete tag ${esc(g)}">×</a></span>`).join('')||'<span class="mute">None yet.</span>'}</div>
       <form id="tf" class="row" style="display:flex;margin-top:10px"><input name="name" placeholder="New tag" required><button class="primary">Add tag</button></form><div class="err" id="ce"></div>`;
@@ -2243,8 +2254,11 @@ function catDialog(s,getMeta,reload){
     if(r&&confirm('Remove this category? Torrents keep their files.'))go('cat',{op:'remove',name:r.dataset.rc});
     if(g){e.preventDefault();go('tag',{op:'remove',name:g.dataset.rg})}});
   o.addEventListener('submit',async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target));
-    if(e.target.dataset.lf!=null){const c=e.target.dataset.lf,next={...lim,[c]:{dl:+f.dl||0,up:+f.up||0}};
-      try{lim=(await api(`/api/qb/${s.id}/catlimits`,'PUT',{limits:next})).limits||{};edit=null;draw();toast('Speed limit saved','ok')}catch(x){o.querySelector('#ce').textContent=x.message}return}
+    if(e.target.dataset.lf!=null){const c=e.target.dataset.lf,days=[...e.target.querySelectorAll('[name=day]:checked')].map(x=>+x.value);
+      if(!days.length){o.querySelector('#ce').textContent='Pick at least one day';return}
+      if(!!f.from!==!!f.to){o.querySelector('#ce').textContent='Give both From and To, or neither';return}
+      const next={...lim,[c]:{dl:+f.dl||0,up:+f.up||0,...(f.from?{from:f.from,to:f.to}:{}),...(days.length<7?{days}:{})}};
+      try{const rr=await api(`/api/qb/${s.id}/catlimits`,'PUT',{limits:next});lim=rr.limits||{};now=rr.now||{};edit=null;draw();toast('Speed limit saved','ok')}catch(x){o.querySelector('#ce').textContent=x.message}return}
     if(e.target.id==='cf')go('cat',{op:'create',...f});else go('tag',{op:'create',...f})});
   draw();
 }
@@ -3729,7 +3743,7 @@ async function goatView(){
   <div class="panel">${st.engines.map(e=>`<div class="row" style="gap:10px;padding:6px 0;border-bottom:1px solid var(--line)">
       <span class="pill ${e.stopped?'':e.ok===true?'ok':e.ok===false?'bad':''}" style="min-width:12px"></span><b>${esc(e.name)}</b>${e.version?`<span class="mute" style="font-size:13px">${esc(e.version)}</span>`:''}${e.stopped?'<span class="pill">Stopped</span>':''}<span class="grow"></span>
       ${goatOpen(e.key)&&!e.stopped?`<a class="btn" href="${goatOpen(e.key)}" target="_blank" rel="noopener">${ic('ext')}Open</a>`:''}
-      ${e.stopped?`<button class="primary" data-gs="${esc(e.key)}">${ic('play')}Start</button>`:`<button data-gr="${esc(e.key)}">${ic('refresh')}Restart</button><button data-gx="${esc(e.key)}">${ic('stop')}Stop</button>`}<button class="ghost" data-glog="${esc(e.key)}" title="What ${esc(e.name||e.key)} is writing">${ic('logs')}Logs</button></div>`).join('')}
+      ${e.stopped?`<button class="primary" data-gs="${esc(e.key)}">${ic('play')}Start</button>`:`<button data-gr="${esc(e.key)}">${ic('refresh')}Restart</button><button data-gx="${esc(e.key)}">${ic('stop')}Stop</button>`}${e.key==='filebrowser'&&!e.stopped?`<button data-gsh>${ic('copy')}Shared links</button>`:''}<button class="ghost" data-glog="${esc(e.key)}" title="What ${esc(e.name||e.key)} is writing">${ic('logs')}Logs</button></div>`).join('')}
     <div class="mute" style="margin-top:8px">Each app's own page opens signed in through GoatMediaStackarr. Seerr is used through <a href="#" data-go="rq">Requests</a>.</div>
     ${(st.appUpdates||[]).length?`<h3 style="margin:16px 0 6px">Recent updates</h3>${st.appUpdates.map(u=>`<div style="margin:6px 0"><b>${esc(new Date(u.at).toLocaleDateString())}</b> <span class="mute">${u.changes.map(c=>`${esc(c.name)} ${esc(c.from)} → ${esc(c.to)}`).join(' · ')}</span></div>`).join('')}`:`<div class="mute" style="margin-top:8px;font-size:13px">The image is rebuilt every Monday with the newest version of each app. Update the container in Unraid's Docker tab to get it; what changed is listed here afterwards.</div>`}</div>
   <h2 class="sec">App updates</h2><div class="panel" id="gnews"><p class="mute" style="margin:0">Looking…</p></div>
@@ -3834,6 +3848,7 @@ async function goatView(){
     const gx=e.target.closest('[data-gx],[data-gs]');if(gx){const k=gx.dataset.gx||gx.dataset.gs,stop=!!gx.dataset.gx;
       if(stop&&!confirm(`Stop ${k}? It stays stopped until you start it again or the container restarts.`))return;
       busy(gx,stop?'Stopping…':'Starting…');try{await api('/api/goat/'+(stop?'stop':'start'),'POST',{engine:k});toast((stop?'Stopped ':'Started ')+k,'ok');goatView()}catch(x){toast(x.message,'bad');idle(gx)}return}
+    if(e.target.closest('[data-gsh]'))return fbShares();
     const lg=e.target.closest('[data-glog]');if(lg){UI.logs={...(UI.logs||{lv:'',q:'',n:300,follow:true}),src:'stack:'+lg.dataset.glog};saveUI();tab='logs';render();return}
     const r=e.target.closest('[data-gr]');if(r){busy(r,'Restarting…');try{await api('/api/goat/restart','POST',{engine:r.dataset.gr});toast('Restarted '+r.dataset.gr,'ok')}catch(x){toast(x.message,'bad')}idle(r);return}
     const g=e.target.closest('[data-go]');if(g){e.preventDefault();goto(g.dataset.go)}};
@@ -3958,6 +3973,25 @@ async function trkView(){
   $('#tsr').onclick=async e=>{const fx=e.target.closest('[data-ixf]');if(fx){only=fx.dataset.ixf;drawRes();return}const row=e.target.closest('[data-r]');if(!row)return;const x=results[+row.dataset.r];
     if(e.target.closest('[data-pg]'))return openTab(async()=>{const r=await api('/api/sites/open-url','POST',{url:x.info});if(r.direct)toast('Add this tracker under Tracker websites to open its pages through GoatMediaStackarr','');return r.url});
     const b=e.target.closest('[data-dl]');if(b){b.disabled=true;try{await api('/api/trackers/grab','POST',{id:x.id,category:$('#tcat').value});toast('Added to qBittorrent','ok');b.textContent='Added'}catch(er){toast(er.message,'bad');b.disabled=false}}};
+}
+// File Browser's share links: the ones made, how often each was downloaded, copy or remove them.
+async function fbShares(){
+  const o=modal(`<h2 style="margin-top:0">Shared links</h2><p class="mute">Links made with <b>Share</b> in File Browser. Anyone with a link can open it without signing in. Downloads are counted from today on.</p><div id="fsl">${skel(3)}</div>
+    <div class="row" style="margin-top:12px"><a class="btn" href="/engines/filebrowser/" target="_blank" rel="noopener">${ic('ext')}Open File Browser</a><button type="button" data-x>Close</button></div>`);
+  o.querySelector('[data-x]').onclick=o.close;
+  const draw=async()=>{let d;try{d=await api('/api/fbshares')}catch(x){o.querySelector('#fsl').innerHTML=`<div class="err">${esc(x.message)}</div>`;return}
+    const root=(d.base||location.origin)+'/engines/filebrowser',when=t=>new Date(t).toLocaleString(undefined,{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+    o.querySelector('#fsl').innerHTML=d.shares.length?d.shares.map(x=>`<div class="box" data-h="${esc(x.hash)}" style="margin:8px 0"><div class="row" style="gap:6px 10px">
+        <b class="grow" style="word-break:break-all;min-width:0">${esc(x.path)}</b>${x.password?'<span class="pill">Password</span>':''}${x.expired?'<span class="pill bad">Expired</span>':''}</div>
+      <div class="mute" style="font-size:13px;margin:4px 0 8px">${x.expire?(x.expired?'Ended ':'Until ')+when(x.expire):'No end date'} · ${x.downloads?`Downloaded ${x.downloads} time${x.downloads>1?'s':''}, last ${when(x.last)}`:'Not downloaded yet'}</div>
+      <div class="row" style="gap:6px"><button data-cp="${esc(root+'/share/'+x.hash)}">${ic('copy')}Copy link</button>${x.password?'':`<button data-cp="${esc(root+'/api/public/dl/'+x.hash)}">${ic('dl')}Copy download link</button>`}
+        <a class="btn ghost" href="${esc(root+'/share/'+x.hash)}" target="_blank" rel="noopener">${ic('ext')}Open</a><button class="danger" data-rm>${ic('trash')}Remove</button></div></div>`).join('')
+      :'<p class="mute">No shared links yet. In File Browser, select a file or folder and press <b>Share</b>.</p>';
+  };
+  o.querySelector('#fsl').onclick=async e=>{const c=e.target.closest('[data-cp]');if(c)return copyText(c.dataset.cp);
+    const rm=e.target.closest('[data-rm]');if(!rm)return;const h=rm.closest('[data-h]').dataset.h;if(!confirm('Remove this link? Anyone who has it can no longer open it.'))return;
+    try{await api('/api/fbshares/'+h,'DELETE');toast('Link removed','ok');draw()}catch(x){toast(x.message,'bad')}};
+  draw();
 }
 // Self-healing: what it may fix by itself, and what it fixed.
 async function healPanel(){

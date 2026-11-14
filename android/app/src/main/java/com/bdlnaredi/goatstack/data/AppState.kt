@@ -43,6 +43,8 @@ class AppState(val store: Store) {
     private var freshSignIn = false
     private var awayAt = 0L
     fun wentAway() { awayAt = System.currentTimeMillis() }
+    /** Unlocked by a fingerprint or face, on this phone. */
+    fun unlockedByBiometric() { _locked.value = false }
     fun cameBack() {
         val p = _phase.value
         if (awayAt > 0 && System.currentTimeMillis() - awayAt > 60_000 && p is Phase.Ready && p.user.pin) _locked.value = true

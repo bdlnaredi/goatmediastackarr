@@ -134,7 +134,7 @@ Anyone can ask for a show or movie. Admins approve or decline, or let a profile 
 
 qBittorrent, ruTorrent, Deluge and SABnzbd in one list: pause, resume, remove, categories and tags, files, trackers, peers, speed limits and schedules, and adding links or `.torrent` files. Sort by speed, time left, progress, seeders, ratio, size or name.
 
-- **Speed limits per category** (Downloads → **Categories and tags** → *Speed limit* on a category, or Speed limit settings): a download and upload limit for all of a category's torrents together, say 2 MB/s for `movies` so TV episodes still come in fast. It is shared among the category's torrents that are moving data and checked every minute; take it off and their own limits go too.
+- **Speed limits per category** (Downloads → **Categories and tags** → *Speed limit* on a category, or Speed limit settings): a download and upload limit for all of a category's torrents together, say 2 MB/s for `movies` so TV episodes still come in fast. It is shared among the category's torrents that are moving data and checked every minute; take it off and their own limits go too. A limit can be for **some hours and days only**, say 09:00–23:00 on weekdays, so movies come in at full speed at night.
 
 | | |
 |---|---|
@@ -158,7 +158,7 @@ Something always breaks eventually: a tracker goes down, an import fails, a disk
 
 - **Logs** (admins): what every app is writing, one at a time or **all together in time order**, newest at the bottom. Show only problems or errors, find a word, follow new lines as they come, copy or save them. The apps of the stack (and the VPN and GoatMediaStackarr itself) each keep their own log in `/config/logs/<app>/`, about 3 MB each; apps you added are read through their own API (Sonarr, Radarr, Lidarr, Readarr, Prowlarr, qBittorrent, SABnzbd, Bazarr, Tautulli, Seerr). Each app on the Stack page has a *Logs* button too.
 - **Alerts from the logs**: admins are told when an app **keeps writing errors** (5 in 15 minutes unless changed under Alerts).
-- **Health**: problems the apps report, stuck downloads, and disk space per folder, with a **forecast** of when each disk fills up at the rate of the last two weeks (and a small chart). **Fix problems by itself** (on by default) removes, blocks and searches again for downloads that failed or haven't moved for a day, and restarts a built-in app that stops answering. Every fix is listed there.
+- **Health**: problems the apps report, stuck downloads, and disk space per folder, with a **forecast** of when each disk fills up at the rate of the last two weeks (and a small chart). **Fix problems by itself** (on by default) removes, blocks and searches again for downloads that failed or haven't moved for a day, and restarts a built-in app that stops answering. Every fix is listed there. *Needs attention* also names any tracker **cross-seed has paused** (after an error or "too many requests"), why and until when, with a button to restart it.
 - **Alerts** to email, ntfy, Discord, Telegram, Pushover, Gotify or any webhook, each with its own list of what it hears about: a disk filling up within two weeks, an app down, a newer app version out, a VPN that dropped, a parity check that ended.
 
 <p align="center"><img src="docs/screenshots/health.png" alt="Health" width="760"></p>
@@ -166,7 +166,7 @@ Something always breaks eventually: a tracker goes down, an import fails, a disk
 ### Run the server
 
 - **Stack** (admins): everything about the container. The VPN (on or off, PIA with a region list or your provider's file, which apps use it, port forwarding, a leak test). Every app's health and version with **Restart**, **Stop**, **Start** and its own page. What changed after an update, and **App updates**: which apps have a newer release out, with what it changed, checked twice a day. **Logins made for you** (Jellyfin, qBittorrent, ruTorrent, Deluge) with **Change** to set your own password, which Sonarr, Radarr, Lidarr and Prowlarr are given too. The outside addresses for the Open buttons, linking Plex, and the connections, with a button to run them again.
-- **File Browser** (admins): the media and downloads folders in the browser, opened from the Stack page: upload, download, rename, move and delete files. **Share** a file or folder to get a link anyone can open without signing in (with an expiry and a password if you like); the share page also has its direct download link.
+- **File Browser** (admins): the media and downloads folders in the browser, opened from the Stack page: upload, download, rename, move and delete files. **Share** a file or folder to get a link anyone can open without signing in (with an expiry and a password if you like); the share page also has its direct download link. **Shared links** on the Stack page lists every link with its end date and how often it was downloaded, to copy or remove.
 - **Unraid**: the array, disks and containers, if you add your Unraid server.
 - **Backups of the whole stack** (Settings → Backup): every app's settings and databases in one file, daily or weekly, and a guided *Put back* that restores only the apps you pick (with a copy of how they were just before).
 - **Settings**: *Account* (password, a **PIN** asked for whenever the page or app is opened, two-step sign-in, passkeys, Sign in with Plex, devices, notifications on this device), *Appearance*, *Apps*, *Discover lists*, *Users*, *Limits*, *Status page*, *Alerts*, *Download rules*, *Backup* and *Activity*.
@@ -226,14 +226,14 @@ A native app (Kotlin and Jetpack Compose), not a web page in a frame. Same four 
 
 - **Home**: speeds, what's playing and downloading, what's coming, the latest requests, and whether every app and the VPN are fine. A bell with what's new for you.
 - **Discover**, **Search** and **Library**, with each title's page (cast, More like this, seasons, trailer) and actors' filmographies; request through Seerr (the whole show or chosen seasons) or add straight to Sonarr or Radarr.
-- **Downloads** with every client, **RSS** (tick several articles and download them at once), **Upcoming** with a calendar, **Wanted** and **Choose a release**.
+- **Downloads** with every client, **Speed limits** (qBittorrent's own and per category, with hours and days), **RSS** (tick several articles and download them at once), **Upcoming** with a calendar, **Wanted** and **Choose a release**.
 - **More**: every other page in groups like the web page (Watch, Requests, Downloads, Server, You), including **Watchlist**, **Suggestions**, **Logs** (admins) and **What's new**.
 - **Notifications** that work with the app closed and without Google services: something you asked for is ready, a request was approved or declined, your streaming limit; for admins also new requests, problem reports and server problems. **Approve** or **Decline** a new request, or **Pause all** downloads, straight from the notification.
 - **Two home-screen widgets**: the download and upload speeds and what's playing; and what's coming up with the requests (waiting for you, or yours on the way).
 - **Address at home** (Settings → Server): on your Wi-Fi the app talks to the server's local address, anywhere else the outside one, by itself.
 - **Profile**: your picture, your streaming this month, the space your requests take and your watch time.
 - **In your language**: English, Hindi, Spanish, German or French (Settings → Language).
-- **Sign in** with your name and password (two-step codes work), a **passkey** (fingerprint or face), or **Sign in with Plex**. With a **PIN** (Settings → Account → PIN), the app asks for it each time it opens, and after a minute away.
+- **Sign in** with your name and password (two-step codes work), a **passkey** (fingerprint or face), or **Sign in with Plex**. With a **PIN** (Settings → Account → PIN), the app asks for it each time it opens, and after a minute away; turn on **Unlock with fingerprint or face** to skip typing it.
 - **Android TV**: the same app installs on a TV, shows on its home screen, and works with the remote's D-pad.
 
 **Install:** download `goatmediastackarr.apk` from the [latest release](https://github.com/bdlnaredi/goatmediastackarr/releases/latest) on your phone and open it. Then enter the address you use in the browser, for example `192.168.1.10:2806`. Android 8 or newer; newer versions install over older ones, and the app tells you when one is out.

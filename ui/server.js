@@ -628,6 +628,28 @@ const fbPublic = (req, t) => {
   if (/(^|\/)\.\.(\/|$)|\\|\0/.test(d)) return false;
   return /^\/engines\/filebrowser\/(share\/[A-Za-z0-9_-]{6,}(\/.*)?|static\/[\w./-]+|api\/public\/(share|dl)\/[A-Za-z0-9_-]{6,}(\/.*)?)$/.test(p);
 };
+// How often each File Browser share link was downloaded (File Browser does not count). A video played in the browser
+// asks for many pieces, so only the first piece counts.
+function fbCount(req) {
+  const m = /^\/engines\/filebrowser\/api\/public\/dl\/([A-Za-z0-9_-]{6,})/.exec(String(req.url).split('?')[0]); if (!m) return;
+  const rg = String(req.headers.range || ''); if (rg && !/^bytes=0-/.test(rg)) return;
+  const h = db.settings.fbHits = db.settings.fbHits || {}, x = h[m[1]] = h[m[1]] || { n: 0, last: 0 };
+  x.n++; x.last = Date.now(); save();
+}
+// File Browser's own API, signed in as its one user (it signs in without a password; it is only reachable from here).
+let fbTok = null;
+async function fbApi(pth, opt = {}) {
+  const base = `http://127.0.0.1:${+process.env.GOAT_PORT_FILEBROWSER || 8095}/engines/filebrowser`;
+  for (let i = 0; i < 2; i++) {
+    if (!fbTok) { const r = await fetch(base + '/api/login', { method: 'POST', body: '{}', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(8000) });
+      if (!r.ok) throw new Error(`File Browser did not sign in (${r.status})`); fbTok = (await r.text()).trim(); }
+    const r = await fetch(base + pth, { ...opt, headers: { 'X-Auth': fbTok, 'Content-Type': 'application/json', ...(opt.headers || {}) }, signal: AbortSignal.timeout(10000) });
+    if (r.status === 401 && i === 0) { fbTok = null; continue; }
+    if (!r.ok) throw new Error(`File Browser answered ${r.status}`);
+    const t = await r.text(); try { return JSON.parse(t); } catch { return t; }
+  }
+}
+const fbOn = () => !!GOAT_MANAGED && ((goatRead(GOAT_MANAGED) || {}).extras || []).some(x => x.key === 'filebrowser');
 // Phone apps for Sonarr, Radarr and the others (nzb360, LunaSea, Ruddarr…) cannot sign in to GoatMediaStackarr, so a
 // request that carries that app's own API key is let through: the app checks the same key itself.
 const goatKeyOk = (req, t) => {
@@ -1194,6 +1216,19 @@ async function ext(s, path, opt = {}) {
 // own schedule only searches once a day, and leaves single episodes out), and on demand from Downloads.
 const csKeyFile = () => path.join(process.env.GOAT_CONFIG_DIR || '/config', 'cross-seed', 'goat-api-key');
 const csOn = () => fs.existsSync(csKeyFile());
+// The trackers cross-seed has paused (after an error, or "too many requests"), read from its own database: it keeps
+// them out of every search until then, and says so only in its detailed log.
+function csPaused(now = Date.now()) {
+  const f = process.env.CROSSSEED_DB || '/config/cross-seed/cross-seed.db';
+  if (!fs.existsSync(f)) return [];
+  let d; try {
+    const { DatabaseSync } = require('node:sqlite'); d = new DatabaseSync(f, { readOnly: true });
+    const cols = new Set(d.prepare('PRAGMA table_info(indexer)').all().map(c => c.name));
+    if (!cols.has('status')) return [];
+    return d.prepare(`SELECT url, ${cols.has('name') ? 'name' : 'NULL AS name'}, status, retry_after FROM indexer WHERE active = 1 AND status IS NOT NULL AND status != 'OK' AND retry_after > ?`).all(now)
+      .map(r => ({ url: String(r.url || ''), name: r.name || '', status: r.status, until: +r.retry_after, ix: (/\/(\d+)\/api\b/.exec(String(r.url || '')) || [])[1] || '' }));
+  } catch { return []; } finally { try { d && d.close(); } catch {} }
+}
 async function crossSeedAsk(hash, now = false) {
   let k; try { k = fs.readFileSync(csKeyFile(), 'utf8').trim(); } catch { return { ok: false, error: 'cross-seed is not running here. Add cross-seed to Apps to run.' }; }
   if (!/^[a-f0-9]{40}$/i.test(String(hash || ''))) return { ok: false, error: 'Not a torrent' };
@@ -2067,6 +2102,19 @@ const SEED_MS = Math.max(200, +process.env.SEED_GOALS_MS || 600000);
 // moving is limited from its first second. Torrents that leave the category, or whose category no longer has a limit,
 // get their own limit taken off again (only the ones GoatMediaStackarr limited).
 const catLimits = sid => ((db.settings.catLimits || {})[sid]) || {};
+// A category's limit can be for some hours only ("from"–"to", "HH:MM" in the server's time zone; past midnight is
+// fine, 22:00–07:00) and some days (0 = Sunday … 6). Outside them the category has no limit of its own.
+const hm = v => { const m = /^(\d\d?):(\d\d)$/.exec(String(v || '')); return m && +m[1] < 24 && +m[2] < 60 ? +m[1] * 60 + +m[2] : null; };
+function catLimitNow(l, d = new Date()) {
+  const days = Array.isArray(l.days) && l.days.length ? l.days : null;
+  const f = hm(l.from), t = hm(l.to), now = d.getHours() * 60 + d.getMinutes();
+  if (f == null || t == null || f === t) return !days || days.includes(d.getDay());
+  if (f < t) return now >= f && now < t && (!days || days.includes(d.getDay()));
+  // Past midnight: the part after midnight belongs to the day it started on.
+  if (now >= f) return !days || days.includes(d.getDay());
+  if (now < t) return !days || days.includes((d.getDay() + 6) % 7);
+  return false;
+}
 const DL_ON = /^(downloading|forcedDL|metaDL|forcedMetaDL)$/, UP_ON = /^(uploading|forcedUP)$/;
 async function catLimitTick(only) {
   for (const s of db.services.filter(x => x.type === 'qbittorrent' && (!only || x.id === only))) try {
@@ -2076,6 +2124,7 @@ async function catLimitTick(only) {
     const part = (kb, moving) => kb > 0 ? Math.max(1024, Math.floor(kb * 1024 / Math.max(1, moving))) : 0;
     const want = new Map();   // hash -> { dl, up } in bytes/s (0 = no limit of its own)
     for (const [c, l] of Object.entries(lim)) {
+      if (!catLimitNow(l)) continue;
       const ts = list.filter(t => (t.category || '') === c); if (!ts.length) continue;
       const dl = part(+l.dl, ts.filter(t => DL_ON.test(t.state) || (t.progress < 1 && t.dlspeed > 0)).length);
       const up = part(+l.up, ts.filter(t => UP_ON.test(t.state) || t.upspeed > 0).length);
@@ -2487,6 +2536,7 @@ const goatServer = http.createServer(async (req, res) => {
     const t = goatTarget(req.url);
     if (!t) return send(res, 404, { error: 'Not found' });
     if (!goatAdmin(req) && !goatKeyOk(req, t) && !fbPublic(req, t)) { res.writeHead(302, { Location: '/' }); return res.end(); }
+    if (t.key === 'filebrowser' && req.method === 'GET') fbCount(req);
     if (t.bare) { res.writeHead(301, { Location: '/engines/' + t.key + '/' }); return res.end(); }
     return goatProxy(req, res, t);
   }
@@ -3144,15 +3194,18 @@ const goatServer = http.createServer(async (req, res) => {
     if ((r = p.match(/^\/api\/qb\/(\w+)\/catlimits$/))) {
       if (adminOnly()) return;
       const s = svcOf(r[1], 'qbittorrent'); if (!s) return send(res, 404, { error: 'Not found' });
-      if (m === 'GET') return send(res, 200, { limits: catLimits(s.id) });
+      if (m === 'GET') { const l = catLimits(s.id); return send(res, 200, { limits: l, now: Object.fromEntries(Object.entries(l).map(([c, x]) => [c, catLimitNow(x)])) }); }
       if (m !== 'PUT') return send(res, 405, { error: 'Method not allowed' });
       const b = await readBody(req), out = {}, kb = v => Math.min(10e6, Math.max(0, Math.round(+v || 0)));
       for (const [c, l] of Object.entries((b && b.limits) || {}).slice(0, 200)) { const n = cut(c, 100).trim(); if (!n || !l) continue;
-        const dl = kb(l.dl), up = kb(l.up); if (dl || up) out[n] = { dl, up }; }
+        const dl = kb(l.dl), up = kb(l.up); if (!dl && !up) continue;
+        const from = hm(l.from) != null ? String(l.from).padStart(5, '0') : '', to = hm(l.to) != null ? String(l.to).padStart(5, '0') : '';
+        const days = Array.isArray(l.days) ? [...new Set(l.days.map(Number).filter(x => Number.isInteger(x) && x >= 0 && x <= 6))].sort() : [];
+        out[n] = { dl, up, ...(from && to && from !== to ? { from, to } : {}), ...(days.length && days.length < 7 ? { days } : {}) }; }
       db.settings.catLimits = { ...(db.settings.catLimits || {}), [s.id]: out }; if (!Object.keys(out).length) delete db.settings.catLimits[s.id]; save();
-      audit(me.name, 'Changed speed limits per category', Object.entries(out).map(([c, l]) => `${c}: ${l.dl ? '↓' + l.dl + ' KB/s' : '↓ no limit'} ${l.up ? '↑' + l.up + ' KB/s' : '↑ no limit'}`).join(', ') || 'none');
+      audit(me.name, 'Changed speed limits per category', Object.entries(out).map(([c, l]) => `${c}: ${l.dl ? '↓' + l.dl + ' KB/s' : '↓ no limit'} ${l.up ? '↑' + l.up + ' KB/s' : '↑ no limit'}${l.from ? ` ${l.from}–${l.to}` : ''}${l.days ? ' on ' + l.days.map(d => 'Sun Mon Tue Wed Thu Fri Sat'.split(' ')[d]).join(' ') : ''}`).join(', ') || 'none');
       await catLimitTick(s.id).catch(() => {});
-      return send(res, 200, { limits: out });
+      return send(res, 200, { limits: out, now: Object.fromEntries(Object.entries(out).map(([c, x]) => [c, catLimitNow(x)])) });
     }
     if ((r = p.match(/^\/api\/qb\/(\w+)\/alt$/)) && m === 'POST') {
       if (deny('control', 'change speed limits')) return;
@@ -4605,6 +4658,23 @@ const goatServer = http.createServer(async (req, res) => {
       return send(res, 200, { skipped: keys.length });
     }
     if (p === '/api/import/settings' && m === 'PUT') { const b = await readBody(req), c = db.settings.autoImport || {}; db.settings.autoImport = { ...c, on: !!b.on, since: b.on && !c.on ? Date.now() : c.since || Date.now() }; save(); audit(me.name, 'Changed importing by itself', b.on ? 'on' : 'off'); return send(res, 200, {}); }
+    // File Browser's share links: what is shared, until when, how often it was downloaded; and removing one.
+    if (p === '/api/fbshares' && m === 'GET') {
+      if (adminOnly()) return;
+      if (!fbOn()) return send(res, 404, { error: 'File Browser is not turned on' });
+      let l; try { l = await fbApi('/api/shares'); } catch (e) { return send(res, 502, { error: e.message }); }
+      const hits = db.settings.fbHits || {}, pub = baseUrl();
+      return send(res, 200, { base: pub, shares: (Array.isArray(l) ? l : []).map(x => ({ hash: x.hash, path: x.path, expire: x.expire ? x.expire * 1000 : 0,
+        password: !!(x.hasPassword || x.password_hash), downloads: (hits[x.hash] || {}).n || 0, last: (hits[x.hash] || {}).last || 0,
+        expired: !!x.expire && x.expire * 1000 < Date.now() })).sort((a, b) => a.path.localeCompare(b.path)) });
+    }
+    if ((r = p.match(/^\/api\/fbshares\/([A-Za-z0-9_-]{6,})$/)) && m === 'DELETE') {
+      if (adminOnly()) return;
+      if (!fbOn()) return send(res, 404, { error: 'File Browser is not turned on' });
+      try { await fbApi('/api/share/' + r[1], { method: 'DELETE' }); } catch (e) { return send(res, 502, { error: e.message }); }
+      if (db.settings.fbHits) { delete db.settings.fbHits[r[1]]; save(); }
+      audit(me.name, 'Removed a File Browser share link', r[1]); return send(res, 200, { ok: true });
+    }
     if (p === '/api/warnings' && m === 'GET') {
       const out = [], add = (sv, level, text, extra = {}) => out.push({ sid: sv.id, app: sv.name, type: sv.type, level, text: cut(text, 400), ...extra });
       await Promise.all(db.services.map(async sv => { try {
@@ -4615,11 +4685,20 @@ const goatServer = http.createServer(async (req, res) => {
         else if (sv.type === 'qbittorrent') { const d = await qb(sv, '/api/v2/transfer/info'); if (d && d.connection_status === 'firewalled') add(sv, 'warn', 'qBittorrent is firewalled: other people cannot connect to it, so torrents are slower. Open the incoming port (or turn on port forwarding in the VPN).');
           else if (d && d.connection_status === 'disconnected') add(sv, 'bad', 'qBittorrent has no connection to the internet.'); }
       } catch {} }));
+      if (GOAT_MANAGED && csOn()) { const ps = csPaused(); if (ps.length) {
+        const pr = db.services.find(x => x.type === 'prowlarr'); let names = {};
+        if (pr && ps.some(x => !x.name)) try { for (const x of await ext(pr, '/api/v1/indexer')) names[x.id] = x.name; } catch {}
+        const when = t => new Date(t).toLocaleString('en-GB', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' });
+        for (const x of ps) add({ id: 'cross-seed', name: 'cross-seed', type: 'cross-seed' }, 'warn',
+          `${x.name || names[x.ix] || 'A tracker'} is paused until ${when(x.until)}, so new torrents are not searched there: it ${x.status === 'RATE_LIMITED' ? 'said "too many requests"' : 'answered a search with an error'}. ${x.status === 'RATE_LIMITED' ? 'Wait, or raise its limits in Prowlarr; ' : 'Check it in Prowlarr (Test); '}restarting cross-seed starts it again now.`, { fix: 'restart' });
+      } }
       const ord = { bad: 0, warn: 1 };
       return send(res, 200, out.sort((a, b) => ord[a.level] - ord[b.level] || a.app.localeCompare(b.app)));
     }
     if (p === '/api/warnings/fix' && m === 'POST') {
-      const b = await readBody(req), sv = db.services.find(x => x.id === b.sid); if (!sv) return send(res, 404, { error: 'Not found' });
+      const b = await readBody(req);
+      if (b.sid === 'cross-seed' && b.fix === 'restart' && GOAT_MANAGED) { const r2 = await goatControl({ cmd: 'restart', engine: 'cross-seed' }); audit(me.name, 'Restarted an app', 'cross-seed'); return send(res, r2.ok ? 200 : 500, r2.ok ? { done: 'Restarting cross-seed: every tracker is searched again' } : { error: r2.error || 'Could not restart it' }); }
+      const sv = db.services.find(x => x.id === b.sid); if (!sv) return send(res, 404, { error: 'Not found' });
       const v = ARRV[sv.type];
       if (b.fix === 'restart' && sv.managed) { const r2 = await goatControl({ cmd: 'restart', engine: sv.managed }); audit(me.name, 'Restarted an app', sv.name); return send(res, r2.ok ? 200 : 500, r2.ok ? { done: 'Restarting ' + sv.name } : { error: r2.error }); }
       if (!v) return send(res, 400, { error: 'Nothing to do for this one here' });
