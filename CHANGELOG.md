@@ -4,6 +4,7 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- **Plex only** (Settings → Users → Sign in with Plex): everyone but admins must sign in with Plex. Their password and passkeys stop working, profiles signed in another way are signed out when it is turned on, and the sign-in page (and the app's) shows *Sign in with Plex* first, with the name and password folded away under *Admin? Sign in with your password*.
 - **Ratio and seeding** (Downloads → *Ratio and seeding*): per tracker, how many torrents, how many are seeding, what was uploaded and downloaded and the ratio, and each tracker's seeding rule. Below, every finished torrent that has not met its tracker's rule yet, with what it still needs, and **Resume** for one that stopped seeding. The rules are the ones under Settings → Download rules → Seeding goals (removing by itself can stay off).
 - **No accidental hit and runs**: removing a torrent that has not met its tracker's seeding rule asks first, on the web page and in the app, saying what it still needs. *Needs attention* on Health lists finished torrents that are not seeding (paused, stopped, failed) but still need to.
 - **Watching now**: a stream being converted says why (for example "video HEVC → H264, by the processor (slow)" for Plex, or "because of the video format" for Jellyfin). Jellyfin viewers can be sent a **Message** on their screen, and *End stream* shows them the reason first. The Android app's Home shows how each stream plays and has **End stream** (and Message for Jellyfin) for admins.

@@ -206,6 +206,7 @@ fun LoginScreen(state: AppState, me: Me) {
         return
     }
 
+    var adminForm by remember { mutableStateOf(false) }
     val submit = {
         if (!busy) {
             busy = true; error = null
@@ -231,6 +232,11 @@ fun LoginScreen(state: AppState, me: Me) {
                 Spacer(Modifier.height(14.dp))
                 GhostButton("Open the Plex page again", onClick = { openBrowser(ctx, plexUrl) }, modifier = Modifier.fillMaxWidth())
                 TextButton(onClick = { plexTicket = null }, modifier = Modifier.fillMaxWidth()) { Text("Cancel", color = g.muted) }
+            } else if (ticket == null && me.plexOnly && me.plexLogin && !adminForm) {
+                // Plex only: the name and password are for admins.
+                Text("Sign in with your Plex account below.", color = g.text, style = MaterialTheme.typography.bodyMedium)
+                ErrorLine(error)
+                TextButton(onClick = { adminForm = true }, modifier = Modifier.fillMaxWidth()) { Text("Admin? Sign in with your password", color = g.muted) }
             } else if (ticket == null) {
                 GoatField(name, { name = it; error = null }, "Name", Icons.Rounded.Person)
                 Spacer(Modifier.height(12.dp))

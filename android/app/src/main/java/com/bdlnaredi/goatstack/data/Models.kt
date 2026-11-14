@@ -13,6 +13,8 @@ data class Me(
     val demo: Boolean = false,
     val goat: Boolean = false,
     val plexLogin: Boolean = false,
+    /** Everyone but admins signs in with Plex. */
+    val plexOnly: Boolean = false,
     val recovery: Boolean = false,
     val user: User? = null,
 )

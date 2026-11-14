@@ -93,3 +93,24 @@ test('sign in with Plex for admins: only after they link their own Plex account,
     const after = await plexSignIn(w); assert.notEqual(after.r.status, 200, 'unlinked: refused again');
   } finally { await w.stop(); }
 });
+
+test('Plex only: everyone but admins signs in with Plex; profiles signed in another way are signed out', async () => {
+  const w = await world();
+  try {
+    const { a } = w;
+    await a.post('/api/users', { name: 'ravi', password: 'ravipassword', role: 'user' });
+    const r1 = client(w.s.base); assert.equal((await r1.post('/api/login', { name: 'ravi', password: 'ravipassword' })).status, 200);
+    await a.put('/api/plexsettings', { on: true, only: true, sid: w.plex, auto: true, access: [w.plex], perms: { request: true } });
+    assert.equal((await a.get('/api/plexsettings')).data.only, true);
+    assert.equal((await client(w.s.base).get('/api/me')).data.plexOnly, true);
+    assert.equal((await r1.get('/api/me')).data.user, null, 'signed out: it signed in with a password');
+    const no = await client(w.s.base).post('/api/login', { name: 'ravi', password: 'ravipassword' });
+    assert.equal(no.status, 403); assert.ok(no.data.plexOnly);
+    const ad = client(w.s.base); assert.equal((await ad.post('/api/login', { name: 'admin', password: 'correct-horse' })).status, 200, 'admins still use their password');
+    assert.equal((await a.get('/api/me')).data.user.role, 'admin', 'the admin stays signed in');
+    const { r } = await plexSignIn(w); assert.ok(r.data.user, 'Plex sign-in still works');
+    // Off again: passwords work again.
+    await a.put('/api/plexsettings', { on: true, only: false, sid: w.plex, auto: true, access: [w.plex], perms: { request: true } });
+    assert.equal((await client(w.s.base).post('/api/login', { name: 'ravi', password: 'ravipassword' })).status, 200);
+  } finally { await w.stop(); }
+});

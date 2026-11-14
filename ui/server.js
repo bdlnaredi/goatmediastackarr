@@ -728,9 +728,9 @@ const send = (res, code, obj, headers = {}) => {
   res.writeHead(code, { 'Content-Type': 'application/json', 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY', ...headers });
   res.end(JSON.stringify(obj));
 };
-const login = (res, user) => {
+const login = (res, user, via) => {
   const token = crypto.randomBytes(24).toString('hex');
-  sessions.set(th(token), { uid: user.id, at: Date.now(), seen: Date.now(), ...res.info }); saveSess();
+  sessions.set(th(token), { uid: user.id, at: Date.now(), seen: Date.now(), ...(via ? { via } : {}), ...res.info }); saveSess();
   send(res, 200, { user: pubUser(user) }, { 'Set-Cookie': `sid=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=2592000${res.secure ? '; Secure' : ''}` });
 };
 
@@ -904,6 +904,9 @@ const kidsOk = (u, rating) => { if (!u || !u.kids) return true; const a = rating
 const hideList = v => [...new Set((Array.isArray(v) ? v : String(v || '').split(',')).map(x => cut(String(x).trim(), 40)).filter(Boolean))].slice(0, 30);
 const cleanHide = h => ({ genre: hideList((h || {}).genre), label: hideList((h || {}).label), rating: hideList((h || {}).rating) });
 const lc = a => (a || []).map(x => String(x).toLowerCase());
+// "Plex only": everyone but admins signs in with Plex (their password and passkeys no longer work).
+const plexOnly = () => { const c = db.settings.plexLogin || {}; return !!(c.on && c.only && db.services.some(x => x.type === 'plex')); };
+const PLEX_ONLY_MSG = 'Sign in with Plex: on this server, only admins sign in with a name and password.';
 const hideRules = u => { const g = (db.settings.plexLogin || {}).hide || {}, p = u.hide || {}, m = k => [...new Set([...lc(g[k]), ...lc(p[k])])]; return { genre: m('genre'), label: m('label'), rating: m('rating') }; };
 const plexMetaCache = new Map();
 async function plexTags(s, key) {
@@ -2699,7 +2702,7 @@ const goatServer = http.createServer(async (req, res) => {
     // What changed in each version, for the "What's new" page.
     if (p === '/api/changelog' && m === 'GET') return send(res, 200, { current: VERSION, versions: changelog.read(VERSION) });
     if (p === '/api/wallpapers' && m === 'GET') { if (!DEMO && wpMode() === 'library' && !wpList().some(f => LIBWP.test(f)) && !wpBusy) wpKick(); return send(res, 200, wpMode() === 'scenes' ? [] : DEMO ? demo.fanarts() : wpList()); }
-    if (p === '/api/me') return send(res, 200, { setup, setupCode: setup && !!SETUP_TOKEN, version: VERSION, demo: DEMO, goat: !!GOAT_MANAGED, crossSeed: !!GOAT_MANAGED && csOn(), plexLogin: plexCfg().on, iconBase: String(process.env.ICON_BASE == null ? 'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/' : process.env.ICON_BASE).replace(/[^\w:/.@-]/g, ''), recovery: !DEMO && !!(mailer() && baseUrl()), user: me ? pubUser(me) : null });
+    if (p === '/api/me') return send(res, 200, { setup, setupCode: setup && !!SETUP_TOKEN, version: VERSION, demo: DEMO, goat: !!GOAT_MANAGED, crossSeed: !!GOAT_MANAGED && csOn(), plexLogin: plexCfg().on, plexOnly: plexOnly(), iconBase: String(process.env.ICON_BASE == null ? 'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/' : process.env.ICON_BASE).replace(/[^\w:/.@-]/g, ''), recovery: !DEMO && !!(mailer() && baseUrl()), user: me ? pubUser(me) : null });
 
     if (p === '/api/setup' && m === 'POST') {
       if (!setup) return send(res, 403, { error: 'Already set up' });
@@ -2739,7 +2742,7 @@ const goatServer = http.createServer(async (req, res) => {
           return send(res, 200, { linked: true, name: pname, user: pubUser(owner) });
         }
         const u = await plexProfile(String(pin.authToken));
-        audit(u.name, 'Signed in with Plex', res.info.ip); return login(res, u);
+        audit(u.name, 'Signed in with Plex', res.info.ip); return login(res, u, 'plex');
       } catch (x) {
         if (x instanceof PlexDeny) { plexPend.delete(tk); const f = plexBad[ip] = plexBad[ip] || { n: 0, t: 0 }; f.n++; f.t = Date.now(); audit('?', 'Plex sign-in refused', cut(x.message, 80) + ' ' + ip); return send(res, x.code, { error: x.message }); }
         return send(res, 502, { error: 'Could not check with Plex: ' + cut(x.message, 120) });
@@ -2780,6 +2783,7 @@ const goatServer = http.createServer(async (req, res) => {
       if (!(u ? crypto.timingSafeEqual(Buffer.from(hash(b.password || '', u.salt)), Buffer.from(u.hash)) : (hash(b.password || '', 'x'), false)))
         { fl.n++; fl.t = Date.now(); fails[ip] = fl; audit(cut(b.name, 40) || '?', 'Failed sign-in', ip); return send(res, 401, { error: 'Wrong name or password' }); }
       delete fails[ip];
+      if (plexOnly() && u.role !== 'admin') { audit(u.name, 'Turned away: Plex only', ip); return send(res, 403, { error: PLEX_ONLY_MSG, plexOnly: true }); }
       if (tfaRequired(u) && !(u.totp && u.totp.on) && (u.passkeys || []).length) return send(res, 401, { error: 'Sign in with your passkey: two-step sign-in is required for you, and your passkey is your second step.' });
       if (u.totp && u.totp.on) { const tk = crypto.randomBytes(16).toString('hex'); tickets.set(tk, { uid: u.id, exp: Date.now() + 300000, n: 0 }); return send(res, 200, { twofa: true, ticket: tk }); }
       audit(u.name, 'Signed in', res.info.ip);
@@ -2807,6 +2811,7 @@ const goatServer = http.createServer(async (req, res) => {
         const r = WA.verify(b, cred, { ...tk, apps: APP_HASHES }); cred.count = r.count; cred.used = Date.now();
       } catch (e) { fl.n++; fl.t = Date.now(); fails[ip] = fl; audit(u ? u.name : '?', 'Failed passkey sign-in', ip + ': ' + e.message); return send(res, 401, { error: e.plain ? e.message : 'That passkey did not work' }); }
       delete fails[ip]; save(); audit(u.name, 'Signed in', res.info.ip + ' (passkey' + (cred.name ? ': ' + cred.name : '') + ')');
+      if (plexOnly() && u.role !== 'admin') return send(res, 403, { error: PLEX_ONLY_MSG, plexOnly: true });
       return login(res, u);
     }
     if (p === '/api/login/2fa' && m === 'POST') {
@@ -2833,7 +2838,7 @@ const goatServer = http.createServer(async (req, res) => {
       const hh = th(invm[1]), x = db.invites.find(l => same(l.hash, hh));
       const live = x && (!x.exp || x.exp > Date.now()) && (!x.max || (x.used || 0) < x.max);
       if (!live) { fl.n++; fl.t = Date.now(); failsInv[ip] = fl; return send(res, 404, { error: x ? 'This invite has expired or been used up. Ask for a new one.' : 'This invite link is not valid.' }); }
-      if (m === 'GET') return send(res, 200, { label: x.label || '', by: x.by || '', server: db.settings.serverName || 'GoatMediaStackarr', kids: !!x.kids, exp: x.exp || 0, plex: !!(x.plex && x.plex.on), jellyfin: !!x.jellyfin });
+      if (m === 'GET') return send(res, 200, { plexOnly: plexOnly(), label: x.label || '', by: x.by || '', server: db.settings.serverName || 'GoatMediaStackarr', kids: !!x.kids, exp: x.exp || 0, plex: !!(x.plex && x.plex.on), jellyfin: !!x.jellyfin });
       const b = await readBody(req), name = cut(b.name, 40).trim();
       if (!name || !/^[\p{L}\p{N} ._-]+$/u.test(name)) return send(res, 400, { error: 'Pick a name (letters, numbers, spaces, dots and dashes).' });
       if ((b.password || '').length < 8) return send(res, 400, { error: 'Pick a password of 8+ characters' });
@@ -5128,15 +5133,17 @@ const goatServer = http.createServer(async (req, res) => {
     }
     if (p === '/api/plexsettings' && m === 'GET') {
       const c = plexCfg();
-      return send(res, 200, { on: c.on || !!(db.settings.plexLogin || {}).on, auto: c.auto, sid: c.sid, servers: db.services.filter(x => x.type === 'plex').map(x => ({ id: x.id, name: x.name })), access: c.access, perms: c.perms, hide: c.hide, linked: db.users.filter(x => x.plex).length });
+      return send(res, 200, { on: c.on || !!(db.settings.plexLogin || {}).on, only: !!(db.settings.plexLogin || {}).only, auto: c.auto, sid: c.sid, servers: db.services.filter(x => x.type === 'plex').map(x => ({ id: x.id, name: x.name })), access: c.access, perms: c.perms, hide: c.hide, linked: db.users.filter(x => x.plex).length });
     }
     if (p === '/api/plexsettings' && m === 'PUT') {
       const b = await readBody(req), o = db.settings.plexLogin || {}, srv = db.services.find(x => x.id === b.sid && x.type === 'plex');
       if (b.on && !srv && !db.services.some(x => x.type === 'plex')) return send(res, 400, { error: 'Add your Plex server under Settings, then Apps, first.' });
-      db.settings.plexLogin = { on: !!b.on, sid: srv ? srv.id : (o.sid || ''), auto: b.auto !== false,
+      db.settings.plexLogin = { on: !!b.on, only: !!b.on && !!b.only, sid: srv ? srv.id : (o.sid || ''), auto: b.auto !== false,
         access: Array.isArray(b.access) ? b.access.filter(a => db.services.some(x => x.id === a)) : o.access,
         perms: b.perms ? Object.fromEntries(['add', 'control', 'remove', 'request'].map(k => [k, b.perms[k] === true])) : o.perms, hide: 'hide' in b ? cleanHide(b.hide) : o.hide };
-      save(); audit(me.name, 'Changed Sign in with Plex', b.on ? 'on' : 'off'); return send(res, 200, {});
+      // Plex only from now on: profiles that signed in another way are signed out (admins and Plex sign-ins stay).
+      if (db.settings.plexLogin.only && !o.only) { let n = 0; for (const [k, v] of sessions) { const u2 = db.users.find(x => x.id === v.uid); if (u2 && u2.role !== 'admin' && v.via !== 'plex') { sessions.delete(k); n++; } } if (n) saveSess(); }
+      save(); audit(me.name, 'Changed Sign in with Plex', b.on ? (db.settings.plexLogin.only ? 'on, Plex only' : 'on') : 'off'); return send(res, 200, {});
     }
     if (p === '/api/signin' && m === 'GET') {
       const mc = mailer();

@@ -359,6 +359,7 @@ html.pinon body>*:not(.pinlock){visibility:hidden}
 .pinbox.shake{animation:pinshake .35s}
 @keyframes pinshake{20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}
 @media(prefers-reduced-motion:reduce){.pinbox.shake{animation:none}}
+.login details.adm{width:100%;display:grid;gap:10px}.login details.adm>:not(summary){width:100%}.login details.adm summary{cursor:pointer;text-align:center;font-size:14px;padding:6px}.login details.adm[open] summary{margin-bottom:4px}
 .gate{pointer-events:none;position:relative;z-index:1;min-height:100vh;min-height:100dvh;display:grid;place-items:center;padding:24px 16px}
 .login{pointer-events:auto;width:min(420px,100%);max-width:none;margin:0;padding:34px 30px 28px;border-radius:32px;background:rgba(14,15,32,.26);border:1px solid rgba(255,255,255,.24);box-shadow:inset 0 1px 0 rgba(255,255,255,.14),0 40px 90px -24px rgba(0,0,0,.75);-webkit-backdrop-filter:blur(22px) saturate(1.4) brightness(.85);backdrop-filter:blur(22px) saturate(1.4) brightness(.85);color:#f1f0fb;text-shadow:0 1px 10px rgba(0,0,0,.45);display:grid;gap:12px;animation:rise .7s cubic-bezier(.2,.8,.2,1) both}
 @keyframes rise{from{opacity:0;transform:translateY(18px) scale(.985)}}
@@ -557,7 +558,7 @@ async function api(url,method='GET',body){
   return d;
 }
 let DEMO=false;
-let REC=false,PLEXLOGIN=false;
+let REC=false,PLEXLOGIN=false,PLEXONLY=false;
 let VER='',GOAT=false,CROSSSEED=false;const APPMODE=/MediaHubApp\//.test(navigator.userAgent);
 // Tells an admin, once per version, that a newer GoatMediaStackarr is out and how to get it.
 async function updNote(){
@@ -574,7 +575,7 @@ async function updNote(){
 async function start(){
   await loadLang();
   const s=await api('/api/me');
-  VER=s.version||'';GOAT=!!s.goat;CROSSSEED=!!s.crossSeed;DEMO=!!s.demo;REC=!!s.recovery;PLEXLOGIN=!!s.plexLogin;ICONB=s.iconBase?s.iconBase.replace(/\/*$/,'/'):'';
+  VER=s.version||'';GOAT=!!s.goat;CROSSSEED=!!s.crossSeed;DEMO=!!s.demo;REC=!!s.recovery;PLEXLOGIN=!!s.plexLogin;PLEXONLY=!!s.plexOnly;ICONB=s.iconBase?s.iconBase.replace(/\/*$/,'/'):'';
   const rt=(location.hash.match(/^#reset=([\w-]{20,80})$/)||[])[1];
   if(rt)return resetView(rt);
   const iv=(location.hash.match(/^#invite=([\w-]{16,64})$/)||[])[1];
@@ -756,6 +757,11 @@ function authView(setup,needCode){
     <div class="pwf"><input name="password" type="password" placeholder="Password (8+ characters)" aria-label="Password" autocomplete="${setup?'new-password':'current-password'}" required><button type="button" class="ghost" id="pwt" aria-label="Show password" aria-pressed="false">${ic('eye')}</button></div>
     <button class="primary">${setup?'Create account':'Sign in'}</button>${!setup&&PK_OK?'<button type="button" class="pkb" id="pk1">'+ic('key')+'Sign in with a passkey</button>':''}${!setup&&PLEXLOGIN?'<div class="orl"><span>or</span></div><button type="button" class="plexb" id="px">Sign in with Plex</button><div class="mute pxs" id="pxs" role="status"></div>':''}${setup?'':'<button type="button" class="lnk" id="fg">Forgot password?</button>'}<div class="err" id="e" role="alert"></div>${DEMO?'<p class="mute demo-hint">Demo with pretend apps. Sign in as <b>demo</b> with <b>demo-mediahub</b> (admin), or <b>guest</b> with <b>guest-mediahub</b> (regular profile).</p>':''}</form></div>`;
   pwToggle();
+  // Plex only: Sign in with Plex first; the name and password are for admins, folded away.
+  if(!setup&&PLEXONLY&&$('#px')){const f=$('#f'),d=document.createElement('details');d.className='adm';d.innerHTML='<summary class="mute">Admin? Sign in with your password</summary>';
+    const first=f.querySelector('[name=name]');f.insertBefore($('#px'),first);f.insertBefore($('#pxs'),first);const orl=f.querySelector('.orl');if(orl)orl.remove();
+    f.insertBefore(d,first);for(const el of [...f.querySelectorAll('[name=name],.pwf,.primary,#pk1,#fg')])d.appendChild(el);
+    $('.login .lead').textContent='Sign in with your Plex account.'}
   const fg=$('#fg');if(fg)fg.onclick=()=>forgotView(setup,needCode);
   if($('#pk1'))$('#pk1').onclick=async()=>{const b=$('#pk1');b.disabled=true;$('#e').textContent='';try{await pkSignIn();start()}catch(x){if(x.name!=='NotAllowedError'&&x.name!=='AbortError')$('#e').textContent=x.message;b.disabled=false}};
   if($('#px'))$('#px').onclick=()=>plexSignIn();
@@ -1852,6 +1858,8 @@ async function usrView(){
   const pxPanel=`<form class="panel" id="pxf" style="margin-bottom:16px"><h3 style="margin-top:0">Sign in with Plex</h3>
     <p class="mute" style="margin-top:0">People on your Plex server get a <b>Sign in with Plex</b> button on the sign-in page. They sign in on Plex's own page, GoatMediaStackarr checks that their Plex account can use your Plex server, and they get a regular profile. GoatMediaStackarr never sees their Plex password and does not keep their Plex login. Admins always sign in with their GoatMediaStackarr password.</p>
     ${px.servers.length?`<label class="chk"><input type="checkbox" name="on" ${px.on?'checked':''}>Let people from my Plex server sign in with Plex</label>
+    <label class="chk" style="margin-top:6px"><input type="checkbox" name="only" ${px.only?'checked':''}>Plex only: everyone but admins must sign in with Plex</label>
+    <p class="mute" style="margin:2px 0 8px 28px;font-size:13px">Their password and passkeys stop working, and profiles signed in another way are signed out. Admins still sign in with their password.</p>
     ${px.servers.length>1?`<label class="mute">Plex server <select name="sid">${px.servers.map(x=>`<option value="${x.id}" ${x.id===px.sid?'selected':''}>${esc(x.name)}</option>`).join('')}</select></label>`:`<input type="hidden" name="sid" value="${px.servers[0].id}">`}
     <div class="opts" role="radiogroup" aria-label="Who can sign in" style="margin:10px 0 0"><label class="opt ${px.auto?'on':''}"><input type="radio" name="auto" value="1" ${px.auto?'checked':''} style="width:auto;min-height:0"><b>Anyone with access to my Plex server</b><span>A profile is made the first time they sign in.</span></label>
       <label class="opt ${px.auto?'':'on'}"><input type="radio" name="auto" value="0" ${px.auto?'':'checked'} style="width:auto;min-height:0"><b>Only people I add</b><span>Add their Plex name on their profile below. Everyone else is turned away.</span></label></div>
@@ -1883,7 +1891,7 @@ async function usrView(){
       <div class="row" style="margin-top:10px"><span class="mute">Streaming</span><label class="mute">Limit <input type="number" min="0" step="any" data-sl value="${u.streamLimit==null?'':u.streamLimit}" placeholder="Default" style="width:90px"> GB a month</label><span class="mute" data-su></span></div>
       <p class="mute" style="margin:4px 0 0;font-size:13px">What they may stream from Plex and Jellyfin each month. Empty uses the default from Settings, Limits; 0 means no limit. At the limit their streams are stopped until the 1st.</p>`:'<p class="mute" style="margin:12px 0 0">Admins can open every app and do everything.</p>'}</div>`).join('')}`;
   if($('#pxf')&&px.servers.length)$('#pxf').onsubmit=async e=>{e.preventDefault();const f=e.target,v=new FormData(f);$('#pxe').textContent='';
-    try{await api('/api/plexsettings','PUT',{on:f.on.checked,sid:v.get('sid'),auto:v.get('auto')==='1',access:[...f.querySelectorAll('[data-pa]:checked')].map(c=>c.dataset.pa),perms:Object.fromEntries([...f.querySelectorAll('[data-pp]')].map(c=>[c.dataset.pp,c.checked])),hide:{genre:f.querySelector('[data-hx-g]').value,label:f.querySelector('[data-hx-l]').value,rating:f.querySelector('[data-hx-r]').value}});toast('Saved','ok');if(f.on.checked&&!PLEXLOGIN)PLEXLOGIN=true;usrView()}catch(x){$('#pxe').textContent=x.message}};
+    try{await api('/api/plexsettings','PUT',{on:f.on.checked,only:!!(f.only&&f.only.checked),sid:v.get('sid'),auto:v.get('auto')==='1',access:[...f.querySelectorAll('[data-pa]:checked')].map(c=>c.dataset.pa),perms:Object.fromEntries([...f.querySelectorAll('[data-pp]')].map(c=>[c.dataset.pp,c.checked])),hide:{genre:f.querySelector('[data-hx-g]').value,label:f.querySelector('[data-hx-l]').value,rating:f.querySelector('[data-hx-r]').value}});toast('Saved','ok');if(f.on.checked&&!PLEXLOGIN)PLEXLOGIN=true;usrView()}catch(x){$('#pxe').textContent=x.message}};
   inviteWire();tfaPolicyPanel();
   $('#uf').onsubmit=async e=>{e.preventDefault();$('#ue').textContent='';try{await api('/api/users','POST',Object.fromEntries(new FormData(e.target)));toast('Profile added','ok');usrView()}catch(x){$('#ue').textContent=x.message}};
   const put=async(id,b)=>{try{await api('/api/users/'+id,'PUT',b);toast('Saved','ok');return true}catch(x){toast(x.message,'bad');return false}};
