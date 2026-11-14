@@ -104,6 +104,8 @@ data class Device(val id: String = "", val user: String = "", val device: String
 // ---------- Download categories and tags (/api/qb/{sid}/meta) ----------
 @Serializable data class QbMeta(val free: Long = 0, val categories: List<QbCategory> = emptyList(), val tags: List<String> = emptyList())
 @Serializable data class QbCategory(val name: String = "", val path: String = "")
+/** Where a title is in the library (/api/inlib), or empty when it is not. */
+@Serializable data class InLib(val sid: String = "", val id: Long = 0, val kind: String = "")
 /** qBittorrent's own limits, in KB/s (0 = none); "alt" are used while alternative speeds are on. */
 @Serializable data class QbPrefs(val dl: Int = 0, val up: Int = 0, val altDl: Int = 0, val altUp: Int = 0)
 /** A category's limit (KB/s, for all its torrents together), optionally only between from and to ("HH:MM") and on some days (0 = Sunday). */

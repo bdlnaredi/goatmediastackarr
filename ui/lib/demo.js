@@ -146,7 +146,7 @@ function create(opts = {}) {
       { const mm = p.match(/^\/api\/v3\/movie\/(\d+)$/); if (mm && m === 'GET') { const x = a.find(y => y.id === +mm[1]); return x ? json(res, { ...radarrOut(x), isAvailable: true, ...(x.hasFile ? { movieFile: { id: 700 + x.id, path: '/movies/' + x.title + '/' + x.title.replace(/ /g, '.') + '.2024.1080p.WEB-DL.x265.mkv', relativePath: x.title.replace(/ /g, '.') + '.2024.1080p.WEB-DL.x265.mkv', size: x.sizeOnDisk, quality: { quality: { name: 'WEBDL-1080p' } }, languages: [{ name: 'English' }], mediaInfo: { videoCodec: 'x265' }, dateAdded: '2026-09-02T10:00:00Z' } } : {}) }) : json(res, {}, 404); } }
       { const df = p.match(/^\/api\/v3\/moviefile\/(\d+)$/); if (df && m === 'DELETE') { const x = a.find(y => 700 + y.id === +df[1]); if (x) { x.hasFile = false; } (st.deleted = st.deleted || []).push('moviefile ' + df[1]); return json(res, {}); } }
       if (p === '/api/v3/movie' && m === 'GET') { const t = q.get('tmdbId'); return json(res, a.filter(x => !t || 5000 + x.id === +t).map(radarrOut)); }
-      if (p === '/api/v3/movie' && m === 'POST') return json(res, { id: 99 });
+      if (p === '/api/v3/movie' && m === 'POST') return json(res, { id: 99, tmdbId: +data.tmdbId || 0 });
       if (p === '/api/v3/movie/editor') {
         const ids = data.movieIds || [];
         a.filter(s => ids.includes(s.id)).forEach(s => { if (m === 'PUT') { if ('monitored' in data) s.monitored = !!data.monitored; if (data.qualityProfileId) s.qualityProfileId = +data.qualityProfileId; } });

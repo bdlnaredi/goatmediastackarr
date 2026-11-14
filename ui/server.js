@@ -242,6 +242,16 @@ async function markHave(items, kind) {
     return available ? { ...x, available, ...(lib ? { lib: { sid: lib.sid, id: lib.id } } : {}) } : x;
   });
 }
+function libItem(s, x, prof) {
+  const st = x.statistics || {}, img = (x.images || []).find(i => i.coverType === 'poster') || {}, tv = s.type === 'sonarr', rt = x.ratings || {};
+  const rating = tv ? +rt.value || 0 : +((rt.imdb || {}).value || (rt.tmdb || {}).value || rt.value) || 0;
+  return { id: x.id, tmdb: +x.tmdbId > 0 ? +x.tmdbId : 0, title: x.title, year: x.year, poster: img.remoteUrl || x.remotePoster, fanart: mediaUrl(s, x, 'fanart').url, overview: (x.overview || '').slice(0, 600),
+    size: tv ? st.sizeOnDisk || 0 : x.sizeOnDisk || 0, missing: tv ? Math.max(0, (st.episodeCount || 0) - (st.episodeFileCount || 0)) : (x.monitored && !x.hasFile ? 1 : 0),
+    monitored: !!x.monitored, status: x.status || '', genres: (x.genres || []).slice(0, 6), maker: (tv ? x.network : x.studio) || '', profile: prof[x.qualityProfileId] || '',
+    added: x.added || '', rating, runtime: x.runtime || 0, cert: x.certification || '', slug: cut(String(x.titleSlug || ''), 200), folder: cut(String(x.path || ''), 400),
+    seasons: tv ? st.seasonCount || 0 : 0, have: tv ? st.episodeFileCount || 0 : (x.hasFile ? 1 : 0), total: tv ? st.episodeCount || 0 : 1, next: tv ? x.nextAiring || '' : '' };
+}
+const inlibAgain = {};
 const libIndex = () => {
   if (libIdx.v && Date.now() - libIdx.t < 300000) return Promise.resolve(libIdx.v);
   // An older index is used straight away while a new one is made.
@@ -2990,8 +3000,12 @@ const goatServer = http.createServer(async (req, res) => {
       const body = s.type === 'sonarr' ? { ...base, seasonFolder: b.seasonFolder !== false, seriesType: ['standard', 'daily', 'anime'].includes(b.seriesType) ? b.seriesType : (b.item.seriesType || 'standard'),
           addOptions: { monitor: tvMon, searchForMissingEpisodes: search && tvMon !== 'none', searchForCutoffUnmetEpisodes: false } }
         : { ...base, minimumAvailability: ['announced', 'inCinemas', 'released'].includes(b.minAvail) ? b.minAvail : 'released', addOptions: { searchForMovie: search && mvMon, monitor: mvMon ? 'movieOnly' : 'none' } };
-      await call(s, '/api/v3/' + (s.type === 'sonarr' ? 'series' : 'movie'), { method: 'POST', body: JSON.stringify(body) });
-      return send(res, 200, {});
+      const made = await call(s, '/api/v3/' + (s.type === 'sonarr' ? 'series' : 'movie'), { method: 'POST', body: JSON.stringify(body) });
+      // In the index at once, so opening it again goes to its library page.
+      if (made && made.id && +made.tmdbId > 0 && libIdx.v) { const k = s.type === 'sonarr' ? 'tv' : 'movie';
+        libIdx.v[k].set(+made.tmdbId, { size: 0, sid: s.id, id: made.id, cert: String(made.certification || ''), added: made.added || '' });
+        if (k === 'tv' && +made.tvdbId > 0) libIdx.v.tvdb.set(+made.tvdbId, { size: 0, sid: s.id, id: made.id, tmdb: +made.tmdbId }); }
+      return send(res, 200, made && made.id ? { sid: s.id, id: made.id } : {});
     }
     const svcOf = (id, t) => { const s = db.services.find(x => x.id === id); return s && allowed(s) && s.type === t ? s : null; };
     const addOpts = b => ({ ...(b.category ? { category: cut(b.category) } : {}),
@@ -3830,15 +3844,28 @@ const goatServer = http.createServer(async (req, res) => {
       // Kept for a minute, and shown at once when older while it is fetched again: a big library opens without waiting.
       const [d, profs] = await swr('lib:' + s.id, 60000, 24 * 3600e3, () => Promise.all([call(s, s.type === 'sonarr' ? '/api/v3/series' : '/api/v3/movie', { signal: AbortSignal.timeout(60000) }), call(s, '/api/v3/qualityprofile').catch(() => [])]));
       const prof = {}; (Array.isArray(profs) ? profs : []).forEach(q => { prof[q.id] = q.name; });
-      return send(res, 200, d.filter(x => kidsOk(me, x.certification)).map(x => {
-        const st = x.statistics || {}, img = (x.images || []).find(i => i.coverType === 'poster') || {}, tv = s.type === 'sonarr', rt = x.ratings || {};
-        const rating = tv ? +rt.value || 0 : +((rt.imdb || {}).value || (rt.tmdb || {}).value || rt.value) || 0;
-        return { id: x.id, tmdb: +x.tmdbId > 0 ? +x.tmdbId : 0, title: x.title, year: x.year, poster: img.remoteUrl || x.remotePoster, fanart: mediaUrl(s, x, 'fanart').url, overview: (x.overview || '').slice(0, 600),
-          size: tv ? st.sizeOnDisk || 0 : x.sizeOnDisk || 0, missing: tv ? Math.max(0, (st.episodeCount || 0) - (st.episodeFileCount || 0)) : (x.monitored && !x.hasFile ? 1 : 0),
-          monitored: !!x.monitored, status: x.status || '', genres: (x.genres || []).slice(0, 6), maker: (tv ? x.network : x.studio) || '', profile: prof[x.qualityProfileId] || '',
-          added: x.added || '', rating, runtime: x.runtime || 0, cert: x.certification || '', slug: cut(String(x.titleSlug || ''), 200), folder: cut(String(x.path || ''), 400),
-          seasons: tv ? st.seasonCount || 0 : 0, have: tv ? st.episodeFileCount || 0 : (x.hasFile ? 1 : 0), total: tv ? st.episodeCount || 0 : 1, next: tv ? x.nextAiring || '' : '' };
-      }));
+      return send(res, 200, d.filter(x => kidsOk(me, x.certification)).map(x => libItem(s, x, prof)));
+    }
+    // One show or movie, asked of Sonarr or Radarr right now (one just added is in it straight away).
+    if (p === '/api/library/item' && m === 'GET') {
+      const q = new URL(req.url, 'http://x').searchParams, s = arr(db.services.find(x => x.id === q.get('sid'))), id = +q.get('id');
+      if (!s || !Number.isInteger(id) || id < 1) return send(res, 404, { error: 'Not found' });
+      let x; try { x = await call(s, (s.type === 'sonarr' ? '/api/v3/series/' : '/api/v3/movie/') + id); } catch { return send(res, 404, { error: 'It is no longer in ' + s.name }); }
+      if (!x || !x.id || !kidsOk(me, x.certification)) return send(res, 404, { error: 'Not found' });
+      const profs = await call(s, '/api/v3/qualityprofile').catch(() => []), prof = {}; (Array.isArray(profs) ? profs : []).forEach(q2 => { prof[q2.id] = q2.name; });
+      return send(res, 200, libItem(s, x, prof));
+    }
+    // Whether a title (by TMDB number) is in a library this person can open: then it opens there, with everything.
+    if (p === '/api/inlib' && m === 'GET') {
+      const q = new URL(req.url, 'http://x').searchParams, k = q.get('type') === 'tv' ? 'tv' : 'movie', id = +q.get('id');
+      if (!(id > 0)) return send(res, 200, {});
+      let idx = await libIndex().catch(() => null), e = idx && idx[k].get(id);
+      // Not in it yet but asked for here and approved (Seerr adds it to Sonarr or Radarr a moment later): look again.
+      if (!e && db.requests.some(r => r.mediaType === k && +r.mediaId === id && r.status === 'approved') && Date.now() - (inlibAgain[k + id] || 0) > 20000) {
+        inlibAgain[k + id] = Date.now(); libIdx.t = 0; idx = await libIndexBuild().catch(() => null); e = idx && idx[k].get(id);
+      }
+      const sv = e && db.services.find(x => x.id === e.sid && allowed(x));
+      return send(res, 200, sv && kidsOk(me, e.cert) ? { sid: sv.id, id: e.id, kind: k } : {});
     }
     const idsOf = (x, type) => ({ type, imdb: /^tt\d{1,10}$/.test(x.imdbId || '') ? x.imdbId : '', tmdb: Number.isInteger(+x.tmdbId) && +x.tmdbId > 0 ? +x.tmdbId : 0, tvdb: type === 'tv' && Number.isInteger(+x.tvdbId) && +x.tvdbId > 0 ? +x.tvdbId : 0 });
     if (p === '/api/filestatus' && m === 'GET') {

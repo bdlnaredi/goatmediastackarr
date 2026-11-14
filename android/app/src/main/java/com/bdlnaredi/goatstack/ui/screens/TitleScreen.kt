@@ -32,6 +32,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -72,6 +73,14 @@ fun TitleScreen(type: String, id: Long) {
     val data = rememberLoad(type, id) { ctx.api.get<TitleInfo>("/api/title?type=$type&id=$id") }
     var ask by remember { mutableStateOf<Ask?>(null) }
     var requested by remember { mutableStateOf(false) }
+    // Already in a library this profile can open (added, or a request approved): its library page instead, with
+    // seasons and episodes, files, monitoring and searching.
+    var checked by remember(type, id) { mutableStateOf(false) }
+    LaunchedEffect(type, id) {
+        val r = try { ctx.api.get<com.bdlnaredi.goatstack.data.InLib>("/api/inlib?type=$type&id=$id") } catch (_: Exception) { null }
+        if (r != null && r.sid.isNotEmpty() && r.id > 0) { ctx.back(); ctx.item(r.sid, r.kind.ifEmpty { type }, r.id) } else checked = true
+    }
+    if (!checked) { Column(Modifier.fillMaxSize()) { TopBack(); LoadingBlock(Modifier.padding(16.dp)) }; return }
 
     when (val st = data.state) {
         is Load.Loading -> Column(Modifier.fillMaxSize()) { TopBack(); LoadingBlock(Modifier.padding(16.dp)) }

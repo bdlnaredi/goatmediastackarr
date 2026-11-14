@@ -4,6 +4,7 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- **Titles in your library open their library page**: a movie or show that is already in Sonarr or Radarr (added from Search or Discover, or a request that was approved) now opens its full library page from Discover, Search, Requests, Home, the watchlist and More like this, on the web page and in the app: seasons and episodes, files, monitoring, searching, Choose a release, subtitles, cast and More like this. Before, it opened the short title page with an *Open in library* button. A title just added, or a request just approved, counts straight away. Request titles on the Requests page can be tapped now too.
 - **Speed limits on a schedule**: a category's limit can be for some hours and days only (Downloads → Categories and tags → *Speed limit*: From, To and the days), say 09:00–23:00 on weekdays. Past midnight works (22:00 to 07:00). Outside those hours the category has no limit of its own; the list says "(not now)".
 - **Speed limits in the Android app**: Downloads → **Speed limits** sets qBittorrent's own limits (and the alternative ones) and each category's, with its hours and days.
 - **Unlock with fingerprint or face** in the Android app (Settings → Account, once a PIN is set): the PIN screen asks for your fingerprint or face straight away; *Use PIN* or the keypad still work.

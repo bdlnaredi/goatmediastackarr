@@ -108,7 +108,7 @@ The dashboard is the front door: what's playing and who is watching, download an
 
 - **Discover** and **Search**: what's trending, popular and coming on TMDB, Trakt and TheTVDB, and a search across Sonarr and Radarr.
 - **Library**: your shows and movies, as posters or a list, with filters. A show's page has its seasons and episodes (each with its story), monitoring, search and **Choose a release** (pick a release yourself from what your indexers have).
-- **Every title has its own page**: story, cast, seasons, trailer, whether it's in your library, and **More like this**. Tap an actor for everything they were in, filterable to movies, shows or what you already have.
+- **Every title has its own page**: story, cast, seasons, trailer and **More like this**. One already in your library (added, or a request that was approved) opens its full library page instead, from anywhere: Discover, Search, Requests, Home or the watchlist. Tap an actor for everything they were in, filterable to movies, shows or what you already have.
 - **Watchlist**: everyone keeps their own list from any title's page. It shows which are here, on their way or not asked for yet, and each person hears when theirs lands. Admins can have watchlist titles asked for automatically.
 - **Collections** and **Because you watched**: a movie's page names its collection, the collection's page lists every film with *Request the missing ones*, Radarr's collections are under Library, and the dashboard suggests titles from what each person actually watched.
 - **Missing episodes**: a show's page lists the episodes that aren't here, and each can be asked for on its own.

@@ -1953,13 +1953,15 @@ function showFound(){
   $('#r').innerHTML=`<div class="grid">${d.results.map((x,i)=>`<div class="card" data-v="${i}">${x.poster?`<img src="${esc(x.poster)}" alt="" style="width:100%;border-radius:6px;aspect-ratio:2/3;object-fit:cover">`:''}
     <h3>${esc(x.title)} <span class="mute">${x.year||''}</span></h3><div class="mute">${esc((x.overview||'').slice(0,110))}${(x.overview||'').length>110?'…':''}</div>
     <p><button data-dv="${i}">Details</button> ${x.added?'<span class="mute">Already in your library</span>':(can('add')?`<button data-a="${i}">Add</button>`:'<span class="mute">Adding is off for your profile</span>')}</p></div>`).join('')||'<p class="mute">Nothing found.</p>'}</div>`;
-  const show=i=>{const x=d.results[i];showDetail({title:x.title,sub:String(x.year||''),poster:x.poster,overview:x.overview})};
+  // One already in this library (or just added) opens its library page, with everything; others a short description.
+  const show=i=>{const x=d.results[i];if(x.added&&x.raw&&x.raw.id)return openInLibrary({sid:sel,id:x.raw.id},()=>showDetail({title:x.title,sub:String(x.year||''),poster:x.poster,overview:x.overview}));
+    showDetail({title:x.title,sub:String(x.year||''),poster:x.poster,overview:x.overview})};
   document.querySelectorAll('[data-v]').forEach(c=>c.onclick=e=>{if(!e.target.closest('button'))show(c.dataset.v)});
   document.querySelectorAll('[data-dv]').forEach(b=>b.onclick=()=>show(b.dataset.dv));
   document.querySelectorAll('[data-a]').forEach(b=>b.onclick=async()=>{
     const x=d.results[b.dataset.a],o=await addChoices(d.kind||(services.find(v=>v.id===sel)||{}).type,d.profiles,d.folders,x.title);if(!o)return;
     b.disabled=true;b.textContent='Adding…';$('#e').textContent='';
-    try{await api('/api/add','POST',{sid:sel,item:x.raw,...o});
+    try{const made=await api('/api/add','POST',{sid:sel,item:x.raw,...o});if(made&&made.id){x.added=true;x.raw={...x.raw,id:made.id}}
       b.replaceWith(Object.assign(document.createElement('span'),{className:'mute',textContent:'Added, now searching for downloads'}))}
     catch(x){b.disabled=false;b.textContent='Add';$('#e').textContent=x.message}});
 }
@@ -2926,9 +2928,16 @@ function titleExtras(el,t){
 // Fetches the title by its TMDB number, then fills el with its cast and similar titles.
 function loadExtras(el,type,tmdb){if(!el||!(tmdb>0))return;el.innerHTML='';api(`/api/title?type=${type==='tv'?'tv':'movie'}&id=${tmdb}`).then(t=>{if(document.contains(el))titleExtras(el,t)}).catch(()=>{})}
 // Opens a movie or show from your Sonarr or Radarr library.
-async function openInLibrary(l){
-  const sv=services.find(z=>z.id===l.sid);if(!sv)return toast('That library is not available to you','bad');
-  try{const list=await api('/api/library?sid='+encodeURIComponent(sv.id)),x=list.find(y=>y.id===l.id);if(!x)throw new Error('It is no longer in '+sv.name);openLibItem(sv,x,{})}catch(e){toast(e.message,'bad')}
+async function openInLibrary(l,orElse){
+  const sv=services.find(z=>z.id===l.sid);if(!sv)return orElse?orElse():toast('That library is not available to you','bad');
+  try{const x=await api(`/api/library/item?sid=${encodeURIComponent(sv.id)}&id=${encodeURIComponent(l.id)}`);openLibItem(sv,x,{})}catch(e){if(orElse)orElse();else toast(e.message,'bad')}
+}
+// A title already in a Sonarr or Radarr library you can open goes to its library page (seasons and episodes, files,
+// monitoring, search, Choose a release…); one that is not goes to orElse (its title page). One just added here, or a
+// request just approved, counts too.
+function openTitle(type,tmdb,orElse){
+  if(!(tmdb>0)||MOD_CLICK||!services.some(s=>['sonarr','radarr'].includes(s.type)))return orElse();
+  api(`/api/inlib?type=${type==='tv'?'tv':'movie'}&id=${tmdb}`).then(r=>r&&r.sid?openInLibrary(r,orElse):orElse()).catch(orElse);
 }
 // ---------- Watchlist
 const wlToggle=(type,id,on,x)=>on?api('/api/watchlist','POST',{type,id,title:x.title,year:x.year,poster:x.poster}):api(`/api/watchlist/${type}/${id}`,'DELETE');
@@ -3048,7 +3057,7 @@ async function wlView(){
     :empty(T('Your watchlist is empty'),T('Open any movie or show and press Watchlist. You hear when it is in the library.'))}`;
     const a=$('#wla');if(a)a.onchange=async()=>{try{d.auto=(await api('/api/watchlist/settings','PUT',{auto:a.checked})).auto;toast('Saved','ok')}catch(x){toast(x.message,'bad')}};
     const f=$('#wlf');if(f)f.onclick=e=>{const b=e.target.closest('[data-v]');if(b){UI.wlf=b.dataset.v;saveUI();draw()}};
-    $('#m').querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{const [type,id]=b.dataset.k.split(':'),w=d.items.find(x=>x.type===type&&x.id===+id);const o=titlePage(type,+id,w);const mo=new MutationObserver(()=>{if(!document.contains(o)){mo.disconnect();if(tab==='wl')wlView()}});mo.observe(document.body,{childList:true})});
+    $('#m').querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{const [type,id]=b.dataset.k.split(':'),w=d.items.find(x=>x.type===type&&x.id===+id);const o=titlePage(type,+id,w);if(document.contains(o)){const mo=new MutationObserver(()=>{if(!document.contains(o)){mo.disconnect();if(tab==='wl')wlView()}});mo.observe(document.body,{childList:true})}});
     $('#m').querySelectorAll('[data-rm]').forEach(b=>b.onclick=async()=>{const [type,id]=b.dataset.rm.split(':');try{await api(`/api/watchlist/${type}/${id}`,'DELETE');d.items=d.items.filter(x=>!(x.type===type&&x.id===+id));draw()}catch(x){toast(x.message,'bad')}});
   };
   draw();
@@ -3094,6 +3103,7 @@ async function forYou(el){
 }
 function titlePage(type,id,seed){
   seed=seed||{};type=type==='tv'?'tv':'movie';
+  if(!seed.noLib&&!MOD_CLICK&&services.some(s=>['sonarr','radarr'].includes(s.type))){openTitle(type,+id,()=>titlePage(type,id,{...seed,noLib:true}));return document.createElement('div')}
   // Its own address (/title/movie/123), for bookmarks and sharing; Ctrl/middle-click opens it in a new tab.
   if(MOD_CLICK){MOD_CLICK=false;window.open(`/title/${type}/${encodeURIComponent(id)}`,'_blank','noopener');return document.createElement('div')}
   NEXT_LAYER_URL=`/title/${type}/${encodeURIComponent(id)}`;
@@ -3205,6 +3215,7 @@ async function reqChoices(sid,type){
 // Sends a request, asking for the choices first when this profile gets them. Null when cancelled.
 async function requestWith(body){const opts=await reqChoices(body.sid,body.mediaType);if(opts===null)return null;return api('/api/requests','POST',opts?{...body,opts}:body)}
 function discOpen(x){
+  if(!x._noLib)return openTitle(x.mediaType,+x.tmdb,()=>discOpen({...x,_noLib:true}));
   const sk=ofType('seerr')[0],tv=x.mediaType==='tv';
   const o=modal(`<button class="pgback" data-x>${ic('back')}Back</button><div class="row" style="align-items:flex-start;gap:16px;flex-wrap:wrap">${x.poster?`<img src="${esc(x.poster)}" alt="" style="width:140px;border-radius:10px;aspect-ratio:2/3;object-fit:cover">`:''}<div class="grow" style="min-width:220px"><h2 style="margin:0">${esc(x.title)} <span class="mute">${esc(x.year)}</span></h2><div class="mute">${tv?'TV show':'Movie'}${x.rating?', rated '+x.rating.toFixed(1):''}</div>${x.overview?`<p>${esc(x.overview)}</p>`:''}${idChips({type:x.mediaType,imdb:x.imdb,tmdb:x.tmdb,tvdb:x.tvdb})}<div id="rqs" style="margin-top:12px"></div></div></div><div id="cx" style="margin-top:8px"></div><div class="row" style="margin-top:14px"><button data-x>Close</button></div>`,true);
   if(x.tmdb)loadExtras(o.querySelector('#cx'),x.mediaType,x.tmdb);
@@ -3270,12 +3281,14 @@ function rqView(){
     <div class="err" id="e"></div><div id="r"></div><h2 class="sec">${admin?'All requests':'Your requests'}</h2><div id="q"></div><div id="rpt"></div>`;
   const loadQ=async()=>{try{const l=await api('/api/requests');if(tab!=='rq')return;
     $('#q').innerHTML=l.map(x=>`<div class="box row">${x.poster?`<img src="${esc(x.poster)}" alt="" style="width:40px;border-radius:6px">`:''}
-      <div style="flex:1;min-width:0"><b>${esc(x.title)}</b> <span class="mute">${esc(x.year||'')}</span><div class="mute">Requested by ${esc(x.user)}${x.est?` · about ${gbs(x.est)}`:''}${x.rule?` · approved by the rule “${esc(x.rule)}”`:''}</div></div>
+      <div style="flex:1;min-width:0"><a href="#" class="rqt" data-ot="${esc(x.mediaType)}:${esc(x.mediaId)}"><b>${esc(x.title)}</b></a> <span class="mute">${esc(x.year||'')}</span><div class="mute">Requested by ${esc(x.user)}${x.est?` · about ${gbs(x.est)}`:''}${x.rule?` · approved by the rule “${esc(x.rule)}”`:''}</div></div>
       ${x.seasons&&x.seasons.length?`<span class="mute" title="Seasons requested">S${x.seasons.join(', ')}</span>`:''}
       ${admin&&x.status==='pending'?`<button class="primary" data-ap="${x.id}">Approve</button><button data-dc="${x.id}">Decline</button>`:stagePill(x)}
       ${x.status==='approved'&&(admin||x.uid===me.id)?`<button data-rp="${x.id}" title="Tell the admin something is wrong and search again">Report a problem</button>`:''}
       <button class="ghost" data-tk="${x.id}" title="Write to ${admin?esc(x.user):'the admin'} about it">${ic('chat')}${(x.msgs||[]).length?(x.msgs||[]).length:'Message'}</button></div>`).join('')||'<p class="mute">No requests yet.</p>';
     document.querySelectorAll('#q [data-tk]').forEach(b=>b.onclick=()=>talk('requests',l.find(y=>y.id===b.dataset.tk),loadQ));
+    // The title opens its library page once it is there (approved and added), otherwise its title page.
+    document.querySelectorAll('#q [data-ot]').forEach(b=>b.onclick=e=>{e.preventDefault();const [t,id]=b.dataset.ot.split(':'),x=l.find(y=>String(y.mediaId)===id);if(+id>0)titlePage(t,+id,{title:x&&x.title,poster:x&&x.poster})});
     document.querySelectorAll('[data-rp]').forEach(b=>b.onclick=()=>{const o=modal(`<h2 style="margin-top:0">Report a problem</h2><p class="mute">Say what is wrong (no sound, wrong language, will not play…). The admin is told, and GoatMediaStackarr searches for a new copy.</p><form id="rf4"><textarea name="text" rows="3" maxlength="500" placeholder="What is wrong?" required style="width:100%"></textarea><div class="err" id="re4"></div><div class="row"><button class="primary">Send report</button><button type="button" data-x>Cancel</button></div></form>`);
       o.querySelector('[data-x]').onclick=o.close;o.querySelector('textarea').focus();
       o.querySelector('#rf4').onsubmit=async e=>{e.preventDefault();try{const r=await api(`/api/requests/${b.dataset.rp}/report`,'POST',{text:e.target.text.value});o.close();toast(r.result?'Sent. '+r.result:'Sent to the admin','ok');loadR()}catch(x){o.querySelector('#re4').textContent=x.message}}});
