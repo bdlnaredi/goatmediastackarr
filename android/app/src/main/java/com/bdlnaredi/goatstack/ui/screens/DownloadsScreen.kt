@@ -178,16 +178,16 @@ private fun LiveSpeeds(live: Pair<Long, Long>) {
 
 /** A small chip that shows what is picked and opens the choices as a menu: one line instead of a whole row of chips. */
 @Composable
-private fun <T> MenuChip(options: List<Pair<T, String>>, selected: T, onSelect: (T) -> Unit, icon: androidx.compose.ui.graphics.vector.ImageVector, label: String) {
+private fun <T> MenuChip(options: List<Pair<T, String>>, selected: T, onSelect: (T) -> Unit, icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, modifier: Modifier = Modifier) {
     val g = LocalGoat.current
     var open by remember { mutableStateOf(false) }
-    Box {
-        Row(Modifier.clip(RoundedCornerShape(50)).background(g.card).clickable { open = true }.padding(horizontal = 12.dp, vertical = 8.dp),
+    Box(modifier) {
+        Row(Modifier.clip(RoundedCornerShape(50)).background(g.card).clickable { open = true }.padding(horizontal = 10.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically) {
             Icon(icon, null, tint = g.muted, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
             Text(options.firstOrNull { it.first == selected }?.second ?: label, style = MaterialTheme.typography.labelLarge, color = g.text, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.widthIn(max = 130.dp))
+                modifier = Modifier.weight(1f, fill = false))
             Icon(Icons.Rounded.ExpandMore, label, tint = g.muted, modifier = Modifier.size(18.dp))
         }
         DropdownMenu(open, { open = false }) {
@@ -285,11 +285,12 @@ private fun Torrents(sid: String, qbit: Boolean = true) {
             item(key = "filters") { ChoiceRow(FILTERS, filter, { filter = it }) }
             item(key = "tools") {
                 // Category, order and the actions on one line; the actions for all of them are in the ⋮ menu.
-                Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    if (cats.isNotEmpty()) MenuChip(listOf<Pair<String?, String>>(null to "Every category") + cats.map { it.name to it.name } + listOf("" to "No category"), cat, { cat = it }, Icons.Rounded.Folder, "Category")
-                    MenuChip(DL_SORTS, sort, { sort = it; sp.edit().putString("sort", it).apply() }, Icons.Rounded.FilterList, "Order")
-                    IconButton(onClick = { rev = !rev; sp.edit().putBoolean("rev", rev).apply() }, modifier = Modifier.size(40.dp)) { Icon(Icons.Rounded.SwapVert, if (rev) "Order: reversed" else "Reverse the order", tint = if (rev) g.primary else g.muted) }
-                    Spacer(Modifier.weight(1f))
+                Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        if (cats.isNotEmpty()) MenuChip(listOf<Pair<String?, String>>(null to "Every category") + cats.map { it.name to it.name } + listOf("" to "No category"), cat, { cat = it }, Icons.Rounded.Folder, "Category", Modifier.weight(1f, fill = false))
+                        MenuChip(DL_SORTS, sort, { sort = it; sp.edit().putString("sort", it).apply() }, Icons.Rounded.FilterList, "Order", Modifier.weight(1f, fill = false))
+                        IconButton(onClick = { rev = !rev; sp.edit().putBoolean("rev", rev).apply() }, modifier = Modifier.size(40.dp)) { Icon(Icons.Rounded.SwapVert, if (rev) "Order: reversed" else "Reverse the order", tint = if (rev) g.primary else g.muted) }
+                    }
                     if (ctx.user.can("add")) IconButton(onClick = { adding = true }, modifier = Modifier.size(40.dp)) { Icon(Icons.Rounded.Add, "Add a link", tint = g.primary) }
                     if (canControl || (ctx.user.admin && qbit)) Box {
                         IconButton(onClick = { tools = true }, modifier = Modifier.size(40.dp)) { Icon(Icons.Rounded.MoreVert, "More download actions", tint = g.text) }
