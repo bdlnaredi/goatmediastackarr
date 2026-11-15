@@ -1,51 +1,56 @@
-// Backups copied off the server: S3-compatible storage (signed requests) and WebDAV, keeping the newest few.
+// Backups copied to Google Drive, OneDrive or iCloud Drive, through rclone (a pretend one here, with a folder as the
+// cloud): connecting each way, copying, keeping the newest few, and disconnecting.
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const http = require('node:http');
-const { boot, client, setup } = require('./helpers');
-const C = require('../lib/cloud');
+const fs = require('node:fs'), path = require('node:path');
+const { tmp, boot, client, setup } = require('./helpers');
+const FAKE = path.join(__dirname, 'fixtures', 'fake-rclone.js');
 
-test('S3 signatures match the AWS examples', () => {
-  const c = { endpoint: 'https://examplebucket.s3.amazonaws.com', region: 'us-east-1', bucket: 'test.txt', access: 'AKIAIOSFODNN7EXAMPLE', secret: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY' };
-  assert.match(C.s3sign(c, 'GET', '', {}, null, { range: 'bytes=0-9' }, new Date('2013-05-24T00:00:00Z')).headers.authorization, /Signature=f0e8bdb87c964420e857bd35b5d6ed310bd44f0170aba48dd91039c6036bdb41$/);
-  assert.match(C.s3sign({ ...c, bucket: '' }, 'GET', '', { 'max-keys': '2', prefix: 'J' }, null, {}, new Date('2013-05-24T00:00:00Z')).headers.authorization, /34b48302e7b5fa45bde8084f4b7868a86f0a534bc59db6670ed5711ef69dc6f7$/);
+test('Google Drive: connect with the pasted address, copy backups, keep the newest, disconnect', async () => {
+  const dir = tmp(), cloud = path.join(dir, 'cloud'); fs.mkdirSync(cloud);
+  const s = await boot({ RCLONE_BIN: FAKE, FAKE_CLOUD: cloud, CLOUD_AUTH_PORT: '53791' }, dir), a = client(s.base); await setup(a);
+  try {
+    let c = (await a.get('/api/cloud')).data; assert.equal(c.connected, false); assert.deepEqual(Object.keys(c.types), ['drive', 'onedrive', 'iclouddrive']);
+    assert.equal((await a.put('/api/cloud', { on: true })).status, 400, 'nothing connected yet');
+    const st = (await a.post('/api/cloud/connect', { type: 'drive', step: 'start' })).data;
+    assert.match(st.url, /^https:\/\/accounts\.example\/o\/oauth2\/auth\?state=st\d+&scope=drive\.file$/, 'only the files it makes');
+    const state = new URL(st.url).searchParams.get('state');
+    assert.equal((await a.post('/api/cloud/connect', { type: 'drive', step: 'finish', url: 'not an address' })).status, 400);
+    assert.equal((await a.post('/api/cloud/connect', { type: 'drive', step: 'finish', url: 'http://127.0.0.1:53682/?state=x' })).status, 400, 'no code in it');
+    const fin = await a.post('/api/cloud/connect', { type: 'drive', step: 'finish', url: `http://127.0.0.1:53682/?state=${state}&code=4/abc&scope=x` });
+    assert.equal(fin.status, 200, JSON.stringify(fin.data)); assert.equal(fin.data.connected, true); assert.equal(fin.data.on, true);
+    const conf = fs.readFileSync(path.join(s.dir, 'rclone.conf'), 'utf8'); assert.match(conf, /type = drive/); assert.match(conf, /scope = drive\.file/); assert.match(conf, /"refresh_token":"rt"/);
+    assert.equal((fs.statSync(path.join(s.dir, 'rclone.conf')).mode & 0o777), 0o600, 'only readable by this app');
+    assert.equal((await a.put('/api/cloud', { on: true, folder: 'Goat', keep: 2 })).status, 200);
+    assert.equal((await a.post('/api/cloud/test')).status, 200);
+    fs.mkdirSync(path.join(cloud, 'Goat'), { recursive: true });
+    for (const n of ['auto-2026-01-01-0100.json', 'auto-2026-02-01-0100.json', 'stack-2026-01-01.tar.gz', 'my-notes.txt']) fs.writeFileSync(path.join(cloud, 'Goat', n), 'old');
+    const r = await a.post('/api/cloud/now'); assert.equal(r.status, 200, JSON.stringify(r.data));
+    const left = fs.readdirSync(path.join(cloud, 'Goat')).sort();
+    assert.equal(left.length, 4, left.join(', ')); assert.ok(left.includes('auto-2026-02-01-0100.json') && !left.includes('auto-2026-01-01-0100.json'), 'the newest two of its own kind: ' + left.join(', '));
+    assert.ok(left.includes('stack-2026-01-01.tar.gz') && left.includes('my-notes.txt'), 'other files are left alone');
+    c = (await a.get('/api/cloud')).data; assert.equal(c.last.ok, true);
+    assert.equal((await a.post('/api/cloud/disconnect')).status, 200);
+    assert.ok(!fs.existsSync(path.join(s.dir, 'rclone.conf'))); assert.equal((await a.get('/api/cloud')).data.connected, false);
+  } finally { await s.stop(); }
 });
 
-const store = () => { const files = new Map(), seen = [];
-  const srv = http.createServer((req, res) => { const ch = []; req.on('data', d => ch.push(d)); req.on('end', () => {
-    const u = new URL(req.url, 'http://x'); seen.push({ m: req.method, p: u.pathname, auth: req.headers.authorization || '' });
-    if (req.method === 'PUT') { files.set(decodeURIComponent(u.pathname), Buffer.concat(ch)); res.writeHead(201); return res.end(); }
-    if (req.method === 'DELETE') { files.delete(decodeURIComponent(u.pathname)); res.writeHead(204); return res.end(); }
-    if (req.method === 'MKCOL') { res.writeHead(201); return res.end(); }
-    if (req.method === 'PROPFIND') { res.writeHead(207, { 'Content-Type': 'application/xml' }); return res.end(`<d:multistatus xmlns:d="DAV:">${[...files.keys()].filter(k => k.startsWith(u.pathname)).map(k => `<d:response><d:href>${encodeURI(k)}</d:href></d:response>`).join('')}</d:multistatus>`); }
-    if (req.method === 'GET' && u.searchParams.get('list-type') === '2') { const pre = u.pathname.replace(/\/$/, '') + '/' + (u.searchParams.get('prefix') || '');
-      res.writeHead(200, { 'Content-Type': 'application/xml' }); return res.end(`<ListBucketResult>${[...files.keys()].filter(k => k.startsWith(pre)).map(k => `<Contents><Key>${k.split('/').slice(2).join('/')}</Key></Contents>`).join('')}</ListBucketResult>`); }
-    res.writeHead(404); res.end(); }); }).listen(0);
-  return { srv, files, seen }; };
-
-test('cloud backup: S3 and WebDAV, a test, each new backup copied, and only the newest kept', async () => {
-  const s3 = store(), dav = store();
-  await Promise.all([new Promise(r => s3.srv.once('listening', r)), new Promise(r => dav.srv.once('listening', r))]);
-  const s = await boot(), a = client(s.base); await setup(a);
+test('iCloud Drive: Apple ID, then the code; an old S3 or WebDAV setting is shown as gone', async () => {
+  const dir = tmp(), cloud = path.join(dir, 'cloud'); fs.mkdirSync(cloud);
+  const s = await boot({ RCLONE_BIN: FAKE, FAKE_CLOUD: cloud }, dir), a = client(s.base); await setup(a);
   try {
-    assert.equal((await a.put('/api/cloud', { on: true, type: 's3', endpoint: 'nope' })).status, 400);
-    let r = await a.post('/api/cloud/test', { type: 's3', endpoint: `http://127.0.0.1:${s3.srv.address().port}`, bucket: 'bk', access: 'AK', secret: 'SECRET', region: 'eu-1' });
-    assert.equal(r.status, 200, JSON.stringify(r.data)); assert.equal(s3.files.size, 0, 'the test file is removed again');
-    assert.ok(s3.seen.every(x => /^AWS4-HMAC-SHA256 Credential=AK\/\d{8}\/eu-1\/s3\/aws4_request/.test(x.auth)));
-    r = await a.put('/api/cloud', { on: true, type: 's3', endpoint: `http://127.0.0.1:${s3.srv.address().port}`, bucket: 'bk', access: 'AK', secret: 'SECRET', region: 'eu-1', keep: 2 });
-    assert.equal(r.data.secret, ''); assert.equal(r.data.hasSecret, true);
-    for (let i = 0; i < 3; i++) { r = await a.post('/api/cloud/now'); assert.equal(r.status, 200, JSON.stringify(r.data)); await new Promise(x => setTimeout(x, 1100 * (i < 2 ? 0 : 0))); }
-    const keys = [...s3.files.keys()]; assert.ok(keys.length >= 1 && keys.length <= 2, keys.join()); assert.ok(keys.every(k => /^\/bk\/goatmediastackarr\/auto-\d{4}-\d\d-\d\d-\d{4}\.json$/.test(k)));
-    assert.match(s3.files.get(keys[0]).toString(), /"users"/);
-    assert.equal((await a.get('/api/cloud')).data.last.ok, true);
-
-    // WebDAV, in a folder of its own.
-    r = await a.put('/api/cloud', { on: true, type: 'webdav', url: `http://127.0.0.1:${dav.srv.address().port}/dav/files/ann`, user: 'ann', pass: 'pw', prefix: 'backups/goat' });
-    assert.equal(r.status, 200);
-    r = await a.post('/api/cloud/now'); assert.equal(r.status, 200, JSON.stringify(r.data));
-    assert.ok([...dav.files.keys()].some(k => /^\/dav\/files\/ann\/backups\/goat\/auto-.*\.json$/.test(k)));
-    assert.ok(dav.seen.some(x => x.m === 'MKCOL' && x.p === '/dav/files/ann/backups/')); assert.ok(dav.seen.every(x => x.auth === 'Basic ' + Buffer.from('ann:pw').toString('base64')));
-    // Off: nothing more is copied.
-    await a.put('/api/cloud', { on: false }); assert.equal((await a.post('/api/cloud/now')).status, 400);
-  } finally { await s.stop(); s3.srv.close(); dav.srv.close(); }
+    assert.equal((await a.post('/api/cloud/connect', { type: 'iclouddrive', step: 'start', appleId: 'nope', password: 'x' })).status, 400);
+    const r1 = (await a.post('/api/cloud/connect', { type: 'iclouddrive', step: 'start', appleId: 'me@icloud.com', password: 'pw' })).data;
+    assert.equal(r1.need, 'code');
+    assert.equal((await a.post('/api/cloud/connect', { type: 'iclouddrive', step: 'code', state: r1.state, code: '12' })).status, 400, 'six digits');
+    const wrong = (await a.post('/api/cloud/connect', { type: 'iclouddrive', step: 'code', state: r1.state, code: '000000' }));
+    assert.equal(wrong.status, 400);
+    const ok = (await a.post('/api/cloud/connect', { type: 'iclouddrive', step: 'code', state: r1.state, code: '123456', appleId: 'me@icloud.com' })).data;
+    assert.equal(ok.connected, true); assert.equal(ok.account, 'me@icloud.com'); assert.equal(ok.type, 'iclouddrive');
+    assert.equal((await a.post('/api/cloud/now')).status, 200); assert.equal(fs.readdirSync(path.join(cloud, 'GoatMediaStackarr')).length, 1);
+  } finally { await s.stop(); }
+  // A setting from before (S3) comes back off, saying so.
+  const d2 = tmp(); fs.writeFileSync(path.join(d2, 'db.json'), JSON.stringify({ users: [], services: [], settings: { cloud: { on: true, type: 's3', bucket: 'b' } } }));
+  const s2 = await boot({ RCLONE_BIN: FAKE }, d2), b = client(s2.base); await setup(b);
+  try { const c = (await b.get('/api/cloud')).data; assert.equal(c.on, false); assert.equal(c.old, 's3'); assert.equal(c.connected, false); } finally { await s2.stop(); }
 });

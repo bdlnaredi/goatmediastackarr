@@ -25,6 +25,7 @@ GoatMediaStackarr bundles the following programs. Each is the official, unmodifi
 | MediaHub | The interface GoatMediaStackarr is built from | GPL-3.0-or-later | https://github.com/bdlnaredi/mediahub |
 | s6-overlay | Starts and watches every program | ISC | https://github.com/just-containers/s6-overlay |
 | Node.js | Runs the interface, the setup scripts and Seerr | MIT | https://github.com/nodejs/node |
+| rclone | Copies backups to Google Drive, OneDrive or iCloud Drive | MIT | https://github.com/rclone/rclone |
 | Ubuntu 24.04 packages (WireGuard tools, OpenVPN, iptables, Python, par2, 7zip, unrar and others) | Base system | Various, see `/usr/share/doc/*/copyright` in the image | https://packages.ubuntu.com |
 
 `unrar` is freeware, not open source. It may be redistributed free of charge, and SABnzbd uses it to unpack RAR archives.

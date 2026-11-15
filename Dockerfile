@@ -205,6 +205,13 @@ RUN --mount=type=secret,id=GITHUB_TOKEN,env=GITHUB_TOKEN \
     fetch-release filebrowser/filebrowser "${FILEBROWSER_VERSION}" "^linux-${a}-filebrowser\.tar\.gz$" /tmp/fb.tar.gz /opt/goat/versions/filebrowser && \
     mkdir -p /opt/filebrowser && tar -xzf /tmp/fb.tar.gz -C /opt/filebrowser filebrowser && rm /tmp/fb.tar.gz && chmod +x /opt/filebrowser/filebrowser
 
+# rclone: copies backups to Google Drive, OneDrive or iCloud Drive (Settings → Backup; one program).
+ARG RCLONE_VERSION=latest
+RUN --mount=type=secret,id=GITHUB_TOKEN,env=GITHUB_TOKEN \
+    a=$([ "$TARGETARCH" = arm64 ] && echo arm64 || echo amd64) && \
+    fetch-release rclone/rclone "${RCLONE_VERSION}" "^rclone-v[0-9.]+-linux-${a}\.zip$" /tmp/rclone.zip /opt/goat/versions/rclone && \
+    unzip -q -j /tmp/rclone.zip '*/rclone' -d /usr/local/bin && rm /tmp/rclone.zip && chmod +x /usr/local/bin/rclone && rclone version | head -1
+
 # Unpackerr: unpacks .rar/.zip/.7z downloads for Sonarr, Radarr and Lidarr (one small program; runs when in GOAT_ENGINES).
 ARG UNPACKERR_VERSION=latest
 RUN --mount=type=secret,id=GITHUB_TOKEN,env=GITHUB_TOKEN \

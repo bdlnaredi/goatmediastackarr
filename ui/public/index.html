@@ -1751,28 +1751,58 @@ function stBackup(){
       await api('/api/restore','POST',{passphrase:e.target.pass.value,backup:b});toast('Restored. Please sign in again.','ok');me=null;setTimeout(start,600)}catch(x){$('#re2').textContent=x.message}};
 }
 
-// Cloud backup: every new backup (and the stack's) is copied to S3-compatible storage or a WebDAV folder.
+// Cloud backup: every new backup (and the stack's) is copied to Google Drive, OneDrive or iCloud Drive (rclone on the server).
 async function cloudPanel(){
   const el=$('#cbk');if(!el)return;let c;try{c=await api('/api/cloud')}catch(x){el.innerHTML=`<div class="err">${esc(x.message)}</div>`;return}
   if(!document.contains(el))return;
-  const v=(k,ph,t='text',auto='off')=>`<input name="${k}" type="${t}" value="${esc(c[k]||'')}" placeholder="${ph}" autocomplete="${auto}">`;
+  const T3=c.types||{drive:'Google Drive',onedrive:'OneDrive',iclouddrive:'iCloud Drive'};
   el.innerHTML=`<h3 style="margin-top:0">Copy backups to the cloud</h3>
-    <p class="mute" style="margin-top:0">A copy of every backup${GOAT?' (GoatMediaStackarr\'s own and the whole stack\'s)':''} is sent off the server, so a dead disk does not take your setup with it. The newest ones are kept there.</p>
-    <form id="cf" class="nlform"><label class="tgl"><input type="checkbox" name="on" ${c.on?'checked':''}><span>Copy each new backup</span></label>
-    <div class="seg" id="cty" style="margin:8px 0">${[['s3','S3-compatible'],['webdav','WebDAV']].map(([k,n])=>`<button type="button" data-ct="${k}" class="${c.type===k?'on':''}">${n}</button>`).join('')}</div>
-    <div data-for="s3"${c.type==='s3'?'':' hidden'}><p class="mute" style="font-size:13px;margin:0">Amazon S3, Backblaze B2 (10 GB free), Cloudflare R2, Wasabi, MinIO and the like. Make a bucket and a key that can write to it.</p>
-      <label class="mute">Address ${v('endpoint','https://s3.us-west-002.backblazeb2.com')}</label><div class="row"><label class="mute grow">Bucket ${v('bucket','my-backups')}</label><label class="mute">Region ${v('region','us-east-1')}</label></div>
-      <label class="mute">Access key ${v('access','Key ID')}</label><label class="mute">Secret ${`<input name="secret" type="password" placeholder="${c.hasSecret?'Saved. Type a new one to change it':'Secret key'}" autocomplete="new-password">`}</label></div>
-    <div data-for="webdav"${c.type==='webdav'?'':' hidden'}><p class="mute" style="font-size:13px;margin:0">Nextcloud, ownCloud, Synology, Koofr and others. For Nextcloud use its WebDAV address (Files → Settings) and an app password.</p>
-      <label class="mute">Address ${v('url','https://cloud.example.com/remote.php/dav/files/you')}</label><div class="row"><label class="mute grow">User ${v('user','you')}</label><label class="mute grow">Password ${`<input name="pass" type="password" placeholder="${c.hasPass?'Saved':'App password'}" autocomplete="new-password">`}</label></div></div>
-    <div class="row"><label class="mute grow">Folder ${v('prefix','goatmediastackarr')}</label><label class="mute">Keep the newest <input name="keep" type="number" min="1" max="60" value="${c.keep}" style="width:80px"></label></div>
-    <div class="row" style="margin-top:8px"><button class="primary">Save</button><button type="button" id="ctst">Test</button><button type="button" id="cnow"${c.on?'':' disabled'}>Back up to the cloud now</button></div>
-    ${c.last?`<div class="mute" style="font-size:13px">${c.last.ok?'Last copy':'Last try failed'} ${esc(fdt(c.last.at))}: ${esc(c.last.name)}${c.last.ok?'':' <span style="color:var(--bad-t)">'+esc(c.last.error||'')+'</span>'}</div>`:''}<div class="err" id="cfe"></div></form>`;
-  const f=$('#cf');let type=c.type;
-  f.querySelector('#cty').onclick=e=>{const b=e.target.closest('[data-ct]');if(!b)return;type=b.dataset.ct;f.querySelectorAll('[data-ct]').forEach(x=>x.classList.toggle('on',x===b));f.querySelectorAll('[data-for]').forEach(x=>x.hidden=x.dataset.for!==type)};
-  const body=()=>{const g=f.elements,o={type,on:g.on.checked};['endpoint','bucket','region','access','secret','url','user','pass','prefix','keep'].forEach(k=>{o[k]=g[k].value});return o};
-  f.onsubmit=async e=>{e.preventDefault();$('#cfe').textContent='';try{await api('/api/cloud','PUT',body());toast('Saved','ok');cloudPanel()}catch(x){$('#cfe').textContent=x.message}};
-  $('#ctst').onclick=async()=>{const b=$('#ctst');b.disabled=true;$('#cfe').textContent='';try{await api('/api/cloud/test','POST',body());toast('It works: a test file was written and removed','ok')}catch(x){$('#cfe').textContent=x.message}b.disabled=false};
+    <p class="mute" style="margin-top:0">A copy of every backup${GOAT?' (GoatMediaStackarr\'s own and the whole stack\'s)':''} goes to your Google Drive, OneDrive or iCloud Drive, so a dead disk does not take your setup with it. The newest ones are kept there.</p>
+    ${c.old?`<div class="box" style="margin-bottom:10px">Copying to ${c.old==='s3'?'S3':'WebDAV'} is no longer offered, so it stopped. Connect one of these instead; what is already there stays.</div>`:''}
+    ${c.connected?`<div class="box row" style="gap:10px;flex-wrap:wrap"><span class="pill ok">Connected</span><b class="grow">${esc(T3[c.type])}${c.account&&c.account!==T3[c.type]?` <span class="mute">· ${esc(c.account)}</span>`:''}</b><button type="button" id="cdis">Disconnect</button></div>
+      <form id="cf" class="nlform" style="margin-top:10px"><label class="tgl"><input type="checkbox" name="on" ${c.on?'checked':''}><span>Copy each new backup</span></label>
+      <div class="row"><label class="mute grow">Folder <input name="folder" value="${esc(c.folder)}" placeholder="GoatMediaStackarr"></label><label class="mute">Keep the newest <input name="keep" type="number" min="1" max="60" value="${c.keep}" style="width:80px"></label></div>
+      <div class="row" style="margin-top:8px"><button class="primary">Save</button><button type="button" id="ctst">Test</button><button type="button" id="cnow"${c.on?'':' disabled'}>Back up to the cloud now</button></div>
+      ${c.last?`<div class="mute" style="font-size:13px">${c.last.ok?'Last copy':'Last try failed'} ${esc(fdt(c.last.at))}: ${esc(c.last.name)}${c.last.ok?'':' <span style="color:var(--bad-t)">'+esc(c.last.error||'')+'</span>'}</div>`:''}
+      ${c.type==='iclouddrive'?'<p class="mute" style="font-size:13px">Apple asks for a new code about once a month: when a copy fails for that, connect again.</p>':''}<div class="err" id="cfe"></div></form>`
+    :`<div class="seg" id="cty" style="margin:8px 0">${Object.entries(T3).map(([k,n])=>`<button type="button" data-ct="${k}">${n}</button>`).join('')}</div><div id="cconn"></div><div class="err" id="cfe"></div>`}`;
+  if(!c.connected){
+    const box=$('#cconn');
+    const connect=async(type)=>{$('#cfe').textContent='';
+      if(type==='iclouddrive'){
+        box.innerHTML=`<form id="icf" class="nlform"><p class="mute" style="font-size:13px;margin:0">Your Apple ID and its password; Apple then shows a 6-digit code on your iPhone, iPad or Mac. Advanced Data Protection must be off (Settings → your name → iCloud). The password is kept only in rclone's settings on this server.</p>
+          <label class="mute">Apple ID <input name="appleId" type="email" autocomplete="off" placeholder="you@icloud.com" required></label><label class="mute">Password <input name="password" type="password" autocomplete="new-password" required></label>
+          <div class="row"><button class="primary">Continue</button></div></form>`;
+        let state='',apple='';
+        $('#icf').onsubmit=async e=>{e.preventDefault();const f=e.target,b=f.querySelector('.primary');$('#cfe').textContent='';b.disabled=true;
+          try{
+            if(!state){apple=f.appleId.value;const r=await api('/api/cloud/connect','POST',{type,step:'start',appleId:apple,password:f.password.value});
+              if(r.need){state=r.state;f.innerHTML=`<label class="mute">The 6-digit code Apple shows on your devices <input name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required autofocus></label><div class="row"><button class="primary">Connect</button></div>`;return}
+              toast('iCloud Drive connected','ok');return cloudPanel()}
+            const r=await api('/api/cloud/connect','POST',{type,step:'code',state,code:f.code.value,appleId:apple});
+            if(r.need){state=r.state;$('#cfe').textContent=r.error||'Enter the new code';f.code.value='';b.disabled=false;return}
+            toast('iCloud Drive connected','ok');cloudPanel()
+          }catch(x){$('#cfe').textContent=x.message;b.disabled=false}};
+        return;
+      }
+      box.innerHTML='<p class="mute">Starting…</p>';
+      let r;try{r=await api('/api/cloud/connect','POST',{type,step:'start'})}catch(x){box.innerHTML='';$('#cfe').textContent=x.message;return}
+      const host=type==='drive'?'127.0.0.1':'localhost';
+      box.innerHTML=`<ol class="mute" style="padding-left:20px;line-height:1.6;margin:6px 0">
+          <li><a class="btn primary" href="${esc(r.url)}" target="_blank" rel="noopener">${ic('ext')}Open ${esc(T3[type])} sign-in</a> and allow access.</li>
+          <li>You are then sent to a page that <b>does not open</b> (its address starts with <code>http://${host}:53682</code>). That is expected.</li>
+          <li>Copy the whole address from the address bar of that page and paste it here:</li></ol>
+        <form id="caf" class="nlform"><input name="url" placeholder="http://${host}:53682/?state=…&code=…" autocomplete="off" required><div class="row"><button class="primary">Connect</button></div></form>`;
+      $('#caf').onsubmit=async e=>{e.preventDefault();const b=e.target.querySelector('.primary');b.disabled=true;b.textContent='Connecting…';$('#cfe').textContent='';
+        try{await api('/api/cloud/connect','POST',{type,step:'finish',url:e.target.url.value});toast(T3[type]+' connected','ok');cloudPanel()}catch(x){$('#cfe').textContent=x.message;b.disabled=false;b.textContent='Connect'}};
+    };
+    $('#cty').onclick=e=>{const b=e.target.closest('[data-ct]');if(!b)return;document.querySelectorAll('#cty [data-ct]').forEach(x=>x.classList.toggle('on',x===b));connect(b.dataset.ct)};
+    return;
+  }
+  const f=$('#cf');
+  $('#cdis').onclick=async()=>{if(!confirm(`Disconnect ${T3[c.type]}? Backups stop being copied there; what is already there stays.`))return;try{await api('/api/cloud/disconnect','POST');cloudPanel()}catch(x){toast(x.message,'bad')}};
+  f.onsubmit=async e=>{e.preventDefault();$('#cfe').textContent='';try{await api('/api/cloud','PUT',{on:f.on.checked,folder:f.folder.value,keep:f.keep.value});toast('Saved','ok');cloudPanel()}catch(x){$('#cfe').textContent=x.message}};
+  $('#ctst').onclick=async()=>{const b=$('#ctst');b.disabled=true;$('#cfe').textContent='';try{await api('/api/cloud/test','POST');toast('It works: a test file was written and removed','ok')}catch(x){$('#cfe').textContent=x.message}b.disabled=false};
   $('#cnow').onclick=async()=>{const b=$('#cnow');b.disabled=true;b.textContent='Copying…';try{const r=await api('/api/cloud/now','POST');toast('Copied: '+r.sent.join(', '),'ok');cloudPanel()}catch(x){$('#cfe').textContent=x.message;b.disabled=false;b.textContent='Back up to the cloud now'}};
 }
 

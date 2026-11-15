@@ -1,88 +1,152 @@
-// Copies backups off the server: to any S3-compatible storage (Amazon S3, Backblaze B2, Cloudflare R2, Wasabi,
-// MinIO…) or to a WebDAV folder (Nextcloud, ownCloud, Synology, Koofr…), keeping the newest few there.
-// GoatMediaStackarr, Copyright (C) 2026 bdlnaredi, GPL-3.0-or-later. No dependencies.
+// Copies backups to Google Drive, OneDrive or iCloud Drive, through rclone (in the image). rclone keeps the sign-in in
+// its own config file (rclone.conf next to GoatMediaStackarr's data) and renews it by itself.
+//
+// Signing in to Google or Microsoft: rclone's "authorize" runs a small sign-in helper on this server at
+// 127.0.0.1:53682. The person opens the provider's page in their own browser and allows access; the provider then sends
+// their browser to http://127.0.0.1:53682/… or http://localhost:53682/…, which does not open on their device (the
+// helper is on the server). They copy that address and paste it in GoatMediaStackarr, which hands it to the helper here;
+// rclone finishes the sign-in and prints the token.
+//
+// iCloud: Apple ID, password, then the 6-digit code Apple shows on their devices (rclone's own steps). Apple asks again
+// about once a month, and it only works with Advanced Data Protection off.
 'use strict';
-const crypto = require('node:crypto'), fs = require('node:fs'), { Readable } = require('node:stream');
+const { spawn, execFile } = require('node:child_process'), fs = require('node:fs'), path = require('node:path');
 
+const TYPES = { drive: 'Google Drive', onedrive: 'OneDrive', iclouddrive: 'iCloud Drive' };
+const REMOTE = 'goatcloud';
+const BIN = () => process.env.RCLONE_BIN || 'rclone';
+const AUTH_PORT = () => +process.env.CLOUD_AUTH_PORT || 53682;
 const cut = (v, n) => String(v == null ? '' : v).trim().slice(0, n);
-/** The saved settings, cleaned. Secrets are kept when the page sends them empty. */
+
+let CONF = '';
+const conf = () => CONF;
+function setConfDir(dir) { CONF = path.join(dir, 'rclone.conf'); }
+const env = () => ({ ...process.env, RCLONE_CONFIG: CONF });
+
+/** Runs rclone; resolves its output, or rejects with what it said went wrong. */
+function rc(args, { timeout = +process.env.CLOUD_TIMEOUT_MS || 6 * 3600e3, input } = {}) {
+  return new Promise((ok, no) => {
+    const p = execFile(BIN(), args, { env: env(), timeout, maxBuffer: 32 * 1024 * 1024 }, (e, out, err) => {
+      if (e) { const m = String(err || e.message).split('\n').map(l => l.replace(/^\d{4}\/\d\d\/\d\d \d\d:\d\d:\d\d (ERROR|NOTICE|CRITICAL|Failed to \w+)?:?\s*/, '').trim()).filter(l => l && !/^Usage:|^\s*rclone |^Flags:|^Use "rclone/.test(l));
+        return no(new Error(m.find(l => /error|fail|denied|invalid|forbidden|expired|not found/i.test(l)) || m[0] || 'rclone failed')); }
+      ok(String(out));
+    });
+    if (input != null) { p.stdin.end(input); }
+  });
+}
+
+/** Settings as stored: { on, type, folder, keep, account, last }. */
 function clean(b = {}, o = {}) {
-  const type = ['s3', 'webdav'].includes(b.type) ? b.type : o.type || 's3', g = (k, n = 300) => b[k] != null && cut(b[k], n) !== '' ? cut(b[k], n) : o[k] || '';
-  return { on: 'on' in b ? !!b.on : !!o.on, type, endpoint: g('endpoint').replace(/\/+$/, ''), region: g('region', 40) || 'us-east-1', bucket: g('bucket', 100), access: g('access', 200), secret: g('secret', 200),
-    url: g('url').replace(/\/+$/, ''), user: g('user', 200), pass: g('pass', 200), prefix: cut(b.prefix != null ? b.prefix : o.prefix || 'goatmediastackarr', 100).replace(/^\/+|\/+$/g, ''),
-    keep: Math.min(60, Math.max(1, Math.round(+(b.keep != null ? b.keep : o.keep || 7)) || 7)), last: o.last || null };
+  const type = TYPES[b.type] ? b.type : TYPES[o.type] ? o.type : '';
+  return { on: type ? ('on' in b ? !!b.on : !!o.on) : false, type, connected: type === o.type ? !!o.connected : false,
+    folder: (cut(b.folder != null ? b.folder : o.folder, 120) || 'GoatMediaStackarr').replace(/^\/+|\/+$/g, '').replace(/\.\.+/g, '.'),
+    keep: Math.min(60, Math.max(1, Math.round(+(b.keep != null ? b.keep : o.keep) || 7))), account: type === o.type ? o.account || '' : '', last: o.last || null };
 }
 function problem(c) {
-  if (c.type === 's3') { if (!/^https?:\/\/[^\s/]+/.test(c.endpoint)) return 'Enter the storage address (like https://s3.us-west-002.backblazeb2.com)'; if (!c.bucket) return 'Enter the bucket name'; if (!c.access || !c.secret) return 'Enter the access key and secret'; }
-  else { if (!/^https?:\/\/\S+/.test(c.url)) return 'Enter the WebDAV folder address (like https://cloud.example.com/remote.php/dav/files/you)'; }
+  if (!c.type) return 'Pick Google Drive, OneDrive or iCloud Drive';
+  if (!c.connected) return `Connect ${TYPES[c.type]} first`;
   return '';
 }
 
-// ---------- S3: Signature Version 4, path-style addresses (works with every S3-compatible service) ----------
-const hmac = (k, s) => crypto.createHmac('sha256', k).update(s).digest(), hash = s => crypto.createHash('sha256').update(s).digest('hex');
-const enc = s => encodeURIComponent(s).replace(/[!'()*]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase());
-function s3sign(c, method, key, query = {}, body = null, extra = {}, now = new Date()) {
-  const u = new URL(c.endpoint), host = u.host, amz = now.toISOString().replace(/[:-]|\.\d{3}/g, ''), day = amz.slice(0, 8);
-  const path = '/' + enc(c.bucket) + (key ? '/' + key.split('/').map(enc).join('/') : '');
-  const qs = Object.keys(query).sort().map(k => enc(k) + '=' + enc(query[k])).join('&');
-  const ph = body == null ? hash('') : 'UNSIGNED-PAYLOAD';
-  const headers = { host, 'x-amz-content-sha256': ph, 'x-amz-date': amz, ...extra };
-  const names = Object.keys(headers).map(h => h.toLowerCase()).sort();
-  const canon = [method, path, qs, names.map(h => h + ':' + String(headers[Object.keys(headers).find(k => k.toLowerCase() === h)]).trim()).join('\n') + '\n', names.join(';'), ph].join('\n');
-  const scope = `${day}/${c.region}/s3/aws4_request`, sts = ['AWS4-HMAC-SHA256', amz, scope, hash(canon)].join('\n');
-  const key2 = ['aws4_request'].reduce((k, s) => hmac(k, s), hmac(hmac(hmac('AWS4' + c.secret, day), c.region), 's3'));
-  headers.authorization = `AWS4-HMAC-SHA256 Credential=${c.access}/${scope}, SignedHeaders=${names.join(';')}, Signature=${crypto.createHmac('sha256', key2).update(sts).digest('hex')}`;
-  delete headers.host;
-  return { url: `${u.protocol}//${host}${path}${qs ? '?' + qs : ''}`, headers };
+// ---- The config file (one remote, written here; rclone renews its tokens in it).
+function writeRemote(fields) {
+  const body = `[${REMOTE}]\n` + Object.entries(fields).map(([k, v]) => `${k} = ${v}`).join('\n') + '\n';
+  fs.mkdirSync(path.dirname(CONF), { recursive: true });
+  fs.writeFileSync(CONF, body, { mode: 0o600 });
 }
-function s3req(c, method, key, query = {}, body = null, extra = {}) {
-  const { url, headers } = s3sign(c, method, key, query, body, extra);
-  return fetch(url, { method, headers, body, duplex: body ? 'half' : undefined, signal: AbortSignal.timeout(+process.env.CLOUD_TIMEOUT_MS || 6 * 3600e3) });
-}
-const why = async (r, what) => { const t = await r.text().catch(() => ''); const m = /<Message>([^<]*)/.exec(t) || /<Code>([^<]*)/.exec(t); return new Error(`${what} failed (${r.status}${m ? ': ' + m[1] : ''})`); };
+function forget() { try { fs.unlinkSync(CONF); } catch {} }
 
-// ---------- WebDAV ----------
-const davAuth = c => c.user ? { Authorization: 'Basic ' + Buffer.from(c.user + ':' + c.pass).toString('base64') } : {};
-const davUrl = (c, name = '') => c.url + '/' + [c.prefix, name].filter(Boolean).map(p => p.split('/').map(encodeURIComponent).join('/')).join('/') + (name ? '' : '/');
-const dav = (c, method, url, body, extra = {}) => fetch(url, { method, headers: { ...davAuth(c), ...extra }, body, duplex: body ? 'half' : undefined, signal: AbortSignal.timeout(+process.env.CLOUD_TIMEOUT_MS || 6 * 3600e3) });
+// ---- Google Drive and OneDrive: the sign-in helper.
+let auth = null;   // { type, proc, out, url, at }
+function stopAuth() { if (auth && auth.proc && auth.proc.exitCode == null) try { auth.proc.kill(); } catch {} auth = null; }
 
-/** Uploads one local file under its own name. */
-async function put(c, file, name) {
-  const size = fs.statSync(file).size, body = () => Readable.toWeb(fs.createReadStream(file));
-  if (c.type === 's3') { const r = await s3req(c, 'PUT', [c.prefix, name].filter(Boolean).join('/'), {}, body(), { 'content-length': String(size), 'content-type': 'application/octet-stream' }); if (!r.ok) throw await why(r, 'Upload'); return; }
-  // Each folder of the prefix is made first (an error there just means it is already there).
-  let acc = c.url; for (const part of c.prefix.split('/').filter(Boolean)) { acc += '/' + encodeURIComponent(part); await dav(c, 'MKCOL', acc + '/').catch(() => {}); }
-  const r = await dav(c, 'PUT', davUrl(c, name), body(), { 'Content-Length': String(size), 'Content-Type': 'application/octet-stream' });
-  if (!r.ok) throw await why(r, 'Upload');
-}
-/** The names of the backups that are there. */
-async function list(c) {
-  if (c.type === 's3') {
-    const r = await s3req(c, 'GET', '', { 'list-type': '2', prefix: c.prefix ? c.prefix + '/' : '' }); if (!r.ok) throw await why(r, 'Listing');
-    return [...(await r.text()).matchAll(/<Key>([^<]+)<\/Key>/g)].map(m => m[1].replace(/&amp;/g, '&').split('/').pop()).filter(Boolean);
+/** Starts signing in; resolves the provider's page to open. */
+async function authStart(type) {
+  if (!['drive', 'onedrive'].includes(type)) throw new Error('Pick Google Drive or OneDrive');
+  stopAuth();
+  // Google: only the files rclone makes (drive.file), not the whole Drive.
+  const args = ['authorize', type, ...(type === 'drive' ? [Buffer.from(JSON.stringify({ scope: 'drive.file' })).toString('base64url')] : []), '--auth-no-open-browser'];
+  const proc = spawn(BIN(), args, { env: env() }), a = auth = { type, proc, out: '', at: Date.now(), done: null };
+  const take = d => { a.out += String(d); };
+  proc.stdout.on('data', take); proc.stderr.on('data', take);
+  a.done = new Promise(r => proc.on('close', () => r()));
+  setTimeout(() => { if (auth === a) stopAuth(); }, 15 * 60e3).unref();
+  // Its local page says where to go: follow it once to get the provider's own address.
+  for (let i = 0; i < 60; i++) {
+    const m = /http:\/\/127\.0\.0\.1:\d+\/auth\?state=[\w-]+/.exec(a.out);
+    if (m) {
+      const r = await fetch(m[0], { redirect: 'manual', signal: AbortSignal.timeout(5000) });
+      const to = r.headers.get('location'); if (!to) throw new Error('rclone did not give a sign-in page');
+      a.url = to; return { url: to };
+    }
+    if (proc.exitCode != null) break;
+    await new Promise(r => setTimeout(r, 100));
   }
-  const r = await dav(c, 'PROPFIND', davUrl(c), '<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/></d:prop></d:propfind>', { Depth: '1', 'Content-Type': 'application/xml' });
-  if (r.status === 404) return [];
-  if (!r.ok && r.status !== 207) throw await why(r, 'Listing');
-  return [...(await r.text()).matchAll(/<(?:\w+:)?href>([^<]+)<\/(?:\w+:)?href>/gi)].map(m => decodeURIComponent(m[1].replace(/\/+$/, '').split('/').pop())).filter(n => /\.(json|tar\.gz)$/.test(n));
+  stopAuth(); throw new Error('rclone did not start signing in: ' + cut(a.out.split('\n').filter(Boolean).pop(), 200));
 }
-async function del(c, name) {
-  const r = c.type === 's3' ? await s3req(c, 'DELETE', [c.prefix, name].filter(Boolean).join('/')) : await dav(c, 'DELETE', davUrl(c, name));
-  if (!r.ok && r.status !== 404) throw await why(r, 'Removing');
+
+/** Finishes signing in with the address the provider sent the browser to. Resolves { account }. */
+async function authFinish(pasted) {
+  const a = auth; if (!a) throw new Error('Start connecting again: that sign-in timed out');
+  let u; try { u = new URL(String(pasted).trim()); } catch { throw new Error('Paste the whole address from the address bar (it starts with http://127.0.0.1 or http://localhost)'); }
+  const q = u.searchParams;
+  if (q.get('error')) { stopAuth(); throw new Error(`${TYPES[a.type]} said: ${q.get('error_description') || q.get('error')}`); }
+  if (!q.get('code') || !q.get('state')) throw new Error('That address has no sign-in code in it. Copy the address of the page you were sent to after allowing access');
+  await fetch(`http://127.0.0.1:${AUTH_PORT()}/?${q.toString()}`, { signal: AbortSignal.timeout(20000) }).catch(() => {});
+  await Promise.race([a.done, new Promise(r => setTimeout(r, 30000))]);
+  const m = /--->\s*([\s\S]*?)\s*<---End paste/.exec(a.out); stopAuth();
+  if (!m) throw new Error(`${TYPES[a.type]} did not finish signing in: ` + cut((a.out.split('\n').filter(l => /error|fail/i.test(l)).pop() || '').replace(/^.*?(ERROR|NOTICE|Fatal error):?\s*/, ''), 200));
+  const token = m[1].trim(); let tok; try { tok = JSON.parse(token); } catch { throw new Error('rclone gave a token that could not be read'); }
+  if (a.type === 'drive') { writeRemote({ type: 'drive', scope: 'drive.file', token }); return { account: 'Google Drive' }; }
+  // OneDrive: which drive is theirs (rclone's own setup asks the same of Microsoft).
+  const g = await fetch('https://graph.microsoft.com/v1.0/me/drive', { headers: { Authorization: 'Bearer ' + tok.access_token }, signal: AbortSignal.timeout(15000) });
+  const d = await g.json().catch(() => ({}));
+  if (!g.ok || !d.id) throw new Error('OneDrive did not say which drive is yours' + (d.error ? ': ' + (d.error.message || d.error.code) : ''));
+  writeRemote({ type: 'onedrive', token, drive_id: d.id, drive_type: d.driveType || 'personal' });
+  return { account: (d.owner && d.owner.user && (d.owner.user.email || d.owner.user.displayName)) || 'OneDrive' };
 }
-/** Uploads, then keeps only the newest `keep` of the same kind (settings backups and stack backups are counted apart). */
+
+// ---- iCloud Drive: rclone's own steps, one answer at a time.
+const parse = s => { try { return JSON.parse(s); } catch { return {}; } };
+async function icloudStart(appleId, password) {
+  if (!/^\S+@\S+$/.test(String(appleId || '').trim()) || !password) throw new Error('Enter your Apple ID (its email) and password');
+  forget();
+  const out = parse(await rc(['config', 'create', REMOTE, 'iclouddrive', 'apple_id=' + String(appleId).trim(), 'password=' + password, '--non-interactive', '--obscure'], { timeout: 60000 }));
+  if (out.Error) throw new Error(out.Error);
+  if (out.State && out.Option) return { need: 'code', state: out.State };
+  return { account: String(appleId).trim() };
+}
+async function icloudCode(state, code) {
+  if (!/^\d{6}$/.test(String(code || '').trim())) throw new Error('Enter the 6-digit code Apple shows on your iPhone, iPad or Mac');
+  const out = parse(await rc(['config', 'update', REMOTE, '--continue', '--state', String(state), '--result', String(code).trim(), '--non-interactive'], { timeout: 60000 }));
+  if (out.Error) throw new Error(out.Error);
+  if (out.State && out.Option) return { need: 'code', state: out.State };
+  return { ok: true };
+}
+
+// ---- Copying, listing, removing.
+const where = (c, name = '') => `${REMOTE}:${[c.folder, name].filter(Boolean).join('/')}`;
+async function put(c, file, name) { await rc(['copyto', file, where(c, name), '--retries', '3']); }
+async function list(c) {
+  const l = parse(await rc(['lsjson', where(c), '--files-only'], { timeout: 120000 }).catch(e => { if (/not found|doesn't exist|directory not found/i.test(e.message)) return '[]'; throw e; }));
+  return (Array.isArray(l) ? l : []).map(x => ({ name: x.Name, size: x.Size, at: Date.parse(x.ModTime) || 0 }));
+}
+async function del(c, name) { await rc(['deletefile', where(c, name)], { timeout: 120000 }); }
+
+/** Copies one backup and keeps only the newest of each kind (GoatMediaStackarr's own, the stack's). */
 async function send(c, file, name) {
   await put(c, file, name);
-  const kind = n => /^stack-/.test(n) ? 'stack' : 'settings', mine = (await list(c)).filter(n => kind(n) === kind(name) && /^(stack-|auto-|manual-|pre-restore-)/.test(n)).sort();
-  for (const n of mine.slice(0, Math.max(0, mine.length - c.keep))) await del(c, n).catch(() => {});
-  return { name, kept: Math.min(mine.length, c.keep) };
+  const kind = n => /^stack-/.test(n) ? 'stack' : 'goat', mine = n => /\.(json|tar|tgz|tar\.gz|zip)(\.enc)?$/i.test(n);
+  const l = (await list(c)).filter(x => mine(x.name) && kind(x.name) === kind(name)).sort((a, b) => b.name.localeCompare(a.name));
+  const gone = []; for (const x of l.slice(c.keep)) { try { await del(c, x.name); gone.push(x.name); } catch {} }
+  return { name, removed: gone };
 }
-/** Writes, lists and removes a small file, so a wrong address, key or folder shows up at once. */
+/** Writes a small file and removes it again. */
 async function test(c) {
-  const tmp = require('node:path').join(require('node:os').tmpdir(), 'goat-cloud-test-' + process.pid + '.txt');
-  fs.writeFileSync(tmp, 'GoatMediaStackarr can write here.\n');
-  try { await put(c, tmp, 'goat-test.txt'); await list(c); await del(c, 'goat-test.txt'); } finally { try { fs.unlinkSync(tmp); } catch {} }
+  const f = path.join(path.dirname(CONF), '.goat-cloud-test.txt'); fs.writeFileSync(f, 'GoatMediaStackarr can write here.\n');
+  const n = `.goat-test-${Date.now()}.txt`;
+  try { await put(c, f, n); await del(c, n); } finally { try { fs.unlinkSync(f); } catch {} }
   return true;
 }
 
-module.exports = { clean, problem, put, list, del, send, test, s3sign };
+module.exports = { TYPES, clean, problem, setConfDir, conf, authStart, authFinish, stopAuth, icloudStart, icloudCode, forget, put, list, del, send, test, writeRemote };

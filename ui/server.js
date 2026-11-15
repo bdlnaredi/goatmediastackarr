@@ -6,9 +6,11 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details: see the LICENSE file.
 const http = require('http'), fs = require('fs'), path = require('path'), crypto = require('crypto'), zlib = require('zlib');
 const DATA = process.env.DATA_DIR || '/data', FILE = path.join(DATA, 'db.json');
+
 fs.mkdirSync(DATA, { recursive: true });
 const tclients = require('./lib/torrentclients');
 const totp = require('./lib/totp'), channels = require('./lib/channels'), AL = require('./lib/alerts'), LP = require('./lib/langpref'), BOTS = require('./lib/bots'), CLOUD = require('./lib/cloud'), listsLib = require('./lib/lists');
+CLOUD.setConfDir(DATA);
 const PORT = +process.env.PORT || 5080, DEMO = /^(1|true|yes)$/i.test(process.env.DEMO || ''), DAY = 864e5;
 // A day as 2026-11-01, in the server's own time zone.
 const dayKey = (t = Date.now()) => { const d = new Date(t); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
@@ -5281,13 +5283,35 @@ const goatServer = http.createServer(async (req, res) => {
       const b = await readBody(req); db.settings.watchlist = { ...(db.settings.watchlist || {}), auto: !!b.auto }; save();
       audit(me.name, 'Changed watchlists', db.settings.watchlist.auto ? 'request automatically' : 'do not request'); return send(res, 200, { auto: db.settings.watchlist.auto });
     }
-    const cloudPub = () => { const c = CLOUD.clean({}, db.settings.cloud || {}); return { ...c, secret: '', pass: '', hasSecret: !!c.secret, hasPass: !!c.pass }; };
+    // Copying backups to Google Drive, OneDrive or iCloud Drive (lib/cloud.js; rclone does the work).
+    const cloudPub = () => { const o = db.settings.cloud || {}, c = CLOUD.clean({}, o); return { ...c, types: CLOUD.TYPES, old: ['s3', 'webdav'].includes(o.type) ? o.type : '' }; };
     if (p === '/api/cloud' && m === 'GET') return send(res, 200, cloudPub());
-    if ((p === '/api/cloud' && m === 'PUT') || (p === '/api/cloud/test' && m === 'POST')) {
-      const b = await readBody(req), c = CLOUD.clean(b, db.settings.cloud || {}), bad = CLOUD.problem(c);
-      if (bad && (c.on || p.endsWith('/test'))) return send(res, 400, { error: bad });
-      if (p.endsWith('/test')) { try { await CLOUD.test(c); return send(res, 200, { ok: true }); } catch (e) { return send(res, 400, { error: cut(e.message, 300) }); } }
-      db.settings.cloud = c; save(); audit(me.name, 'Changed cloud backup', c.on ? c.type : 'off'); return send(res, 200, cloudPub());
+    if (p === '/api/cloud' && m === 'PUT') {
+      const b = await readBody(req), c = CLOUD.clean({ ...b, type: (db.settings.cloud || {}).type }, db.settings.cloud || {}), bad = CLOUD.problem(c);
+      if (bad && (c.on || b.on)) return send(res, 400, { error: bad });
+      db.settings.cloud = c; save(); audit(me.name, 'Changed cloud backup', c.on ? CLOUD.TYPES[c.type] : 'off'); return send(res, 200, cloudPub());
+    }
+    if (p === '/api/cloud/test' && m === 'POST') {
+      const c = CLOUD.clean({}, db.settings.cloud || {}), bad = CLOUD.problem(c); if (bad) return send(res, 400, { error: bad });
+      try { await CLOUD.test(c); return send(res, 200, { ok: true }); } catch (e) { return send(res, 400, { error: cut(e.message, 300) }); }
+    }
+    // Connecting: Google Drive and OneDrive through their own sign-in page; iCloud with the Apple ID and a code.
+    if (p === '/api/cloud/connect' && m === 'POST') {
+      if (DEMO) return send(res, 403, { error: 'This is turned off in the demo' });
+      const b = await readBody(req), type = String(b.type || '');
+      try {
+        if (b.step === 'start' && ['drive', 'onedrive'].includes(type)) return send(res, 200, await CLOUD.authStart(type));
+        const done = acct => { db.settings.cloud = { ...CLOUD.clean({ type }, {}), on: true, connected: true, account: cut(acct || CLOUD.TYPES[type], 120), folder: (db.settings.cloud || {}).folder || 'GoatMediaStackarr', keep: (db.settings.cloud || {}).keep || 7 };
+          save(); audit(me.name, 'Connected cloud backup', CLOUD.TYPES[type]); return send(res, 200, cloudPub()); };
+        if (b.step === 'finish' && ['drive', 'onedrive'].includes(type)) { const r2 = await CLOUD.authFinish(b.url); return done(r2.account); }
+        if (b.step === 'start' && type === 'iclouddrive') { const r2 = await CLOUD.icloudStart(b.appleId, b.password); if (r2.need) return send(res, 200, r2); return done(r2.account); }
+        if (b.step === 'code' && type === 'iclouddrive') { const r2 = await CLOUD.icloudCode(b.state, b.code); if (r2.need) return send(res, 200, { ...r2, error: 'Apple asked for another code' }); return done(cut(b.appleId, 120)); }
+        return send(res, 400, { error: 'Bad request' });
+      } catch (e) { return send(res, 400, { error: cut(e.message, 300) }); }
+    }
+    if (p === '/api/cloud/disconnect' && m === 'POST') {
+      CLOUD.stopAuth(); CLOUD.forget(); db.settings.cloud = { ...CLOUD.clean({}, {}), folder: (db.settings.cloud || {}).folder, keep: (db.settings.cloud || {}).keep }; save();
+      audit(me.name, 'Disconnected cloud backup', ''); return send(res, 200, cloudPub());
     }
     if (p === '/api/cloud/now' && m === 'POST') {
       const c = CLOUD.clean({}, db.settings.cloud || {}); if (!c.on) return send(res, 400, { error: 'Turn cloud backup on first' });
