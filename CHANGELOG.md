@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+## v1.0.29 — 2026-11-15
+
 - Security updates found by the first scan: the newest certifi (trusted certificate authorities; an older list still trusted a compromised one) for Bazarr, SABnzbd and Deluge, and PyJWT 2.14 for SABnzbd (an older one let a wrong key pass). Two holes in the ASP.NET Core runtime that Radarr, Lidarr and Prowlarr carry inside their own releases can only be fixed by their next release; they are listed in `.trivyignore` until mid-January, and the weekly rebuild takes those releases when they come.
 - **Security scan of the image**: every build is scanned with Trivy for known security holes (CVEs) in everything inside it (Ubuntu's packages and every app). All of them are listed in the repository's Security tab on GitHub. A build fails, and a version or the weekly `latest` is not published, while there is a **critical** hole that already has a fix; holes that don't apply here can be listed in `.trivyignore` with the reason.
 - FlareSolverr downloads on its first start even when GitHub's API turns the request away (it allows 60 an hour per address without a sign-in, and shared addresses run out); it then finds the newest version from the release page instead of saying "Cannot reach GitHub" every minute.
