@@ -27,7 +27,7 @@ jobs:
           done
           exit $fail
       - name: Shell scripts
-        run: shellcheck -S error -s bash goat/*.sh test/*.sh
+        run: shellcheck -S error -s bash goat/*.sh test/*.sh scripts/*.sh
       - name: VPN kill switch (real network namespaces)
         run: sudo bash test/vpn-killswitch.sh
       - name: VPN kill switch with a real WireGuard tunnel
@@ -44,7 +44,8 @@ jobs:
           - { arch: amd64, runner: ubuntu-latest }
           - { arch: arm64, runner: ubuntu-24.04-arm }
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 120
+    timeout-minutes: 150
+    permissions: { contents: read, security-events: write }
     steps:
       - uses: actions/checkout@v4
       - name: Free disk space
@@ -71,6 +72,14 @@ jobs:
           df -h / | tail -1 | awk '{print "::notice::Free disk space after building: " $4}'
       - name: Image size
         run: echo "::notice::Image size (${{ matrix.arch }}) $(docker image inspect goat:ci --format '{{.Size}}' | numfmt --to=iec)"
+      - name: Security scan (report)
+        # Every known hole (CVE) in the image's software, for the repository's Security tab. Never fails the build.
+        run: bash scripts/scan-image.sh goat:ci report trivy-${{ matrix.arch }}.sarif
+      - name: Send the scan to the Security tab
+        if: always() && hashFiles(format('trivy-{0}.sarif', matrix.arch)) != ''
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v3
+        with: { sarif_file: "trivy-${{ matrix.arch }}.sarif", category: "image-${{ matrix.arch }}" }
       - name: Start it
         run: |
           mkdir -p /tmp/goat/config /tmp/goat/media /tmp/goat/downloads
@@ -337,6 +346,11 @@ jobs:
           case "$rc" in 6|7|28|35|56) echo "blocked, as it should be";; *) echo "::error::VPN app was not blocked (exit $rc)"; exit 1;; esac
           docker exec goatvpn /command/s6-applyuidgid -u 1001 -g 121 -G 121 curl -fsS --max-time 8 -o /dev/null https://1.1.1.1/cdn-cgi/trace
           docker exec goatvpn curl -fsS --max-time 5 http://127.0.0.1:8080/api/v2/app/version
+      - name: Security scan (block)
+        # Fails when the image has a CRITICAL hole that already has a fixed version (listed on the run's page).
+        # Run last, so every other check still gives its result. Exceptions go in .trivyignore with a reason.
+        if: always()
+        run: bash scripts/scan-image.sh goat:ci block
       - name: Diagnostics
         if: failure()
         run: |

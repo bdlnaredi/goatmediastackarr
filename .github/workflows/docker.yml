@@ -64,6 +64,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with: { pattern: "digest-*", merge-multiple: true, path: /tmp/digests }
       - uses: docker/setup-buildx-action@v3
@@ -72,6 +73,12 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Security scan of what is about to be published (block)
+        # A version tag (or the weekly :latest) is not published while the image has a CRITICAL hole with a fix.
+        run: |
+          set -e
+          cd /tmp/digests && d=(*) && cd "$GITHUB_WORKSPACE"
+          for x in "${d[@]}"; do bash scripts/scan-image.sh "$IMAGE@sha256:$x" block; done
       - name: Join both architectures under the release names
         env:
           VERSION: ${{ needs.build.outputs.version }}

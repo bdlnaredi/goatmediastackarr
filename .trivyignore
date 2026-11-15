@@ -1,0 +1,3 @@
+# Security holes the image scan (scripts/scan-image.sh) should not count, one CVE id per line.
+# Add one only when it does not apply to how GoatMediaStackarr uses that part, and say why in a comment, e.g.:
+# CVE-2026-12345   # in a tool that is installed but never run

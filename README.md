@@ -393,6 +393,6 @@ sudo bash test/vpn-wireguard.sh   # the kill switch with a real WireGuard tunnel
 node scripts/screenshots.js       # these screenshots, in demo mode (also the "Update screenshots" workflow)
 ```
 
-Every change is also built for Intel/AMD and ARM and started for real: every app must answer and be connected, ruTorrent and Deluge must take a torrent, FlareSolverr must open a page (and start again with DNS broken), each app must write its own log, the login passwords must change, and the VPN apps must stay offline without a VPN. The Android app is built and every screen photographed in each style. Tagging a version (`v1.0.22`) publishes the image and the app, and the GitHub release gets that version's part of the changelog.
+Every image is scanned for known security holes with Trivy (all of them in the Security tab; a critical one with a fix stops the build and the release). Every change is also built for Intel/AMD and ARM and started for real: every app must answer and be connected, ruTorrent and Deluge must take a torrent, FlareSolverr must open a page (and start again with DNS broken), each app must write its own log, the login passwords must change, and the VPN apps must stay offline without a VPN. The Android app is built and every screen photographed in each style. Tagging a version (`v1.0.22`) publishes the image and the app, and the GitHub release gets that version's part of the changelog.
 
 The logo is drawn by `docs/logo/make_logo.py`, which also writes the app icons.

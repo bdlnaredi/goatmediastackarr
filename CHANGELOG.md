@@ -4,6 +4,7 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- **Security scan of the image**: every build is scanned with Trivy for known security holes (CVEs) in everything inside it (Ubuntu's packages and every app). All of them are listed in the repository's Security tab on GitHub. A build fails, and a version or the weekly `latest` is not published, while there is a **critical** hole that already has a fix; holes that don't apply here can be listed in `.trivyignore` with the reason.
 - FlareSolverr downloads on its first start even when GitHub's API turns the request away (it allows 60 an hour per address without a sign-in, and shared addresses run out); it then finds the newest version from the release page instead of saying "Cannot reach GitHub" every minute.
 - **Security**: files File Browser hands out (downloads, previews and share links) open sandboxed, so a web page or picture with scripts in it (one that came with a torrent, say) cannot run as GoatMediaStackarr's own site and act for whoever opened it. Share link downloads are counted only when the link exists and the download worked, the count is kept small and written to disk at most once a minute, so nobody can make it grow or keep the disk busy by asking for made-up links. PINs and passwords are compared in constant time.
 ## v1.0.28 — 2026-11-15
