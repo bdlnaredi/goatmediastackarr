@@ -23,6 +23,8 @@ trivy --version | head -1
 
 common=(image --scanners vuln --timeout 45m --quiet)
 [[ -f .trivyignore ]] && common+=(--ignorefile .trivyignore)
+# SCAN_PLATFORM=linux/arm64 scans that processor's image when IMAGE holds more than one, or one for another processor.
+[[ -n "${SCAN_PLATFORM:-}" ]] && common+=(--platform "$SCAN_PLATFORM")
 
 case "$mode" in
   report)
@@ -40,9 +42,17 @@ case "$mode" in
     ;;
   block)
     # Only what can be fixed by updating: a hole nobody has fixed yet cannot be fixed here either.
-    if ! trivy "${common[@]}" --severity CRITICAL --ignore-unfixed --exit-code 1 --format table "$img" | tee /tmp/trivy-block.txt; then
+    # Holes found exit 3; any other failure (image not found, download error) is reported as the scan not running.
+    set +e
+    trivy "${common[@]}" --severity CRITICAL --ignore-unfixed --exit-code 3 --format table "$img" 2>&1 | tee /tmp/trivy-block.txt
+    rc=${PIPESTATUS[0]}
+    set -e
+    if [[ $rc == 3 ]]; then
       grep -oE 'CVE-[0-9]{4}-[0-9]+' /tmp/trivy-block.txt | sort -u | head -20 | sed 's/^/::error title=Critical security hole with a fix::/' || true
       echo "::error::The image has critical security holes that already have fixes (listed above). Update the part named, or, if it does not apply here, add the CVE to .trivyignore with the reason."
+      exit 1
+    elif [[ $rc != 0 ]]; then
+      echo "::error::The security scan could not run (exit $rc), so nothing was checked. See the FATAL line above."
       exit 1
     fi
     ;;

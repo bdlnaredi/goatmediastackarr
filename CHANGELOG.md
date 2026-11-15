@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- Publishing a version works again: the security check before publishing scanned the arm64 image as if it were for Intel/AMD, could not find it, and stopped v1.0.29 from being published even though nothing was found. Each image is now scanned as its own type, and a scan that cannot run says so instead of reporting security holes.
+
 ## v1.0.29 — 2026-11-15
 
 - Security updates found by the first scan: the newest certifi (trusted certificate authorities; an older list still trusted a compromised one) for Bazarr, SABnzbd and Deluge, and PyJWT 2.14 for SABnzbd (an older one let a wrong key pass). Two holes in the ASP.NET Core runtime that Radarr, Lidarr and Prowlarr carry inside their own releases can only be fixed by their next release; they are listed in `.trivyignore` until mid-January, and the weekly rebuild takes those releases when they come.
