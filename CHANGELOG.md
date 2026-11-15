@@ -4,6 +4,7 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- **Security**: files File Browser hands out (downloads, previews and share links) open sandboxed, so a web page or picture with scripts in it (one that came with a torrent, say) cannot run as GoatMediaStackarr's own site and act for whoever opened it. Share link downloads are counted only when the link exists and the download worked, the count is kept small and written to disk at most once a minute, so nobody can make it grow or keep the disk busy by asking for made-up links. PINs and passwords are compared in constant time.
 ## v1.0.28 — 2026-11-15
 
 - **Cloud backups go to Google Drive, OneDrive or iCloud Drive** (Settings → Backup → *Copy backups to the cloud*), instead of S3 and WebDAV, which are gone (a copy set up that way stops, and the page says so). Google Drive and OneDrive connect through their own sign-in page: allow access, then paste the address you are sent to (it does not open; that is expected). Google Drive is only given access to the files GoatMediaStackarr puts there. iCloud Drive connects with your Apple ID, its password and the 6-digit code Apple shows on your devices; Apple asks for a new code about once a month, and Advanced Data Protection has to be off. rclone, now in the image, does the copying.

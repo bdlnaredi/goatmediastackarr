@@ -10,6 +10,7 @@ test('shared links are listed with their downloads, and can be removed', async (
   const fbs = http.createServer((req, res) => {
     const u = req.url.replace('/engines/filebrowser', '');
     if (u === '/api/login') { res.writeHead(200); return res.end('tok'); }
+    if (u.startsWith('/api/public/dl/NoSuch')) { res.writeHead(404); return res.end('gone'); }
     if (u.startsWith('/api/public/dl/')) { res.writeHead(200); return res.end('file'); }
     if (req.headers['x-auth'] !== 'tok') { res.writeHead(401); return res.end(); }
     if (u === '/api/shares') { res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify(shares)); }
@@ -25,6 +26,8 @@ test('shared links are listed with their downloads, and can be removed', async (
     await fetch(s.base + '/engines/filebrowser/api/public/dl/AbC123xy');
     await fetch(s.base + '/engines/filebrowser/api/public/dl/AbC123xy', { headers: { Range: 'bytes=0-' } });
     await fetch(s.base + '/engines/filebrowser/api/public/dl/AbC123xy', { headers: { Range: 'bytes=5000-' } });
+    // A link that does not exist is not counted (anyone can ask for one).
+    for (let i = 0; i < 3; i++) await fetch(s.base + '/engines/filebrowser/api/public/dl/NoSuchLink' + i);
     const l = (await a.get('/api/fbshares')).data.shares;
     assert.equal(l.length, 2);
     const x = l.find(y => y.hash === 'AbC123xy'), z = l.find(y => y.hash === 'ZzZ987qq');

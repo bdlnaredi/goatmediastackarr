@@ -22,5 +22,10 @@ test('File Browser share links open without signing in; the rest of File Browser
       '/engines/filebrowser/share/x', '/engines/filebrowser/static/../api/users'])
       assert.equal((await anon(u))[0], 302, u);
     assert.equal((await anon('/engines/filebrowser/api/public/dl/AbC123xy', 'DELETE'))[0], 302, 'only reading');
+    // Files are sandboxed (no scripts as this site); File Browser's own pages are not.
+    const f = await fetch(s.base + '/engines/filebrowser/api/public/dl/AbC123xy/page.html');
+    assert.match(f.headers.get('content-security-policy') || '', /^sandbox/); assert.equal(f.headers.get('x-content-type-options'), 'nosniff');
+    const raw = await a.get('/engines/filebrowser/api/raw/downloads/x.svg'); void raw;
+    const pg = await fetch(s.base + '/engines/filebrowser/share/AbC123xy'); assert.doesNotMatch(pg.headers.get('content-security-policy') || '', /sandbox/);
   } finally { await s.stop(); fbs.close(); }
 });

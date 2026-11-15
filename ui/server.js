@@ -646,8 +646,13 @@ function fbCount(req) {
   const m = /^\/engines\/filebrowser\/api\/public\/dl\/([A-Za-z0-9_-]{6,})/.exec(String(req.url).split('?')[0]); if (!m) return;
   const rg = String(req.headers.range || ''); if (rg && !/^bytes=0-/.test(rg)) return;
   const h = db.settings.fbHits = db.settings.fbHits || {}, x = h[m[1]] = h[m[1]] || { n: 0, last: 0 };
-  x.n++; x.last = Date.now(); save();
+  x.n++; x.last = Date.now();
+  // Kept small (the 500 last used), and written at most once a minute: share links are open to anyone.
+  const ks = Object.keys(h); if (ks.length > 500) ks.sort((a, b) => h[a].last - h[b].last).slice(0, ks.length - 500).forEach(k => delete h[k]);
+  if (!fbSaveT) fbSaveT = setTimeout(() => { fbSaveT = null; save(); }, 60000);
 }
+let fbSaveT = null;
+const FB_FILES = /^\/engines\/filebrowser\/api\/(raw|preview|public\/dl|subtitle)\//;
 // File Browser's own API, signed in as its one user (it signs in without a password; it is only reachable from here).
 let fbTok = null;
 async function fbApi(pth, opt = {}) {
@@ -684,6 +689,11 @@ const goatProxy = (req, res, t) => {
     // would send the browser to 127.0.0.1. The address part is dropped, so the browser stays on this server's address.
     const h = { ...r.headers };
     if (h.location) h.location = goatLocal(h.location, t.port);
+    // Files File Browser hands out (downloads, previews, share links) come from this site's own address. A web page or
+    // picture with scripts in it (from a torrent, say) must not run as this site, so they are opened sandboxed: they
+    // show, but run nothing and reach nothing of GoatMediaStackarr.
+    if (t.key === 'filebrowser' && FB_FILES.test(String(req.url).split('?')[0])) { h['content-security-policy'] = "sandbox; default-src 'none'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'unsafe-inline'"; h['x-content-type-options'] = 'nosniff'; }
+    if (t.key === 'filebrowser' && req.method === 'GET' && (r.statusCode === 200 || r.statusCode === 206)) fbCount(req);
     res.writeHead(r.statusCode, h); r.pipe(res);
   });
   up.on('error', () => { if (!res.headersSent) { res.writeHead(502, { 'Content-Type': 'text/html; charset=utf-8', 'Retry-After': '10' }); res.end(`<!doctype html><meta http-equiv="refresh" content="10"><title>${t.name}</title><p style="font:16px system-ui;margin:2rem">${t.name} is starting or restarting. This page tries again every 10 seconds.</p>`); } else res.destroy(); });
@@ -2705,7 +2715,6 @@ const goatServer = http.createServer(async (req, res) => {
     const t = goatTarget(req.url);
     if (!t) return send(res, 404, { error: 'Not found' });
     if (!goatAdmin(req) && !goatKeyOk(req, t) && !fbPublic(req, t)) { res.writeHead(302, { Location: '/' }); return res.end(); }
-    if (t.key === 'filebrowser' && req.method === 'GET') fbCount(req);
     if (t.bare) { res.writeHead(301, { Location: '/engines/' + t.key + '/' }); return res.end(); }
     return goatProxy(req, res, t);
   }
@@ -2929,9 +2938,9 @@ const goatServer = http.createServer(async (req, res) => {
     // device is signed out, so it cannot be guessed. Changing or removing it takes the PIN now or the password (or
     // having just signed in on that device, for a forgotten PIN: "Forgot your PIN? Sign out", sign in, set a new one).
     if (p.startsWith('/api/pin')) {
-      const okPin = v => /^\d{4}$/.test(String(v || '')), isPin = v => !!me.pin && hash(String(v || ''), me.pin.salt) === me.pin.hash;
+      const okPin = v => /^\d{4}$/.test(String(v || '')), isPin = v => !!me.pin && same(hash(String(v || ''), me.pin.salt), me.pin.hash);
       // Just signed in (with the password, a passkey or Plex) on this device: that is proof enough, for a forgotten PIN.
-      const proof = v => isPin(v) || (!!v && hash(String(v), me.salt) === me.hash) || Date.now() - (sess.at || 0) < (+process.env.PIN_FRESH_MS || 15 * 60e3);
+      const proof = v => isPin(v) || (!!v && same(hash(String(v), me.salt), me.hash)) || Date.now() - (sess.at || 0) < (+process.env.PIN_FRESH_MS || 15 * 60e3);
       if (p === '/api/pin/check' && m === 'POST') {
         const b = await readBody(req); if (!me.pin) return send(res, 200, { ok: true });
         if (isPin(b.pin)) { sess.pinBad = 0; saveSess(); return send(res, 200, { ok: true }); }
