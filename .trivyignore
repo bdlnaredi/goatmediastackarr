@@ -1,3 +1,9 @@
 # Security holes the image scan (scripts/scan-image.sh) should not count, one CVE id per line.
 # Add one only when it does not apply to how GoatMediaStackarr uses that part, and say why in a comment, e.g.:
 # CVE-2026-12345   # in a tool that is installed but never run
+
+# ASP.NET Core inside Radarr, Lidarr and Prowlarr: each of their releases carries its own copy of Microsoft's runtime, so
+# only a new release of the app can update it (the weekly rebuild takes it the Monday after). Here the apps listen only
+# inside the container, behind GoatMediaStackarr's admin sign-in. The exp: date makes the scan look again then.
+CVE-2026-70188 exp:2027-01-15
+CVE-2026-88092 exp:2027-01-15

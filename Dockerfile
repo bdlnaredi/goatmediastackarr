@@ -61,6 +61,16 @@ RUN python3 -m venv --system-site-packages /opt/deluge && \
     /opt/deluge/bin/pip install --no-cache-dir "setuptools<81" "pyopenssl<24.3" "deluge$([ "$DELUGE_VERSION" = latest ] || echo "==${DELUGE_VERSION#deluge-}")" && \
     /opt/deluge/bin/python -W ignore -c 'import pkg_resources, deluge.pluginmanagerbase; from OpenSSL.crypto import X509Req' && \
     /opt/deluge/bin/pip show deluge | sed -n 's/^Version: //p' > /opt/deluge/.goat-version && cat /opt/deluge/.goat-version
+# Security fixes for Python packages the apps bring along, when their own release has an older one (the image scan
+# fails on a critical hole that has a fix): the newest certifi (the list of trusted certificate authorities) and PyJWT
+# in each app's environment, and in the copy Bazarr carries in its libs folder.
+RUN for py in /opt/bazarr/venv/bin/python /opt/sabnzbd/venv/bin/python /opt/deluge/bin/python; do \
+      for pkg in certifi pyjwt; do if "$py" -m pip show -q "$pkg" >/dev/null 2>&1; then "$py" -m pip install --no-cache-dir -q --upgrade "$pkg"; fi; done; \
+    done && \
+    if ls -d /opt/bazarr/libs/certifi* >/dev/null 2>&1; then \
+      rm -rf /opt/bazarr/libs/certifi /opt/bazarr/libs/certifi-*.dist-info && /opt/bazarr/venv/bin/pip install --no-cache-dir -q --no-deps --target /opt/bazarr/libs certifi; fi && \
+    if ls -d /opt/bazarr/libs/[Pp]y[Jj][Ww][Tt]* /opt/bazarr/libs/jwt >/dev/null 2>&1; then \
+      rm -rf /opt/bazarr/libs/jwt /opt/bazarr/libs/[Pp]y[Jj][Ww][Tt]-*.dist-info && /opt/bazarr/venv/bin/pip install --no-cache-dir -q --no-deps --target /opt/bazarr/libs pyjwt; fi
 # Compiled caches are rebuilt when needed.
 RUN find /opt/bazarr /opt/sabnzbd /opt/deluge -name __pycache__ -prune -exec rm -rf {} +
 
