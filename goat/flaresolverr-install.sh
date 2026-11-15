@@ -13,13 +13,20 @@ if [[ -x "$BIN" && ! -x "$DIR/$CHROME" ]]; then
   have=""; rm -f "$DIR/VERSION"
 fi
 ok_install() { [[ -x "$BIN" && -x "$DIR/$CHROME" ]]; }
-info=$(curl -fsSL --retry 3 --max-time 30 https://api.github.com/repos/FlareSolverr/FlareSolverr/releases/latest 2>/dev/null) || info=""
-if [[ -z "$info" ]]; then
+# GitHub's API answers only 60 questions an hour per address without a token (shared addresses run out), so when it
+# says no, the release page's own redirect gives the newest version and the file name is the one FlareSolverr uses.
+info=$(curl -fsSL --retry 3 --max-time 30 ${GITHUB_TOKEN:+-H "Authorization: Bearer $GITHUB_TOKEN"} https://api.github.com/repos/FlareSolverr/FlareSolverr/releases/latest 2>/dev/null) || info=""
+if [[ -n "$info" ]]; then
+  want=$(jq -r .tag_name <<<"$info")
+  url=$(jq -r '[.assets[] | select(.name | test("linux_x64\\.tar\\.gz$"))][0].browser_download_url // empty' <<<"$info")
+else
+  want=$(curl -fsSI --retry 3 --max-time 30 https://github.com/FlareSolverr/FlareSolverr/releases/latest 2>/dev/null | tr -d '\r' | sed -n 's#^[Ll]ocation: .*/releases/tag/\(v\?[0-9][^ ]*\)$#\1#p' | tail -1)
+  url=${want:+https://github.com/FlareSolverr/FlareSolverr/releases/download/$want/flaresolverr_linux_x64.tar.gz}
+fi
+if [[ -z "$want" ]]; then
   ok_install && { echo "[goat-flaresolverr] GitHub not reachable; starting the installed version $have."; exit 0; }
   echo "[goat-flaresolverr] Cannot reach GitHub to download FlareSolverr. It will be tried again in a minute."; exit 1
 fi
-want=$(jq -r .tag_name <<<"$info")
-url=$(jq -r '[.assets[] | select(.name | test("linux_x64\\.tar\\.gz$"))][0].browser_download_url // empty' <<<"$info")
 if ok_install && [[ "$have" == "$want" ]]; then exit 0; fi
 [[ -n "$url" ]] || { echo "[goat-flaresolverr] The release $want has no Linux x64 download."; ok_install && exit 0 || exit 1; }
 # The download is about 260 MB and unpacks to about 900 MB; check there is room first, so it never half unpacks.
