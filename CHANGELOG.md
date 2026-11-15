@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+## v1.0.28 — 2026-11-15
+
 - **Cloud backups go to Google Drive, OneDrive or iCloud Drive** (Settings → Backup → *Copy backups to the cloud*), instead of S3 and WebDAV, which are gone (a copy set up that way stops, and the page says so). Google Drive and OneDrive connect through their own sign-in page: allow access, then paste the address you are sent to (it does not open; that is expected). Google Drive is only given access to the files GoatMediaStackarr puts there. iCloud Drive connects with your Apple ID, its password and the 6-digit code Apple shows on your devices; Apple asks for a new code about once a month, and Advanced Data Protection has to be off. rclone, now in the image, does the copying.
 - **Plex invites**: an invite link can be for Plex accounts only (Settings → Users → Invite links → *Plex accounts only*; every invite is, while Plex only is on). Whoever opens it presses **Join with Plex** and signs in on Plex's own page: their profile is made from their Plex account, with the apps and rights of the invite, the invite's Plex libraries are shared with that account, and they sign in with Plex from then on (no password). Someone who already has a profile with that Plex account is just signed in. It works even while Sign in with Plex is off.
 - **Plex only** (Settings → Users → Sign in with Plex): everyone but admins must sign in with Plex. Their password and passkeys stop working, profiles signed in another way are signed out when it is turned on, and the sign-in page (and the app's) shows *Sign in with Plex* first, with the name and password folded away under *Admin? Sign in with your password*.
