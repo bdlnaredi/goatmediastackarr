@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+## v1.0.30 — 2026-11-15
+
 - Publishing a version works again: the security check before publishing scanned the arm64 image as if it were for Intel/AMD, could not find it, and stopped v1.0.29 from being published even though nothing was found. Each image is now scanned as its own type, and a scan that cannot run says so instead of reporting security holes.
 
 ## v1.0.29 — 2026-11-15
