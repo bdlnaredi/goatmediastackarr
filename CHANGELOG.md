@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- App, Downloads: the top takes far less room and scrolls away with the list, so the screen is filled with downloads. Today's and this week's totals and the speeds right now share one card; category and order are small menus on one line; Pause all, Resume all, Categories and Speed limits are in the ⋮ menu next to + (Add a link).
+
 ## v1.0.30 — 2026-11-15
 
 - Publishing a version works again: the security check before publishing scanned the arm64 image as if it were for Intel/AMD, could not find it, and stopped v1.0.29 from being published even though nothing was found. Each image is now scanned as its own type, and a scan that cannot run says so instead of reporting security holes.

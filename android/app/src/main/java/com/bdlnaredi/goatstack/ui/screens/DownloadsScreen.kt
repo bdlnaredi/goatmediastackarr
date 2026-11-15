@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.SwapVert
+import androidx.compose.material.icons.rounded.FilterList
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
@@ -22,6 +23,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -99,33 +101,32 @@ fun DownloadsScreen() {
         PageTitle("Downloads", cur?.name)
         if (cur == null) { EmptyState(Icons.Rounded.Download, "No download apps", "Your profile has no qBittorrent, ruTorrent, Deluge or SABnzbd to show."); return@Column }
         if (kinds.size > 1) { ChoiceRow(kinds, cur.id, { sel = it }); Spacer(Modifier.height(8.dp)) }
-        TrafficCard()
-        if (cur.type in TORRENT_CLIENTS) Torrents(cur.id, cur.type == "qbittorrent") else Usenet(cur.id)
+        // Torrents show it inside their list (with the speeds now), so it scrolls away with the rest of the top.
+        if (cur.type in TORRENT_CLIENTS) Torrents(cur.id, cur.type == "qbittorrent") else { TrafficCard(); Usenet(cur.id) }
     }
 }
 
-/** How many GB came in and went out: today and this week, and the last 7 days as bars when tapped. */
+/** How many GB came in and went out: today and this week, and the last 7 days as bars when tapped.
+ *  With [live] (down, up in bytes a second) the speeds right now are on top, so one card shows both. */
 @Composable
-private fun TrafficCard() {
+private fun TrafficCard(live: Pair<Long, Long>? = null) {
     val ctx = LocalCtx.current
     val g = LocalGoat.current
     var open by rememberSaveable { mutableStateOf(false) }
     val data = rememberLoad("traffic") { runCatching { ctx.api.get<com.bdlnaredi.goatstack.data.Traffic>("/api/traffic?days=7") }.getOrNull() }
-    val t = data.value ?: return
-    if (t.days.isEmpty()) return
+    val t = data.value?.takeIf { it.days.isNotEmpty() }
+    if (t == null) { if (live != null) LiveSpeeds(live); return }
     fun gb(b: Long): String { val v = b / 1e9; return if (v >= 100) "${v.toInt()} GB" else if (v >= 10) "%.1f GB".format(v) else if (v >= 0.01) "%.2f GB".format(v) else if (b > 0) "${maxOf(1, (b / 1e6).toInt())} MB" else "0 GB" }
     val today = t.days.last()
-    GoatCard(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 8.dp), padding = 12.dp, onClick = { open = !open }) {
+    GoatCard(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = if (live == null) 8.dp else 0.dp), padding = 12.dp, onClick = { open = !open }) {
+        if (live != null) {
+            LiveRow(live)
+            Spacer(Modifier.height(6.dp))
+        }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("Today", style = MaterialTheme.typography.labelSmall, color = g.muted)
-                Text("↓ ${gb(today.dl + today.usenet)}  ↑ ${gb(today.ul)}", style = MaterialTheme.typography.titleSmall, color = g.text)
-            }
-            Column(Modifier.weight(1f)) {
-                Text("This week", style = MaterialTheme.typography.labelSmall, color = g.muted)
-                Text("↓ ${gb(t.total.dl)}  ↑ ${gb(t.total.ul)}", style = MaterialTheme.typography.titleSmall, color = g.text)
-            }
-            Icon(if (open) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, if (open) "Hide the days" else "Show each day", tint = g.muted)
+            Text("Today ↓ ${gb(today.dl + today.usenet)} ↑ ${gb(today.ul)}", style = MaterialTheme.typography.labelMedium, color = g.muted, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("Week ↓ ${gb(t.total.dl)} ↑ ${gb(t.total.ul)}", style = MaterialTheme.typography.labelMedium, color = g.muted, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Icon(if (open) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, if (open) "Hide the days" else "Show each day", tint = g.muted, modifier = Modifier.size(20.dp))
         }
         if (open) {
             Spacer(Modifier.height(10.dp))
@@ -153,6 +154,45 @@ private fun TrafficCard() {
                     Text("↓ ${gb(d.dl + d.usenet)}", style = MaterialTheme.typography.bodySmall, color = g.primary, modifier = Modifier.width(90.dp))
                     Text("↑ ${gb(d.ul)}", style = MaterialTheme.typography.bodySmall, color = g.good, modifier = Modifier.width(80.dp))
                 }
+            }
+        }
+    }
+}
+
+/** The speeds right now, on one line: ↓ in, ↑ out. */
+@Composable
+private fun LiveRow(live: Pair<Long, Long>) {
+    val g = LocalGoat.current
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(Icons.Rounded.ArrowDownward, "Down", tint = g.primary, modifier = Modifier.size(18.dp))
+        Text(Format.speed(live.first), style = MaterialTheme.typography.titleMedium, color = g.text, modifier = Modifier.weight(1f).padding(start = 4.dp), maxLines = 1)
+        Icon(Icons.Rounded.ArrowUpward, "Up", tint = g.accent, modifier = Modifier.size(18.dp))
+        Text(Format.speed(live.second), style = MaterialTheme.typography.titleMedium, color = g.text, modifier = Modifier.weight(1f).padding(start = 4.dp), maxLines = 1)
+    }
+}
+
+@Composable
+private fun LiveSpeeds(live: Pair<Long, Long>) {
+    GoatCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp), padding = 12.dp) { LiveRow(live) }
+}
+
+/** A small chip that shows what is picked and opens the choices as a menu: one line instead of a whole row of chips. */
+@Composable
+private fun <T> MenuChip(options: List<Pair<T, String>>, selected: T, onSelect: (T) -> Unit, icon: androidx.compose.ui.graphics.vector.ImageVector, label: String) {
+    val g = LocalGoat.current
+    var open by remember { mutableStateOf(false) }
+    Box {
+        Row(Modifier.clip(RoundedCornerShape(50)).background(g.card).clickable { open = true }.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, null, tint = g.muted, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(options.firstOrNull { it.first == selected }?.second ?: label, style = MaterialTheme.typography.labelLarge, color = g.text, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.widthIn(max = 130.dp))
+            Icon(Icons.Rounded.ExpandMore, label, tint = g.muted, modifier = Modifier.size(18.dp))
+        }
+        DropdownMenu(open, { open = false }) {
+            options.forEach { (v, l) ->
+                DropdownMenuItem(text = { Text(l, color = if (v == selected) g.primary else g.text) }, onClick = { open = false; onSelect(v) })
             }
         }
     }
@@ -230,35 +270,6 @@ private fun Torrents(sid: String, qbit: Boolean = true) {
     }
 
     LoadView(data) { q ->
-        Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            StatTile("Down", Format.speed(q.dl), Modifier.weight(1f), Icons.Rounded.ArrowDownward)
-            StatTile("Up", Format.speed(q.ul), Modifier.weight(1f), Icons.Rounded.ArrowUpward, tint = g.accent)
-        }
-        Spacer(Modifier.height(10.dp))
-        ChoiceRow(FILTERS, filter, { filter = it })
-        if (cats.isNotEmpty()) {
-            Spacer(Modifier.height(8.dp))
-            ChoiceRow(listOf<Pair<String?, String>>(null to "Every category") + cats.map { it.name to it.name } + listOf("" to "No category"), cat, { cat = it })
-        }
-        if (canControl || ctx.user.can("add") || ctx.user.admin) Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (canControl) {
-                GhostButton("Pause all", icon = Icons.Rounded.Pause, modifier = Modifier.weight(1f), onClick = { act("pause", "all", "Paused everything") })
-                GhostButton("Resume all", icon = Icons.Rounded.PlayArrow, modifier = Modifier.weight(1f), onClick = { act("resume", "all", "Resumed everything") })
-            }
-        }
-        if (ctx.user.can("add") || ctx.user.admin) Row(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (ctx.user.can("add")) GhostButton("Add a link", icon = Icons.Rounded.Add, modifier = Modifier.weight(1f), onClick = { adding = true })
-            // ruTorrent and Deluge make their labels themselves when one is first used; managing them is qBittorrent's.
-            if (ctx.user.admin && qbit) GhostButton("Categories", icon = Icons.Rounded.Folder, modifier = Modifier.weight(1f), onClick = { managing = true })
-        }
-        if (ctx.user.admin && qbit) Row(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp)) {
-            GhostButton("Speed limits", icon = Icons.Rounded.Speed, modifier = Modifier.fillMaxWidth(), onClick = { limits = true })
-        }
-        // How they are ordered (kept on this phone), and the ⇅ button turns it around.
-        Row(Modifier.fillMaxWidth().padding(end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            ChoiceRow(DL_SORTS, sort, { sort = it; sp.edit().putString("sort", it).apply() }, Modifier.weight(1f))
-            IconButton(onClick = { rev = !rev; sp.edit().putBoolean("rev", rev).apply() }) { Icon(Icons.Rounded.SwapVert, if (rev) "Order: reversed" else "Reverse the order", tint = if (rev) g.primary else g.muted) }
-        }
         val list = q.torrents.filter { cat == null || it.category == cat }.filter {
             when (filter) {
                 "active" -> !it.paused && (!it.done || it.dlspeed > 0 || it.upspeed > 0)
@@ -267,12 +278,40 @@ private fun Torrents(sid: String, qbit: Boolean = true) {
                 else -> true
             }
         }.sortedWith(dlComparator(sort)).let { if (rev) it.reversed() else it }
-        if (list.isEmpty()) EmptyState(Icons.Rounded.Download, "Nothing here", if (filter == "active") "No downloads are running right now." else "No downloads match.")
-        else LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        var tools by remember { mutableStateOf(false) }
+        // Everything above the downloads scrolls away with them, so a full screen of downloads is one swipe away.
+        LazyColumn(contentPadding = PaddingValues(top = 0.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            item(key = "speeds") { TrafficCard(live = q.dl to q.ul) }
+            item(key = "filters") { ChoiceRow(FILTERS, filter, { filter = it }) }
+            item(key = "tools") {
+                // Category, order and the actions on one line; the actions for all of them are in the ⋮ menu.
+                Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (cats.isNotEmpty()) MenuChip(listOf<Pair<String?, String>>(null to "Every category") + cats.map { it.name to it.name } + listOf("" to "No category"), cat, { cat = it }, Icons.Rounded.Folder, "Category")
+                    MenuChip(DL_SORTS, sort, { sort = it; sp.edit().putString("sort", it).apply() }, Icons.Rounded.FilterList, "Order")
+                    IconButton(onClick = { rev = !rev; sp.edit().putBoolean("rev", rev).apply() }, modifier = Modifier.size(40.dp)) { Icon(Icons.Rounded.SwapVert, if (rev) "Order: reversed" else "Reverse the order", tint = if (rev) g.primary else g.muted) }
+                    Spacer(Modifier.weight(1f))
+                    if (ctx.user.can("add")) IconButton(onClick = { adding = true }, modifier = Modifier.size(40.dp)) { Icon(Icons.Rounded.Add, "Add a link", tint = g.primary) }
+                    if (canControl || (ctx.user.admin && qbit)) Box {
+                        IconButton(onClick = { tools = true }, modifier = Modifier.size(40.dp)) { Icon(Icons.Rounded.MoreVert, "More download actions", tint = g.text) }
+                        DropdownMenu(tools, { tools = false }) {
+                            if (canControl) {
+                                DropdownMenuItem(text = { Text("Pause all") }, leadingIcon = { Icon(Icons.Rounded.Pause, null) }, onClick = { tools = false; act("pause", "all", "Paused everything") })
+                                DropdownMenuItem(text = { Text("Resume all") }, leadingIcon = { Icon(Icons.Rounded.PlayArrow, null) }, onClick = { tools = false; act("resume", "all", "Resumed everything") })
+                            }
+                            // ruTorrent and Deluge make their labels themselves when one is first used; managing them is qBittorrent's.
+                            if (ctx.user.admin && qbit) {
+                                DropdownMenuItem(text = { Text("Categories and tags") }, leadingIcon = { Icon(Icons.Rounded.Folder, null) }, onClick = { tools = false; managing = true })
+                                DropdownMenuItem(text = { Text("Speed limits") }, leadingIcon = { Icon(Icons.Rounded.Speed, null) }, onClick = { tools = false; limits = true })
+                            }
+                        }
+                    }
+                }
+            }
+            if (list.isEmpty()) item(key = "empty") { EmptyState(Icons.Rounded.Download, "Nothing here", if (filter == "active") "No downloads are running right now." else "No downloads match.") }
             items(list, key = { it.hash }) { t ->
                 var menu by remember { mutableStateOf(false) }
                 // Tapping the download opens its actions (category, pause, remove…), not only the small button.
-                GoatCard(Modifier.fillMaxWidth().then(if (canControl) Modifier.clickable { menu = true } else Modifier), padding = 14.dp) {
+                GoatCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp).then(if (canControl) Modifier.clickable { menu = true } else Modifier), padding = 14.dp) {
                     Row(verticalAlignment = Alignment.Top) {
                         Column(Modifier.weight(1f)) {
                             Text(t.name, style = MaterialTheme.typography.bodyMedium, color = g.text, maxLines = 2, overflow = TextOverflow.Ellipsis)
