@@ -183,7 +183,7 @@ Something always breaks eventually: a tracker goes down, an import fails, a disk
 
 A media server is usually for more than one person. GoatMediaStackarr treats them as people, not as an afterthought.
 
-- **Invite links** (Settings → Users): a link or QR code that lets people make their own profile, with the apps and rights you choose, for a day, a week, a month or until you remove it. An invite can also share your Plex libraries with their Plex account, make them a Jellyfin account, and greet them with a welcome note and a short how-to the first time they sign in.
+- **Invite links** (Settings → Users): a link or QR code that lets people make their own profile (or, with *Plex accounts only*, join with their Plex account, no password), with the apps and rights you choose, for a day, a week, a month or until you remove it. An invite can also share your Plex libraries with their Plex account, make them a Jellyfin account, and greet them with a welcome note and a short how-to the first time they sign in.
 - **Plex only**: with Sign in with Plex on, you can make everyone but admins sign in with their Plex account; names and passwords are then for admins only.
 - **Profiles that fit**: choose what each person can see and do. **Kids profiles** get a simpler look with only what's in the library and rated for their age, and no searching or requesting.
 - **Limits**: everyone may stream 100 GB a month from Plex and Jellyfin by default (admins are never limited). At 80% they get a message, and at the limit their streams stop until the 1st. Change the default, count only streams from outside the home, or give someone their own limit under Settings → Limits. Admins can also cap the disk space a person's requests take.

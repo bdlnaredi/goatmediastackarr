@@ -26,3 +26,33 @@ test('an invite shares Plex libraries, makes a Jellyfin account, and welcomes th
     assert.equal((await g.del('/api/welcome')).status, 200); assert.equal((await g.get('/api/welcome')).data.show, false);
   } finally { await s.stop(); srv.close(); }
 });
+
+test('a Plex invite: they join with their Plex account, the libraries are shared with it, and no password works', async () => {
+  const fake = fakes.create(), srv = http.createServer((req, res) => fake.handle(req, res, req.url)).listen(0);
+  await new Promise(r => srv.once('listening', r));
+  const fb = `http://127.0.0.1:${srv.address().port}`, s = await boot({ PLEX_TV_URL: `${fb}/plextv`, PLEX_AUTH_URL: 'https://app.plex.example/auth' }), a = client(s.base); await setup(a);
+  fake.state.pinDelay = 200;
+  try {
+    const px = (await a.post('/api/services', { type: 'plex', name: 'Plex', url: `${fb}/plex`, apiKey: 'tok' })).data.id;
+    const iv = (await a.post('/api/invites', { label: 'Plex friends', access: [px], viaPlex: true, plex: { on: true, libs: ['1'] }, welcome: 'Hi!' })).data;
+    assert.equal(iv.viaPlex, true);
+    const g = client(s.base), info = (await g.get('/api/invite/' + iv.code)).data; assert.equal(info.viaPlex, true);
+    assert.equal((await g.post('/api/invite/' + iv.code, { name: 'ravi', password: 'ravipassword' })).status, 400, 'no name and password for a Plex invite');
+    // Sign in with Plex is off, but the invite lets them join with it.
+    assert.equal((await g.post('/api/plexlogin/start', { invite: 'not-a-real-invite-code-at-all' })).status, 404);
+    fake.state.plexWho = 'ravi';
+    const st = await g.post('/api/plexlogin/start', { invite: iv.code }); assert.equal(st.status, 200, JSON.stringify(st.data));
+    let r; for (let i = 0; i < 30; i++) { r = await g.get('/api/plexlogin/poll?t=' + st.data.ticket); if (!r.data.pending) break; await new Promise(z => setTimeout(z, 150)); }
+    assert.equal(r.status, 200, JSON.stringify(r.data)); assert.equal(r.data.user.name, 'ravi');
+    const me = (await g.get('/api/me')).data.user; assert.equal(me.name, 'ravi'); assert.deepEqual(me.access, [px]);
+    assert.equal(fake.state.plexShares[0].shared_server.invited_email, 'ravi@example.com', 'shared with their Plex account');
+    const inv = (await a.get('/api/invites')).data.find(x => x.id === iv.id); assert.equal(inv.used, 1); assert.deepEqual(inv.people, ['ravi']);
+    // Joining again with the same Plex account signs in, without a second profile.
+    const g2 = client(s.base), st2 = await g2.post('/api/plexlogin/start', { invite: iv.code });
+    for (let i = 0; i < 30; i++) { r = await g2.get('/api/plexlogin/poll?t=' + st2.data.ticket); if (!r.data.pending) break; await new Promise(z => setTimeout(z, 150)); }
+    assert.equal(r.data.user.name, 'ravi'); assert.equal((await a.get('/api/users')).data.filter(u => u.name.startsWith('ravi')).length, 1);
+    // A password invite cannot be used with Plex.
+    const pw = (await a.post('/api/invites', { label: 'Password' })).data; assert.equal(pw.viaPlex, false);
+    assert.equal((await client(s.base).post('/api/plexlogin/start', { invite: pw.code })).status, 400);
+  } finally { await s.stop(); srv.close(); }
+});

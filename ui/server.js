@@ -2615,6 +2615,43 @@ ${d.apps.map(a => `<div class="app"><div class="row"><b class="grow">${e(a.name)
 <script>const at=${d.at};setInterval(()=>{const s=Math.round((Date.now()-at)/1000);document.getElementById('t').textContent=s<60?'just now':Math.round(s/60)+' min ago';if(s>=60)location.reload()},10000)</script></body></html>`;
 }
 // Turns a Plex token into a GoatMediaStackarr profile (found, linked or created). The token is thrown away afterwards.
+// ---------- Invites
+const inviteViaPlex = x => !!(x && (x.viaPlex || plexOnly()));
+function inviteLive(code) {
+  const x = db.invites.find(l => same(l.hash, th(code)));
+  return x && (!x.exp || x.exp > Date.now()) && (!x.max || (x.used || 0) < x.max) ? x : null;
+}
+// What an invite gives the profile made with it.
+function inviteApply(u, x) {
+  u.access = (x.access || []).filter(a => db.services.some(s2 => s2.id === a));
+  if (x.perms) u.perms = { ...x.perms };
+  if (x.reqLimit) u.reqLimit = { ...x.reqLimit };
+  if (x.autoApprove) u.autoApprove = true;
+  if (x.kids) u.kids = { age: x.kids.age };
+}
+// Joining with a Plex invite: who they are comes from Plex, the libraries the invite shares are shared with that Plex
+// account, and the profile signs in with Plex from then on (it has no password of its own). Someone who already has a
+// profile with this Plex account is just signed in.
+async function plexJoin(token, x, info) {
+  const who = await ptv('/api/v2/user', { headers: { 'X-Plex-Token': token } });
+  const pid = String(who.uuid || who.id || ''), pname = cut(who.username || who.title || '', 60).trim(), email = cut(String(who.email || ''), 120).trim();
+  if (!pid || !pname) throw new PlexDeny('Plex did not say who you are. Please try again.', 502);
+  const had = db.users.find(y => y.plex && y.plex.id === pid);
+  if (had) { audit(had.name, 'Signed in with Plex (from an invite)', info.ip); return had; }
+  let name = pname, n = 1; while (db.users.some(y => y.name.trim().toLowerCase() === name.toLowerCase())) name = `${pname} (Plex${n > 1 ? ' ' + n : ''})`, n++;
+  const u = mkUser(name, crypto.randomBytes(24).toString('hex'), 'user'); inviteApply(u, x);
+  u.plex = { id: pid, name: pname }; u.plexName = pname; if (email) u.email = email;
+  u.invite = x.id; db.users.push(u); x.used = (x.used || 0) + 1; x.people = [...(x.people || []), name].slice(-50);
+  const w = u.welcome = { at: Date.now(), note: x.welcome || '', by: x.by || '', viaPlex: true };
+  if (x.plex && x.plex.on) { w.plex = { email: email || pname };
+    try { w.plex.libs = await plexShareInvite(email || pname, x.plex.libs || []); w.plex.ok = true; } catch (e) { w.plex.error = e.message; } }
+  if (x.jellyfin) w.jellyfin = { error: 'A Jellyfin account needs a password; make it by hand for Plex invites.' };
+  save();
+  if (w.plex && w.plex.error) feed('@admins', 'problem', 'Invite: something to finish by hand', `${name}: Plex sharing (${w.plex.error})`, 'set:users');
+  audit(name, 'Joined with a Plex invite', (x.label || x.id) + ' · ' + info.ip);
+  feed('@admins', 'user', 'New profile', `${name} joined with Plex ${x.label ? 'and the invite "' + x.label + '"' : 'and an invite'}`, 'set:users');
+  return u;
+}
 async function plexProfile(token) {
   const cfg = plexCfg(); if (!cfg.on) throw new PlexDeny('Sign in with Plex is turned off.');
   const h = { 'X-Plex-Token': token }, who = await ptv('/api/v2/user', { headers: h });
@@ -2712,15 +2749,19 @@ const goatServer = http.createServer(async (req, res) => {
       const u = mkUser(b.name, b.password, 'admin'); db.users.push(u); save(); return login(res, u);
     }
     if (p === '/api/plexlogin/start' && m === 'POST') {
-      if (!plexCfg().on) return send(res, 403, { error: 'Sign in with Plex is turned off.' });
+      // Joining with a Plex invite: the invite says it may, even while Sign in with Plex is off.
+      const lb0 = await readBody(req), inv = lb0 && lb0.invite ? inviteLive(String(lb0.invite)) : null;
+      if (lb0 && lb0.invite && !inv) return send(res, 404, { error: 'This invite link is not valid any more. Ask for a new one.' });
+      if (inv && !inviteViaPlex(inv)) return send(res, 400, { error: 'This invite is for a name and password.' });
+      if (!plexCfg().on && !inv) return send(res, 403, { error: 'Sign in with Plex is turned off.' });
       const ip = ipOf(req), now = Date.now(), a = plexAsk[ip] = (plexAsk[ip] || []).filter(t => now - t < 600000);
       if (a.length >= 15) return send(res, 429, { error: 'Too many tries. Wait a few minutes.' });
       a.push(now); for (const [k, v] of plexPend) if (now - v.at > 600000) plexPend.delete(k);
       if (plexPend.size > 300) return send(res, 429, { error: 'Busy. Try again in a minute.' });
       let pin; try { pin = await ptv('/api/v2/pins?strong=true', { method: 'POST' }); } catch (e) { return send(res, 502, { error: 'Could not reach plex.tv: ' + e.message }); }
       if (!pin || !pin.id || !pin.code) return send(res, 502, { error: 'plex.tv gave an unexpected answer.' });
-      const lb = await readBody(req), linkFor = lb && lb.link && me ? me.id : '';
-      const ticket = crypto.randomBytes(18).toString('hex'); plexPend.set(ticket, { id: String(Math.round(+pin.id)), at: now, ...(linkFor ? { link: linkFor } : {}) });
+      const lb = lb0, linkFor = lb && lb.link && me ? me.id : '';
+      const ticket = crypto.randomBytes(18).toString('hex'); plexPend.set(ticket, { id: String(Math.round(+pin.id)), at: now, ...(linkFor ? { link: linkFor } : {}), ...(inv ? { invite: inv.id } : {}) });
       return send(res, 200, { ticket, url: `${PLEXAUTH()}#?clientID=${encodeURIComponent(plexCid())}&code=${encodeURIComponent(pin.code)}&context%5Bdevice%5D%5Bproduct%5D=GoatMediaStackarr` });
     }
     if (p === '/api/plexlogin/poll' && m === 'GET') {
@@ -2740,6 +2781,12 @@ const goatServer = http.createServer(async (req, res) => {
           if (other) return send(res, 400, { error: `That Plex account already belongs to the profile ${other.name}.` });
           owner.plex = { id: pid, name: pname, linked: true }; save(); audit(owner.name, 'Linked a Plex account', pname);
           return send(res, 200, { linked: true, name: pname, user: pubUser(owner) });
+        }
+        if (e.invite) {
+          const x = db.invites.find(l => l.id === e.invite), live = x && (!x.exp || x.exp > Date.now()) && (!x.max || (x.used || 0) < x.max);
+          if (!live) return send(res, 410, { error: 'This invite has expired or been used up. Ask for a new one.' });
+          const u = await plexJoin(String(pin.authToken), x, res.info);
+          return login(res, u, 'plex');
         }
         const u = await plexProfile(String(pin.authToken));
         audit(u.name, 'Signed in with Plex', res.info.ip); return login(res, u, 'plex');
@@ -2838,17 +2885,13 @@ const goatServer = http.createServer(async (req, res) => {
       const hh = th(invm[1]), x = db.invites.find(l => same(l.hash, hh));
       const live = x && (!x.exp || x.exp > Date.now()) && (!x.max || (x.used || 0) < x.max);
       if (!live) { fl.n++; fl.t = Date.now(); failsInv[ip] = fl; return send(res, 404, { error: x ? 'This invite has expired or been used up. Ask for a new one.' : 'This invite link is not valid.' }); }
-      if (m === 'GET') return send(res, 200, { plexOnly: plexOnly(), label: x.label || '', by: x.by || '', server: db.settings.serverName || 'GoatMediaStackarr', kids: !!x.kids, exp: x.exp || 0, plex: !!(x.plex && x.plex.on), jellyfin: !!x.jellyfin });
+      if (m === 'GET') return send(res, 200, { plexOnly: plexOnly(), viaPlex: inviteViaPlex(x), label: x.label || '', by: x.by || '', server: db.settings.serverName || 'GoatMediaStackarr', kids: !!x.kids, exp: x.exp || 0, plex: !!(x.plex && x.plex.on), jellyfin: !!x.jellyfin });
+      if (inviteViaPlex(x)) return send(res, 400, { error: 'This invite is for Plex accounts: use Join with Plex.' });
       const b = await readBody(req), name = cut(b.name, 40).trim();
       if (!name || !/^[\p{L}\p{N} ._-]+$/u.test(name)) return send(res, 400, { error: 'Pick a name (letters, numbers, spaces, dots and dashes).' });
       if ((b.password || '').length < 8) return send(res, 400, { error: 'Pick a password of 8+ characters' });
       if (db.users.some(u => u.name.trim().toLowerCase() === name.toLowerCase())) return send(res, 400, { error: 'That name is taken. Pick another.' });
-      const u = mkUser(name, b.password, 'user');
-      u.access = (x.access || []).filter(a => db.services.some(s2 => s2.id === a));
-      if (x.perms) u.perms = { ...x.perms };
-      if (x.reqLimit) u.reqLimit = { ...x.reqLimit };
-      if (x.autoApprove) u.autoApprove = true;
-      if (x.kids) u.kids = { age: x.kids.age };
+      const u = mkUser(name, b.password, 'user'); inviteApply(u, x);
       if (b.email && require('./lib/smtp').ADDR.test(String(b.email).trim())) u.email = cut(b.email, 120).trim();
       if (x.plex && x.plex.on && !require('./lib/smtp').ADDR.test(String(b.plexEmail || '').trim())) return send(res, 400, { error: 'Enter the email (or the name) of your Plex account, so the libraries can be shared with it.' });
       u.invite = x.id; db.users.push(u); x.used = (x.used || 0) + 1; x.people = [...(x.people || []), name].slice(-50);
@@ -5171,7 +5214,7 @@ const goatServer = http.createServer(async (req, res) => {
       return send(res, 200, await statusData({ name: cut(q.get('name'), 60).trim() || 'Status page', note: cut(q.get('note'), 160).trim(), look: LOOKS.includes(q.get('look')) ? q.get('look') : 'auto', scopes: sc }));
     }
     const invOut = x => ({ id: x.id, label: x.label || '', at: x.at, by: x.by || '', exp: x.exp || 0, max: x.max || 0, used: x.used || 0, people: x.people || [], access: x.access || [],
-      perms: x.perms || null, kids: x.kids || null, reqLimit: x.reqLimit || null, autoApprove: !!x.autoApprove, hint: x.hint || '', plex: x.plex || null, jellyfin: !!x.jellyfin, welcome: x.welcome || '',
+      perms: x.perms || null, kids: x.kids || null, reqLimit: x.reqLimit || null, autoApprove: !!x.autoApprove, hint: x.hint || '', plex: x.plex || null, jellyfin: !!x.jellyfin, welcome: x.welcome || '', viaPlex: inviteViaPlex(x),
       live: (!x.exp || x.exp > Date.now()) && (!x.max || (x.used || 0) < x.max) });
     if (p === '/api/settings/2fa' && m === 'GET') return send(res, 200, { policy: tfaPolicy(), missing: db.users.filter(need2fa).map(u => u.name) });
     if (p === '/api/settings/2fa' && m === 'PUT') {
@@ -5197,7 +5240,8 @@ const goatServer = http.createServer(async (req, res) => {
         kids: b.kids ? { age: Math.min(17, Math.max(0, Math.round(+b.kids.age) || 7)) } : null,
         reqLimit: n > 0 ? { n: Math.min(n, 1000), days: Math.min(Math.max(d || 7, 1), 365) } : null, autoApprove: !!b.autoApprove,
         plex: b.plex && b.plex.on ? { on: true, libs: (Array.isArray(b.plex.libs) ? b.plex.libs : []).map(String).filter(k => /^\d+$/.test(k)).slice(0, 50) } : null,
-        jellyfin: !!b.jellyfin, welcome: cut(String(b.welcome || '').trim(), 800) };
+        jellyfin: !!b.jellyfin, welcome: cut(String(b.welcome || '').trim(), 800), viaPlex: !!b.viaPlex || plexOnly() };
+      if (x.viaPlex && !db.services.some(s2 => s2.type === 'plex')) return send(res, 400, { error: 'Add your Plex server under Settings, then Apps, first.' });
       db.invites.push(x); save(); audit(me.name, 'Made an invite link', x.label || x.id);
       return send(res, 200, { ...invOut(x), code });
     }
