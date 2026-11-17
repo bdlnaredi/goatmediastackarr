@@ -2,6 +2,8 @@ package com.bdlnaredi.goatstack.ui.screens
 
 import androidx.compose.runtime.collectAsState
 import androidx.compose.material.icons.rounded.Wifi
+import androidx.compose.material.icons.rounded.Bedtime
+import androidx.compose.material.icons.rounded.WbSunny
 import com.bdlnaredi.goatstack.data.tr
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.background
@@ -476,6 +478,41 @@ fun DevicesScreen() {
 
 
 /** Which notifications this phone shows, how often it looks in the background, and a test. */
+/** Quiet hours: at night only problems make a sound on this phone (and in the person's browsers); the rest arrives silently. */
+@Composable
+private fun QuietHours() {
+    val ctx = LocalCtx.current
+    val g = LocalGoat.current
+    val scope = rememberCoroutineScope()
+    val toast = toaster()
+    var q by remember { mutableStateOf(ctx.user.quiet ?: com.bdlnaredi.goatstack.data.Quiet()) }
+    var from by remember { mutableStateOf(q.from) }
+    var to by remember { mutableStateOf(q.to) }
+    val ok = Regex("^([01]?\\d|2[0-3]):[0-5]\\d$")
+    fun save(n: com.bdlnaredi.goatstack.data.Quiet) = scope.launch {
+        try {
+            val r = ctx.api.json.decodeFromString<com.bdlnaredi.goatstack.data.QuietSaved>(ctx.api.call("PUT", "/api/me/quiet", kotlinx.serialization.json.buildJsonObject {
+                put("on", n.on); put("from", n.from); put("to", n.to) }.toString()))
+            q = r.quiet; from = r.quiet.from; to = r.quiet.to
+            toast(if (!r.quiet.on) "Quiet hours off" else if (r.now) "Saved. It is quiet now." else "Saved")
+        } catch (e: Exception) { toast(e.message ?: "That did not work") }
+    }
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Quiet hours", style = MaterialTheme.typography.titleSmall, color = g.text)
+                Text("At night only problems make a sound. Everything else arrives silently. By the server's clock.", style = MaterialTheme.typography.labelSmall, color = g.muted)
+            }
+            Toggle(q.on) { on -> save(q.copy(on = on, from = from, to = to)) }
+        }
+        if (q.on) Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            GoatField(from, { from = it.take(5) }, "From", Icons.Rounded.Bedtime, Modifier.weight(1f), keyboard = androidx.compose.ui.text.input.KeyboardType.Number)
+            GoatField(to, { to = it.take(5) }, "To", Icons.Rounded.WbSunny, Modifier.weight(1f), keyboard = androidx.compose.ui.text.input.KeyboardType.Number)
+            TextButton(enabled = ok.matches(from) && ok.matches(to) && (from != q.from || to != q.to), onClick = { save(q.copy(from = from, to = to)) }) { Text("Save", color = g.primary) }
+        }
+    }
+}
+
 @Composable
 private fun NotifySettings(prefs: Prefs, set: (Prefs) -> Unit) {
     val ctx = LocalCtx.current
@@ -522,6 +559,7 @@ private fun NotifySettings(prefs: Prefs, set: (Prefs) -> Unit) {
                 })
                 GhostButton("See them all", modifier = Modifier.weight(1f), onClick = { ctx.go("notifications") })
             }
+            QuietHours()
         }
     }
 }

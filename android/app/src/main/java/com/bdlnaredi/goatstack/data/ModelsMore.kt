@@ -80,6 +80,8 @@ data class Unraid(
     val memTotal: Long = 0, val memUsed: Long = 0, val uptime: String = "", val cpuInfo: CpuInfo? = null,
     val containers: List<Container> = emptyList(), val disks: List<UnraidDisk> = emptyList(), val shares: List<Share> = emptyList(),
     val errors: List<String> = emptyList(), val updates: Map<String, Boolean> = emptyMap(),
+    /** Each container's own web page (its Unraid WebUI), for the Open button. */
+    val webui: Map<String, String> = emptyMap(),
 )
 @Serializable data class CpuInfo(val brand: String = "", val cores: Int = 0, val threads: Int = 0, val ghz: Double = 0.0)
 @Serializable data class Container(val id: String = "", val name: String = "", val state: String = "") { val running get() = state.equals("running", true) }

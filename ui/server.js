@@ -163,7 +163,7 @@ const APP_HASHES = APP_CERTS.map(x => Buffer.from(x.replace(/:/g, ''), 'hex').to
 const rpOf = req => String((TRUST && req.headers['x-forwarded-host']) || req.headers.host || 'localhost').split(',')[0].trim().replace(/:\d+$/, '').replace(/^\[|\]$/g, '').toLowerCase();
 const tfaRequired = u => !!u && (u.require2fa || tfaPolicy() === 'everyone' || (tfaPolicy() === 'admins' && u.role === 'admin')) && !(u.plex && u.role !== 'admin');
 const need2fa = u => tfaRequired(u) && !(u.totp && u.totp.on) && !(u.passkeys || []).length;
-const pubUser = u => ({ pin: !!u.pin, passkeys: (u.passkeys || []).length, email: u.email || '', weekly: !u.noWeekly, readyMail: !!u.readyMail, need2fa: need2fa(u), require2fa: !!u.require2fa, tfaRequired: tfaRequired(u), twofa: !!(u.totp && u.totp.on), id: u.id, name: u.name, role: u.role, access: u.access, perms: u.perms || null, notify: u.notify || '', dash: u.dash || null, reqLimit: u.reqLimit || null, autoApprove: !!u.autoApprove, plex: u.plex ? { name: u.plex.name } : null, hide: cleanHide(u.hide), restr: u.plexRules ? Object.fromEntries(['contentRating', 'contentRating!', 'label', 'label!'].filter(k => (u.plexRules[k] || []).length).map(k => [k, u.plexRules[k]])) : null, libs: u.plex ? { n: ((u.plexLibs || {}).mine || []).length, of: ((u.plexLibs || {}).all || []).length, limited: libLimited(u) } : null, plexName: u.plexName || '', lists: lists.enabled(), avatar: u.avatar ? `/api/avatar/${u.id}?v=${u.avatar.v}` : '', dataLimit: u.dataLimit || 0, streamLimit: u.streamLimit == null ? null : u.streamLimit, kids: u.kids ? { age: u.kids.age } : null });
+const pubUser = u => ({ pin: !!u.pin, passkeys: (u.passkeys || []).length, email: u.email || '', weekly: !u.noWeekly, readyMail: !!u.readyMail, quiet: u.quiet || null, need2fa: need2fa(u), require2fa: !!u.require2fa, tfaRequired: tfaRequired(u), twofa: !!(u.totp && u.totp.on), id: u.id, name: u.name, role: u.role, access: u.access, perms: u.perms || null, notify: u.notify || '', dash: u.dash || null, reqLimit: u.reqLimit || null, autoApprove: !!u.autoApprove, plex: u.plex ? { name: u.plex.name } : null, hide: cleanHide(u.hide), restr: u.plexRules ? Object.fromEntries(['contentRating', 'contentRating!', 'label', 'label!'].filter(k => (u.plexRules[k] || []).length).map(k => [k, u.plexRules[k]])) : null, libs: u.plex ? { n: ((u.plexLibs || {}).mine || []).length, of: ((u.plexLibs || {}).all || []).length, limited: libLimited(u) } : null, plexName: u.plexName || '', lists: lists.enabled(), avatar: u.avatar ? `/api/avatar/${u.id}?v=${u.avatar.v}` : '', dataLimit: u.dataLimit || 0, streamLimit: u.streamLimit == null ? null : u.streamLimit, kids: u.kids ? { age: u.kids.age } : null });
 // What the folders the apps report mean, in words (these are the container's own folders).
 const DISK_NAMES = { '/media': 'Media library', '/data': 'Media library', '/downloads': 'Downloads', '/config': 'App data', '/': 'Container (Docker image)' };
 const DISK_ORDER = ['Media library', 'Downloads', '', 'App data', 'Container (Docker image)'];
@@ -413,11 +413,13 @@ const LOG_TYPES = ['sonarr', 'radarr', 'lidarr', 'readarr', 'prowlarr', 'qbittor
 // ---------- Push notifications for the web app (installed on a phone or a computer, or just a browser tab that allowed
 // them): each item of the bell goes to that person's browsers too, encrypted for each one (lib/webpush.js).
 const WP = require('./lib/webpush');
-const PUSH_PATH = { requests: '/requests', stack: '/stack', hl: '/health', health: '/health', settings: '/settings', logs: '/logs', update: '/settings/about', unraid: '/unraid', downloads: '/downloads', suggestions: '/suggestions', upcoming: '/upcoming', notifications: '/' };
+const PUSH_PATH = { requests: '/requests', stack: '/stack', hl: '/health', health: '/health', settings: '/settings', logs: '/logs', update: '/settings/about', unraid: '/unraid', upgrades: '/health', downloads: '/downloads', suggestions: '/suggestions', upcoming: '/upcoming', notifications: '/' };
 function vapidKeys() { const s = db.settings || (db.settings = {}); if (!s.vapid || !s.vapid.pub || !s.vapid.priv) { s.vapid = WP.keys(); save(); } return s.vapid; }
 function pushOut(x) {
   const subs = db.pushSubs || []; if (!x || !subs.length) return;
   const to = x.to === '@admins' ? new Set(db.users.filter(u => u.role === 'admin').map(u => u.id)) : new Set([x.to]);
+  // Quiet hours: only problems reach a browser at night; the rest stays in the bell.
+  if (x.kind !== 'problem') for (const id of [...to]) { const u = db.users.find(y => y.id === id); if (u && quietNow(u.quiet)) to.delete(id); }
   const mine = subs.filter(sb => to.has(sb.uid)); if (!mine.length) return;
   const k = vapidKeys(), msg = { title: x.title, body: x.body, url: PUSH_PATH[x.link] || '/', tag: x.kind + ':' + (x.ref || x.id), kind: x.kind };
   for (const sb of mine) WP.send(sb, msg, k, { subject: 'mailto:' + ((db.users.find(u => u.role === 'admin') || {}).email || 'admin@localhost') }).then(r => {
@@ -836,6 +838,18 @@ const live = { snap: null, busy: false, timer: null, hist: {}, arr: {}, okAt: {}
 const quick = (pr, ms = 3500) => Promise.race([pr, new Promise((_, no) => setTimeout(() => no(new Error('slow')), ms))]);
 // CPU per thread, memory and swap in real amounts. Older Unraid versions may not offer them, so the plain percentages are the fallback.
 const urx = {}, num = v => { const x = +v; return Number.isFinite(x) ? x : 0; };
+/** A container's web page from its Unraid "WebUI" label (http://[IP]:[PORT:8989]/): [IP] is the server, and the port is
+ *  the one the container's port is published on. Empty when it has none, or it is not a plain web address. */
+function unraidWebUi(c, host) {
+  let l = c.labels; if (typeof l === 'string') { try { l = JSON.parse(l); } catch { l = null; } }
+  const t = String((l && typeof l === 'object' && l['net.unraid.docker.webui']) || '').trim();
+  if (!t || !host) return '';
+  const ports = Array.isArray(c.ports) ? c.ports : [];
+  const v = t.replace(/\[IP\]/gi, host.includes(':') ? `[${host}]` : host).replace(/\[PORT:(\d{1,5})\]/gi, (_, n) => {
+    const m = ports.find(x => +x.privatePort === +n && +x.publicPort > 0); return String(m ? +m.publicPort : +n);
+  });
+  try { const u = new URL(v); return /^https?:$/.test(u.protocol) && !u.username && !u.password ? u.href.slice(0, 400) : ''; } catch { return ''; }
+}
 async function unraidMetrics(s) {
   const f = urx[s.id];
   if (!f || f.ok || Date.now() - f.t > 3e5) {
@@ -1266,6 +1280,31 @@ async function binRestore(e) {
     swrDrop('lib:' + sv.id);
   }
 }
+// ---- Upgrades: what is below the quality its profile wants (Radarr's and Sonarr's "cutoff unmet"), and one search for all.
+async function upgradeList(per = 30) {
+  const out = [];
+  for (const sv of db.services.filter(x => x.type === 'radarr' || x.type === 'sonarr')) {
+    try {
+      const tv = sv.type === 'sonarr';
+      const [w, prof] = await Promise.all([ext(sv, `/api/v3/wanted/cutoff?page=1&pageSize=${per}&sortKey=${tv ? 'episodes.airDateUtc' : 'movieMetadata.sortTitle'}&sortDirection=${tv ? 'descending' : 'ascending'}&monitored=true${tv ? '&includeSeries=true&includeEpisodeFile=true' : ''}`),
+        ext(sv, '/api/v3/qualityprofile').catch(() => [])]);
+      const pname = id => ((prof || []).find(x => x.id === id) || {}).name || '';
+      const items = (w.records || []).map(x => tv
+        ? { id: x.id, title: `${(x.series || {}).title || ''} S${pad2(x.seasonNumber)}E${pad2(x.episodeNumber)}`, sub: x.title || '', quality: (((x.episodeFile || {}).quality || {}).quality || {}).name || '', size: (x.episodeFile || {}).size || 0, wants: pname((x.series || {}).qualityProfileId), parent: x.seriesId }
+        : { id: x.id, title: x.title + (x.year ? ` (${x.year})` : ''), sub: '', quality: (((x.movieFile || {}).quality || {}).quality || {}).name || '', size: (x.movieFile || {}).size || 0, wants: pname(x.qualityProfileId), parent: x.id });
+      out.push({ sid: sv.id, name: sv.name, type: sv.type, total: w.totalRecords || items.length, items });
+    } catch (e) { out.push({ sid: sv.id, name: sv.name, type: sv.type, total: 0, items: [], error: cut(e.message, 200) }); }
+  }
+  return out;
+}
+// Once a week the admins hear how many titles could be better, when there are any.
+async function upgradeTick() {
+  const st = db.settings || (db.settings = {});
+  if (Date.now() - (st.upgAt || 0) < 7 * 864e5) return;
+  st.upgAt = Date.now(); save();
+  const l = await upgradeList(1), n = l.reduce((a, x) => a + x.total, 0);
+  if (n) feed('@admins', 'info', `${n} title${n === 1 ? '' : 's'} could be better quality`, l.filter(x => x.total).map(x => `${x.name}: ${x.total}`).join(', ') + '. Health → Upgrades searches for better copies.', 'upgrades');
+}
 const binPub = e => ({ id: e.id, kind: e.kind, name: e.name, by: e.by || '', app: e.app || '', at: e.at, size: e.size, until: e.at + binDays() * 864e5,
   files: e.items.length, where: e.items.length ? cut(e.items[0].from, 400) : '' });
 
@@ -1292,11 +1331,44 @@ const chanEvents = c => Array.isArray(c.events) ? c.events : (a => ALERT_EVENTS.
 const alertParams = (kind, title, body, params = {}) => { const d = new Date();
   return { subject: title, message: body, event: (AL.EVENTS[kind] || {}).name || kind, app_name: 'GoatMediaStackarr', datestamp: d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }), timestamp: d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }), ...params }; };
 const alertWants = kind => ((db.alerts || {}).channels || []).some(c => !channels.problem(c) && chanEvents(c).includes(kind));
+// ---- Quiet hours: at night nothing pings except what cannot wait. For each person (their phone and browsers: only
+// problems come through, the rest waits silently in the bell) and for the alert channels (Settings → Alerts: what is
+// not urgent is held, then sent as one message when the quiet hours end). Times are the server's own clock.
+const QUIET_URGENT = ['offline', 'vpn', 'disk', 'backup', 'logErrors', 'diskFill'];
+function quietNow(q, d = new Date()) {
+  if (!q || !q.on) return false;
+  const f = hm(q.from), t = hm(q.to), n = d.getHours() * 60 + d.getMinutes();
+  if (f == null || t == null || f === t) return false;
+  return f < t ? n >= f && n < t : n >= f || n < t;
+}
+const quietClean = (b, urgentToo) => {
+  const o = { on: !!b.on, from: hm(b.from) != null ? String(b.from).padStart(5, '0') : '23:00', to: hm(b.to) != null ? String(b.to).padStart(5, '0') : '08:00' };
+  if (urgentToo) o.urgent = Array.isArray(b.urgent) ? ALERT_EVENTS.filter(k => b.urgent.includes(k)) : QUIET_URGENT.slice();
+  return o;
+};
+// When the quiet hours are over: what was held goes out as one message on each channel that wanted it.
+async function quietFlush() {
+  const held = db.quietHeld || [], q = (db.alerts || {}).quiet;
+  if (!held.length || quietNow(q)) return;
+  db.quietHeld = []; save();
+  for (const c of ((db.alerts || {}).channels || []).filter(c => !channels.problem(c))) {
+    const mine = held.filter(x => chanEvents(c).includes(x.kind) && AL.condsOk(c, x.pr || {}));
+    if (!mine.length) continue;
+    const lines = mine.slice(-40).map(x => `• ${new Date(x.at).toTimeString().slice(0, 5)} ${x.title}`).join('\n') + (mine.length > 40 ? `\n…and ${mine.length - 40} more` : '');
+    await channels.send(c, `While it was quiet: ${mine.length} alert${mine.length === 1 ? '' : 's'}`, lines).catch(() => {});
+  }
+}
 async function notify(kind, title, body, html, params) {
   const list = ((db.alerts || {}).channels || []).filter(c => !channels.problem(c) && chanEvents(c).includes(kind));
   if (!list.length) return false;
   const pr = alertParams(kind, title, body, params), go = list.filter(c => AL.condsOk(c, pr));
   if (!go.length) return false;
+  const q = (db.alerts || {}).quiet;
+  if (quietNow(q) && !(q.urgent || QUIET_URGENT).includes(kind)) {
+    const h = db.quietHeld || (db.quietHeld = []);
+    h.push({ kind, title: cut(String(title), 200), at: Date.now(), pr }); if (h.length > 300) h.splice(0, h.length - 300); save();
+    return true;
+  }
   const res = await Promise.allSettled(go.map(c => { const m = AL.message(c, kind, pr); return channels.send(c, m.subject, m.body, m.custom ? undefined : html); }));
   const bad = res.filter(x => x.status === 'rejected');
   if (bad.length === res.length) throw bad[0].reason;
@@ -3160,6 +3232,7 @@ const goatServer = http.createServer(async (req, res) => {
       return send(res, 200, { code, minutes: 15 });
     }
     { const cm = p.match(/^\/api\/me\/chats\/(telegram|discord)$/); if (cm && m === 'DELETE') { if (me.chats) delete me.chats[cm[1]]; save(); audit(me.name, 'Unlinked a chat', cm[1]); return send(res, 200, {}); } }
+    if (p === '/api/me/quiet' && m === 'PUT') { me.quiet = quietClean(await readBody(req)); save(); return send(res, 200, { quiet: me.quiet, now: quietNow(me.quiet) }); }
     if (p === '/api/me/readymail' && m === 'PUT') { me.readyMail = !!(await readBody(req)).on || undefined; save(); return send(res, 200, { readyMail: !!me.readyMail }); }
     if (p === '/api/me/weekly' && m === 'PUT') { me.noWeekly = !(await readBody(req)).on || undefined; save(); return send(res, 200, { weekly: !me.noWeekly }); }
     if (p === '/api/me/weekly' && m === 'GET') {
@@ -3679,7 +3752,10 @@ const goatServer = http.createServer(async (req, res) => {
             try { const u = new URL(String(v || '')); if (u.protocol === 'https:' && !u.username && !u.password && !/(api_?key|token|passkey|secret)=/i.test(u.search)) out.icons[c.id] = u.href.slice(0, 400); } catch {}
           }
         }, true),
-        part('{ docker { containers { id isUpdateAvailable } } }', d => { out.updates = {}; for (const c of d.docker.containers) if (c.isUpdateAvailable) out.updates[c.id] = true; }, true)
+        part('{ docker { containers { id isUpdateAvailable } } }', d => { out.updates = {}; for (const c of d.docker.containers) if (c.isUpdateAvailable) out.updates[c.id] = true; }, true),
+        // Each container's own web page (its "WebUI" in Unraid), for the Open button.
+        part('{ docker { containers { id labels ports { privatePort publicPort } } } }', d => { out.webui = {}; const host = (() => { try { return new URL(s.url).hostname; } catch { return ''; } })();
+          for (const c of d.docker.containers) { const u = unraidWebUi(c, host); if (u) out.webui[c.id] = u; } }, true)
       ]);
       return send(res, 200, out);
     }
@@ -4694,7 +4770,7 @@ const goatServer = http.createServer(async (req, res) => {
     if (p === '/api/notifications' && m === 'GET') {
       const q = new URL(req.url, 'http://x').searchParams, after = Math.max(0, +q.get('after') || 0), f = db.feed || { n: 0, items: [] };
       const mine = f.items.filter(x => x.to === me.id || (x.to === '@admins' && me.role === 'admin'));
-      return send(res, 200, { last: f.n, read: me.feedRead || 0, items: mine.filter(x => x.id > after).slice(-60).reverse().map(({ to, ...x }) => x) });
+      return send(res, 200, { last: f.n, read: me.feedRead || 0, quiet: quietNow(me.quiet), items: mine.filter(x => x.id > after).slice(-60).reverse().map(({ to, ...x }) => x) });
     }
     if (p === '/api/notifications/read' && m === 'POST') { const b = await readBody(req); me.feedRead = Math.max(me.feedRead || 0, Math.min(+b.upTo || 0, (db.feed || {}).n || 0)); save(); return send(res, 200, { read: me.feedRead }); }
     if (p === '/api/notifications/test' && m === 'POST') { feed(me.id, 'test', 'Notifications work', 'This is how GoatMediaStackarr tells you things on this phone.', ''); return send(res, 200, {}); }
@@ -4919,6 +4995,17 @@ const goatServer = http.createServer(async (req, res) => {
       audit(me.name, 'Bulk change', `${sv.name}: ${op}${op === 'preset' ? ' ' + b.preset : ''} on ${ids.length}`); return send(res, 200, { n: ids.length });
     }
     if (me.role !== 'admin') return send(res, 403, { error: 'Admins only' });
+    // Upgrades: what is below its profile's quality, and a search for better copies.
+    if (p === '/api/upgrades' && m === 'GET') return send(res, 200, { apps: await upgradeList(30) });
+    if (p === '/api/upgrades/search' && m === 'POST') {
+      const b = await readBody(req), sv = db.services.find(x => x.id === b.sid && (x.type === 'radarr' || x.type === 'sonarr'));
+      if (!sv) return send(res, 404, { error: 'Not found' });
+      const tv = sv.type === 'sonarr', ids = (Array.isArray(b.ids) ? b.ids : []).map(Number).filter(n => n > 0).slice(0, 500);
+      const cmd = ids.length ? (tv ? { name: 'EpisodeSearch', episodeIds: ids } : { name: 'MoviesSearch', movieIds: ids }) : { name: tv ? 'CutoffUnmetEpisodeSearch' : 'CutOffUnmetMoviesSearch', monitored: true };
+      await call(sv, '/api/v3/command', { method: 'POST', body: JSON.stringify(cmd) });
+      audit(me.name, 'Searched for upgrades', sv.name + (ids.length ? `: ${ids.length} title(s)` : ': everything below its quality'));
+      return send(res, 200, { searching: ids.length || 'all' });
+    }
     // The recycle bin: what was deleted lately, to put back or delete for good.
     if (p === '/api/bin' && m === 'GET') {
       binSweep();
@@ -5260,7 +5347,7 @@ const goatServer = http.createServer(async (req, res) => {
     if (p === '/api/alerts' && m === 'GET') {
       const a = db.alerts || {}, pub = c => ({ id: c.id, type: c.type, where: c.target ? (() => { try { return new URL(c.target).origin + '/…'; } catch { return '…'; } })() : '', chat: c.type === 'telegram' || c.type === 'pushover' ? c.chat : '',
         host: c.host || '', port: c.port || '', secure: c.secure || '', user: c.user || '', from: c.from || '', to: c.to || '', hasSecret: !!(c.token || c.pass), name: c.name || '', events: chanEvents(c), tpl: c.tpl || {}, conds: c.conds || [], condMode: c.condMode === 'any' ? 'any' : 'all' });
-      return send(res, 200, { finished: !!a.finished, offline: !!a.offline, disk: !!a.disk, vpn: !!a.vpn, requests: !!a.requests, reports: a.reports !== false, diskPct: a.diskPct || 90, diskTemp: a.diskTemp || 55, logCount: a.logCount ?? 5, logMins: a.logMins || 15, fillDays: a.fillDays ?? 14, events: ALERT_EVENTS, meta: Object.fromEntries(ALERT_EVENTS.map(k => [k, { ...AL.EVENTS[k], params: AL.paramsOf(k) }])), ops: AL.OPS, channels: (a.channels || []).map(pub) });
+      return send(res, 200, { quiet: a.quiet || { on: false, from: '23:00', to: '08:00', urgent: QUIET_URGENT }, held: (db.quietHeld || []).length, finished: !!a.finished, offline: !!a.offline, disk: !!a.disk, vpn: !!a.vpn, requests: !!a.requests, reports: a.reports !== false, diskPct: a.diskPct || 90, diskTemp: a.diskTemp || 55, logCount: a.logCount ?? 5, logMins: a.logMins || 15, fillDays: a.fillDays ?? 14, events: ALERT_EVENTS, meta: Object.fromEntries(ALERT_EVENTS.map(k => [k, { ...AL.EVENTS[k], params: AL.paramsOf(k) }])), ops: AL.OPS, channels: (a.channels || []).map(pub) });
     }
     if (p === '/api/alerts' && m === 'PUT') {
       const b = await readBody(req), o = db.alerts || { channels: [] };
@@ -5268,8 +5355,9 @@ const goatServer = http.createServer(async (req, res) => {
       const keep = (k, v) => k in b ? v : o[k];
       db.alerts = { ...o, finished: keep('finished', !!b.finished), offline: keep('offline', !!b.offline), disk: keep('disk', !!b.disk), vpn: keep('vpn', !!b.vpn), requests: keep('requests', !!b.requests), reports: keep('reports', b.reports !== false), diskPct: Math.min(99, Math.max(50, +b.diskPct || o.diskPct || 90)), diskTemp: Math.min(80, Math.max(35, +b.diskTemp || o.diskTemp || 55)),
         logCount: 'logCount' in b ? Math.min(100, Math.max(0, Math.round(+b.logCount) || 0)) : o.logCount, logMins: 'logMins' in b ? Math.min(240, Math.max(5, Math.round(+b.logMins) || 15)) : o.logMins,
-        fillDays: 'fillDays' in b ? Math.min(90, Math.max(0, Math.round(+b.fillDays) || 0)) : o.fillDays };
-      save(); audit(me.name, 'Changed alert settings', ''); return send(res, 200, {});
+        fillDays: 'fillDays' in b ? Math.min(90, Math.max(0, Math.round(+b.fillDays) || 0)) : o.fillDays,
+        quiet: b.quiet && typeof b.quiet === 'object' ? quietClean(b.quiet, true) : o.quiet };
+      save(); quietFlush().catch(() => {}); audit(me.name, 'Changed alert settings', ''); return send(res, 200, {});
     }
     const chanFields = (b, o = {}) => { const g = k => b[k] != null && String(b[k]).trim() !== '' ? String(b[k]).trim().slice(0, 500) : o[k];
       return { id: o.id || uid(), type: b.type || o.type, target: g('target'), token: g('token'), chat: g('chat'), host: g('host'), port: g('port'), secure: ['ssl', 'starttls', 'none'].includes(b.secure) ? b.secure : o.secure || 'starttls', user: g('user'), pass: g('pass'), from: g('from'), to: g('to'),
@@ -5936,6 +6024,8 @@ setTimeout(() => monitor().catch(() => {}), Math.min(3000, MON_MS));
 setTimeout(() => wpSync(), +process.env.WP_DELAY_MS || 20000).unref();
 setInterval(() => wpSync(), 6 * 3600e3).unref();
 setInterval(() => { try { binSweep(); } catch {} }, 3600e3).unref();
+setInterval(() => { quietFlush().catch(() => {}); }, 60000).unref();
+setInterval(() => { upgradeTick().catch(() => {}); }, 6 * 3600e3).unref();
 setTimeout(() => { try { binSweep(); } catch {} }, 60000).unref();
 // Discover's lists are fetched ahead of time (soon after starting, then every 3 hours), so opening them never waits on the sites.
 setTimeout(() => lists.warm().catch(() => {}), 90000).unref();

@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Delete
@@ -456,6 +457,7 @@ fun StatsScreen() {
 
 @Composable
 fun UnraidScreen() {
+    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
     val ctx = LocalCtx.current
     val g = LocalGoat.current
     val scope = rememberCoroutineScope()
@@ -526,6 +528,10 @@ fun UnraidScreen() {
                                 Text(c.name, style = MaterialTheme.typography.titleSmall, color = g.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 Text(c.state.lowercase(), style = MaterialTheme.typography.labelSmall, color = g.muted)
                             }
+                            // Open: the container's own web page, in the browser.
+                            val web = u.webui[c.id]
+                            if (ctx.user.admin && c.running && !web.isNullOrBlank())
+                                IconButton(onClick = { runCatching { uriHandler.openUri(web) } }) { Icon(androidx.compose.material.icons.Icons.AutoMirrored.Rounded.OpenInNew, "Open ${c.name}", tint = g.primary) }
                             if (ctx.user.admin && busy != c.id && u.updates[c.id] == true)
                                 androidx.compose.material3.TextButton(onClick = { updating = c }) { Text(com.bdlnaredi.goatstack.data.tr("Update"), color = g.primary) }
                             if (ctx.user.admin) {

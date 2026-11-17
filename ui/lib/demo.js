@@ -94,7 +94,14 @@ function create(opts = {}) {
     if (!tv && p === '/api/v3/collection') return json(res, [{ id: 1, tmdbId: 10, title: 'Demo Saga', monitored: false, images: [], movies: [{ tmdbId: 5001, title: st.movies[0].title }, { tmdbId: 5002, title: st.movies[1].title }, { tmdbId: 6300, title: 'Demo Saga III' }] }]);
     if (p === '/api/v3/rootfolder') return json(res, [{ path: tv ? '/tv' : '/movies' }]);
     if (p === '/api/v3/indexer/testall' || p === '/api/v3/downloadclient/testall') return json(res, []);
-    if (p === '/api/v3/command' && m === 'POST') { if (data.name === 'ManualImport') (st.imports = st.imports || []).push({ app: type, ...data }); return json(res, { id: 1, name: data.name }); }
+    if (p === '/api/v3/command' && m === 'POST') { if (data.name === 'ManualImport') (st.imports = st.imports || []).push({ app: type, ...data }); (st.cmds = st.cmds || []).push({ app: type, ...data }); return json(res, { id: 1, name: data.name }); }
+    // Below the quality their profile wants ("cutoff unmet"): two films, three episodes.
+    if (p === '/api/v3/wanted/cutoff') {
+      const q720 = { quality: { quality: { id: 4, name: 'HDTV-720p' } } };
+      const recs = tv ? [1, 2, 3].map(n => ({ id: 900 + n, seriesId: 1, seasonNumber: 1, episodeNumber: n, title: 'Chapter ' + n, series: { id: 1, title: 'Demo Show', qualityProfileId: 1 }, episodeFile: { ...q720, size: 7e8 } }))
+        : st.movies.slice(0, 2).map(x => ({ id: x.id, title: x.title, year: x.year, qualityProfileId: 1, movieFile: { ...q720, size: 3e9 } }));
+      return json(res, { page: 1, pageSize: +q.get('pageSize') || 10, totalRecords: recs.length, records: recs.slice(0, +q.get('pageSize') || 10) });
+    }
     if (p === '/api/v3/manualimport' && m === 'GET') {
       const where = String(q.get('folder') || q.get('downloadId') || ''), base = where.split('/').pop(), words = base.replace(/[._]+/g, ' ').toLowerCase();
       const file = { path: where.replace(/\/$/, '') + '/' + base + '.mkv', relativePath: base + '.mkv', size: 1.2e9, quality: { quality: { id: 3, name: 'WEBDL-1080p' }, revision: { version: 1 } }, languages: [{ id: 1, name: 'English' }], releaseGroup: 'GRP', rejections: /sample/i.test(base) ? [{ reason: 'Sample', type: 'permanent' }] : [] };
@@ -489,7 +496,9 @@ function create(opts = {}) {
         array: { state: 'STARTED', capacity: { kilobytes: { used: '41200000000', total: '64000000000' } }, parityCheckStatus: st.parity || { status: 'NEVER_RUN', progress: 0, errors: 0, running: false },
           parities: [{ name: 'parity', temp: 31, status: 'DISK_OK', numErrors: 0 }], disks: st.uDisks || [1, 2, 3].map(n => ({ name: 'disk' + n, temp: 30 + n * 2, status: 'DISK_OK', numErrors: 0 })), caches: [{ name: 'cache', temp: 36, status: 'DISK_OK', numErrors: 0 }] },
         disks: st.smart || [{ name: 'disk1', device: 'sdb', smartStatus: 'OK' }],
-        docker: { logs: { lines: ['Starting up', 'Loading configuration', 'Listening on port 32400', 'Library scan finished: 0 changes'].map((message, i) => ({ timestamp: new Date(Date.now() - (4 - i) * 60000).toISOString(), message })) }, containers: [['plex', 'RUNNING'], ['sonarr', 'RUNNING'], ['radarr', 'RUNNING'], ['qbittorrent', 'RUNNING'], ['tautulli', 'EXITED']].map(([n, s], i) => ({ id: 'c' + i, names: ['/' + n], state: s, isUpdateAvailable: n === 'radarr', image: 'demo/' + n + ':latest', status: s === 'RUNNING' ? 'Up ' + (i + 2) + ' days' : 'Exited (0) 3 hours ago', labels: { 'net.unraid.docker.icon': n === 'plex' ? 'https://example.com/plex.png' : n === 'sonarr' ? 'http://insecure.example/sonarr.png' : n === 'radarr' ? 'https://example.com/r.png?apikey=SECRET9' : '' } })) },
+        docker: { logs: { lines: ['Starting up', 'Loading configuration', 'Listening on port 32400', 'Library scan finished: 0 changes'].map((message, i) => ({ timestamp: new Date(Date.now() - (4 - i) * 60000).toISOString(), message })) }, containers: [['plex', 'RUNNING'], ['sonarr', 'RUNNING'], ['radarr', 'RUNNING'], ['qbittorrent', 'RUNNING'], ['tautulli', 'EXITED']].map(([n, s], i) => ({ id: 'c' + i, names: ['/' + n], state: s, isUpdateAvailable: n === 'radarr', image: 'demo/' + n + ':latest', status: s === 'RUNNING' ? 'Up ' + (i + 2) + ' days' : 'Exited (0) 3 hours ago', labels: { 'net.unraid.docker.icon': n === 'plex' ? 'https://example.com/plex.png' : n === 'sonarr' ? 'http://insecure.example/sonarr.png' : n === 'radarr' ? 'https://example.com/r.png?apikey=SECRET9' : '',
+          'net.unraid.docker.webui': n === 'plex' ? 'http://[IP]:[PORT:32400]/web' : n === 'sonarr' ? 'http://[IP]:[PORT:8989]/' : n === 'radarr' ? 'javascript:alert(1)' : '' },
+          ports: n === 'sonarr' ? [{ privatePort: 8989, publicPort: 18989 }] : [] })) },
         shares: [{ name: 'media', free: 9e9, used: 36e9, size: 0 }, { name: 'appdata', free: 4e8, used: 1e8, size: 0 }, { name: 'isos', free: 0, used: 2e8, size: 0 }] } });
     }
     if (type === 'jackett' && sub === '/UI/Dashboard' && m === 'POST') {   // the sign-in page: the right password gives a cookie

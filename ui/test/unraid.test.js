@@ -20,6 +20,8 @@ test('unraid: the CPU is named in full, with trademark signs removed', async () 
     const lg = (await a.get(`/api/unraid/${id}/logs?id=c0`)).data; assert.match(lg.text, /Listening on port/); assert.match(lg.text, /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d  /, 'lines carry their time');
     assert.deepEqual(d.icons, { c0: 'https://example.com/plex.png' }, 'only a plain https icon from the container labels is passed on');
     assert.ok(!JSON.stringify(d).includes('SECRET9'));
+    // Open: the container's own page, on the server's address and the port it is published on; nothing but web addresses.
+    assert.deepEqual(d.webui, { c0: 'http://127.0.0.1:32400/web', c1: 'http://127.0.0.1:18989/' });
     assert.deepEqual(d.shares.map(x => x.size), [0, 0, 0], 'the pretend Unraid reports no share size, like many real ones');
   } finally { await s.stop(); srv.close(); }
 });

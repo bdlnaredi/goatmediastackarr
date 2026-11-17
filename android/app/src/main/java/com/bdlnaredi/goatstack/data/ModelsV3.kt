@@ -107,6 +107,10 @@ data class Device(val id: String = "", val user: String = "", val device: String
 /** Where a title is in the library (/api/inlib), or empty when it is not. */
 /** The recycle bin (admins): what was deleted lately, how long it is kept. */
 @Serializable data class BinItem(val id: String = "", val kind: String = "", val name: String = "", val by: String = "", val app: String = "", val at: Long = 0, val size: Long = 0, val until: Long = 0, val files: Int = 0, val where: String = "")
+/** Upgrades (admins): what is below the quality its profile wants. */
+@Serializable data class UpgItem(val id: Long = 0, val title: String = "", val sub: String = "", val quality: String = "", val size: Long = 0, val wants: String = "", val parent: Long = 0)
+@Serializable data class UpgApp(val sid: String = "", val name: String = "", val type: String = "", val total: Int = 0, val items: List<UpgItem> = emptyList(), val error: String = "")
+@Serializable data class UpgList(val apps: List<UpgApp> = emptyList())
 /** Which title page a shared IMDb link is. */
 @Serializable data class Resolved(val type: String = "movie", val id: Long = 0)
 @Serializable data class BinList(val days: Int = 7, val items: List<BinItem> = emptyList(), val total: Long = 0)
@@ -133,7 +137,10 @@ object Versions {
 }
 
 // ---------- Notifications (/api/notifications) ----------
-@Serializable data class Feed(val last: Long = 0, val read: Long = 0, val items: List<FeedItem> = emptyList())
+@Serializable data class Feed(val last: Long = 0, val read: Long = 0, val items: List<FeedItem> = emptyList(), val quiet: Boolean = false)
+/** Quiet hours (by the server's clock). */
+@Serializable data class Quiet(val on: Boolean = false, val from: String = "23:00", val to: String = "08:00")
+@Serializable data class QuietSaved(val quiet: Quiet = Quiet(), val now: Boolean = false)
 @Serializable data class FeedItem(val id: Long = 0, val at: Long = 0, val kind: String = "", val title: String = "", val body: String = "", val link: String = "", val ref: String = "")
 
 // ---------- Trackers: searching them, and their websites (/api/sites, /api/trackers) ----------

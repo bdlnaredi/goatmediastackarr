@@ -37,6 +37,8 @@ data class User(
     val autoApprove: Boolean = false,
     val avatar: String = "",
     val dataLimit: Int = 0,
+    /** Quiet hours: at night only problems make a sound. */
+    val quiet: Quiet? = null,
     val notify: String = "",
     val streamLimit: Double? = null,
     /** A kids profile: only what is here and rated for this age; no searching or requesting. */

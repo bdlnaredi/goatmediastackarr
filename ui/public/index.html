@@ -1343,6 +1343,12 @@ async function stAcct(){
     <div class="panel" style="max-width:560px;margin-top:16px"><h3 style="margin-top:0">Phone messages for you</h3>
       <p class="mute">GoatMediaStackarr can message you when a request of yours is approved or ready to watch. Use an ntfy topic address (like https://ntfy.sh/my-topic) or a Discord webhook address.</p>
       <form id="nf2" style="margin:0"><input name="url" value="${esc(me.notify||'')}" placeholder="https://ntfy.sh/my-topic"><div class="row"><button class="primary">Save</button><button type="button" id="nt">Send a test message</button></div></form></div>
+    <div class="panel" style="max-width:560px;margin-top:16px"><h3 style="margin-top:0">${T('Quiet hours')}</h3>
+      <p class="mute">${T('At night your phone and browsers only hear about problems. Everything else waits in the bell, without a sound.')}</p>
+      <div class="row" style="gap:12px;flex-wrap:wrap"><label class="chk" style="margin:0"><input type="checkbox" id="qon" ${me.quiet&&me.quiet.on?'checked':''}>${T('On')}</label>
+        <label class="mute">${T('From')} <input type="time" id="qfr" value="${esc((me.quiet&&me.quiet.from)||'23:00')}" style="width:auto"></label>
+        <label class="mute">${T('to')} <input type="time" id="qto" value="${esc((me.quiet&&me.quiet.to)||'08:00')}" style="width:auto"></label></div>
+      <p class="mute" style="margin:6px 0 0;font-size:13px">${T('By the server clock.')}</p></div>
     <div class="panel" style="max-width:560px;margin-top:16px"><h3 style="margin-top:0">Recovery email</h3>
       <p class="mute">Your own email address. If you ever forget your password, the reset link is sent here. Type your current password to save a change.</p>
       <form id="ef" style="margin:0"><input name="email" type="email" value="${esc(me.email||'')}" placeholder="you@example.com" autocomplete="email"><input name="password" type="password" placeholder="Current password" autocomplete="current-password" required>
@@ -1368,6 +1374,8 @@ async function stAcct(){
   $('#nt').onclick=async()=>{try{await api('/api/me/notify/test','POST');toast('Test message sent','ok')}catch(x){toast(x.message,'bad')}};
   $('#ef').onsubmit=async e=>{e.preventDefault();const f=e.target.elements;$('#ee').textContent='';
     try{const r=await api('/api/me/email','PUT',{email:f.email.value.trim(),password:f.password.value});me.email=r.email;f.password.value='';toast(r.email?'Recovery email saved':'Recovery email removed','ok')}catch(x){$('#ee').textContent=x.message}};
+  const qsave=async()=>{try{const r=await api('/api/me/quiet','PUT',{on:$('#qon').checked,from:$('#qfr').value,to:$('#qto').value});me.quiet=r.quiet;toast(r.quiet.on?(r.now?T('Saved. It is quiet now.'):T('Saved')):T('Quiet hours off'),'ok')}catch(x){toast(x.message,'bad')}};
+  if($('#qon'))['qon','qfr','qto'].forEach(id=>$('#'+id).onchange=qsave);
   if($('#rdm'))$('#rdm').onchange=async e=>{try{const r=await api('/api/me/readymail','PUT',{on:e.target.checked});me.readyMail=r.readyMail;toast(T('Saved'),'ok')}catch(x){toast(x.message,'bad');e.target.checked=!e.target.checked}};
   api('/api/me/weekly').then(w=>{if(!w.everyone||!$('#wkm'))return;$('#wkm').hidden=false;
     $('#wkon').onchange=async e=>{try{const r=await api('/api/me/weekly','PUT',{on:e.target.checked});me.weekly=r.weekly;toast('Saved','ok')}catch(x){toast(x.message,'bad')}};
@@ -2923,7 +2931,7 @@ function urView(){
           line=tot?`${fmtBig(x.used*1024)} used of ${fmtBig(tot*1024)}${x.size>0&&x.free>0?'':''}`:(x.used>0?`${fmtBig(x.used*1024)} used${ar?`, ${pc3.toFixed(pc3<10?1:0)}% of the array`:''}`:'No size reported by Unraid');return `<div class="ud" style="--i:${i}"><div class="row"><b class="grow">${esc(x.name)}</b><b style="color:${col(pc3)}">${pc3.toFixed(0)}%</b></div><div class="ubar" style="margin:10px 0 8px"><i style="width:${pc3}%;background:${col(pc3)}"></i></div><div class="mute">${line}${x.free>0?`, ${fmtBig(x.free*1024)} free`:''}</div></div>`}).join('')}</div>`:'')+(d.notes&&d.notes.length?`<p class="mute">Some details are not available from this Unraid version: ${esc(d.notes[0])}</p>`:'');
         document.querySelectorAll('[data-pq]').forEach(b=>b.onclick=async()=>{if(!confirm(b.dataset.pq==='start'?'Start a parity check now? It can slow the server for hours.':'Cancel the running parity check?'))return;
           try{await api(`/api/unraid/${s.id}/parity`,'POST',{op:b.dataset.pq});toast('Done','ok');sig.d='';fb=0;full()}catch(x){toast(x.message,'bad')}})}
-      const csig=JSON.stringify([d.containers,d.updates,d.meta,d.icons,UR.q,UR.f]);
+      const csig=JSON.stringify([d.containers,d.updates,d.meta,d.icons,d.webui,UR.q,UR.f]);
       if(csig!==sig.c){sig.c=csig;paintC(d)}
     }catch(x){if(tab==='ur')$('#e').textContent=x.message}finally{fb=0}};
   const paintC=d=>{
@@ -2947,7 +2955,7 @@ function urView(){
     $('#cf').innerHTML=[['all','All'],['run','Running'],['stop','Stopped'],['upd','Updates']].map(([k,n])=>`<button data-f="${k}" class="${UR.f===k?'on':''}" aria-pressed="${UR.f===k}">${n}<i>${cnt[k]}</i></button>`).join('');
     $('#cg').innerHTML=list.map((c,i)=>`<div class="uc ${run(c)?'on':''}" style="--i:${Math.min(i,14)}"><div class="row">${svcIcon('',null,c.name,(d.icons||{})[c.id])}<div class="grow" style="min-width:0"><b>${esc(c.name)}</b><div class="mute" style="font-size:12.5px;word-break:break-all">${esc((mt[c.id]&&mt[c.id].image)||'')}</div></div><span class="ucs"><i class="dot ${run(c)?'ok':'bad'}" style="margin:0"></i>${esc(String(c.state).toLowerCase())}</span></div>
       <div class="row ucm"><span class="mute grow">${esc((mt[c.id]&&mt[c.id].status)||'')}</span>${upd[c.id]?'<span class="pill acc">Update available</span>':''}</div>
-      ${me.role==='admin'?`<div class="row uca">${run(c)?`<button data-i="${esc(c.id)}" data-c="stop">Stop</button><button data-i="${esc(c.id)}" data-c="restart">Restart</button>`:`<button class="primary" data-i="${esc(c.id)}" data-c="start">Start</button>`}${upd[c.id]?`<button class="primary" data-i="${esc(c.id)}" data-c="update">${T('Update')}</button>`:''}<button data-l="${esc(c.id)}" data-n="${esc(c.name)}">Logs</button></div>`:''}</div>`).join('')||empty('No containers match','Try another word or filter.');
+      ${me.role==='admin'?`<div class="row uca">${run(c)&&(d.webui||{})[c.id]?`<a class="btn primary" href="${esc(d.webui[c.id])}" target="_blank" rel="noopener noreferrer" title="${esc(d.webui[c.id])}">${ic('ext')}Open</a>`:''}${run(c)?`<button data-i="${esc(c.id)}" data-c="stop">Stop</button><button data-i="${esc(c.id)}" data-c="restart">Restart</button>`:`<button class="primary" data-i="${esc(c.id)}" data-c="start">Start</button>`}${upd[c.id]?`<button class="primary" data-i="${esc(c.id)}" data-c="update">${T('Update')}</button>`:''}<button data-l="${esc(c.id)}" data-n="${esc(c.name)}">Logs</button></div>`:''}</div>`).join('')||empty('No containers match','Try another word or filter.');
   };
   live();full();timer=[tick(live,1000),tick(full,15000)];
 }
@@ -3559,7 +3567,13 @@ function chView(a){
         <p class="mute" style="margin:6px 0">Send only when <select data-cm aria-label="All or any"><option value="all" ${c.condMode!=='any'?'selected':''}>all</option><option value="any" ${c.condMode==='any'?'selected':''}>any</option></select> of these hold. A trigger without that parameter counts it as empty. Example: <i>user is not</i> <code>admin</code>, or <i>location is</i> <code>wan</code>.</p>
         <div data-cl>${(c.conds||[]).map((x,i)=>condRow(c,x,i)).join('')}</div>
         <div class="row" style="margin-top:6px"><button type="button" data-ca>${ic('rq')}Add condition</button><button type="button" class="primary" data-cs>Save conditions</button></div></details></div>`).join('')||empty('No channels yet','Add one to get messages on your phone, in Discord, by email and more.')}</div></div>
-    <form id="f" class="panel" style="max-width:820px;margin-top:16px"><h3 style="margin-top:0">Unraid</h3>
+    <form id="f" class="panel" style="max-width:820px;margin-top:16px"><h3 style="margin-top:0">Quiet hours</h3>
+    <div class="row" style="gap:12px;flex-wrap:wrap"><label class="chk" style="margin:0"><input type="checkbox" name="qon" ${a.quiet&&a.quiet.on?'checked':''}>On</label>
+      <label class="mute">From <input type="time" name="qfrom" value="${esc((a.quiet&&a.quiet.from)||'23:00')}" style="width:auto"></label>
+      <label class="mute">to <input type="time" name="qto" value="${esc((a.quiet&&a.quiet.to)||'08:00')}" style="width:auto"></label>${a.held?`<span class="pill">${a.held} waiting</span>`:''}</div>
+    <p class="mute" style="font-size:13px;margin:4px 0 6px">In these hours the channels only get what is ticked below; everything else is held and sent as one message when they end. By the server clock.</p>
+    <div class="row" style="gap:4px 14px;flex-wrap:wrap">${a.events.map(k=>`<label class="chk" style="margin:0;font-size:13px"><input type="checkbox" name="qurg" value="${esc(k)}" ${((a.quiet&&a.quiet.urgent)||[]).includes(k)?'checked':''}>${esc((a.meta[k]||{}).label||k)}</label>`).join('')}</div>
+    <h3>Unraid</h3>
     <div class="row" style="gap:16px;flex-wrap:wrap"><label class="mute">The array counts as full at (%) <input name="diskPct" type="number" min="50" max="99" value="${a.diskPct||90}" style="width:80px"></label>
     <label class="mute">A disk is too hot at (°C) <input name="diskTemp" type="number" min="35" max="80" value="${a.diskTemp||55}" style="width:80px"></label></div>
     <p class="mute" style="font-size:13px;margin:4px 0 0">Unraid's own hot limit for a disk is used when it has one. You also hear when a disk is disabled or missing, gets read/write errors or a SMART warning, and when a parity check ends.</p>
@@ -3584,7 +3598,8 @@ function chView(a){
     const cx=e.target.closest('[data-cx]');if(cx){cx.closest('.cnd').remove()}
     if(e.target.closest('[data-cs]')){const conds=readConds(row),condMode=row.querySelector('[data-cm]').value;
       try{await api('/api/alerts/channels/'+c.id,'PUT',{type:c.type,conds,condMode});c.conds=conds;c.condMode=condMode;toast('Conditions saved','ok');alView()}catch(x){toast(x.message,'bad')}}};
-  $('#f').onsubmit=async e=>{e.preventDefault();const f=e.target.elements,o={...a,diskPct:f.diskPct.value,diskTemp:f.diskTemp.value,logCount:f.logCount.value,logMins:f.logMins.value,fillDays:f.fillDays.value};['channels','events','meta','ops'].forEach(k=>delete o[k]);
+  $('#f').onsubmit=async e=>{e.preventDefault();const f=e.target.elements,o={...a,diskPct:f.diskPct.value,diskTemp:f.diskTemp.value,logCount:f.logCount.value,logMins:f.logMins.value,fillDays:f.fillDays.value,
+    quiet:{on:f.qon.checked,from:f.qfrom.value,to:f.qto.value,urgent:[...e.target.querySelectorAll('[name=qurg]:checked')].map(x=>x.value)}};delete o.held;['channels','events','meta','ops'].forEach(k=>delete o[k]);
     try{await api('/api/alerts','PUT',o);msg('Saved',true)}catch(x){msg(x.message)}};
   $('#cl').onchange=async e=>{const t=e.target;if(!t.matches('[data-ev]'))return;const row=t.closest('[data-c]'),c=chOf(row);
     const ev=[...row.querySelectorAll('[data-ev]:checked')].map(x=>x.dataset.ev);
@@ -4087,6 +4102,22 @@ async function dupPanel(again){
     if(!confirm(b.dataset.dp?`Delete this file?\n\n${f.path}\n\n${g.app} keeps using the other copy.`:`Take ${g.title} out of ${f.app}?\n\nIts file there is deleted and ${f.app} will not add it again. The copy in the other Radarr stays.`))return;
     b.disabled=true;try{await api('/api/dupes/remove','POST',b.dataset.dp?{path:f.path}:{sid:f.sid,fileId:f.fileId});toast(`Deleted (${fmt(f.size)}). It waits in the recycle bin below for a few days, if it is on.`,'ok');dupPanel(true);binPanel()}catch(x){toast(x.message,'bad');b.disabled=false}};
 }
+// Upgrades: what is below the quality its profile wants, with a search for better copies (everything, or one title).
+async function upgPanel(){
+  const el=$('#upgp');if(!el)return;el.innerHTML='<b style="font-size:16px">Upgrades</b><p class="mute">Looking…</p>';let d;try{d=(await api('/api/upgrades')).apps}catch(x){el.innerHTML=`<div class="err">${esc(x.message)}</div>`;return}
+  if(!d.length){el.remove();return}
+  const n=d.reduce((a,x)=>a+x.total,0);
+  el.innerHTML=`<div class="row"><b style="font-size:16px" class="grow">Upgrades</b>${n?`<span class="pill acc">${n} could be better</span>`:''}</div>
+    <p class="mute" style="margin:6px 0 0">${n?'These have a copy below the quality their profile wants. A search looks for a better one; the old copy is replaced when it comes in.':'Everything is at the quality its profile wants.'}</p>
+    ${d.filter(x=>x.total||x.error).map(x=>`<div style="margin-top:12px"><div class="row"><b class="grow">${esc(x.name)} <span class="mute" style="font-weight:400">· ${x.total}</span></b>${x.total?`<button class="primary" data-ua="${esc(x.sid)}">${ic('search')}Search all ${x.total}</button>`:''}</div>
+      ${x.error?`<div class="err">${esc(x.error)}</div>`:''}
+      ${x.items.map(i=>`<div class="box row" style="margin-top:6px;gap:6px 10px;flex-wrap:wrap"><div class="grow" style="min-width:200px"><b style="word-break:break-word">${esc(i.title)}</b>${i.sub?` <span class="mute">${esc(i.sub)}</span>`:''}
+        <div class="mute" style="font-size:13px">Has ${esc(i.quality||'?')}${i.size?' · '+fmt(i.size):''}${i.wants?` · profile ${esc(i.wants)}`:''}</div></div><button data-u1="${esc(x.sid)}" data-id="${i.id}">${ic('search')}Search</button></div>`).join('')}
+      ${x.total>x.items.length?`<p class="mute" style="font-size:13px;margin:6px 0 0">…and ${x.total-x.items.length} more.</p>`:''}</div>`).join('')}`;
+  el.onclick=async e=>{const b=e.target.closest('[data-ua],[data-u1]');if(!b)return;
+    if(b.dataset.ua){const x=d.find(y=>y.sid===b.dataset.ua);if(!confirm(`Search for better copies of all ${x.total} in ${x.name}? Each one is searched on your indexers.`))return}
+    b.disabled=true;try{await api('/api/upgrades/search','POST',b.dataset.ua?{sid:b.dataset.ua}:{sid:b.dataset.u1,ids:[+b.dataset.id]});toast('Searching. Better copies replace the old ones as they come in.','ok');b.textContent='Searching…'}catch(x){toast(x.message,'bad');b.disabled=false}};
+}
 // The recycle bin: what was deleted lately waits here, to put back or delete for good.
 async function binPanel(){
   const el=$('#binp');if(!el)return;let d;try{d=await api('/api/bin')}catch(x){el.innerHTML=`<div class="err">${esc(x.message)}</div>`;return}
@@ -4157,14 +4188,14 @@ async function hlView(){
   // Every app reports the same disks, so they are shown once, with what each folder is for.
   const seen=new Set(),disks=l.flatMap(x=>x.disks||[]).filter(d=>{const k=d.path+'|'+d.total;if(seen.has(k))return false;seen.add(k);return true});
   const diskRow=d=>{const used=(1-d.free/d.total)*100;return `<div style="margin:10px 0"><div class="row" style="gap:4px 12px"><span class="grow"><b style="font-weight:560">${esc(d.label||d.path)}</b>${d.label?` <span class="mute">${esc(d.path)}</span>`:''}</span><span class="mute">${fmt(d.free)} free of ${fmt(d.total)} · ${used.toFixed(0)}% used</span></div><div class="bar" role="img" aria-label="${used.toFixed(0)} percent used"><i class="${used>90?'bad':''}" style="width:${used.toFixed(0)}%"></i></div>${fcLine(d)}</div>`};
-  $('#m').innerHTML=`<div class="panel" id="warns" style="margin-bottom:14px"><b style="font-size:16px">Needs attention</b><div class="mute" style="margin-top:6px">Asking every app…</div></div><div class="panel" id="heal" style="margin-bottom:14px"></div>${me.role==='admin'?'<div class="panel" id="dupp" style="margin-bottom:14px"></div><div class="panel" id="binp" style="margin-bottom:14px"></div>':''}`+(disks.length?`<div class="panel" style="margin-bottom:14px"><b style="font-size:16px">Disk space</b>${disks.map(diskRow).join('')}</div>`:'')+l.map(x=>{
+  $('#m').innerHTML=`<div class="panel" id="warns" style="margin-bottom:14px"><b style="font-size:16px">Needs attention</b><div class="mute" style="margin-top:6px">Asking every app…</div></div><div class="panel" id="heal" style="margin-bottom:14px"></div>${me.role==='admin'?'<div class="panel" id="dupp" style="margin-bottom:14px"></div><div class="panel" id="binp" style="margin-bottom:14px"></div><div class="panel" id="upgp" style="margin-bottom:14px"></div>':''}`+(disks.length?`<div class="panel" style="margin-bottom:14px"><b style="font-size:16px">Disk space</b>${disks.map(diskRow).join('')}</div>`:'')+l.map(x=>{
     const n=x.issues.length+x.queue.length+(x.ok?0:1);
     return `<div class="panel" style="margin-bottom:14px"><div class="row"><b style="font-size:16px">${esc(x.name)}</b>${String(TYPES[x.type]||x.type).toLowerCase()===String(x.name).toLowerCase()?'':`<span class="mute">${esc(TYPES[x.type]||x.type)}</span>`}<span class="grow"></span>${x.missing!=null?`<span class="mute">${x.missing} missing</span>`:''}<span class="pill ${!x.ok?'bad':n?'warn':'ok'}">${!x.ok?'Not reachable':n?n+' to check':'Healthy'}</span></div>
       ${!x.ok?`<div class="err">${esc(x.error||'')}</div>`:''}
       ${x.issues.map(i=>`<div class="box row" style="margin-top:8px"><span class="pill ${i.level==='bad'?'bad':'warn'}">${i.level==='bad'?'Error':'Warning'}</span><span class="grow" style="word-break:break-word">${esc(i.text)}</span></div>`).join('')}
       ${x.queue.length?`<div class="mute" style="margin-top:12px">Downloads that are stuck</div>${x.queue.map(i=>`<div class="box row" style="gap:8px"><div class="grow" style="min-width:0"><b style="word-break:break-word">${esc(i.title)}</b><div class="mute">${esc(i.message)}</div></div>${i.downloadId&&['sonarr','radarr'].includes(x.type)?`<button data-qi="${esc(x.id)}" data-qd="${esc(i.downloadId)}" data-qn="${esc(i.title)}">Import</button>`:''}</div>`).join('')}`:''}
       </div>`}).join('');
-  healPanel();warnPanel();dupPanel();binPanel();
+  healPanel();warnPanel();dupPanel();binPanel();upgPanel();
   // Listened for once. The mark is a property, not a data-qi attribute: one on #m would make every click on the page
   // look like an Import button (closest('[data-qi]') finds #m itself) and open an empty import window.
   const mm=$('#m');if(!mm._qiOn){mm._qiOn=true;mm.addEventListener('click',e=>{const b=e.target.closest('button[data-qi]');if(b&&tab==='hl')importDialog({sid:b.dataset.qi,downloadId:b.dataset.qd,name:b.dataset.qn,after:hlView})})}

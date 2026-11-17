@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.HighQuality
 import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
@@ -288,6 +289,7 @@ fun MoreScreen() {
             if (ctx.me.goat) Dest(Icons.Rounded.Shield, "Stack", "VPN, apps and logins") { ctx.go("stack") } else null,
             Dest(Icons.Rounded.HealthAndSafety, "Health", "Problems and disk space") { ctx.go("health") },
             Dest(Icons.Rounded.Delete, "Recycle bin", "Put back what was deleted") { ctx.go("recyclebin") },
+            Dest(Icons.Rounded.HighQuality, "Upgrades", "Below the quality their profile wants") { ctx.go("upgrades") },
             if (has("unraid")) Dest(Icons.Rounded.Storage, "Unraid", "Array, disks, containers") { ctx.go("unraid") } else null,
             Dest(Icons.Rounded.Group, "Users", "Who can sign in") { ctx.go("users") },
             Dest(Icons.Rounded.Notifications, "Alerts", "Channels, triggers and newsletters") { ctx.go("alerts") },

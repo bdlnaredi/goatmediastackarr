@@ -73,7 +73,7 @@ object Notify {
     }
 
     @SuppressLint("MissingPermission")
-    fun show(ctx: Context, id: Int, kind: String, title: String, body: String, link: String, ref: String = "", admin: Boolean = false) {
+    fun show(ctx: Context, id: Int, kind: String, title: String, body: String, link: String, ref: String = "", admin: Boolean = false, silent: Boolean = false) {
         if (!allowed(ctx)) return
         val open = Intent(ctx, MainActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP; putExtra("link", link) }
         val pi = PendingIntent.getActivity(ctx, id, open, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
@@ -82,6 +82,8 @@ object Notify {
             .setContentTitle(title).setContentText(body).setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setAutoCancel(true).setContentIntent(pi)
             .setCategory(if (kind == "problem") NotificationCompat.CATEGORY_ERROR else NotificationCompat.CATEGORY_STATUS)
+            // Quiet hours: it is in the shade, without a sound or a pop-up.
+            .setSilent(silent)
         // Buttons that act without opening the app: approve or decline a new request, pause every download.
         for ((label, act) in NotifyAction.actionsFor(kind, ref, admin)) b.addAction(0, label, NotifyAction.intent(ctx, id, act, ref))
         val n = b.build()
@@ -99,7 +101,7 @@ object Notify {
         val last = store.feedLast()
         if (last < 0 || feed.last < last) { store.setFeedLast(feed.last); return 0 }   // first check, or a new server
         channels(ctx)
-        for (x in feed.items.sortedBy { it.id }) if (x.id > last && prefs.wants(x.kind)) { show(ctx, (x.id % Int.MAX_VALUE).toInt(), x.kind, x.title, x.body, x.link, x.ref, admin = true); shown++ }
+        for (x in feed.items.sortedBy { it.id }) if (x.id > last && prefs.wants(x.kind)) { show(ctx, (x.id % Int.MAX_VALUE).toInt(), x.kind, x.title, x.body, x.link, x.ref, admin = true, silent = feed.quiet && x.kind != "problem"); shown++ }
         store.setFeedLast(feed.last)
         // A newer phone app: told once per version.
         if (prefs.wants("update")) try {
