@@ -41,7 +41,7 @@ class WidgetShotsTest {
             QbTop(name = "Quiet.Orbit.2026.1080p.WEB-DL.x265", progress = 0.31, speed = 5_820_000, eta = 1900),
             QbTop(name = "Riverside.2026.2160p.WEB-DL.x265", progress = 0.08, speed = 120_000, eta = 0),
         ))), health = mapOf("s1" to true, "r1" to false, "q1" to true))
-        add(DownloadsWidget.build(act, DownloadsWidget.viewOf(live)), 250)
+        add(DownloadsWidget.build(act, DownloadsWidget.viewOf(live)), 260)
         val svcs = listOf(Service(id = "s1", name = "Sonarr"), Service(id = "r1", name = "Radarr"), Service(id = "q1", name = "qBittorrent"))
         val health = listOf(AppHealth(disks = listOf(Disk("/media", "Media", free = 1_200_000_000_000, total = 8_000_000_000_000))))
         add(ServerWidget.build(act, ServerWidget.viewOf(svcs, live, GoatStatus(vpn = Vpn(enabled = true, state = "up", country = "Netherlands", ip = "185.107.x.x")), health, "21:40")), 150)
