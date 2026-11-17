@@ -100,7 +100,7 @@ private fun AddSharedDialog(s: Shared, onDone: () -> Unit) {
                             putJsonArray("files") { addJsonObject { put("name", s.name); put("data", android.util.Base64.encodeToString(s.bytes, android.util.Base64.NO_WRAP)) } }
                         })
                         else ctx.api.send("POST", "/api/torrent/add", buildJsonObject { put("sid", sid); put("url", links.joinToString("\n")); if (cat.isNotEmpty()) put("category", cat); if (paused) put("paused", true) })
-                        toast("Added to ${clients.firstOrNull { it.id == sid }?.name ?: "downloads"}"); ctx.go("downloads"); onDone()
+                        toast("Added to ${clients.firstOrNull { it.id == sid }?.name ?: "downloads"}"); onDone()
                     } catch (e: Exception) { error = e.message; busy = false }
                 }
             }) { Text(if (busy) "Adding…" else "Add", color = g.primary) }

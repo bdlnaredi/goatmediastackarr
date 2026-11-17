@@ -283,6 +283,12 @@ class ScreensTest {
     @Test fun recycleBinAndSharing() {
         connect()
         show()
+        waitFor("Playing now")
+        // An IMDb page shared from the browser: its title page opens.
+        compose.runOnUiThread { state.share(com.bdlnaredi.goatstack.data.Shared.parse("https://m.imdb.com/title/tt0111161/?ref_=x")) }
+        compose.waitUntil(10_000) { fake.calls.any { it.startsWith("GET /api/resolve?imdb=tt0111161") } }
+        waitFor("Some signals"); shot("80-share-imdb")
+        back()
         tap("More"); waitFor("Go to")
         openFromMore("Recycle bin"); waitFor("Quiet Orbit (2026)"); waitFor("Put back"); shot("78-recycle-bin"); back()
         // A magnet link shared from a browser: offered as a download, into a category.
@@ -290,12 +296,7 @@ class ScreensTest {
         waitFor("Add a download"); waitFor("Neon.Saints.2026.1080p")
         tap("Add")
         compose.waitUntil(10_000) { fake.calls.any { it.startsWith("POST /api/torrent/add") } }
-        // Added: the app moves to Downloads (wait for it, so the next share starts from a settled page).
-        waitFor("Every category")
-        // An IMDb page: its title page opens.
-        compose.runOnUiThread { state.share(com.bdlnaredi.goatstack.data.Shared.parse("https://m.imdb.com/title/tt0111161/?ref_=x")) }
-        compose.waitUntil(10_000) { fake.calls.any { it.startsWith("GET /api/resolve?imdb=tt0111161") } }
-        waitFor("Some signals"); shot("80-share-imdb")
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("Add a download").fetchSemanticsNodes().isEmpty() }
         assertTrue("calls the pretend server does not know: ${fake.misses}", fake.misses.isEmpty())
     }
 
