@@ -79,14 +79,14 @@ data class Prefs(
     /** How often the downloads list asks again, in milliseconds. */
     val refreshMs get() = when (refresh) { "fast" -> 1500L; "slow" -> 6000L; else -> 2500L }
 
-    fun text() = "start=$start\nposters=$posters\nrefresh=$refresh\nspoilers=$spoilers\nconfirmRemove=$confirmRemove\ndismissedUpdate=$dismissedUpdate\nnotify=$notify\nkinds=$kinds\nevery=$every\naskedNotify=$askedNotify\nstyle=$style\nseenVersion=$seenVersion\nlang=$lang\nbiometric=$biometric"
+    fun text() = "start=$start\nposters=$posters\nrefresh=$refresh\nspoilers=$spoilers\nconfirmRemove=$confirmRemove\ndismissedUpdate=$dismissedUpdate\nnotify=$notify\nkinds=$kinds\nevery=$every\naskedNotify=$askedNotify\nstyle=$style\nseenVersion=$seenVersion\nlang=$lang\nbiometric=$biometric\nkv=2"
 
     companion object {
         val STARTS = listOf("home", "discover", "library", "downloads")
         val STYLES = listOf("cinema", "dash", "glass", "compact")
-        val ALL_KINDS = listOf("ready", "reqstatus", "request", "report", "download", "problem", "stream", "update")
+        val ALL_KINDS = listOf("ready", "reqstatus", "request", "report", "download", "problem", "stream", "update", "party")
         /** Everything except each finished download, which can be a lot. */
-        const val DEFAULT_KINDS = "ready,reqstatus,request,report,problem,stream,update"
+        const val DEFAULT_KINDS = "ready,reqstatus,request,report,problem,stream,update,party"
         fun parse(t: String): Prefs {
             val m = t.lines().mapNotNull { l -> l.split('=', limit = 2).takeIf { it.size == 2 }?.let { it[0].trim() to it[1].trim() } }.toMap()
             val d = Prefs()
@@ -98,7 +98,8 @@ data class Prefs(
                 confirmRemove = m["confirmRemove"]?.toBooleanStrictOrNull() ?: d.confirmRemove,
                 dismissedUpdate = m["dismissedUpdate"]?.take(40) ?: "",
                 notify = m["notify"]?.toBooleanStrictOrNull() ?: d.notify,
-                kinds = m["kinds"]?.split(',')?.filter { it in ALL_KINDS }?.joinToString(",") ?: d.kinds,
+                // Saved before watch parties (no "kv=2"): they are turned on once, like for a new phone.
+                kinds = m["kinds"]?.split(',')?.filter { it in ALL_KINDS }?.let { if (m["kv"] != "2" && "party" !in it) it + "party" else it }?.joinToString(",") ?: d.kinds,
                 every = m["every"]?.toIntOrNull()?.takeIf { it in listOf(15, 30, 60) } ?: d.every,
                 askedNotify = m["askedNotify"]?.toBooleanStrictOrNull() ?: d.askedNotify,
                 style = m["style"]?.takeIf { it in STYLES } ?: d.style,

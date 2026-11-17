@@ -421,7 +421,7 @@ function pushOut(x) {
   // Quiet hours: only problems reach a browser at night; the rest stays in the bell.
   if (x.kind !== 'problem') for (const id of [...to]) { const u = db.users.find(y => y.id === id); if (u && quietNow(u.quiet)) to.delete(id); }
   const mine = subs.filter(sb => to.has(sb.uid)); if (!mine.length) return;
-  const k = vapidKeys(), msg = { title: x.title, body: x.body, url: PUSH_PATH[x.link] || '/', tag: x.kind + ':' + (x.ref || x.id), kind: x.kind };
+  const k = vapidKeys(), msg = { title: x.title, body: x.body, url: String(x.link || '').startsWith('party:') ? '/party/' + x.link.slice(6) : PUSH_PATH[x.link] || '/', tag: x.kind + ':' + (x.ref || x.id), kind: x.kind };
   for (const sb of mine) WP.send(sb, msg, k, { subject: 'mailto:' + ((db.users.find(u => u.role === 'admin') || {}).email || 'admin@localhost') }).then(r => {
     if (r.gone) { db.pushSubs = (db.pushSubs || []).filter(y => y !== sb); save(); } else if (r.ok) sb.last = Date.now();
   }).catch(() => {});
@@ -1305,6 +1305,29 @@ async function upgradeTick() {
   const l = await upgradeList(1), n = l.reduce((a, x) => a + x.total, 0);
   if (n) feed('@admins', 'info', `${n} title${n === 1 ? '' : 's'} could be better quality`, l.filter(x => x.total).map(x => `${x.name}: ${x.total}`).join(', ') + '. Health → Upgrades searches for better copies.', 'upgrades');
 }
+// ---- Watch together: a watch party. Someone picks a title on Plex or Jellyfin and a time, and invites people; each
+// gets a notification with the party's page: a countdown, "Open in Plex/Jellyfin", and who is watching it now and how
+// far each is from the host, so everyone can line up.
+const partyNames = u => [u.name, u.plex && u.plex.name, u.plexName].filter(Boolean).map(x => String(x).trim().toLowerCase());
+const partyList = () => (db.parties = Array.isArray(db.parties) ? db.parties.filter(x => Date.now() - x.at < 864e5) : []);
+const partyOf = (u, x) => x && (x.host === u.id || (x.invite || []).includes(u.id) || u.role === 'admin');
+async function partyView(x) {
+  const sv = db.services.find(y => y.id === x.sid);
+  const sessions = sv ? (live.cur.plex[sv.id] || await mediaSessions(sv).catch(() => [])) : [];
+  const same = z => String(z.title || '').toLowerCase() === String(x.title).toLowerCase() && (!x.sub || x.kind !== 'episode' || String(z.sub || '').toLowerCase() === String(x.sub).toLowerCase());
+  const people = [x.host, ...(x.invite || [])].map(id => db.users.find(u => u.id === id)).filter(Boolean);
+  const host = people[0], at = Date.now();
+  const rows = people.map(u => { const z = sessions.find(y => same(y) && partyNames(u).includes(String(y.user || '').trim().toLowerCase()));
+    return { id: u.id, name: u.name, host: u === host, watching: !!z, state: z ? z.state : '', offset: z ? +z.offset || 0 : 0, player: z ? cut(z.player, 60) : '' }; });
+  const h = rows[0] && rows[0].watching ? rows[0].offset : null;
+  for (const r of rows) r.behind = h != null && r.watching && !r.host ? Math.round((h - r.offset) / 1000) : null;
+  let machine = '', server = '';
+  const plexMidCache = globalThis.__plexMid || (globalThis.__plexMid = {});
+  if (sv && sv.type === 'plex') { if (!plexMidCache[sv.id]) try { plexMidCache[sv.id] = (((await plex(sv, '/identity').then(r => r.json())).MediaContainer) || {}).machineIdentifier || ''; } catch {} machine = plexMidCache[sv.id] || ''; }
+  if (sv && sv.type === 'jellyfin') try { server = ((await (await jfGet(sv, '/System/Info/Public')).json()) || {}).Id || ''; } catch {}
+  return { id: x.id, sid: x.sid, app: sv ? sv.type : '', appName: sv ? sv.name : '', managed: !!(sv && sv.managed), url: sv && !sv.managed ? String(sv.url || '') : '', machine, server,
+    key: x.key, title: x.title, sub: x.sub, kind: x.kind, thumb: x.thumb, at: x.at, now: at, hostName: host ? host.name : '', people: rows };
+}
 const binPub = e => ({ id: e.id, kind: e.kind, name: e.name, by: e.by || '', app: e.app || '', at: e.at, size: e.size, until: e.at + binDays() * 864e5,
   files: e.items.length, where: e.items.length ? cut(e.items[0].from, 400) : '' });
 
@@ -1488,6 +1511,38 @@ function camTell(x) {
     feed(u.id, 'reqstatus', `${x.title} is being replaced with a better copy`,
       `${mine ? 'The movie you asked for' : 'It'} was only there as a ${CAM_KINDS[x.kind].toLowerCase()} copy (${CAM_WHY[x.kind]}). It comes out digitally or on Blu-ray on ${day}, so that copy was removed and a proper one is being looked for. It will be back in the library soon after.`, 'library');
   }
+}
+// ---- Season packs: a season that has finished airing and is missing several episodes is searched as a whole season,
+// so Sonarr takes one season pack instead of each episode on its own (fewer torrents, and easier to seed).
+const packCfg = () => ({ on: false, min: 3, ...(db.settings.packs || {}) });
+/** The seasons that should be searched as a pack: monitored, every episode aired, at least [min] missing. */
+function packSeasons(series, min) {
+  const out = [];
+  for (const sr of series || []) {
+    if (!sr.monitored) continue;
+    for (const se of sr.seasons || []) {
+      const st = se.statistics || {}, aired = +st.episodeCount || 0, have = +st.episodeFileCount || 0, total = +st.totalEpisodeCount || 0;
+      if (!se.monitored || se.seasonNumber < 1 || st.nextAiring || !total || aired < total) continue;
+      if (aired - have >= Math.max(1, min)) out.push({ seriesId: sr.id, title: sr.title, season: se.seasonNumber, missing: aired - have, of: aired });
+    }
+  }
+  return out;
+}
+async function packTick() {
+  const c = packCfg(); if (!c.on) return;
+  const done = db.packDone || (db.packDone = {}), log = db.packLog || (db.packLog = []);
+  for (const sv of db.services.filter(x => x.type === 'sonarr')) {
+    let list; try { list = packSeasons(await ext(sv, '/api/v3/series'), c.min); } catch { continue; }
+    // Not again within a week, and three tries at most: some seasons have no pack anywhere.
+    for (const x of list.slice(0, 10)) {
+      const k = `${sv.id}:${x.seriesId}:${x.season}`, d = done[k] || { n: 0, at: 0 };
+      if (d.n >= 3 || Date.now() - d.at < 7 * 864e5) continue;
+      try { await ext(sv, '/api/v3/command', { method: 'POST', body: JSON.stringify({ name: 'SeasonSearch', seriesId: x.seriesId, seasonNumber: x.season }) }); } catch { continue; }
+      done[k] = { n: d.n + 1, at: Date.now() };
+      log.unshift({ at: Date.now(), app: sv.name, title: `${x.title} season ${x.season}`, missing: x.missing, of: x.of }); log.splice(30);
+    }
+  }
+  save();
 }
 async function camTick() {
   const c = camCfg(); if (!c.on) return;
@@ -2623,6 +2678,7 @@ async function monitor() {
     if (mon.n % 4 === 2) await safe(autoImport);
     if (mon.n % 2 === 1) await safe(() => catLimitTick());
     { const e = +process.env.CAM_EVERY || 120; if (mon.n % e === 90 % e) await safe(camTick); }
+    { const e = +process.env.PACK_EVERY || 240; if (mon.n % e === 150 % e) await safe(packTick); }
     { const e = +process.env.LOGALERT_EVERY || 10; if (mon.n % e === 7 % e) await safe(logAlertTick); }
     await safe(nlTick);
     if (mon.n % 120 === 0 && !DEMO) await safe(latestRelease);
@@ -3759,6 +3815,55 @@ const goatServer = http.createServer(async (req, res) => {
       ]);
       return send(res, 200, out);
     }
+    // Watch together (see partyView).
+    if (p === '/api/party/find' && m === 'GET') {
+      const q = new URL(req.url, 'http://x').searchParams, sv = db.services.find(x => x.id === q.get('sid') && isMS(x) && allowed(x)), term = String(q.get('q') || '').trim().slice(0, 80);
+      if (!sv) return send(res, 404, { error: 'Not found' }); if (term.length < 2) return send(res, 200, { items: [] });
+      let items = [];
+      if (sv.type === 'plex') {
+        const d = await plex(sv, '/hubs/search?limit=8&query=' + encodeURIComponent(term)).then(r => r.json()).catch(() => ({}));
+        for (const hub of ((d.MediaContainer || {}).Hub || [])) for (const x of hub.Metadata || []) if (['movie', 'episode', 'show'].includes(x.type))
+          items.push({ key: String(x.ratingKey), kind: x.type === 'show' ? 'show' : x.type, title: x.type === 'episode' ? x.grandparentTitle : x.title, sub: x.type === 'episode' ? `S${pad2(x.parentIndex)}E${pad2(x.index)} ${x.title}` : String(x.year || ''), thumb: x.type === 'episode' ? x.grandparentThumb || x.thumb || '' : x.thumb || '' });
+        grant(me, sv.id, items.map(x => x.thumb));
+      } else {
+        const d = await (await jfGet(sv, `/Items?Recursive=true&IncludeItemTypes=Movie,Episode,Series&Limit=16&searchTerm=${encodeURIComponent(term)}`)).json().catch(() => ({}));
+        items = ((d || {}).Items || []).map(x => ({ key: x.Id, kind: x.Type === 'Episode' ? 'episode' : x.Type === 'Series' ? 'show' : 'movie', title: x.Type === 'Episode' ? x.SeriesName : x.Name,
+          sub: x.Type === 'Episode' ? `S${pad2(x.ParentIndexNumber)}E${pad2(x.IndexNumber)} ${x.Name}` : String(x.ProductionYear || ''), thumb: x.Type === 'Episode' && x.SeriesId ? x.SeriesId : x.Id }));
+      }
+      return send(res, 200, { items: items.slice(0, 16).map(x => ({ ...x, title: cut(x.title, 120), sub: cut(x.sub, 120) })) });
+    }
+    if (p === '/api/party/people' && m === 'GET') {
+      const sv = db.services.find(x => x.id === new URL(req.url, 'http://x').searchParams.get('sid') && isMS(x) && allowed(x)); if (!sv) return send(res, 404, { error: 'Not found' });
+      return send(res, 200, { people: db.users.filter(u => u.id !== me.id && !u.kids && (u.role === 'admin' || !u.access || u.access.includes(sv.id))).map(u => ({ id: u.id, name: u.name })) });
+    }
+    if (p === '/api/party' && m === 'GET') {
+      const mine = partyList().filter(x => partyOf(me, x) && (x.host === me.id || (x.invite || []).includes(me.id))).sort((a, b) => a.at - b.at);
+      return send(res, 200, { parties: mine.map(x => ({ id: x.id, title: x.title, sub: x.sub, at: x.at, host: (db.users.find(u => u.id === x.host) || {}).name || '', mine: x.host === me.id })) });
+    }
+    if (p === '/api/party' && m === 'POST') {
+      const b = await readBody(req), sv = db.services.find(x => x.id === b.sid && isMS(x) && allowed(x));
+      if (!sv || !b.key || !b.title) return send(res, 400, { error: 'Pick a title on Plex or Jellyfin' });
+      const at = Math.max(Date.now(), Math.min(Date.now() + 14 * 864e5, +b.at || Date.now()));
+      const invite = [...new Set((Array.isArray(b.invite) ? b.invite : []).map(String))].filter(id => id !== me.id && db.users.some(u => u.id === id)).slice(0, 30);
+      if (!invite.length) return send(res, 400, { error: 'Invite at least one person' });
+      const x = { id: crypto.randomBytes(6).toString('hex'), host: me.id, sid: sv.id, key: cut(String(b.key), 80), kind: ['movie', 'episode', 'show'].includes(b.kind) ? b.kind : 'movie',
+        title: cut(String(b.title), 120), sub: cut(String(b.sub || ''), 120), thumb: cut(String(b.thumb || ''), 300), at, invite, made: Date.now() };
+      partyList().push(x); save();
+      const when = at - Date.now() < 120000 ? 'now' : 'at ' + new Date(at).toTimeString().slice(0, 5);
+      for (const id of invite) feed(id, 'party', `${me.name} invited you to watch ${x.title}`, `${x.sub ? x.sub + ', ' : ''}${when}. Open it to join.`, 'party:' + x.id);
+      audit(me.name, 'Started a watch party', x.title);
+      return send(res, 200, { id: x.id });
+    }
+    if ((r = p.match(/^\/api\/party\/([a-f0-9]{12})$/))) {
+      const x = partyList().find(y => y.id === r[1]);
+      if (!x || !partyOf(me, x)) return send(res, 404, { error: 'This watch party has ended' });
+      if (m === 'GET') return send(res, 200, await partyView(x));
+      if (m === 'DELETE' && (x.host === me.id || me.role === 'admin')) {
+        db.parties = partyList().filter(y => y !== x); save();
+        for (const id of x.invite || []) feed(id, 'party', `${x.title}: the watch party was called off`, '', '');
+        return send(res, 200, {});
+      }
+    }
     if (p === '/api/torrent/add' && m === 'POST') {
       if (deny('add', 'add downloads')) return;
       const b = await readBody(req), s = tcOf(b.sid);
@@ -4496,6 +4601,20 @@ const goatServer = http.createServer(async (req, res) => {
       if (r2.ok) audit(me.name, 'Asked cross-seed to search', cut(b.name || b.hash, 120));
       return send(res, r2.ok ? 200 : 400, r2.ok ? { done: 'cross-seed is searching your other trackers. Matches show in Downloads, and the steps in Logs → cross-seed.' } : { error: r2.error });
     }
+    if (p === '/api/packs' && m === 'GET') {
+      if (adminOnly()) return;
+      const c = packCfg(), now = [];
+      for (const sv of db.services.filter(x => x.type === 'sonarr')) try { for (const x of packSeasons(await ext(sv, '/api/v3/series'), c.min)) now.push({ app: sv.name, ...x }); } catch {}
+      return send(res, 200, { ...c, now: now.slice(0, 50), log: (db.packLog || []).slice(0, 20) });
+    }
+    if (p === '/api/packs' && m === 'PUT') {
+      if (adminOnly()) return;
+      const b = await readBody(req), o = packCfg();
+      db.settings.packs = { on: 'on' in b ? !!b.on : o.on, min: 'min' in b ? Math.min(50, Math.max(1, Math.round(+b.min) || 3)) : o.min };
+      save(); audit(me.name, 'Changed Season packs', db.settings.packs.on ? 'on' : 'off');
+      if (db.settings.packs.on) packTick().catch(() => {});
+      return send(res, 200, db.settings.packs);
+    }
     if (p === '/api/camrules' && m === 'GET') { if (adminOnly()) return; const c = camCfg(); return send(res, 200, { ...c, kinds: c.kinds, all: CAM_KINDS, waiting: await camList(c), log: (db.healLog || []).filter(x => / copy was removed| copy: /.test(x.what)).slice(0, 20) }); }
     if (p === '/api/camrules' && m === 'PUT') {
       if (adminOnly()) return;
@@ -5006,7 +5125,6 @@ const goatServer = http.createServer(async (req, res) => {
       audit(me.name, 'Searched for upgrades', sv.name + (ids.length ? `: ${ids.length} title(s)` : ': everything below its quality'));
       return send(res, 200, { searching: ids.length || 'all' });
     }
-    // The recycle bin: what was deleted lately, to put back or delete for good.
     if (p === '/api/bin' && m === 'GET') {
       binSweep();
       const items = binList().slice().sort((a, b) => b.at - a.at).map(binPub);

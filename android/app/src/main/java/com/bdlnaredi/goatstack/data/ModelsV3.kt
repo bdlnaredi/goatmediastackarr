@@ -111,6 +111,17 @@ data class Device(val id: String = "", val user: String = "", val device: String
 @Serializable data class UpgItem(val id: Long = 0, val title: String = "", val sub: String = "", val quality: String = "", val size: Long = 0, val wants: String = "", val parent: Long = 0)
 @Serializable data class UpgApp(val sid: String = "", val name: String = "", val type: String = "", val total: Int = 0, val items: List<UpgItem> = emptyList(), val error: String = "")
 @Serializable data class UpgList(val apps: List<UpgApp> = emptyList())
+/** Watch together. */
+@Serializable data class PartyHit(val key: String = "", val kind: String = "movie", val title: String = "", val sub: String = "", val thumb: String = "")
+@Serializable data class PartyFound(val items: List<PartyHit> = emptyList())
+@Serializable data class PartyPerson(val id: String = "", val name: String = "")
+@Serializable data class PartyPeople(val people: List<PartyPerson> = emptyList())
+@Serializable data class PartyItem(val id: String = "", val title: String = "", val sub: String = "", val at: Long = 0, val host: String = "", val mine: Boolean = false)
+@Serializable data class PartyList(val parties: List<PartyItem> = emptyList())
+@Serializable data class PartyMade(val id: String = "")
+@Serializable data class PartyMember(val id: String = "", val name: String = "", val host: Boolean = false, val watching: Boolean = false, val state: String = "", val offset: Long = 0, val player: String = "", val behind: Int? = null)
+@Serializable data class PartyView(val id: String = "", val sid: String = "", val app: String = "", val appName: String = "", val managed: Boolean = false, val url: String = "", val machine: String = "", val server: String = "",
+    val key: String = "", val title: String = "", val sub: String = "", val kind: String = "", val at: Long = 0, val hostName: String = "", val people: List<PartyMember> = emptyList())
 /** Which title page a shared IMDb link is. */
 @Serializable data class Resolved(val type: String = "movie", val id: Long = 0)
 @Serializable data class BinList(val days: Int = 7, val items: List<BinItem> = emptyList(), val total: Long = 0)

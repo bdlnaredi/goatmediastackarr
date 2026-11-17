@@ -40,6 +40,7 @@ object Notify {
         Kind("ready", "Ready to watch", "Something you asked for is available"),
         Kind("reqstatus", "Your requests", "Approved, declined, or a download that failed"),
         Kind("stream", "Streaming", "Getting close to, or reaching, your monthly limit"),
+        Kind("party", "Watch together", "Someone invited you to watch with them"),
         Kind("update", "New versions", "A newer app, or for admins a newer server"),
         Kind("request", "New requests", "Someone asked for something and it needs approval", adminOnly = true),
         Kind("report", "Problem reports", "Someone reported a problem with a title", adminOnly = true),

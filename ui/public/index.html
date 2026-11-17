@@ -963,13 +963,14 @@ function readPath(){
   const parts=location.pathname.split('/').filter(Boolean).map(x=>{try{return decodeURIComponent(x)}catch{return x}});
   if(!parts.length)return false;
   if(parts[0]==='title'&&['movie','tv'].includes(parts[1])&&parts[2]){tab='disc';TITLE_OPEN={type:parts[1],id:+parts[2]||parts[2]};return true}
+  if(parts[0]==='party'&&/^[a-f0-9]{12}$/.test(parts[1]||'')){tab='dash';PARTY_OPEN=parts[1];return true}
   const k=UNSLUG[parts[0].toLowerCase()];if(!k)return false;
   tab=k;if(k==='set')stSub=parts[1]||'acct';
   // /library/tv/<app>/<id> and /library/movies/<app>/<id>: the library opens with that show or movie on top.
   if(k==='lib'&&['tv','movies'].includes(parts[1])&&parts[2]&&parts[3]){libSel=parts[2];LIB_OPEN={sid:parts[2],id:parts[3]}}
   return true;
 }
-let LIB_OPEN=null,NEXT_LAYER_URL=null,TITLE_OPEN=null;
+let LIB_OPEN=null,NEXT_LAYER_URL=null,TITLE_OPEN=null,PARTY_OPEN=null;
 // Titles (posters) open with a click; Ctrl/⌘/Shift-click or the middle button opens them in a new tab instead.
 let MOD_CLICK=false,MID=false;
 document.addEventListener('click',e=>{MOD_CLICK=newTabClick(e)||MID;MID=false;setTimeout(()=>{MOD_CLICK=false})},true);
@@ -1030,6 +1031,7 @@ $('#rl').onclick=()=>{UI.rail=!UI.rail;saveUI()};$('#qs').onclick=quick;
   {const want=pathFor();if(location.pathname!==want){if(routeQuiet)history.replaceState(null,'',want+location.search);else history.pushState(null,'',want)}routeQuiet=false;
    document.title=(tab==='dash'?'':(PAGES[tab]&&PAGES[tab][0]?PAGES[tab][0]+' · ':''))+'GoatMediaStackarr'}
   if(TITLE_OPEN){const t=TITLE_OPEN;TITLE_OPEN=null;setTimeout(()=>titlePage(t.type,t.id),0)}
+  if(PARTY_OPEN){const t=PARTY_OPEN;PARTY_OPEN=null;setTimeout(()=>partyPage(t),0)}
   if(arrOnce())Cinema.load(api);
   const mm=$('#m');if(mm){mm.classList.remove('pgin');void mm.offsetWidth;mm.classList.add('pgin')}
 }
@@ -1581,7 +1583,7 @@ const PERMS=[['add','Add downloads and things to the library'],['control','Pause
 const presetOf=u=>{if(!u.perms)return 'std';const v=PERMS.map(([k])=>u.perms[k]!==false);return v.every(Boolean)?'std':v.every(x=>!x)?'view':'custom'};
 
 async function stRules(){
-  const s=first('qbittorrent');if(!s){$('#m').innerHTML=`<div class="panel">Connect qBittorrent for the speed schedule and seeding limits.</div>`;seedGoalsPanel([]);langPrefPanel();importPanel();camPanel();return}
+  const s=first('qbittorrent');if(!s){$('#m').innerHTML=`<div class="panel">Connect qBittorrent for the speed schedule and seeding limits.</div>`;seedGoalsPanel([]);langPrefPanel();importPanel();camPanel();packPanel();return}
   $('#m').innerHTML=skel(3);
   let sch,rules,meta;
   try{[sch,rules,meta]=await Promise.all([api(`/api/qb/${s.id}/schedule`),api('/api/seedrules'),api(`/api/qb/${s.id}/meta`)])}catch(x){$('#m').innerHTML=`<div class="err">${esc(x.message)}</div>`;return}
@@ -1610,7 +1612,7 @@ async function stRules(){
   $('#rl3').onclick=e=>{const d=e.target.closest('[data-d]');if(d)d.closest('[data-rr]').remove()};
   $('#sr3').onclick=async()=>{const list=[...document.querySelectorAll('[data-rr]')].map(r=>({sid:s.id,category:r.querySelector('[data-c]').value,ratio:r.querySelector('[data-r]').value,minutes:r.querySelector('[data-m]').value}));
     try{await api('/api/seedrules','PUT',{rules:list});toast('Rules saved. They apply within a minute.','ok')}catch(x){toast(x.message,'bad')}};
-  seedGoalsPanel(meta.categories.map(c=>c.name));langPrefPanel();importPanel();camPanel();
+  seedGoalsPanel(meta.categories.map(c=>c.name));langPrefPanel();importPanel();camPanel();packPanel();
 }
 // Tracker seeding goals: each tracker's own rule (ratio, days, or both); finished movies and shows are removed once it is met.
 // Preferred audio languages: the order to prefer them in, set up in Radarr and Sonarr, and marked in interactive search.
@@ -1692,6 +1694,21 @@ async function camPanel(){
     ${d.waiting.map(x=>`<div class="box row" style="gap:8px"><span class="pill warn">${esc(d.all[x.kind])}</span><b class="grow" style="word-break:break-word">${esc(x.title)}</b><span class="mute" style="font-size:13px">${x.release==null?'No home release date yet: kept':x.removeAt<=Date.now()?(d.on?'Deleted at the next check':'Would be deleted now'):(d.on?'Deleted on ':'Would be deleted on ')+fd(x.removeAt)+' (out '+fd(x.release)+')'}</span></div>`).join('')}
     ${d.log.length?`<details class="tbv" style="margin-top:10px"><summary>Done so far (${d.log.length})</summary>${d.log.map(x=>`<div class="box" style="padding:8px 10px"><b>${esc(x.title)}</b> <span class="mute">${esc(fdt(x.at))}</span><div class="mute">${esc(x.what)}</div></div>`).join('')}</details>`:''}`;
   const save=async()=>{try{await api('/api/camrules','PUT',{on:$('#cmon').checked,days:$('#cmd').value,search:$('#cms').checked,kinds:[...el.querySelectorAll('[data-ck]:checked')].map(x=>x.dataset.ck)});toast('Saved','ok');camPanel()}catch(x){toast(x.message,'bad')}};
+  el.querySelectorAll('input').forEach(i=>i.onchange=save);
+}
+// Season packs: a finished season missing several episodes is searched as one season, so Sonarr takes a season pack.
+async function packPanel(){
+  if(!first('sonarr'))return;
+  let d;try{d=await api('/api/packs')}catch{return}
+  if(tab!=='set'||stSub!=='rules')return;
+  const el=document.createElement('div');el.className='panel';el.style.cssText='max-width:760px;margin-top:16px';el.id='packp';
+  const old=$('#packp');if(old)old.replaceWith(el);else $('#m').appendChild(el);
+  el.innerHTML=`<div class="row"><h3 style="margin:0" class="grow">Season packs</h3><label class="tgl" title="Turn it on or off"><input type="checkbox" id="pkon" ${d.on?'checked':''} aria-label="Season packs"></label></div>
+    <p class="mute">When a season has finished airing and <input id="pkmin" type="number" min="1" max="50" value="${d.min}" style="width:60px;margin:0 4px;padding:4px 8px" aria-label="Episodes missing"> or more of its episodes are missing, Sonarr is asked to search the whole season, so it takes one season pack instead of each episode on its own: fewer torrents, and easier to seed. Each season is tried once a week, three times at most.</p>
+    <div class="mute" style="margin:10px 0 4px">${d.now.length?`${d.now.length} season${d.now.length===1?'':'s'} like that now`:'No season like that now.'}</div>
+    ${d.now.slice(0,12).map(x=>`<div class="box row" style="gap:8px"><b class="grow">${esc(x.title)} · season ${x.season}</b><span class="mute" style="font-size:13px">${x.missing} of ${x.of} missing</span></div>`).join('')}
+    ${d.log.length?`<details class="tbv" style="margin-top:10px"><summary>Searched so far (${d.log.length})</summary>${d.log.map(x=>`<div class="box" style="padding:8px 10px"><b>${esc(x.title)}</b> <span class="mute">${esc(fdt(x.at))} · ${x.missing} of ${x.of} were missing</span></div>`).join('')}</details>`:''}`;
+  const save=async()=>{try{await api('/api/packs','PUT',{on:$('#pkon').checked,min:$('#pkmin').value});toast('Saved','ok');packPanel()}catch(x){toast(x.message,'bad')}};
   el.querySelectorAll('input').forEach(i=>i.onchange=save);
 }
 async function importPanel(){
@@ -2972,16 +2989,70 @@ async function vpnPill(s,sel){
     el.textContent=d.vpn===true?'VPN active '+d.ip:d.vpn===false?'Not using the VPN':'VPN status unknown'}catch{}
 }
 async function loadPlex(s){
-  try{const d=await api(`/api/${s.type}/${s.id}/now`),el=$('#plx');if(!el||tab!=='dash')return;
+  try{const d=await api(`/api/${s.type}/${s.id}/now`),el=$('#plx');if(!el||tab!=='dash')return;setTimeout(partyStrip,0);
     const img=t=>t?`/api/${s.type}/${s.id}/img?p=${encodeURIComponent(t)}`:'';
     // Each one opens in Plex (or Jellyfin) itself: the built-in one on this server's address, another one on its own page.
     const plexBase=s.managed?goatOpen('plex'):'https://app.plex.tv/desktop/',jfBase=s.managed?goatOpen('jellyfin'):String(s.url||'').replace(/\/*$/,'/');
     const href=x=>!x.key?'':s.type==='plex'?(d.machine?`${plexBase}#!/server/${d.machine}/details?key=${encodeURIComponent('/library/metadata/'+x.key)}`:''):`${jfBase}web/index.html#/details?id=${encodeURIComponent(x.key)}${d.server?'&serverId='+encodeURIComponent(d.server):''}`;
     const cont=(d.cont||[]).length?`${rowHead(T('Continue watching'),s.type==='plex'?T('Pick up where you stopped, in Plex'):T('Pick up where you stopped, in Jellyfin'))}<div class="strip">${d.cont.map(x=>{const h=href(x);return `<a class="pc"${h?` href="${esc(h)}" target="_blank" rel="noopener" title="${T(s.type==='plex'?'Resume in Plex':'Resume in Jellyfin')}"`:''} aria-label="${esc(x.title)} ${esc(x.sub||'')}"><div class="pw">${x.thumb?`<img src="${esc(img(x.thumb))}" alt="" loading="lazy">`:''}<span class="pcp" aria-hidden="true"><i style="width:${Math.max(3,Math.round((x.progress||0)*100))}%"></i></span>${x.next?`<span class="cn-have dh">${T('Up next')}</span>`:''}</div><b>${esc(x.title)}</b><div class="mute">${esc(x.sub||'')}</div></a>`}).join('')}</div>`:'';
-    el.innerHTML=cont+(d.recent.length?`${rowHead(s.type==='plex'?'Recently added to Plex':'Recently added to Jellyfin',T('Ready to watch now'))}<div class="strip">${d.recent.map(x=>{const h=href(x);return `<a class="pc"${h?` href="${esc(h)}" target="_blank" rel="noopener" title="${T(s.type==='plex'?'Open in Plex':'Open in Jellyfin')}"`:' style="cursor:default"'}><div class="pw">${x.thumb?`<img src="${img(x.thumb)}" alt="" loading="lazy">`:''}</div><b>${esc(x.title)}</b><div class="mute">${esc(x.sub)}</div></a>`}).join('')}</div>`:'');
+    el.innerHTML=`<div id="pty" style="margin-bottom:10px"></div>`+cont+(d.recent.length?`${rowHead(s.type==='plex'?'Recently added to Plex':'Recently added to Jellyfin',T('Ready to watch now'))}<div class="strip">${d.recent.map(x=>{const h=href(x);return `<a class="pc"${h?` href="${esc(h)}" target="_blank" rel="noopener" title="${T(s.type==='plex'?'Open in Plex':'Open in Jellyfin')}"`:' style="cursor:default"'}><div class="pw">${x.thumb?`<img src="${img(x.thumb)}" alt="" loading="lazy">`:''}</div><b>${esc(x.title)}</b><div class="mute">${esc(x.sub)}</div></a>`}).join('')}</div>`:'');
   }catch{}
 }
 const DS={src:'',kind:'movie',list:'trending'};let dsTok=0;
+// ---------- Watch together: a watch party for a title on Plex or Jellyfin, with friends.
+const partyHref=(v,base)=>v.app==='plex'?(v.machine?`${base}#!/server/${v.machine}/details?key=${encodeURIComponent('/library/metadata/'+v.key)}`:''):`${base}web/index.html#/details?id=${encodeURIComponent(v.key)}${v.server?'&serverId='+encodeURIComponent(v.server):''}`;
+const partyBase=v=>v.managed?goatOpen(v.app):v.app==='plex'?'https://app.plex.tv/desktop/':String(v.url||'').replace(/\/*$/,'/');
+const partyWhen=t=>{const m=Math.round((t-Date.now())/60000);return m<=0?T('now'):m<60?`${T('in')} ${m} min`:new Date(t).toLocaleString(undefined,{weekday:'short',hour:'2-digit',minute:'2-digit'})};
+async function partyStrip(){
+  const el=$('#pty');if(!el)return;let d;try{d=await api('/api/party')}catch{return}
+  el.innerHTML=`<div class="row" style="gap:8px;flex-wrap:wrap"><button id="ptyn">${ic('usr')}${T('Watch together')}</button>${d.parties.map(x=>`<button class="pill acc" data-pty="${esc(x.id)}" style="cursor:pointer">${esc(x.title)} · ${esc(partyWhen(x.at))}${x.mine?'':' · '+esc(x.host)}</button>`).join('')}</div>`;
+  $('#ptyn').onclick=partyNew;el.querySelectorAll('[data-pty]').forEach(b=>b.onclick=()=>partyPage(b.dataset.pty));
+}
+async function partyNew(){
+  const apps=[...ofType('plex'),...ofType('jellyfin')];if(!apps.length)return toast(T('Connect Plex or Jellyfin first'),'bad');
+  const o=document.createElement('div');o.className='ov';
+  o.innerHTML=`<div class="dlg" style="display:block;width:100%;max-width:560px"><h2>${T('Watch together')}</h2>
+    <p class="mute" style="margin-top:0">${T('Pick a title and a time and invite people. They get a notification with a page to open it in Plex or Jellyfin, and everyone can see how far the others are.')}</p>
+    ${apps.length>1?`<select id="pa">${apps.map(a=>`<option value="${esc(a.id)}">${esc(a.name)}</option>`).join('')}</select>`:''}
+    <input id="pq" type="search" placeholder="${T('Find a movie or episode')}" autocomplete="off"><div id="pr" style="max-height:260px;overflow:auto"></div><div id="psel" class="box" hidden></div>
+    <label class="mute">${T('Start')} <select id="pt"><option value="0">${T('Now')}</option><option value="15">${T('In 15 minutes')}</option><option value="30">${T('In 30 minutes')}</option><option value="60">${T('In an hour')}</option><option value="x">${T('At…')}</option></select></label>
+    <input id="ptx" type="time" hidden style="width:auto">
+    <div class="mute" style="margin-top:10px">${T('Invite')}</div><div id="pp" class="row" style="gap:4px 14px;flex-wrap:wrap"></div>
+    <div class="err" id="pe"></div><div class="row"><button class="primary" id="pgo" disabled>${T('Invite them')}</button><button id="pcl">${T('Cancel')}</button></div></div>`;
+  document.body.append(o);
+  let pick=null,tm=0;const sid=()=>($('#pa',o)||{}).value||apps[0].id;
+  const people=async()=>{try{const r=await api('/api/party/people?sid='+encodeURIComponent(sid()));$('#pp',o).innerHTML=r.people.map(u=>`<label class="chk" style="margin:0"><input type="checkbox" value="${esc(u.id)}">${esc(u.name)}</label>`).join('')||`<span class="mute">${T('Nobody else can open this app yet.')}</span>`}catch(x){$('#pe',o).textContent=x.message}};
+  const ready=()=>{$('#pgo',o).disabled=!pick||!o.querySelector('#pp input:checked')};
+  people();o.querySelector('#pp').onchange=ready;if($('#pa',o))$('#pa',o).onchange=()=>{pick=null;$('#psel',o).hidden=true;people();ready()};
+  $('#pq',o).oninput=e=>{clearTimeout(tm);tm=setTimeout(async()=>{const q=e.target.value.trim();if(q.length<2){$('#pr',o).innerHTML='';return}
+    try{const r=await api(`/api/party/find?sid=${encodeURIComponent(sid())}&q=${encodeURIComponent(q)}`);
+      $('#pr',o).innerHTML=r.items.filter(x=>x.kind!=='show').map((x,i)=>`<button class="box" data-pi="${i}" style="display:block;width:100%;text-align:left;margin:4px 0"><b>${esc(x.title)}</b> <span class="mute">${esc(x.sub)}</span></button>`).join('')||`<p class="mute">${T('Nothing found. For a show, search for the episode name.')}</p>`;
+      $('#pr',o).onclick=ev=>{const b=ev.target.closest('[data-pi]');if(!b)return;pick=r.items.filter(x=>x.kind!=='show')[+b.dataset.pi];$('#psel',o).hidden=false;$('#psel',o).innerHTML=`${ic('check')}<b>${esc(pick.title)}</b> <span class="mute">${esc(pick.sub)}</span>`;$('#pr',o).innerHTML='';ready()}}catch(x){$('#pe',o).textContent=x.message}},300)};
+  $('#pt',o).onchange=e=>{$('#ptx',o).hidden=e.target.value!=='x'};
+  $('#pcl',o).onclick=()=>o.remove();o.onclick=e=>{if(e.target===o)o.remove()};
+  $('#pgo',o).onclick=async()=>{const v=$('#pt',o).value;let at=Date.now()+(+v||0)*60000;
+    if(v==='x'){const [h,mi]=($('#ptx',o).value||'').split(':').map(Number);if(isNaN(h))return $('#pe',o).textContent=T('Pick a time');const d=new Date();d.setHours(h,mi,0,0);if(d<Date.now())d.setDate(d.getDate()+1);at=+d}
+    try{const r=await api('/api/party','POST',{sid:sid(),...pick,at,invite:[...o.querySelectorAll('#pp input:checked')].map(x=>x.value)});o.remove();toast(T('Invited. They get a notification.'),'ok');partyStrip();partyPage(r.id)}catch(x){$('#pe',o).textContent=x.message}};
+}
+async function partyPage(id){
+  const o=document.createElement('div');o.className='ov';o.innerHTML=`<div class="dlg" style="display:block;width:100%;max-width:560px"><div id="pv">${T('Loading…')}</div><div class="row" style="margin-top:12px"><button id="pvc">${T('Close')}</button><button class="danger" id="pvx" hidden>${T('Call it off')}</button></div></div>`;
+  NEXT_LAYER_URL='/party/'+id;document.body.append(o);let t=0,v=null;
+  const close=()=>{clearTimeout(t);o.remove()};o.close=close;$('#pvc',o).onclick=close;o.onclick=e=>{if(e.target===o)close()};
+  $('#pvx',o).onclick=async()=>{if(!confirm(T('Call off this watch party? The others are told.')))return;try{await api('/api/party/'+id,'DELETE');partyStrip();close()}catch(x){toast(x.message,'bad')}};
+  const fmtOff=ms=>{const s=Math.floor(ms/1000);return `${Math.floor(s/3600)?Math.floor(s/3600)+':':''}${String(Math.floor(s/60)%60).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`};
+  const draw=async()=>{if(!o.isConnected)return;
+    try{v=await api('/api/party/'+id)}catch(x){$('#pv',o).innerHTML=`<h2>${T('Watch together')}</h2><p class="mute">${esc(x.message)}</p>`;return}
+    const h=partyHref(v,partyBase(v)),left=v.at-Date.now(),host=v.people.find(p=>p.host);
+    $('#pvx',o).hidden=!(host&&host.id===me.id)&&me.role!=='admin';
+    $('#pv',o).innerHTML=`<div class="mute">${T('Watch together')} · ${esc(v.appName)}</div><h2 style="margin:4px 0">${esc(v.title)}</h2>${v.sub?`<div class="mute">${esc(v.sub)}</div>`:''}
+      <p style="font-size:18px;margin:12px 0">${left>0?`${T('Starts')} ${esc(partyWhen(v.at))}`:`${T('Started')} · ${esc(v.hostName)} ${T('hosts')}`}</p>
+      ${h?`<a class="btn primary" href="${esc(h)}" target="_blank" rel="noopener">${ic('play')}${v.app==='plex'?T('Open in Plex'):T('Open in Jellyfin')}</a>`:''}
+      <div style="margin-top:14px">${v.people.map(p=>`<div class="box row" style="gap:8px"><i class="dot ${p.watching?(p.state==='paused'?'warn':'ok'):''}" style="margin:0"></i><b class="grow">${esc(p.name)}${p.host?` <span class="pill">${T('host')}</span>`:''}</b>
+        <span class="mute" style="font-size:13px">${!p.watching?T('not watching it yet'):(p.state==='paused'?T('paused')+' · ':'')+fmtOff(p.offset)+(p.behind==null?'':Math.abs(p.behind)<=3?' · '+T('in step'):p.behind>0?` · ${p.behind} s ${T('behind')}`:` · ${-p.behind} s ${T('ahead')}`)}</span></div>`).join('')}</div>
+      <p class="mute" style="font-size:13px">${T('To line up, pause or skip in your own player until you are in step with the host. This page looks again every few seconds.')}</p>`;
+    t=setTimeout(draw,4000)};
+  draw();
+}
 const DSRC={trakt:'Trakt',tmdb:'TMDB',tvdb:'TheTVDB'},DLIST={trending:'Trending',popular:'Popular',anticipated:'Anticipated'},DAVAIL={trakt:['trending','popular','anticipated'],tmdb:['trending','popular','anticipated'],tvdb:['popular','anticipated']};
 function discView(){
   const on=Object.keys(DSRC).filter(k=>(me.lists||{})[k]);

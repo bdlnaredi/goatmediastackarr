@@ -292,6 +292,8 @@ class ScreensTest {
         tap("More"); waitFor("Go to")
         openFromMore("Recycle bin"); waitFor("Quiet Orbit (2026)"); waitFor("Put back"); shot("78-recycle-bin"); back()
         openFromMore("Upgrades"); waitFor("Riverside (2025)"); waitFor("Search all"); shot("82-upgrades"); back()
+        openFromMore("Watch together"); waitFor("Start one"); waitFor("Coming up and on now"); shot("83-watch-together")
+        tap("Quiet Orbit"); waitFor("Open in Plex"); waitFor("12 s behind"); shot("84-watch-party"); back(); back()
         // A magnet link shared from a browser: offered as a download, into a category.
         compose.runOnUiThread { state.share(com.bdlnaredi.goatstack.data.Shared.parse("Check this magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Neon.Saints.2026.1080p")) }
         waitFor("Add a download"); waitFor("Neon.Saints.2026.1080p")
