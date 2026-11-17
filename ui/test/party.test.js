@@ -17,6 +17,9 @@ test('a watch party invites people and shows who is watching', async () => {
 
     const people = (await alex.get(`/api/party/people?sid=${sid}`)).data.people.map(x => x.name);
     assert.ok(people.includes('jo') && !people.includes('alex'), people.join());
+    // Finding the title to watch (the search Plex does).
+    const found = await alex.get(`/api/party/find?sid=${sid}&q=demo`);
+    assert.equal(found.status, 200, JSON.stringify(found.data)); assert.ok(Array.isArray(found.data.items));
     const joId = (await alex.get(`/api/party/people?sid=${sid}`)).data.people.find(x => x.name === 'jo').id;
     assert.equal((await alex.post('/api/party', { sid, key: '1', title: 'x' })).status, 400, 'someone has to be invited');
 

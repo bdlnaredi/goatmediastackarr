@@ -3884,7 +3884,7 @@ const goatServer = http.createServer(async (req, res) => {
       if (!sv) return send(res, 404, { error: 'Not found' }); if (term.length < 2) return send(res, 200, { items: [] });
       let items = [];
       if (sv.type === 'plex') {
-        const d = await plex(sv, '/hubs/search?limit=8&query=' + encodeURIComponent(term)).then(r => r.json()).catch(() => ({}));
+        const d = await plexGet(sv, '/hubs/search?limit=8&query=' + encodeURIComponent(term)).catch(() => ({}));
         for (const hub of ((d.MediaContainer || {}).Hub || [])) for (const x of hub.Metadata || []) if (['movie', 'episode', 'show'].includes(x.type))
           items.push({ key: String(x.ratingKey), kind: x.type === 'show' ? 'show' : x.type, title: x.type === 'episode' ? x.grandparentTitle : x.title, sub: x.type === 'episode' ? `S${pad2(x.parentIndex)}E${pad2(x.index)} ${x.title}` : String(x.year || ''), thumb: x.type === 'episode' ? x.grandparentThumb || x.thumb || '' : x.thumb || '' });
         grant(me, sv.id, items.map(x => x.thumb));

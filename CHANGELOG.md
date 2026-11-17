@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- Watch together: finding a title on Plex failed with "Cannot access 'plex' before initialization". Fixed.
+
 ## v1.0.32 — 2026-11-17
 
 - Unraid: running containers with a web page have an Open button (web and app).
