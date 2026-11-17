@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+## v1.0.31 — 2026-11-17
+
 - App, Downloads: the top takes far less room and scrolls away with the list, so the screen is filled with downloads. Today's and this week's totals and the speeds right now share one card; category and order are small menus on one line; Pause all, Resume all, Categories and Speed limits are in the ⋮ menu next to + (Add a link).
 
 ## v1.0.30 — 2026-11-15
