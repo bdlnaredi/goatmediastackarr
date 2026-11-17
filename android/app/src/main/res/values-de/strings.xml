@@ -2,4 +2,10 @@
 <resources>
     <string name="widget_refresh">Aktualisieren</string>
     <string name="widget_description">Download- und Upload-Geschwindigkeit und was gerade läuft</string>
+    <string name="widget_dl_title">Downloads</string>
+    <string name="widget_dl_description">Die aktivsten Downloads mit Fortschritt, und Alle pausieren</string>
+    <string name="widget_server_title">Server</string>
+    <string name="widget_server_description">Apps, die nicht antworten, das VPN und der Speicherplatz (Admins)</string>
+    <string name="widget_shortcuts_title">Verknüpfungen</string>
+    <string name="widget_shortcuts_description">Direkt zu Suche, Entdecken, Anfragen oder Downloads</string>
 </resources>

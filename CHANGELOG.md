@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- App: three new home-screen widgets. Downloads shows the three busiest downloads with progress bars and time left, with Pause all and Resume all buttons. Server (admins) shows whether every app answers, the VPN and the fullest disk. Shortcuts opens Search, Discover, Requests or Downloads in one tap.
+
 - Recycle bin (Health, and More → Recycle bin in the app): torrents deleted with their files, files deleted from a title, titles removed with their files and duplicate copies wait there for 7 days (choose 1 to 30, or off) before they are gone. Put back returns the files and adds the torrent to qBittorrent again, or the title to Radarr or Sonarr, as it was. Files are moved within their own disk, so this is instant even for large films.
 - App: share a magnet link, a .torrent file, or an IMDb or TMDB page from another app to GoatMediaStackarr. Links and files are added as downloads (choose the app and category); pages open that title's page. Opening a magnet link or a .torrent file also offers the app.
 

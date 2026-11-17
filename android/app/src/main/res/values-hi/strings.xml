@@ -2,4 +2,10 @@
 <resources>
     <string name="widget_refresh">ताज़ा करें</string>
     <string name="widget_description">डाउनलोड और अपलोड की गति, और क्या चल रहा है</string>
+    <string name="widget_dl_title">डाउनलोड</string>
+    <string name="widget_dl_description">सबसे सक्रिय डाउनलोड और उनकी प्रगति, और सब रोकें</string>
+    <string name="widget_server_title">सर्वर</string>
+    <string name="widget_server_description">जो ऐप जवाब नहीं दे रहे, VPN और डिस्क स्थान (एडमिन)</string>
+    <string name="widget_shortcuts_title">शॉर्टकट</string>
+    <string name="widget_shortcuts_description">सीधे खोज, डिस्कवर, अनुरोध या डाउनलोड पर</string>
 </resources>

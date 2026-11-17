@@ -32,7 +32,7 @@ class NotifyAction : BroadcastReceiver() {
                 runCatching { NotificationManagerCompat.from(app).cancel(nid) }
                 Toast.makeText(app, msg, Toast.LENGTH_SHORT).show()
             }
-            com.bdlnaredi.goatstack.GoatWidget.refresh(app); com.bdlnaredi.goatstack.GoatListWidget.refresh(app)
+            com.bdlnaredi.goatstack.Widgets.refreshAll(app)
             done.finish()
         }
     }

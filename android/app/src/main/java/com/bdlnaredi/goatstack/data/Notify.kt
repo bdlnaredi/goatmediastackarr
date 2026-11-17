@@ -122,8 +122,7 @@ class CheckWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx,
         val api = Api(onSession = { s -> CoroutineScope(Dispatchers.IO).launch { store.setSid(s) } })
         api.configure(saved.server, saved.sid)
         Notify.check(applicationContext, store, api, saved.prefs)
-        com.bdlnaredi.goatstack.GoatWidget.refresh(applicationContext)
-        com.bdlnaredi.goatstack.GoatListWidget.refresh(applicationContext)
+        com.bdlnaredi.goatstack.Widgets.refreshAll(applicationContext)
         return Result.success()
     }
 }

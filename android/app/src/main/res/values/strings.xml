@@ -4,5 +4,11 @@
     <string name="widget_refresh">Refresh</string>
     <string name="widget_list_title">Coming up</string>
     <string name="widget_list_description">What is coming up, and the requests</string>
+    <string name="widget_dl_title">Downloads</string>
+    <string name="widget_dl_description">The busiest downloads with their progress, and Pause all</string>
+    <string name="widget_server_title">Server</string>
+    <string name="widget_server_description">Apps that are not answering, the VPN, and disk space (admins)</string>
+    <string name="widget_shortcuts_title">Shortcuts</string>
+    <string name="widget_shortcuts_description">Straight to Search, Discover, Requests or Downloads</string>
     <string name="widget_description">Download and upload speeds, and what is playing</string>
 </resources>

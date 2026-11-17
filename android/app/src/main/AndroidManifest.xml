@@ -85,6 +85,27 @@
             </intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_list" />
         </receiver>
+        <!-- More widgets: the busiest downloads with Pause all, the server (admins), and shortcuts. -->
+        <receiver android:name=".DownloadsWidget" android:exported="true" android:label="@string/widget_dl_title">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.bdlnaredi.goatstack.DL_REFRESH" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_downloads" />
+        </receiver>
+        <receiver android:name=".ServerWidget" android:exported="true" android:label="@string/widget_server_title">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.bdlnaredi.goatstack.SERVER_REFRESH" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_server" />
+        </receiver>
+        <receiver android:name=".ShortcutsWidget" android:exported="true" android:label="@string/widget_shortcuts_title">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_shortcuts" />
+        </receiver>
         <!-- Buttons on notifications (approve, decline, pause): run without opening the app. -->
         <receiver android:name=".data.NotifyAction" android:exported="false" />
     </application>

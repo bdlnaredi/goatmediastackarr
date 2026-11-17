@@ -234,7 +234,12 @@ A native app (Kotlin and Jetpack Compose), not a web page in a frame. Same four 
 - **More**: every other page in groups like the web page (Watch, Requests, Downloads, Server, You), including **Watchlist**, **Suggestions**, **Logs** (admins) and **What's new**.
 - **Notifications** that work with the app closed and without Google services: something you asked for is ready, a request was approved or declined, your streaming limit; for admins also new requests, problem reports and server problems. **Approve** or **Decline** a new request, or **Pause all** downloads, straight from the notification.
 - **Share to the app**: from Chrome or any app, share a magnet link, a .torrent file (or open one from your downloads), or an IMDb or TMDB page to GoatMediaStackarr. A link or file is added as a download (pick the app and category); a page opens that movie's or show's page, to request it.
-- **Two home-screen widgets**: the download and upload speeds and what's playing; and what's coming up with the requests (waiting for you, or yours on the way).
+- **Five home-screen widgets**:
+  - **Speeds**: download and upload speeds and what's playing.
+  - **Coming up**: what's coming out and the requests (waiting for you, or yours on the way).
+  - **Downloads**: the three busiest downloads with progress bars and time left, and **Pause all** / **Resume all** without opening the app.
+  - **Server** (admins): whether every app answers (and which do not), the VPN with its country, and the fullest disk.
+  - **Shortcuts**: one tap to Search, Discover, Requests or Downloads.
 - **Address at home** (Settings → Server): on your Wi-Fi the app talks to the server's local address, anywhere else the outside one, by itself.
 - **Profile**: your picture, your streaming this month, the space your requests take and your watch time.
 - **In your language**: English, Hindi, Spanish, German or French (Settings → Language).

@@ -2,4 +2,10 @@
 <resources>
     <string name="widget_refresh">Actualiser</string>
     <string name="widget_description">Vitesses de téléchargement et d’envoi, et ce qui est en lecture</string>
+    <string name="widget_dl_title">Téléchargements</string>
+    <string name="widget_dl_description">Les téléchargements les plus actifs avec leur progression, et Tout mettre en pause</string>
+    <string name="widget_server_title">Serveur</string>
+    <string name="widget_server_description">Les apps qui ne répondent pas, le VPN et l\'espace disque (admins)</string>
+    <string name="widget_shortcuts_title">Raccourcis</string>
+    <string name="widget_shortcuts_description">Directement vers Recherche, Découvrir, Demandes ou Téléchargements</string>
 </resources>
