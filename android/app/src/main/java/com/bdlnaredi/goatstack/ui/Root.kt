@@ -226,10 +226,10 @@ private fun MainShell(state: AppState, me: Me, user: User) {
             val sh = shared ?: return@LaunchedEffect
             if (pinLocked && user.pin) return@LaunchedEffect
             when (sh) {
-                is com.bdlnaredi.goatstack.data.Shared.Title -> { state.shareDone(); ctx.title(sh.type, sh.id) }
+                is com.bdlnaredi.goatstack.data.Shared.Title -> { ctx.title(sh.type, sh.id); state.shareDone() }
                 is com.bdlnaredi.goatstack.data.Shared.Imdb -> {
                     val r = try { state.api.get<com.bdlnaredi.goatstack.data.Resolved>("/api/resolve?imdb=${sh.id}") } catch (e: Exception) { shareToast(e.message ?: "Could not find that title"); null }
-                    state.shareDone(); if (r != null) ctx.title(r.type, r.id)
+                    if (r != null) ctx.title(r.type, r.id); state.shareDone()
                 }
                 is com.bdlnaredi.goatstack.data.Shared.Unknown -> { state.shareDone(); shareToast(if (sh.text.endsWith(".")) sh.text else "Nothing to open in that: share a magnet link, a .torrent file, or an IMDb or TMDB page.") }
                 else -> {}

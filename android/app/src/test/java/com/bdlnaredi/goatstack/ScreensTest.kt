@@ -290,6 +290,8 @@ class ScreensTest {
         waitFor("Add a download"); waitFor("Neon.Saints.2026.1080p")
         tap("Add")
         compose.waitUntil(10_000) { fake.calls.any { it.startsWith("POST /api/torrent/add") } }
+        // Added: the app moves to Downloads (wait for it, so the next share starts from a settled page).
+        waitFor("Every category")
         // An IMDb page: its title page opens.
         compose.runOnUiThread { state.share(com.bdlnaredi.goatstack.data.Shared.parse("https://m.imdb.com/title/tt0111161/?ref_=x")) }
         compose.waitUntil(10_000) { fake.calls.any { it.startsWith("GET /api/resolve?imdb=tt0111161") } }
