@@ -119,3 +119,15 @@ test('deleting with files goes to the bin, and Put back brings it all back', asy
     assert.equal((await u.get('/api/bin')).status, 403);
   } finally { await s.stop(); f.srv.close(); }
 });
+
+test('the bin gives way on a disk that is nearly full', () => {
+  const { spawnSync } = require('node:child_process');
+  // A separate process, told the disk counts as full at any use (GOAT_BIN_FULL=0.0001).
+  const r = spawnSync(process.execPath, ['-e', `
+    const B = require(${JSON.stringify(require.resolve('../lib/recyclebin'))}), fs = require('fs'), p = require('path');
+    const d = fs.mkdtempSync(p.join(require('os').tmpdir(), 'bin-')), f = p.join(d, 'a.mkv'); fs.writeFileSync(f, 'x');
+    const r = B.stash([f], null);
+    console.log(JSON.stringify({ ok: r.ok, why: r.why, still: fs.existsSync(f) }));`], { env: { ...process.env, GOAT_BIN_FULL: '0.0001' }, encoding: 'utf8' });
+  const o = JSON.parse(r.stdout.trim());
+  assert.equal(o.ok, false); assert.match(o.why, /nearly full/); assert.ok(o.still, 'nothing was moved: the caller deletes it as before');
+});

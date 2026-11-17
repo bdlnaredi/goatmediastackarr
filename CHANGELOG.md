@@ -4,6 +4,9 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- When the disk with the settings folder is full, the dashboard no longer stops at start: it keeps running, says so in the log and on the Health page, and saves again once there is room.
+- Recycle bin: nothing more goes into it on a disk that is over 90% full (deleting frees the space at once there), and what waits in it on such a disk is deleted for good, oldest first, until there is room.
+
 ## v1.0.33 — 2026-11-17
 
 - Watch together: finding a title on Plex failed with "Cannot access 'plex' before initialization". Fixed.

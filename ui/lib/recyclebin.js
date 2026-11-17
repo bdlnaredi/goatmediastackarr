@@ -38,6 +38,14 @@ function pruneUp(dir, stop) {
   }
 }
 
+/** How full a disk is (0..1), from any folder on it; 0 when it cannot be told. */
+function used(dir) {
+  try { const st = fs.statfsSync(dir); return st.blocks ? 1 - st.bavail / st.blocks : 0; } catch { return 0; }
+}
+// Above this, nothing more goes into the bin on that disk (deleting frees the space at once instead), and the bin's
+// oldest things on it are deleted for good first, so the bin never fills a disk.
+const FULL = Math.min(1, Math.max(0, +process.env.GOAT_BIN_FULL || 0.9));
+
 /** Moves [paths] (files or folders) into the bin. Everything or nothing: if one cannot be moved, the ones already
  *  moved go back and { ok: false } is returned, so the caller can delete them the old way.
  *  [keepUnder]: empty folders left behind are removed up to (not including) this folder. */
@@ -48,8 +56,9 @@ function stash(paths, keepUnder) {
     for (const raw of [...new Set(paths.map(p => path.resolve(p)))]) {
       if (!fs.existsSync(raw)) continue;
       const top = diskTop(raw);
-      // A folder holding a bin, or the disk itself, is never put in the bin.
+      // A folder holding a bin, or the disk itself, is never put in the bin; nor anything on a disk that is nearly full.
       if (raw === top || raw.split(path.sep).includes(DIR)) throw new Error('not a file the bin takes');
+      if (used(top) > FULL) throw new Error('the disk is nearly full');
       const size = sizeOf(raw), to = path.join(top, DIR, id, path.relative(top, raw));
       fs.mkdirSync(path.dirname(to), { recursive: true, mode: 0o755 });
       fs.renameSync(raw, to);
@@ -87,4 +96,11 @@ function drop(entry) {
 /** Whether every file of the entry is still in the bin (someone may have emptied the folder by hand). */
 const intact = entry => entry.items.every(m => fs.existsSync(m.to));
 
-module.exports = { stash, restore, drop, intact, diskTop, sizeOf, DIR };
+/** The disks the entries are on that are nearly full (where the bin has to give way). */
+function tight(entries) {
+  const out = new Set();
+  for (const e of entries) for (const m of e.items) { const i = m.to.indexOf(path.sep + DIR + path.sep); if (i >= 0 && used(m.to.slice(0, i) || '/') > FULL) out.add(m.to.slice(0, i)); }
+  return out;
+}
+
+module.exports = { stash, restore, drop, intact, diskTop, sizeOf, used, tight, FULL, DIR };

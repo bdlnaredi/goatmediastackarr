@@ -66,14 +66,23 @@ const dehydrate = d => JSON.stringify({ ...d,
   users: d.users.map(u => u.totp ? { ...u, totp: { ...u.totp, secret: enc(u.totp.secret) } } : u),
   sites: (d.sites || []).map(x => ({ ...x, jar: enc(JSON.stringify(x.jar || {})) })) }, null, 1);
 db = decryptAll(defaults(db));
-let lastBak = 0;
+let lastBak = 0, saveFail = null;
+// A save that cannot be written (the disk is full, or read-only) never stops the dashboard: it keeps running from
+// memory, says so in the log and on the Health page, and saves again once there is room.
+const saveErr = e => {
+  const first = !saveFail || Date.now() - saveFail.logged > 6e4;
+  saveFail = { code: e.code || e.message, at: Date.now(), logged: first ? Date.now() : saveFail.logged };
+  if (first) console.error(`[goat] Could not save the settings to ${DATA} (${e.code || e.message}).${e.code === 'ENOSPC' ? ' The disk is full: free some space there.' : ''} The dashboard keeps running; changes are saved once it can write again.`);
+};
 const save = () => {
   if (DEMO) return;
-  const data = dehydrate(db);
   const tmp = FILE + '.tmp';
-  fs.writeFileSync(tmp, data, { mode: 0o600 });
-  try { if (fs.existsSync(FILE) && Date.now() - lastBak > 36e5) { fs.copyFileSync(FILE, FILE + '.bak'); lastBak = Date.now(); } } catch {}
-  fs.renameSync(tmp, FILE);
+  try {
+    fs.writeFileSync(tmp, dehydrate(db), { mode: 0o600 });
+    try { if (fs.existsSync(FILE) && Date.now() - lastBak > 36e5) { fs.copyFileSync(FILE, FILE + '.bak'); lastBak = Date.now(); } } catch {}
+    fs.renameSync(tmp, FILE);
+    saveFail = null;
+  } catch (e) { try { fs.unlinkSync(tmp); } catch {} saveErr(e); }
 };
 if (DEMO) {
   // Demo: everything lives in memory, points at built-in pretend apps, and nothing is written to the data folder.
@@ -141,7 +150,7 @@ setInterval(() => readyFlush().catch(() => {}), READY_MS).unref();
 const KINDS = ['sonarr', 'radarr', 'prowlarr', 'jackett', 'qbittorrent', 'rutorrent', 'deluge', 'seerr', 'unraid', 'plex', 'jellyfin', 'tautulli', 'sabnzbd', 'bazarr', 'lidarr', 'readarr'];
 const SESSF = path.join(DATA, 'sessions.json'), th = t => crypto.createHash('sha256').update(String(t || '')).digest('hex');
 let sessions; try { sessions = new Map(Object.entries(JSON.parse(fs.readFileSync(SESSF))).map(([k, v]) => [k, typeof v === 'string' ? { uid: v, at: 0, seen: 0, ua: '', ip: '' } : v])); } catch { sessions = new Map(); }
-const saveSess = () => DEMO || fs.writeFileSync(SESSF, JSON.stringify(Object.fromEntries(sessions)), { mode: 0o600 });
+const saveSess = () => { if (DEMO) return; try { fs.writeFileSync(SESSF, JSON.stringify(Object.fromEntries(sessions)), { mode: 0o600 }); } catch (e) { saveErr(e); } };
 const qbCookie = {}, fails = {};
 const ipOf = req => TRUST ? String(req.headers['cf-connecting-ip'] || String(req.headers['x-forwarded-for'] || '').split(',').pop().trim() || req.socket.remoteAddress).trim() : String(req.socket.remoteAddress || '');
 
@@ -1203,7 +1212,18 @@ function binPut(paths, meta, keepUnder) {
 }
 function binSweep() {
   const days = binDays(), list = binList(), keep = [];
+  // A disk that is nearly full: what waits in the bin there goes for good, oldest first, until it has room again.
+  const tight = BIN.tight(list);
+  for (const e of list.slice().sort((a, b) => a.at - b.at)) {
+    if (!tight.size) break;
+    const on = e.items.some(m => [...tight].some(t => m.to.startsWith(t + path.sep)));
+    if (!on) continue;
+    BIN.drop(e); try { fs.unlinkSync(path.join(BIN_DIR, e.id + '.torrent')); } catch {}
+    e.gone = true; console.log(`[goat] Recycle bin: deleted "${e.name}" for good to make room (the disk is nearly full).`);
+    for (const t of [...tight]) if (BIN.used(t) <= BIN.FULL) tight.delete(t);
+  }
   for (const e of list) {
+    if (e.gone) continue;
     const old = Date.now() - e.at > (days || 0) * 864e5;
     if (old) { BIN.drop(e); try { fs.unlinkSync(path.join(BIN_DIR, e.id + '.torrent')); } catch {} }
     else if (BIN.intact(e)) keep.push(e);
@@ -5346,6 +5366,9 @@ const goatServer = http.createServer(async (req, res) => {
     }
     if (p === '/api/warnings' && m === 'GET') {
       const out = [], add = (sv, level, text, extra = {}) => out.push({ sid: sv.id, app: sv.name, type: sv.type, level, text: cut(text, 400), ...extra });
+      if (saveFail) add({ id: '', name: 'GoatMediaStackarr', type: 'goat' }, 'bad', saveFail.code === 'ENOSPC'
+        ? `The disk with the settings folder (${DATA}) is full, so changes are not being saved. Free some space there: the recycle bin (Health) and old backups are good places to start.`
+        : `The settings could not be saved to ${DATA} (${saveFail.code}). Changes are kept until the dashboard restarts.`);
       await Promise.all(db.services.map(async sv => { try {
         if (health[sv.id] && !health[sv.id].ok) return add(sv, 'bad', `${sv.name} is not answering.`, { fix: sv.managed ? 'restart' : '' });
         if (ARRV[sv.type]) for (const x of await ext(sv, `/api/${ARRV[sv.type]}/health`)) add(sv, x.type === 'error' ? 'bad' : 'warn', x.message || x.source, { wiki: /^https:\/\//.test(x.wikiUrl || '') ? cut(x.wikiUrl, 300) : '', fix: warnFix(sv.type, x.message || x.source) });
@@ -6207,7 +6230,8 @@ setInterval(() => wpSync(), 6 * 3600e3).unref();
 setInterval(() => { try { binSweep(); } catch {} }, 3600e3).unref();
 setInterval(() => { quietFlush().catch(() => {}); }, 60000).unref();
 setInterval(() => { upgradeTick().catch(() => {}); }, 6 * 3600e3).unref();
-setTimeout(() => { try { binSweep(); } catch {} }, 60000).unref();
+setTimeout(() => { try { binSweep(); } catch {} }, 5000).unref();
+setInterval(() => { if (saveFail) save(); }, 60000).unref();
 // Discover's lists are fetched ahead of time (soon after starting, then every 3 hours), so opening them never waits on the sites.
 setTimeout(() => lists.warm().catch(() => {}), 90000).unref();
 // The libraries are read once soon after starting, so the first visit to Library does not wait either.
