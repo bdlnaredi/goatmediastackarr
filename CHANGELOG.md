@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+## v1.0.32 — 2026-11-17
+
 - Unraid: running containers with a web page have an Open button (web and app).
 - Quiet hours: each person chooses hours when only problems make a sound on their phone and in their browsers; the rest arrives silently. Alert channels can have quiet hours too: what can wait is held and sent as one message when they end, and you choose what still comes through (the VPN going down, a disk problem…).
 - Upgrades (Health, and in the app): movies and episodes below the quality their profile wants, with a search for one or all. Admins hear once a week how many there are.
