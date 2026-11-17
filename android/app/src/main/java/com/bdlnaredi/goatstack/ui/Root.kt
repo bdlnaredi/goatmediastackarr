@@ -221,18 +221,20 @@ private fun MainShell(state: AppState, me: Me, user: User) {
         // Not while the PIN is asked: a dialog would show above the lock screen.
         val pinLocked by state.locked.collectAsStateWithLifecycle()
         val shareToast = com.bdlnaredi.goatstack.ui.screens.toaster()
-        // A page (TMDB, IMDb) opens from here, the same way a tapped notification does; links and files get a dialog.
-        androidx.compose.runtime.LaunchedEffect(shared, pinLocked) {
-            val sh = shared ?: return@LaunchedEffect
-            if (pinLocked && user.pin) return@LaunchedEffect
-            when (sh) {
-                is com.bdlnaredi.goatstack.data.Shared.Title -> { ctx.title(sh.type, sh.id); state.shareDone() }
-                is com.bdlnaredi.goatstack.data.Shared.Imdb -> {
-                    val r = try { state.api.get<com.bdlnaredi.goatstack.data.Resolved>("/api/resolve?imdb=${sh.id}") } catch (e: Exception) { shareToast(e.message ?: "Could not find that title"); null }
-                    if (r != null) ctx.title(r.type, r.id); state.shareDone()
+        // A page (TMDB, IMDb) opens from here; links and files get a dialog. What was shared is cleared first, and the page
+        // opens a frame later, so the app is not redrawn and moved to a new page in the same moment.
+        androidx.compose.runtime.LaunchedEffect(Unit) {
+            kotlinx.coroutines.flow.combine(state.pendingShare, state.locked) { s, l -> s to l }.collect { (sh, locked) ->
+                if (sh == null || (locked && user.pin)) return@collect
+                val page: Pair<String, Long>? = when (sh) {
+                    is com.bdlnaredi.goatstack.data.Shared.Title -> sh.type to sh.id
+                    is com.bdlnaredi.goatstack.data.Shared.Imdb -> try { state.api.get<com.bdlnaredi.goatstack.data.Resolved>("/api/resolve?imdb=${sh.id}").let { it.type to it.id } }
+                        catch (e: Exception) { shareToast(e.message ?: "Could not find that title"); null }
+                    is com.bdlnaredi.goatstack.data.Shared.Unknown -> { shareToast(if (sh.text.endsWith(".")) sh.text else "Nothing to open in that: share a magnet link, a .torrent file, or an IMDb or TMDB page."); null }
+                    else -> return@collect
                 }
-                is com.bdlnaredi.goatstack.data.Shared.Unknown -> { state.shareDone(); shareToast(if (sh.text.endsWith(".")) sh.text else "Nothing to open in that: share a magnet link, a .torrent file, or an IMDb or TMDB page.") }
-                else -> {}
+                state.shareDone()
+                if (page != null) { androidx.compose.runtime.withFrameNanos { }; ctx.title(page.first, page.second) }
             }
         }
         if (!(pinLocked && user.pin)) (shared as? com.bdlnaredi.goatstack.data.Shared.Links ?: shared as? com.bdlnaredi.goatstack.data.Shared.TorrentFile)?.let { sh ->
