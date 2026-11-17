@@ -145,7 +145,7 @@ data class ImportJob(
 
 // Continue watching (/api/plex|jellyfin/:sid/now): what the person started and has not finished.
 @kotlinx.serialization.Serializable
-data class MediaNow(val cont: List<ContItem> = emptyList(), val machine: String = "", val server: String = "")
+data class MediaNow(val cont: List<ContItem> = emptyList(), val recent: List<ContItem> = emptyList(), val machine: String = "", val server: String = "")
 @kotlinx.serialization.Serializable
 data class ContItem(val title: String = "", val sub: String = "", val thumb: String = "", val key: String = "", val progress: Double = 0.0, val next: Boolean = false)
 

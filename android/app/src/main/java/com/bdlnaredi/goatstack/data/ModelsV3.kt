@@ -111,6 +111,8 @@ data class Device(val id: String = "", val user: String = "", val device: String
 @Serializable data class UpgItem(val id: Long = 0, val title: String = "", val sub: String = "", val quality: String = "", val size: Long = 0, val wants: String = "", val parent: Long = 0)
 @Serializable data class UpgApp(val sid: String = "", val name: String = "", val type: String = "", val total: Int = 0, val items: List<UpgItem> = emptyList(), val error: String = "")
 @Serializable data class UpgList(val apps: List<UpgApp> = emptyList())
+/** Offline: the short-lived link a saved video is fetched with. */
+@Serializable data class OfflineLink(val url: String = "", val name: String = "", val ext: String = "")
 /** Watch together. */
 @Serializable data class PartyHit(val key: String = "", val kind: String = "movie", val title: String = "", val sub: String = "", val thumb: String = "")
 @Serializable data class PartyFound(val items: List<PartyHit> = emptyList())

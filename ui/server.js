@@ -1323,10 +1323,46 @@ async function partyView(x) {
   for (const r of rows) r.behind = h != null && r.watching && !r.host ? Math.round((h - r.offset) / 1000) : null;
   let machine = '', server = '';
   const plexMidCache = globalThis.__plexMid || (globalThis.__plexMid = {});
-  if (sv && sv.type === 'plex') { if (!plexMidCache[sv.id]) try { plexMidCache[sv.id] = (((await plex(sv, '/identity').then(r => r.json())).MediaContainer) || {}).machineIdentifier || ''; } catch {} machine = plexMidCache[sv.id] || ''; }
+  if (sv && sv.type === 'plex') { if (!plexMidCache[sv.id]) try { plexMidCache[sv.id] = (((await plexGet(sv, '/identity')).MediaContainer) || {}).machineIdentifier || ''; } catch {} machine = plexMidCache[sv.id] || ''; }
   if (sv && sv.type === 'jellyfin') try { server = ((await (await jfGet(sv, '/System/Info/Public')).json()) || {}).Id || ''; } catch {}
   return { id: x.id, sid: x.sid, app: sv ? sv.type : '', appName: sv ? sv.name : '', managed: !!(sv && sv.managed), url: sv && !sv.managed ? String(sv.url || '') : '', machine, server,
     key: x.key, title: x.title, sub: x.sub, kind: x.kind, thumb: x.thumb, at: x.at, now: at, hostName: host ? host.name : '', people: rows };
+}
+// ---- Offline: a movie or episode saved on the phone. The phone gets a short-lived link (no sign-in in it) and Plex or
+// Jellyfin makes a smaller copy as it is fetched (720p and so on), or sends the original file.
+const OFF_Q = { orig: null, 1080: { w: 1920, h: 1080, kbps: 8000 }, 720: { w: 1280, h: 720, kbps: 3000 }, 480: { w: 854, h: 480, kbps: 1500 } };
+const offTickets = new Map();
+/** Whether this person may take the title away: their app access, their libraries; never for kids or limited profiles. */
+async function offlineMay(u, sv, key) {
+  if (u.role === 'admin') return true;
+  if (u.kids || (u.plexRules && Object.values(u.plexRules).some(l => (l || []).length))) return false;
+  if (sv.type === 'plex') {
+    if (!libLimited(u)) return true;
+    const md = ((((await plexGet(sv, '/library/metadata/' + encodeURIComponent(key))).MediaContainer) || {}).Metadata || [])[0];
+    return !!md && ((u.plexLibs || {}).mine || []).map(String).includes(String(md.librarySectionID));
+  }
+  const names = partyNames(u), ju = ((await (await jfGet(sv, '/Users')).json()) || []).find(x => names.includes(String(x.Name || '').trim().toLowerCase()));
+  return !!ju && (await jfGet(sv, `/Users/${ju.Id}/Items/${encodeURIComponent(key)}`)).ok;
+}
+/** Where Plex or Jellyfin hands out the file: the original, or a copy made smaller as it is read. */
+async function offlineSource(sv, key, q) {
+  const base = sv.url.replace(/\/+$/, ''), Q = OFF_Q[q];
+  if (sv.type === 'plex') {
+    const tok = encodeURIComponent(sv.apiKey || '');
+    if (!Q) {
+      const md = ((((await plexGet(sv, '/library/metadata/' + encodeURIComponent(key))).MediaContainer) || {}).Metadata || [])[0];
+      const part = md && md.Media && md.Media[0] && md.Media[0].Part && md.Media[0].Part[0];
+      if (!part) throw new Error('Plex has no file for that title');
+      return { url: `${base}${part.key}?download=1&X-Plex-Token=${tok}`, ext: String(part.container || part.file && part.file.split('.').pop() || 'mkv').slice(0, 5) };
+    }
+    const ps = new URLSearchParams({ path: '/library/metadata/' + key, mediaIndex: '0', partIndex: '0', protocol: 'http', fastSeek: '1', directPlay: '0', directStream: '1', directStreamAudio: '1',
+      videoQuality: '100', videoResolution: `${Q.w}x${Q.h}`, maxVideoBitrate: String(Q.kbps), subtitles: 'none', session: crypto.randomBytes(8).toString('hex'),
+      'X-Plex-Client-Identifier': 'goatmediastackarr-offline', 'X-Plex-Product': 'GoatMediaStackarr', 'X-Plex-Platform': 'Android', 'X-Plex-Token': sv.apiKey || '' });
+    return { url: `${base}/video/:/transcode/universal/start.mp4?${ps}`, ext: 'mp4', fallback: () => offlineSource(sv, key, 'orig') };
+  }
+  const k = encodeURIComponent(sv.apiKey || ''), id = encodeURIComponent(key);
+  if (!Q) return { url: `${base}/Items/${id}/Download?api_key=${k}`, ext: 'mkv' };
+  return { url: `${base}/Videos/${id}/stream.mp4?static=false&mediaSourceId=${id}&container=mp4&videoCodec=h264&audioCodec=aac&audioChannels=2&audioBitRate=160000&maxWidth=${Q.w}&maxHeight=${Q.h}&videoBitRate=${Q.kbps * 1000}&api_key=${k}`, ext: 'mp4' };
 }
 const binPub = e => ({ id: e.id, kind: e.kind, name: e.name, by: e.by || '', app: e.app || '', at: e.at, size: e.size, until: e.at + binDays() * 864e5,
   files: e.items.length, where: e.items.length ? cut(e.items[0].from, 400) : '' });
@@ -3153,6 +3189,22 @@ const goatServer = http.createServer(async (req, res) => {
       pubCache[hh] = { t: Date.now(), d: out }; x.used = (x.used || 0) + 1; x.lastUsed = Date.now();
       return send(res, 200, out);
     }
+    // Offline: the file itself, by the short-lived link the app was given (no sign-in, so the phone's downloader can fetch it).
+    const offm = p.match(/^\/api\/offline\/file\/([a-f0-9]{48})$/);
+    if (offm && m === 'GET') {
+      const t = offTickets.get(offm[1]);
+      if (!t || t.exp < Date.now()) return send(res, 404, { error: 'This download link has run out. Start it again in the app.' });
+      const sv = db.services.find(x => x.id === t.sid); if (!sv) return send(res, 404, { error: 'Not found' });
+      let src = await offlineSource(sv, t.key, t.q), x = await fetch(src.url, { headers: req.headers.range && t.q === 'orig' ? { Range: req.headers.range } : {} });
+      if (!x.ok && src.fallback) { src = await src.fallback(); x = await fetch(src.url); }
+      if (!x.ok && x.status !== 206) return send(res, 502, { error: `${sv.name} could not send that file (${x.status})` });
+      const h = { 'Content-Type': x.headers.get('content-type') || 'video/mp4', 'Content-Disposition': `attachment; filename="${t.name.replace(/[^\w .()-]/g, '_')}.${src.ext}"`, 'Cache-Control': 'no-store' };
+      for (const k of ['content-length', 'content-range', 'accept-ranges']) if (x.headers.get(k)) h[k] = x.headers.get(k);
+      res.writeHead(x.status, h);
+      const { Readable } = require('stream'); const rs = Readable.fromWeb(x.body);
+      req.on('close', () => rs.destroy()); rs.on('error', () => res.destroy()); rs.pipe(res);
+      return;
+    }
     if (p === '/api/logout') { sessions.delete(th(token)); saveSess(); return send(res, 200, {}, { 'Set-Cookie': 'sid=; Path=/; Max-Age=0' }); }
     if (!me) return send(res, 401, { error: 'Sign in first' });
     // Two-step sign-in is required and not set up yet: only setting it up (and signing out) works until it is.
@@ -3814,6 +3866,17 @@ const goatServer = http.createServer(async (req, res) => {
           for (const c of d.docker.containers) { const u = unraidWebUi(c, host); if (u) out.webui[c.id] = u; } }, true)
       ]);
       return send(res, 200, out);
+    }
+    // Offline: a short-lived link for the phone to fetch a movie or episode with (see offlineSource).
+    if (p === '/api/offline' && m === 'POST') {
+      const b = await readBody(req), sv = db.services.find(x => x.id === b.sid && isMS(x) && allowed(x)), q = String(b.q || '720');
+      if (!sv || !b.key || !(q in OFF_Q)) return send(res, 400, { error: 'Pick a movie or episode on Plex or Jellyfin' });
+      if (!(await offlineMay(me, sv, String(b.key)).catch(() => false))) return send(res, 403, { error: 'Saving to the phone is not available for this title on your profile' });
+      for (const [k, v] of offTickets) if (v.exp < Date.now()) offTickets.delete(k);
+      const t = crypto.randomBytes(24).toString('hex'), name = cut(String(b.title || 'Video') + (b.sub ? ' - ' + b.sub : ''), 120);
+      offTickets.set(t, { uid: me.id, sid: sv.id, key: cut(String(b.key), 80), q, name, exp: Date.now() + 6 * 3600e3 });
+      audit(me.name, 'Saved to the phone', name + (q === 'orig' ? ' (original)' : ` (${q}p)`));
+      return send(res, 200, { url: '/api/offline/file/' + t, name, ext: q === 'orig' ? '' : 'mp4' });
     }
     // Watch together (see partyView).
     if (p === '/api/party/find' && m === 'GET') {

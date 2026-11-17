@@ -4,6 +4,9 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Android TV: the app's rows on the home screen (Play next, New in your library). -->
+    <uses-permission android:name="com.android.providers.tv.permission.READ_EPG_DATA" />
+    <uses-permission android:name="com.android.providers.tv.permission.WRITE_EPG_DATA" />
 
     <!-- Android TV: no touch screen there, and the leanback launcher is optional so phones still install it. -->
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
@@ -85,6 +88,19 @@
             </intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_list" />
         </receiver>
+        <!-- Android TV's home screen reads the posters of the app's rows from here. -->
+        <provider
+            android:name=".PosterProvider"
+            android:authorities="${applicationId}.posters"
+            android:exported="true" />
+        <!-- Offline: the saved videos are handed to the phone's video player through this. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.offline"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/offline_files" />
+        </provider>
         <!-- More widgets: the busiest downloads with Pause all, the server (admins), and shortcuts. -->
         <receiver android:name=".DownloadsWidget" android:exported="true" android:label="@string/widget_dl_title">
             <intent-filter>

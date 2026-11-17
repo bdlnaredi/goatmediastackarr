@@ -29,7 +29,7 @@ test('a watch party invites people and shows who is watching', async () => {
     assert.deepEqual((await jo.get('/api/party')).data.parties.map(x => x.id), [id]);
 
     const v = (await jo.get('/api/party/' + id)).data;
-    assert.equal(v.app, 'plex'); assert.equal(v.hostName, 'alex'); assert.equal(v.key, '77');
+    assert.equal(v.app, 'plex'); assert.equal(v.hostName, 'alex'); assert.equal(v.key, '77'); assert.ok(v.machine, 'the Plex server is named, for the Open in Plex link');
     const host = v.people.find(x => x.name === 'alex'), j = v.people.find(x => x.name === 'jo');
     assert.ok(host.host && host.watching && host.offset > 0, JSON.stringify(host));
     assert.ok(!j.watching && j.behind === null);

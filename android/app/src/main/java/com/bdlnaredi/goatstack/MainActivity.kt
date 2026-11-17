@@ -18,6 +18,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         super.onCreate(savedInstanceState)
         state.openLink(intent?.getStringExtra("link"))
         state.share(sharedFrom(intent))
+        TvRows.schedule(this)
         enableEdgeToEdge()
         setContent {
             val theme by state.theme.collectAsStateWithLifecycle()

@@ -4,6 +4,14 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- Unraid: running containers with a web page have an Open button (web and app).
+- Quiet hours: each person chooses hours when only problems make a sound on their phone and in their browsers; the rest arrives silently. Alert channels can have quiet hours too: what can wait is held and sent as one message when they end, and you choose what still comes through (the VPN going down, a disk problem…).
+- Upgrades (Health, and in the app): movies and episodes below the quality their profile wants, with a search for one or all. Admins hear once a week how many there are.
+- Season packs (Settings → Download rules): a finished season missing several episodes is searched as a whole season, so Sonarr takes a season pack.
+- Watch together: a watch party for a movie or episode on Plex or Jellyfin. The invited get a notification with a page to open it and see how far everyone is from the host.
+- App, Offline: save a movie or episode on the phone, made smaller by Plex or Jellyfin (or the original), to watch without the internet.
+- App on Android TV: Play next on the home screen has what you were watching, and a row "New in your library" is added.
+
 - App: three new home-screen widgets. Downloads shows the three busiest downloads with progress bars and time left, with Pause all and Resume all buttons. Server (admins) shows whether every app answers, the VPN and the fullest disk. Shortcuts opens Search, Discover, Requests or Downloads in one tap.
 
 - Recycle bin (Health, and More → Recycle bin in the app): torrents deleted with their files, files deleted from a title, titles removed with their files and duplicate copies wait there for 7 days (choose 1 to 30, or off) before they are gone. Put back returns the files and adds the torrent to qBittorrent again, or the title to Radarr or Sonarr, as it was. Files are moved within their own disk, so this is instant even for large films.
