@@ -220,7 +220,23 @@ private fun MainShell(state: AppState, me: Me, user: User) {
     CompositionLocalProvider(LocalCtx provides ctx) {
         // Not while the PIN is asked: a dialog would show above the lock screen.
         val pinLocked by state.locked.collectAsStateWithLifecycle()
-        if (!(pinLocked && user.pin)) shared?.let { sh -> com.bdlnaredi.goatstack.ui.screens.SharedHandler(sh) { state.shareDone() } }
+        val shareToast = com.bdlnaredi.goatstack.ui.screens.toaster()
+        // A page (TMDB, IMDb) opens from here, the same way a tapped notification does; links and files get a dialog.
+        androidx.compose.runtime.LaunchedEffect(shared, pinLocked) {
+            val sh = shared ?: return@LaunchedEffect
+            if (pinLocked && user.pin) return@LaunchedEffect
+            when (sh) {
+                is com.bdlnaredi.goatstack.data.Shared.Title -> { state.shareDone(); ctx.title(sh.type, sh.id) }
+                is com.bdlnaredi.goatstack.data.Shared.Imdb -> {
+                    val r = try { state.api.get<com.bdlnaredi.goatstack.data.Resolved>("/api/resolve?imdb=${sh.id}") } catch (e: Exception) { shareToast(e.message ?: "Could not find that title"); null }
+                    state.shareDone(); if (r != null) ctx.title(r.type, r.id)
+                }
+                is com.bdlnaredi.goatstack.data.Shared.Unknown -> { state.shareDone(); shareToast(if (sh.text.endsWith(".")) sh.text else "Nothing to open in that: share a magnet link, a .torrent file, or an IMDb or TMDB page.") }
+                else -> {}
+            }
+        }
+        if (!(pinLocked && user.pin)) (shared as? com.bdlnaredi.goatstack.data.Shared.Links ?: shared as? com.bdlnaredi.goatstack.data.Shared.TorrentFile)?.let { sh ->
+            com.bdlnaredi.goatstack.ui.screens.SharedHandler(sh) { state.shareDone() } }
         Scaffold(
             containerColor = g.bg,
             bottomBar = {

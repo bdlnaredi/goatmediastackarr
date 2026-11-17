@@ -33,20 +33,10 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 
-/** What was shared to the app: a title page opens straight away; magnet links and .torrent files are added here. */
+/** Magnet links and .torrent files shared to the app: added as downloads here (pages are opened by the app shell). */
 @Composable
 fun SharedHandler(s: Shared, onDone: () -> Unit) {
-    val ctx = LocalCtx.current
-    val toast = toaster()
-    when (s) {
-        is Shared.Title -> LaunchedEffect(s) { onDone(); ctx.title(s.type, s.id) }
-        is Shared.Imdb -> LaunchedEffect(s) {
-            try { val r = ctx.api.get<com.bdlnaredi.goatstack.data.Resolved>("/api/resolve?imdb=${s.id}"); onDone(); ctx.title(r.type, r.id) }
-            catch (e: Exception) { onDone(); toast(e.message ?: "Could not find that title") }
-        }
-        is Shared.Unknown -> LaunchedEffect(s) { onDone(); toast(if (s.text.endsWith(".")) s.text else "Nothing to open in that: share a magnet link, a .torrent file, or an IMDb or TMDB page.") }
-        is Shared.Links, is Shared.TorrentFile -> AddSharedDialog(s, onDone)
-    }
+    if (s is Shared.Links || s is Shared.TorrentFile) AddSharedDialog(s, onDone)
 }
 
 @Composable
