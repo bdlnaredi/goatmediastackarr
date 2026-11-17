@@ -1173,6 +1173,102 @@ async function qbUpload(s, fields, files) {
   const r = (await x.text()).trim();
   if (!x.ok || r === 'Fails.') throw new Error(r || 'qBittorrent refused the file');
 }
+// ---- Recycle bin (Settings → Recycle bin): what the dashboard deletes waits there for a few days first ----
+const BIN = require('./lib/recyclebin'), BIN_DIR = path.join(DATA, 'recycle');
+const binDays = () => { const d = (db.settings || {}).binDays; return d === 0 ? 0 : d > 0 ? Math.min(90, Math.round(d)) : 7; };
+const binList = () => (db.bin = Array.isArray(db.bin) ? db.bin : []);
+/** Moves [paths] into the bin and remembers how to put them back ([restore]). Null when the bin is off or the files
+ *  cannot be moved there (another disk, not reachable from here): the caller then deletes them as before. */
+function binPut(paths, meta, keepUnder) {
+  if (!binDays() || !paths.length) return null;
+  let r; try { r = BIN.stash(paths, keepUnder); } catch { return null; }
+  if (!r.ok || !r.items.length) return null;
+  const e = { id: r.id, at: Date.now(), size: r.size, items: r.items, ...meta };
+  binList().push(e); save();
+  return e;
+}
+function binSweep() {
+  const days = binDays(), list = binList(), keep = [];
+  for (const e of list) {
+    const old = Date.now() - e.at > (days || 0) * 864e5;
+    if (old) { BIN.drop(e); try { fs.unlinkSync(path.join(BIN_DIR, e.id + '.torrent')); } catch {} }
+    else if (BIN.intact(e)) keep.push(e);
+  }
+  if (keep.length !== list.length) { db.bin = keep; save(); }
+}
+// qBittorrent's .torrent file for a torrent (4.5 and newer), as bytes; null when it cannot give one.
+async function qbExport(s, hash) {
+  try {
+    await qb(s, '/api/v2/app/version');
+    const u = s.url.replace(/\/+$/, '');
+    const x = await fetch(u + '/api/v2/torrents/export?hash=' + encodeURIComponent(hash), { signal: AbortSignal.timeout(15000), headers: { Cookie: qbCookie[s.id], Referer: u } });
+    const b = Buffer.from(await x.arrayBuffer());
+    return x.ok && b.length > 20 && b[0] === 0x64 ? b : null;
+  } catch { return null; }
+}
+/** Removes qBittorrent torrents with their files, the files going into the bin when it can take them.
+ *  Returns how many went to the bin; the rest are deleted by qBittorrent as before. */
+async function qbBinDelete(s, hashes, by) {
+  let binned = 0;
+  const rest = [];
+  for (const h of hashes) {
+    let done = false;
+    try {
+      const t = ((await qb(s, '/api/v2/torrents/info?hashes=' + encodeURIComponent(h))) || [])[0];
+      const files = t ? await qb(s, '/api/v2/torrents/files?hash=' + encodeURIComponent(h)) : null;
+      if (t && Array.isArray(files) && files.length && binDays()) {
+        // Where the files are now: the finished folder, or the "incomplete" one while it still downloads.
+        const exists = p => fs.existsSync(p) || fs.existsSync(p + '.!qB');
+        const base = [t.save_path, t.download_path].filter(Boolean).find(b => files.some(f => exists(path.join(b, f.name))));
+        if (base) {
+          const paths = files.flatMap(f => [path.join(base, f.name), path.join(base, f.name) + '.!qB']).filter(p => fs.existsSync(p));
+          const torrent = await qbExport(s, h);
+          // Removed from qBittorrent first, so it lets go of the files, then they are moved.
+          await qb(s, '/api/v2/torrents/delete', { hashes: h, deleteFiles: 'false' });
+          const e = binPut(paths, { kind: 'torrent', name: cut(t.name, 200), by, sid: s.id, app: s.name,
+            restore: { save: t.save_path, base, category: t.category || '', tags: t.tags || '', magnet: torrent ? '' : cut(t.magnet_uri, 4000) } }, base);
+          if (e) {
+            if (torrent) { fs.mkdirSync(BIN_DIR, { recursive: true }); fs.writeFileSync(path.join(BIN_DIR, e.id + '.torrent'), torrent, { mode: 0o600 }); }
+            binned++; done = true;
+          } else {
+            // Could not be moved: deleted here, as qBittorrent would have done.
+            for (const p of paths) try { fs.rmSync(p, { recursive: true, force: true }); } catch {}
+            done = true;
+          }
+        }
+      }
+    } catch {}
+    if (!done) rest.push(h);
+  }
+  if (rest.length) await qb(s, '/api/v2/torrents/delete', { hashes: rest.join('|'), deleteFiles: 'true' });
+  return binned;
+}
+/** Puts a bin entry back: the files where they were, and the torrent or title back in its app. */
+async function binRestore(e) {
+  const sv = e.sid && db.services.find(x => x.id === e.sid);
+  if (e.sid && !sv) throw Object.assign(new Error(`${e.app || 'The app it came from'} is no longer set up`), { plain: true });
+  BIN.restore(e);
+  db.bin = binList().filter(x => x.id !== e.id); save();
+  const R = e.restore || {};
+  if (e.kind === 'torrent') {
+    const f = path.join(BIN_DIR, e.id + '.torrent'), opts = { category: R.category, tags: R.tags, savepath: R.save, skip_checking: 'false' };
+    if (R.base && R.base !== R.save) Object.assign(opts, { downloadPath: R.base, useDownloadPath: 'true' });
+    if (fs.existsSync(f)) { await qbUpload(sv, opts, [{ name: 'restored.torrent', buf: fs.readFileSync(f) }]); fs.unlinkSync(f); }
+    else if (R.magnet) await qb(sv, '/api/v2/torrents/add', { urls: R.magnet, ...opts });
+  } else if (e.kind === 'title') {
+    const tv = sv.type === 'sonarr', o = { ...R.item };
+    for (const k of ['id', 'added', 'statistics', 'movieFile', 'movieFileId', 'hasFile', 'sizeOnDisk']) delete o[k];
+    o.addOptions = tv ? { searchForMissingEpisodes: false, monitor: 'none' } : { searchForMovie: false };
+    await ext(sv, `/api/v3/${tv ? 'series' : 'movie'}`, { method: 'POST', body: JSON.stringify(o) });
+    swrDrop('lib:' + sv.id);
+  } else if (e.kind === 'files' && sv) {
+    await ext(sv, '/api/v3/command', { method: 'POST', body: JSON.stringify(sv.type === 'sonarr' ? { name: 'RescanSeries', seriesId: R.parent } : { name: 'RescanMovie', movieIds: [R.parent], movieId: R.parent }) });
+    swrDrop('lib:' + sv.id);
+  }
+}
+const binPub = e => ({ id: e.id, kind: e.kind, name: e.name, by: e.by || '', app: e.app || '', at: e.at, size: e.size, until: e.at + binDays() * 864e5,
+  files: e.items.length, where: e.items.length ? cut(e.items[0].from, 400) : '' });
+
 const rssFlat = (node, base, out) => {
   for (const [k, v] of Object.entries(node || {})) {
     const pth = base ? base + '\\' + k : k;
@@ -3348,7 +3444,13 @@ const goatServer = http.createServer(async (req, res) => {
       else if (act === 'force') await qb(s, '/api/v2/torrents/setForceStart', { ...f, value: 'true' });
       else if (act === 'recheck') await qb(s, '/api/v2/torrents/recheck', f);
       else if (act === 'reannounce') await qb(s, '/api/v2/torrents/reannounce', f);
-      else if (act === 'delete') { await qb(s, '/api/v2/torrents/delete', { ...f, deleteFiles: b.files ? 'true' : 'false' }); audit(me.name, 'Removed downloads', hashes.split('|').length + ' torrent(s)' + (b.files ? ' with files' : '')); }
+      else if (act === 'delete') {
+        // With their files: the files go to the recycle bin first (when it can take them).
+        const binned = b.files ? await qbBinDelete(s, hashes.split('|'), me.name) : 0;
+        if (!b.files) await qb(s, '/api/v2/torrents/delete', { ...f, deleteFiles: 'false' });
+        audit(me.name, 'Removed downloads', hashes.split('|').length + ' torrent(s)' + (b.files ? ' with files' : '') + (binned ? ` (${binned} in the recycle bin)` : ''));
+        return send(res, 200, { binned });
+      }
       else if (['top', 'up', 'down', 'bottom'].includes(act)) await qb(s, '/api/v2/torrents/' + { top: 'topPrio', up: 'increasePrio', down: 'decreasePrio', bottom: 'bottomPrio' }[act], f);
       else if (act === 'category') await qb(s, '/api/v2/torrents/setCategory', { ...f, category: cut(b.value) });
       else if (act === 'addtag' || act === 'rmtag') await qb(s, '/api/v2/torrents/' + (act === 'addtag' ? 'addTags' : 'removeTags'), { ...f, tags: cut(b.value) });
@@ -3908,6 +4010,20 @@ const goatServer = http.createServer(async (req, res) => {
       return send(res, 200, [...byColl.values()].filter(x => x.id > 0 && x.name).map(x => ({ ...x, total: Math.max(x.total, x.have) })).sort((a, b) => a.name.localeCompare(b.name)));
     }
     // One movie or show, in full: for the title page in the phone app. From Seerr, or from TMDB when there is no Seerr.
+    // A link shared to the app (IMDb, TMDB): which title page it is. TMDB numbers come straight from the link; an IMDb
+    // number is looked up with TMDB when there is a key, then in Radarr and Sonarr.
+    if (p === '/api/resolve' && m === 'GET') {
+      const q = new URL(req.url, 'http://x').searchParams, imdb = String(q.get('imdb') || '');
+      if (!/^tt\d{5,10}$/.test(imdb)) return send(res, 400, { error: 'Not an IMDb link' });
+      let hit = null;
+      if (listKeys().tmdb) hit = await lists.findImdb(imdb).catch(() => null);
+      for (const sv of db.services.filter(x => x.type === 'radarr' && allowed(x))) { if (hit) break;
+        const x = await ext(sv, '/api/v3/movie/lookup/imdb?imdbId=' + imdb).catch(() => null); if (x && x.tmdbId) hit = { type: 'movie', id: x.tmdbId }; }
+      for (const sv of db.services.filter(x => x.type === 'sonarr' && allowed(x))) { if (hit) break;
+        const l = await ext(sv, '/api/v3/series/lookup?term=' + encodeURIComponent('imdb:' + imdb)).catch(() => null), x = Array.isArray(l) && l[0];
+        if (x && x.tmdbId) hit = { type: 'tv', id: x.tmdbId }; }
+      return hit ? send(res, 200, hit) : send(res, 404, { error: 'Could not find that title. Add a TMDB key under Settings → Discover lists, or Radarr or Sonarr.' });
+    }
     if (p === '/api/title' && m === 'GET') {
       const q = new URL(req.url, 'http://x').searchParams, type = q.get('type') === 'tv' ? 'tv' : 'movie', id = Math.round(+q.get('id'));
       if (!(id > 0)) return send(res, 400, { error: 'Bad request' });
@@ -3962,14 +4078,22 @@ const goatServer = http.createServer(async (req, res) => {
       if (!s || !(id > 0) || !['movie', 'episode', 'season'].includes(kind) || (kind === 'movie') !== (s.type === 'radarr')) return send(res, 400, { error: 'Bad request' });
       let ids = [], what = '';
       if (kind === 'movie') { const x = await call(s, '/api/v3/movie/' + id); if (x.movieFile && x.movieFile.id) ids = [x.movieFile.id]; what = x.title; }
-      else if (kind === 'episode') { const x = await call(s, '/api/v3/episode/' + id); if (x.episodeFileId) ids = [x.episodeFileId]; what = 'episode ' + id; }
+      else if (kind === 'episode') { const x = await call(s, '/api/v3/episode/' + id); if (x.episodeFileId) ids = [x.episodeFileId]; what = (x.title ? `S${pad2(x.seasonNumber)}E${pad2(x.episodeNumber)} ${x.title}` : 'episode ' + id); }
       else { const n = Math.round(+q.get('season')); if (!(n >= 0)) return send(res, 400, { error: 'Bad request' });
         const fl = await call(s, '/api/v3/episodefile?seriesId=' + id); ids = (Array.isArray(fl) ? fl : []).filter(f => f.seasonNumber === n).map(f => f.id); what = 'season ' + n + ' of series ' + id; }
       if (!ids.length) return send(res, 404, { error: 'There is no file to delete.' });
-      for (const fid of ids) await call(s, `/api/v3/${kind === 'movie' ? 'moviefile' : 'episodefile'}/${fid}`, { method: 'DELETE' });
+      // Into the recycle bin first: the files are moved aside, then Radarr or Sonarr forgets them (it deletes nothing that is gone).
+      let e = null;
+      if (binDays()) {
+        const fpaths = (await Promise.all(ids.map(fid => call(s, `/api/v3/${kind === 'movie' ? 'moviefile' : 'episodefile'}/${fid}`).then(x => x && x.path).catch(() => null)))).filter(Boolean);
+        const parent = kind === 'movie' ? id : kind === 'season' ? id : await call(s, '/api/v3/episode/' + id).then(x => x.seriesId).catch(() => 0);
+        if (fpaths.length === ids.length && parent) e = binPut(fpaths, { kind: 'files', name: cut(what, 200), by: me.name, sid: s.id, app: s.name, restore: { parent } });
+      }
+      try { for (const fid of ids) await call(s, `/api/v3/${kind === 'movie' ? 'moviefile' : 'episodefile'}/${fid}`, { method: 'DELETE' }); }
+      catch (err) { if (e) { try { BIN.restore(e); } catch {} db.bin = binList().filter(x => x !== e); save(); } throw err; }
       swrDrop('lib:' + s.id);
-      audit(me.name, 'Deleted files', s.name + ': ' + cut(what, 120) + ' (' + ids.length + ' file' + (ids.length === 1 ? '' : 's') + ')');
-      return send(res, 200, { deleted: ids.length });
+      audit(me.name, 'Deleted files', s.name + ': ' + cut(what, 120) + ' (' + ids.length + ' file' + (ids.length === 1 ? '' : 's') + ')' + (e ? ', in the recycle bin' : ''));
+      return send(res, 200, { deleted: ids.length, binned: e ? 1 : 0 });
     }
     if ((r = p.match(/^\/api\/requests\/(\w+)\/report$/)) && m === 'POST') {
       const x = db.requests.find(y => y.id === r[1]); if (!x || (me.role !== 'admin' && x.uid !== me.id)) return send(res, 404, { error: 'Not found' });
@@ -4795,6 +4919,36 @@ const goatServer = http.createServer(async (req, res) => {
       audit(me.name, 'Bulk change', `${sv.name}: ${op}${op === 'preset' ? ' ' + b.preset : ''} on ${ids.length}`); return send(res, 200, { n: ids.length });
     }
     if (me.role !== 'admin') return send(res, 403, { error: 'Admins only' });
+    // The recycle bin: what was deleted lately, to put back or delete for good.
+    if (p === '/api/bin' && m === 'GET') {
+      binSweep();
+      const items = binList().slice().sort((a, b) => b.at - a.at).map(binPub);
+      return send(res, 200, { days: binDays(), items, total: items.reduce((a, x) => a + x.size, 0) });
+    }
+    if (p === '/api/bin' && m === 'PUT') {
+      const b = await readBody(req), d = Math.round(+b.days);
+      if (!(d >= 0 && d <= 90)) return send(res, 400, { error: 'Keep things for 0 to 90 days' });
+      db.settings.binDays = d; save(); binSweep(); audit(me.name, 'Changed the recycle bin', d ? `keeps things ${d} day${d === 1 ? '' : 's'}` : 'turned off');
+      return send(res, 200, { days: binDays() });
+    }
+    if (p === '/api/bin' && m === 'DELETE') {
+      const list = binList(), size = list.reduce((a, e) => a + e.size, 0);
+      for (const e of list) { BIN.drop(e); try { fs.unlinkSync(path.join(BIN_DIR, e.id + '.torrent')); } catch {} }
+      db.bin = []; save(); audit(me.name, 'Emptied the recycle bin', list.length + ' item(s)');
+      return send(res, 200, { freed: size });
+    }
+    if ((r = p.match(/^\/api\/bin\/([a-z0-9]{8,40})(\/restore)?$/))) {
+      const e = binList().find(x => x.id === r[1]); if (!e) return send(res, 404, { error: 'It is no longer in the recycle bin' });
+      if (r[2] && m === 'POST') {
+        try { await binRestore(e); } catch (err) { return send(res, 409, { error: err.plain ? err.message : 'Could not put it back: ' + err.message }); }
+        audit(me.name, 'Put back from the recycle bin', e.name); return send(res, 200, { ok: true });
+      }
+      if (!r[2] && m === 'DELETE') {
+        BIN.drop(e); try { fs.unlinkSync(path.join(BIN_DIR, e.id + '.torrent')); } catch {}
+        db.bin = binList().filter(x => x !== e); save(); audit(me.name, 'Deleted for good from the recycle bin', e.name);
+        return send(res, 200, { freed: e.size });
+      }
+    }
     // Request rules (Settings → Limits): which requests go through without an admin.
     if (p === '/api/reqrules' && m === 'GET') return send(res, 200, { rules: reqRules() });
     if (p === '/api/reqrules' && m === 'PUT') {
@@ -4902,7 +5056,8 @@ const goatServer = http.createServer(async (req, res) => {
         if (b.path) {
           const g = dupState.groups.find(x => x.kind !== 'twice' && x.files.some(f => f.path === b.path && !f.tracked));
           if (!g) return send(res, 400, { error: 'Look for duplicates again first' });
-          try { fs.unlinkSync(b.path); } catch (e) { return send(res, 500, { error: 'Could not delete it: ' + e.code }); }
+          const be = binPut([b.path], { kind: 'files', name: cut(path.basename(b.path), 200), by: me.name, app: 'Duplicates', restore: {} });
+          if (!be) try { fs.unlinkSync(b.path); } catch (e) { return send(res, 500, { error: 'Could not delete it: ' + e.code }); }
           g.files = g.files.filter(f => f.path !== b.path); g.extra = g.files.filter(f => !f.tracked).reduce((a, f) => a + f.size, 0);
           if (g.files.length < 2) dupState.groups = dupState.groups.filter(x => x !== g);
           audit(me.name, 'Deleted a duplicate copy', b.path); return send(res, 200, { ok: true });
@@ -4912,7 +5067,10 @@ const goatServer = http.createServer(async (req, res) => {
         if (!g || !sv || g.files.length < 2) return send(res, 400, { error: 'Look for duplicates again first' });
         // Taken out of that Radarr with its file, and kept out (an import exclusion), so it is not downloaded again.
         const f = g.files.find(x => x.sid === b.sid && x.fileId === +b.fileId);
-        await call(sv, `/api/v3/movie/${f.movieId}?deleteFiles=true&addImportExclusion=true`, { method: 'DELETE' });
+        const item = binDays() ? await call(sv, `/api/v3/movie/${f.movieId}`).catch(() => null) : null;
+        const be = item && item.path && fs.existsSync(item.path) ? binPut([item.path], { kind: 'title', name: cut(item.title + (item.year ? ` (${item.year})` : ''), 200), by: me.name, sid: sv.id, app: sv.name, restore: { item } }) : null;
+        try { await call(sv, `/api/v3/movie/${f.movieId}?deleteFiles=${!be}&addImportExclusion=true`, { method: 'DELETE' }); }
+        catch (err) { if (be) { try { BIN.restore(be); } catch {} db.bin = binList().filter(x => x !== be); save(); } throw err; }
         g.files = g.files.filter(f => !(f.sid === b.sid && f.fileId === +b.fileId)); if (g.files.length < 2) dupState.groups = dupState.groups.filter(x => x !== g);
         audit(me.name, 'Deleted a duplicate copy', `${g.title} in ${sv.name}`); return send(res, 200, { ok: true });
       }
@@ -5422,9 +5580,18 @@ const goatServer = http.createServer(async (req, res) => {
     }
     if ((r = p.match(/^\/api\/library\/(\w+)\/(\d+)$/)) && m === 'DELETE') {
       const s = arr(db.services.find(x => x.id === r[1])); if (!s) return send(res, 404, { error: 'Not found' });
-      const files = new URL(req.url, 'http://x').searchParams.get('files') === '1';
-      await call(s, `/api/v3/${s.type === 'sonarr' ? 'series' : 'movie'}/${r[2]}?deleteFiles=${files}`, { method: 'DELETE' }); audit(me.name, 'Removed from library', s.name + ' item ' + r[2] + (files ? ' with files' : ''));
-      return send(res, 200, {});
+      const files = new URL(req.url, 'http://x').searchParams.get('files') === '1', ent = s.type === 'sonarr' ? 'series' : 'movie';
+      // With its files: the folder goes to the recycle bin, and the title can be put back as it was.
+      let e = null;
+      if (files && binDays()) {
+        const item = await call(s, `/api/v3/${ent}/${r[2]}`).catch(() => null);
+        if (item && item.path && fs.existsSync(item.path)) e = binPut([item.path], { kind: 'title', name: cut(item.title + (item.year ? ` (${item.year})` : ''), 200), by: me.name, sid: s.id, app: s.name, restore: { item } });
+      }
+      try { await call(s, `/api/v3/${ent}/${r[2]}?deleteFiles=${files && !e}`, { method: 'DELETE' }); }
+      catch (err) { if (e) { try { BIN.restore(e); } catch {} db.bin = binList().filter(x => x !== e); save(); } throw err; }
+      swrDrop('lib:' + s.id);
+      audit(me.name, 'Removed from library', (e ? e.name + ' in ' + s.name : s.name + ' item ' + r[2]) + (files ? ' with files' : '') + (e ? ', in the recycle bin' : ''));
+      return send(res, 200, { binned: e ? 1 : 0 });
     }
     if ((r = p.match(/^\/api\/unraid\/(\w+)\/logs$/))) {
       const s = svcOf(r[1], 'unraid'), id = new URL(req.url, 'http://x').searchParams.get('id') || '';
@@ -5768,6 +5935,8 @@ for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => { console.log('Go
 setTimeout(() => monitor().catch(() => {}), Math.min(3000, MON_MS));
 setTimeout(() => wpSync(), +process.env.WP_DELAY_MS || 20000).unref();
 setInterval(() => wpSync(), 6 * 3600e3).unref();
+setInterval(() => { try { binSweep(); } catch {} }, 3600e3).unref();
+setTimeout(() => { try { binSweep(); } catch {} }, 60000).unref();
 // Discover's lists are fetched ahead of time (soon after starting, then every 3 hours), so opening them never waits on the sites.
 setTimeout(() => lists.warm().catch(() => {}), 90000).unref();
 // The libraries are read once soon after starting, so the first visit to Library does not wait either.

@@ -191,6 +191,8 @@ private fun MainShell(state: AppState, me: Me, user: User) {
     val link by state.pendingLink.collectAsStateWithLifecycle()
     // A tapped notification opens its page.
     androidx.compose.runtime.LaunchedEffect(link) { link?.let { l -> state.linkDone(); ctx.openLink(l) } }
+    // Shared to the app from another one: a title page opens, a magnet link or .torrent file is offered as a download.
+    val shared by state.pendingShare.collectAsStateWithLifecycle()
     // Notifications: checked every 30 seconds while the app is open, and in the background by Android.
     androidx.compose.runtime.LaunchedEffect(prefs.notify, prefs.every) { com.bdlnaredi.goatstack.data.Notify.schedule(context, prefs) }
     androidx.compose.runtime.LaunchedEffect(Unit) {
@@ -216,6 +218,9 @@ private fun MainShell(state: AppState, me: Me, user: User) {
         }
     }
     CompositionLocalProvider(LocalCtx provides ctx) {
+        // Not while the PIN is asked: a dialog would show above the lock screen.
+        val pinLocked by state.locked.collectAsStateWithLifecycle()
+        if (!(pinLocked && user.pin)) shared?.let { sh -> com.bdlnaredi.goatstack.ui.screens.SharedHandler(sh) { state.shareDone() } }
         Scaffold(
             containerColor = g.bg,
             bottomBar = {
@@ -259,6 +264,7 @@ private fun MainShell(state: AppState, me: Me, user: User) {
                 composable("chats") { com.bdlnaredi.goatstack.ui.screens.ChatAppsScreen() }
                 composable("wrapped") { com.bdlnaredi.goatstack.ui.screens.WrappedScreen() }
                 composable("passkeys") { com.bdlnaredi.goatstack.ui.screens.PasskeysScreen() }
+                composable("recyclebin") { com.bdlnaredi.goatstack.ui.screens.RecycleBinScreen() }
                 composable("trackers") { com.bdlnaredi.goatstack.ui.screens.TrackersScreen() }
                 composable("notifications") { com.bdlnaredi.goatstack.ui.screens.NotificationsScreen() }
                 composable(

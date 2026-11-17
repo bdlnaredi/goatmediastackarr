@@ -148,6 +148,12 @@ function create(o) {
     const [url, opt] = tmdbAuth(`/${kind === 'tv' ? 'tv' : 'movie'}/${posInt(id)}`, { append_to_response: 'credits,videos,recommendations' });
     return get(url, opt, 'TMDB');
   }
+  // A title by its IMDb number (tt…): which TMDB movie or show it is.
+  async function findImdb(imdb) {
+    const [url, opt] = tmdbAuth(`/find/${encodeURIComponent(imdb)}`, { external_source: 'imdb_id' });
+    const d = (await get(url, opt, 'TMDB')) || {}, m = (d.movie_results || [])[0], t = (d.tv_results || [])[0] || (d.tv_episode_results || []).map(e => ({ id: e.show_id }))[0];
+    return m ? { type: 'movie', id: m.id } : t && t.id ? { type: 'tv', id: t.id } : null;
+  }
   // One person, with everything they were in or made.
   async function person(id) {
     const [url, opt] = tmdbAuth(`/person/${posInt(id)}`, { append_to_response: 'combined_credits' });
@@ -172,7 +178,7 @@ function create(o) {
     return get(url, opt, 'TMDB');
   }
 
-  return { list, warm, enabled, details, person, collection, recommendations, byMaker, LISTS, NAMES };
+  return { list, warm, enabled, details, findImdb, person, collection, recommendations, byMaker, LISTS, NAMES };
 }
 
 module.exports = { create, LISTS, NAMES };

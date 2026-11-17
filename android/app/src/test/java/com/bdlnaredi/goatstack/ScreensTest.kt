@@ -280,6 +280,23 @@ class ScreensTest {
         assertTrue("calls the pretend server does not know: ${fake.misses}", fake.misses.isEmpty())
     }
 
+    @Test fun recycleBinAndSharing() {
+        connect()
+        show()
+        tap("More"); waitFor("Go to")
+        openFromMore("Recycle bin"); waitFor("Quiet Orbit (2026)"); waitFor("Put back"); shot("78-recycle-bin"); back()
+        // A magnet link shared from a browser: offered as a download, into a category.
+        compose.runOnUiThread { state.share(com.bdlnaredi.goatstack.data.Shared.parse("Check this magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Neon.Saints.2026.1080p")) }
+        waitFor("Add a download"); waitFor("Neon.Saints.2026.1080p"); shot("79-share-magnet")
+        tap("Add")
+        compose.waitUntil(10_000) { fake.calls.any { it.startsWith("POST /api/torrent/add") } }
+        // An IMDb page: its title page opens.
+        compose.runOnUiThread { state.share(com.bdlnaredi.goatstack.data.Shared.parse("https://m.imdb.com/title/tt0111161/?ref_=x")) }
+        compose.waitUntil(10_000) { fake.calls.any { it.startsWith("GET /api/resolve?imdb=tt0111161") } }
+        waitFor("Some signals"); shot("80-share-imdb")
+        assertTrue("calls the pretend server does not know: ${fake.misses}", fake.misses.isEmpty())
+    }
+
     @Test fun version4Pages() {
         connect()
         show()

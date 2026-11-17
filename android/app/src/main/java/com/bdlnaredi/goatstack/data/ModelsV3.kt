@@ -105,6 +105,11 @@ data class Device(val id: String = "", val user: String = "", val device: String
 @Serializable data class QbMeta(val free: Long = 0, val categories: List<QbCategory> = emptyList(), val tags: List<String> = emptyList())
 @Serializable data class QbCategory(val name: String = "", val path: String = "")
 /** Where a title is in the library (/api/inlib), or empty when it is not. */
+/** The recycle bin (admins): what was deleted lately, how long it is kept. */
+@Serializable data class BinItem(val id: String = "", val kind: String = "", val name: String = "", val by: String = "", val app: String = "", val at: Long = 0, val size: Long = 0, val until: Long = 0, val files: Int = 0, val where: String = "")
+/** Which title page a shared IMDb link is. */
+@Serializable data class Resolved(val type: String = "movie", val id: Long = 0)
+@Serializable data class BinList(val days: Int = 7, val items: List<BinItem> = emptyList(), val total: Long = 0)
 @Serializable data class InLib(val sid: String = "", val id: Long = 0, val kind: String = "")
 /** qBittorrent's own limits, in KB/s (0 = none); "alt" are used while alternative speeds are on. */
 @Serializable data class QbPrefs(val dl: Int = 0, val up: Int = 0, val altDl: Int = 0, val altUp: Int = 0)

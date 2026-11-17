@@ -494,6 +494,8 @@ function localize(root){
 }
 async function loadLang(){L={};document.documentElement.lang=LANG;if(LANG==='en')return;try{const r=await fetch('/lang/'+LANG+'.json');if(r.ok)L=await r.json()}catch{}}
 new MutationObserver(ms=>{for(const m of ms){if(m.type==='characterData'){if(LANG!=='en')trNode(m.target)}else m.addedNodes.forEach(localize)}}).observe(document.documentElement,{childList:true,subtree:true,characterData:true});
+// After a delete: says when it went to the recycle bin (Health), where it can be put back.
+const binNote=(r,plain)=>toast(r&&r.binned?(plain?plain+'. ':'')+'In the recycle bin under Health, to put back':plain||'Done','ok');
 function toast(m,k){const el=document.createElement('div');el.className='toast '+(k||'');el.setAttribute('role',k==='bad'?'alert':'status');el.textContent=m;$('#toasts').append(el);setTimeout(()=>el.remove(),k==='bad'?7000:3500)}
 const skel=(n=4)=>Array.from({length:n},()=>'<div class="box"><div class="sk" style="width:62%"></div><div class="sk" style="width:36%;margin-top:9px"></div></div>').join('');
 const fp=s=>String(s||'').replace(/\\/g,' / ');
@@ -2124,7 +2126,7 @@ function dlView(){
   let t=[],vis=[],key=null,busy=0,csig=null,bbSig='',match={},meta={categories:[],tags:[],free:null};
   const mt=x=>`<span>${fmt(x.size)}</span>${x.dlspeed>0?`<span style="color:var(--link)">↓ ${fmt(x.dlspeed)}/s</span>`:''}${x.upspeed>0?`<span style="color:var(--ok-t)">↑ ${fmt(x.upspeed)}/s</span>`:''}${x.progress<1&&x.eta<8640000?`<span>${fmtEta(x.eta)} left</span>`:''}${match[x.hash]?`<span class="chip">${esc(match[x.hash])}</span>`:''}<span>ratio ${(+x.ratio).toFixed(2)}</span><span>${x.seeds} seeds, ${x.peers} peers</span>${x.category?`<span class="chip">${esc(x.category)}</span>`:''}<span>added ${new Date(x.added*1000).toLocaleDateString()}</span>`;
   const pillCls=x=>{const g=stOf(x.state);return 'pill '+(g==='errors'?'bad':x.state==='stalledDL'?'warn':g==='seeding'?'ok':g==='downloading'?'acc':'')};
-  const run=async(a,hashes,extra)=>{$('#e').textContent='';try{await act({action:a,hashes,...extra});await draw()}catch(x){toast(x.message,'bad')}};
+  const run=async(a,hashes,extra)=>{$('#e').textContent='';try{const r=await act({action:a,hashes,...extra});await draw();return r}catch(x){toast(x.message,'bad');return false}};
   const syncMaster=()=>{const m=$('#sa');if(!m)return;const n=vis.filter(x=>dlSel.has(x.hash)).length;m.checked=vis.length>0&&n===vis.length;m.indeterminate=n>0&&n<vis.length};
   const bulkBar=()=>{syncMaster();const n=dlSel.size,b=$('#bk');b.style.display=n?'flex':'none';if(!n){bbSig='';return}
     const sig=n+'|'+meta.categories.map(c=>c.name).join(',');if(sig===bbSig)return;bbSig=sig;
@@ -2177,7 +2179,7 @@ function dlView(){
     if(a==='clear'){dlSel.clear();key=null;paint();bulkBar();return}
     if(a==='delete'){if(!confirm(`Remove ${hs.length} torrent${hs.length>1?'s':''} from qBittorrent?`))return;
       const files=confirm('Also delete the downloaded files?\n\nOK = delete the files, Cancel = keep the files');
-      await run('delete',hs,{files});dlSel.clear();key=null;paint();bulkBar();toast('Removed','ok');return}
+      const r=await run('delete',hs,{files});if(r===false)return;dlSel.clear();key=null;paint();bulkBar();binNote(r,'Removed');return}
     await run(a,hs)};
   $('#bk').onchange=async e=>{if(e.target.id!=='bc'||!e.target.value)return;await run('category',[...dlSel],{value:e.target.value==='__none'?'':e.target.value});e.target.value='';toast('Category updated','ok')};
   $('#fl').onclick=e=>{const b=e.target.closest('[data-f]');if(!b)return;dlF=b.dataset.f;key=null;paint()};
@@ -2247,7 +2249,7 @@ async function openTorrent(s,x,meta,after){
     if(a==='location'){v=prompt('Move to this folder (path on the server):',x.path);if(!v)return}
     if(a==='delete'){if(!confirm(`Remove this torrent from ${TYPES[s.type]||'the download app'}?`))return;
       const files=confirm('Also delete the downloaded files?\n\nOK = delete the files, Cancel = keep the files');
-      try{await act({action:'delete',files});o.close();after()}catch(ex){err(ex.message)}return}
+      try{const r=await act({action:'delete',files});o.close();after();binNote(r,'Removed')}catch(ex){err(ex.message)}return}
     try{await act({action:a,value:v});err();if(a==='rename'){x.name=v}after();if(a==='rename'||a==='location')o.close()}catch(ex){err(ex.message)}});
   o.addEventListener('change',async e=>{const c=e.target.closest('[data-fc],#fa');if(!c||!info)return;
     const ids=c.id==='fa'?info.files.map(f=>f.i):[+c.dataset.fc],pr=c.checked?1:0;
@@ -2609,7 +2611,7 @@ async function seriesDialog(s,x,cb){
       if(!confirm(`Delete the downloaded file${ep?'':'s'} of ${what} from disk? ${ep?'The episode stays':'The episodes stay'} in the library${d.monitored?' and may be downloaded again while monitored':''}.`))return;
       (ed||sd).disabled=true;
       try{const r=await api(ep?`/api/files?sid=${encodeURIComponent(s.id)}&kind=episode&id=${ep.id}`:`/api/files?sid=${encodeURIComponent(s.id)}&kind=season&id=${x.id}&season=${n}`,'DELETE');
-        d.episodes.forEach(q=>{if(ep?q.id===ep.id:q.season===n){q.has=false;q.size=0;q.quality='';q.path='';q.fileId=0}});toast(r.deleted===1?'File deleted':r.deleted+' files deleted','ok');draw();if(cb.onChange)cb.onChange()}
+        d.episodes.forEach(q=>{if(ep?q.id===ep.id:q.season===n){q.has=false;q.size=0;q.quality='';q.path='';q.fileId=0}});binNote(r,r.deleted===1?'File deleted':r.deleted+' files deleted');draw();if(cb.onChange)cb.onChange()}
       catch(ex){(ed||sd).disabled=false;toast(ex.message,'bad')}return}
     const ss=e.target.closest('[data-ss]'),es=e.target.closest('[data-es]'),sa=e.target.closest('[data-sa]'),sx=e.target.closest('[data-sx]'),rm=e.target.closest('[data-rm]');
     if(ss){ss.disabled=true;try{await api('/api/auto','POST',{sid:s.id,id:x.id,scope:'season',season:+ss.dataset.ss});toast('Searching season '+ss.dataset.ss,'ok')}catch(ex){toast(ex.message,'bad')}ss.disabled=false}
@@ -2619,7 +2621,7 @@ async function seriesDialog(s,x,cb){
       for(const n of nums){if(!ok)break;ok=await post({kind:'season',id:x.id,season:n,monitored:v});if(ok){seas(n).monitored=v;d.episodes.forEach(q=>{if(q.season===n)q.monitored=v})}}
       if(ok)toast(v?'All seasons monitored':'All seasons unmonitored','ok');draw()}
     if(rm){if(!confirm('Remove "'+x.title+'" from your library?'))return;const files=confirm('Also delete the downloaded files from disk?\n\nOK = delete the files, Cancel = keep the files');
-      try{await api(`/api/library/${s.id}/${x.id}?files=${files?1:0}`,'DELETE');o.close();if(cb.onRemove)cb.onRemove()}catch(ex){toast(ex.message,'bad')}}});
+      try{const r=await api(`/api/library/${s.id}/${x.id}?files=${files?1:0}`,'DELETE');o.close();binNote(r,'Removed');if(cb.onRemove)cb.onRemove()}catch(ex){toast(ex.message,'bad')}}});
 }
 // The page of a movie or show inside Radarr or Sonarr itself (admins only).
 const arrHref=(s,slug,id)=>{if(me.role!=='admin'||!s)return '';const b=String(svcOpen(s)||'').replace(/\/+$/,'');if(!b)return '';return b+(s.type==='sonarr'?'/series/'+encodeURIComponent(slug||''):'/movie/'+encodeURIComponent(slug||id))};
@@ -2671,13 +2673,13 @@ function showDetail(x){
     if(f.have){const fl=f.file||{};b.innerHTML=`<span class="pill ok">File available</span>${fl.quality?`<span class="pill">${esc(fl.quality)}</span>`:''}${fl.codec?`<span class="pill">${esc(fl.codec)}</span>`:''}${(fl.langs||[]).length?`<span class="pill">${esc(fl.langs.join(', '))}</span>`:''}${fl.size?`<span class="pill">${fmt(fl.size)}</span>`:''}${fl.path||fl.name?`<div class="mute fpath" title="Where the file is saved">${ic('dl')}<span>${esc(fl.path||fl.name)}</span></div>`:''}${me.role==='admin'&&fl.id?`<button class="danger sm" id="dfile" style="flex-basis:auto">${ic('trash')}Delete file</button>`:''}`}
     else b.innerHTML=!f.released?'<span class="pill">Not released yet</span>':`<span class="pill bad">No file yet</span><span class="mute">${f.monitored?'Monitored, waiting for a download.':'Not monitored, so nothing will be downloaded.'}</span>`;if(!f.have&&f.folder)b.insertAdjacentHTML('beforeend',`<div class="mute fpath" title="Where it will be saved">${ic('dl')}<span>${esc(f.folder)}</span></div>`);
     const df=q('#dfile');if(df)df.onclick=async()=>{if(!confirm('Delete the downloaded file of "'+x.title+'" from disk? It stays in the library'+(f.monitored?' and is monitored, so it may be downloaded again.':'.')))return;df.disabled=true;
-      try{await api(`/api/files?sid=${encodeURIComponent(x.sid)}&kind=${f.kind==='movie'?'movie':'episode'}&id=${x.id}`,'DELETE');toast('File deleted','ok');b.innerHTML='<span class="pill bad">File deleted</span>';if(x.onfiles)x.onfiles()}catch(e){df.disabled=false;toast(e.message,'bad')}};if(f.ids||x.arr){b.insertAdjacentHTML('afterend',idChips(f.ids,x.arr));if(f.ids&&f.ids.tmdb)if(f.ids.tmdb)loadExtras(q('#cx'),f.ids.type,f.ids.tmdb)}}).catch(()=>{const b=q('#fs');if(b)b.remove()});
+      try{const r=await api(`/api/files?sid=${encodeURIComponent(x.sid)}&kind=${f.kind==='movie'?'movie':'episode'}&id=${x.id}`,'DELETE');binNote(r,'File deleted');b.innerHTML='<span class="pill bad">File deleted</span>';if(x.onfiles)x.onfiles()}catch(e){df.disabled=false;toast(e.message,'bad')}};if(f.ids||x.arr){b.insertAdjacentHTML('afterend',idChips(f.ids,x.arr));if(f.ids&&f.ids.tmdb)if(f.ids.tmdb)loadExtras(q('#cx'),f.ids.type,f.ids.tmdb)}}).catch(()=>{const b=q('#fs');if(b)b.remove()});
   if(q('#mon'))q('#mon').onchange=async e=>{const t=e.target,v=t.checked;t.disabled=true;
     try{await api('/api/monitor','POST',{sid:x.mon.sid,kind:x.mon.kind,id:x.mon.id,monitored:v});x.mon.monitored=v;if(x.mon.onChange)x.mon.onChange(v);toast(v?'Now monitored':'No longer monitored','ok')}
     catch(ex){t.checked=!v;st.textContent=ex.message}t.disabled=!can('add')};
   if(q('#rm'))q('#rm').onclick=async()=>{if(!confirm('Remove "'+x.title+'" from your library?'))return;
     const files=confirm('Also delete the downloaded files from disk?\n\nOK = delete the files, Cancel = keep the files');
-    try{await api(`/api/library/${x.sid}/${x.id}?files=${files?1:0}`,'DELETE');close();if(x.onremove)x.onremove()}catch(e){st.textContent=e.message}};
+    try{const r=await api(`/api/library/${x.sid}/${x.id}?files=${files?1:0}`,'DELETE');close();binNote(r,'Removed');if(x.onremove)x.onremove()}catch(e){st.textContent=e.message}};
   if(q('#sbz'))subsBox(q('#sbz'),x);
   if(!q('#au'))return;
   q('#au').onclick=async()=>{const b=q('#au');b.disabled=true;st.textContent='Starting search…';
@@ -4082,8 +4084,27 @@ async function dupPanel(again){
   el.querySelector('#dups').onclick=async()=>{try{await api('/api/dupes/scan','POST',{});dupPanel(true)}catch(x){toast(x.message,'bad')}};
   if(d.running){setTimeout(()=>{if($('#dupp'))dupPanel(true)},2000);return}
   el.onclick=async e=>{const b=e.target.closest('[data-dp],[data-dt]');if(!b)return;const [gi,fi]=(b.dataset.dp||b.dataset.dt).split(':').map(Number),g=d.groups[gi],f=g.files[fi];
-    if(!confirm(b.dataset.dp?`Delete this file for good?\n\n${f.path}\n\n${g.app} keeps using the other copy.`:`Take ${g.title} out of ${f.app}?\n\nIts file there is deleted and ${f.app} will not add it again. The copy in the other Radarr stays.`))return;
-    b.disabled=true;try{await api('/api/dupes/remove','POST',b.dataset.dp?{path:f.path}:{sid:f.sid,fileId:f.fileId});toast(`Deleted, ${fmt(f.size)} freed`,'ok');dupPanel(true)}catch(x){toast(x.message,'bad');b.disabled=false}};
+    if(!confirm(b.dataset.dp?`Delete this file?\n\n${f.path}\n\n${g.app} keeps using the other copy.`:`Take ${g.title} out of ${f.app}?\n\nIts file there is deleted and ${f.app} will not add it again. The copy in the other Radarr stays.`))return;
+    b.disabled=true;try{await api('/api/dupes/remove','POST',b.dataset.dp?{path:f.path}:{sid:f.sid,fileId:f.fileId});toast(`Deleted (${fmt(f.size)}). It waits in the recycle bin below for a few days, if it is on.`,'ok');dupPanel(true);binPanel()}catch(x){toast(x.message,'bad');b.disabled=false}};
+}
+// The recycle bin: what was deleted lately waits here, to put back or delete for good.
+async function binPanel(){
+  const el=$('#binp');if(!el)return;let d;try{d=await api('/api/bin')}catch(x){el.innerHTML=`<div class="err">${esc(x.message)}</div>`;return}
+  const when=t=>new Date(t).toLocaleString(undefined,{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+  const left=t=>{const n=Math.ceil((t-Date.now())/864e5);return n<=1?'Goes for good within a day':`Goes for good in ${n} days`};
+  const kinds={torrent:'Torrent',title:'Movie or show',files:'File'};
+  el.innerHTML=`<div class="row"><b style="font-size:16px" class="grow">Recycle bin</b>${d.items.length?`<span class="pill">${fmt(d.total)}</span><button class="danger" id="bine">Empty</button>`:''}
+    <label class="row" style="gap:6px">Keep for <select id="bind">${[[0,'Off'],[1,'1 day'],[3,'3 days'],[7,'7 days'],[14,'14 days'],[30,'30 days']].concat([[0,1,3,7,14,30].includes(d.days)?[]:[[d.days,d.days+' days']]]).map(([v,l])=>`<option value="${v}"${v===d.days?' selected':''}>${l}</option>`).join('')}</select></label></div>
+    <p class="mute" style="margin:6px 0 0">${d.days?`Torrents deleted with their files, files deleted from a title, titles removed with their files and duplicate copies wait here for ${d.days} day${d.days>1?'s':''} before they are gone. They still take up space until then.`:'Off: deleting removes files straight away.'} Only files on the same disk as the bin's folder can wait here; others are deleted straight away.</p>
+    ${d.items.map(x=>`<div class="box row" style="margin-top:8px;gap:6px 10px;flex-wrap:wrap"><div class="grow" style="min-width:220px"><b style="word-break:break-word">${esc(x.name)}</b>
+      <div class="mute">${kinds[x.kind]||'File'}${x.app?' · '+esc(x.app):''} · ${fmt(x.size)}${x.files>1?` in ${x.files} files`:''} · deleted ${when(x.at)}${x.by?' by '+esc(x.by):''}</div><div class="mute" style="font-size:12px">${left(x.until)}</div></div>
+      <button data-br="${esc(x.id)}">${ic('refresh')}Put back</button><button class="danger" data-bx="${esc(x.id)}">Delete now</button></div>`).join('')}
+    ${d.days&&!d.items.length?'<p class="mute">Empty.</p>':''}`;
+  el.querySelector('#bind').onchange=async e=>{try{await api('/api/bin','PUT',{days:+e.target.value});toast(+e.target.value?'Saved':'Recycle bin turned off','ok')}catch(x){toast(x.message,'bad')}binPanel()};
+  const em=el.querySelector('#bine');if(em)em.onclick=async()=>{if(!confirm(`Delete everything in the recycle bin for good (${fmt(d.total)})?`))return;try{const r=await api('/api/bin','DELETE');toast(fmt(r.freed)+' freed','ok')}catch(x){toast(x.message,'bad')}binPanel()};
+  el.onclick=async e=>{const b=e.target.closest('[data-br],[data-bx]');if(!b)return;const x=d.items.find(y=>y.id===(b.dataset.br||b.dataset.bx));if(!x)return;
+    if(b.dataset.bx&&!confirm(`Delete "${x.name}" for good (${fmt(x.size)})?`))return;
+    b.disabled=true;try{if(b.dataset.br){await api(`/api/bin/${x.id}/restore`,'POST',{});toast(x.kind==='torrent'?'Put back, and added to qBittorrent again':x.kind==='title'?'Put back in the library':'Put back','ok')}else{await api(`/api/bin/${x.id}`,'DELETE');toast(fmt(x.size)+' freed','ok')}binPanel()}catch(y){toast(y.message,'bad');b.disabled=false}};
 }
 // File Browser's share links: the ones made, how often each was downloaded, copy or remove them.
 async function fbShares(){
@@ -4136,14 +4157,14 @@ async function hlView(){
   // Every app reports the same disks, so they are shown once, with what each folder is for.
   const seen=new Set(),disks=l.flatMap(x=>x.disks||[]).filter(d=>{const k=d.path+'|'+d.total;if(seen.has(k))return false;seen.add(k);return true});
   const diskRow=d=>{const used=(1-d.free/d.total)*100;return `<div style="margin:10px 0"><div class="row" style="gap:4px 12px"><span class="grow"><b style="font-weight:560">${esc(d.label||d.path)}</b>${d.label?` <span class="mute">${esc(d.path)}</span>`:''}</span><span class="mute">${fmt(d.free)} free of ${fmt(d.total)} · ${used.toFixed(0)}% used</span></div><div class="bar" role="img" aria-label="${used.toFixed(0)} percent used"><i class="${used>90?'bad':''}" style="width:${used.toFixed(0)}%"></i></div>${fcLine(d)}</div>`};
-  $('#m').innerHTML=`<div class="panel" id="warns" style="margin-bottom:14px"><b style="font-size:16px">Needs attention</b><div class="mute" style="margin-top:6px">Asking every app…</div></div><div class="panel" id="heal" style="margin-bottom:14px"></div>${me.role==='admin'?'<div class="panel" id="dupp" style="margin-bottom:14px"></div>':''}`+(disks.length?`<div class="panel" style="margin-bottom:14px"><b style="font-size:16px">Disk space</b>${disks.map(diskRow).join('')}</div>`:'')+l.map(x=>{
+  $('#m').innerHTML=`<div class="panel" id="warns" style="margin-bottom:14px"><b style="font-size:16px">Needs attention</b><div class="mute" style="margin-top:6px">Asking every app…</div></div><div class="panel" id="heal" style="margin-bottom:14px"></div>${me.role==='admin'?'<div class="panel" id="dupp" style="margin-bottom:14px"></div><div class="panel" id="binp" style="margin-bottom:14px"></div>':''}`+(disks.length?`<div class="panel" style="margin-bottom:14px"><b style="font-size:16px">Disk space</b>${disks.map(diskRow).join('')}</div>`:'')+l.map(x=>{
     const n=x.issues.length+x.queue.length+(x.ok?0:1);
     return `<div class="panel" style="margin-bottom:14px"><div class="row"><b style="font-size:16px">${esc(x.name)}</b>${String(TYPES[x.type]||x.type).toLowerCase()===String(x.name).toLowerCase()?'':`<span class="mute">${esc(TYPES[x.type]||x.type)}</span>`}<span class="grow"></span>${x.missing!=null?`<span class="mute">${x.missing} missing</span>`:''}<span class="pill ${!x.ok?'bad':n?'warn':'ok'}">${!x.ok?'Not reachable':n?n+' to check':'Healthy'}</span></div>
       ${!x.ok?`<div class="err">${esc(x.error||'')}</div>`:''}
       ${x.issues.map(i=>`<div class="box row" style="margin-top:8px"><span class="pill ${i.level==='bad'?'bad':'warn'}">${i.level==='bad'?'Error':'Warning'}</span><span class="grow" style="word-break:break-word">${esc(i.text)}</span></div>`).join('')}
       ${x.queue.length?`<div class="mute" style="margin-top:12px">Downloads that are stuck</div>${x.queue.map(i=>`<div class="box row" style="gap:8px"><div class="grow" style="min-width:0"><b style="word-break:break-word">${esc(i.title)}</b><div class="mute">${esc(i.message)}</div></div>${i.downloadId&&['sonarr','radarr'].includes(x.type)?`<button data-qi="${esc(x.id)}" data-qd="${esc(i.downloadId)}" data-qn="${esc(i.title)}">Import</button>`:''}</div>`).join('')}`:''}
       </div>`}).join('');
-  healPanel();warnPanel();dupPanel();
+  healPanel();warnPanel();dupPanel();binPanel();
   // Listened for once. The mark is a property, not a data-qi attribute: one on #m would make every click on the page
   // look like an Import button (closest('[data-qi]') finds #m itself) and open an empty import window.
   const mm=$('#m');if(!mm._qiOn){mm._qiOn=true;mm.addEventListener('click',e=>{const b=e.target.closest('button[data-qi]');if(b&&tab==='hl')importDialog({sid:b.dataset.qi,downloadId:b.dataset.qd,name:b.dataset.qn,after:hlView})})}

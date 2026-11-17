@@ -33,6 +33,11 @@ class AppState(val store: Store) {
     val pendingLink: StateFlow<String?> = _link
     fun openLink(l: String?) { if (!l.isNullOrBlank()) _link.value = l }
     fun linkDone() { _link.value = null }
+    private val _share = MutableStateFlow<Shared?>(null)
+    /** Something shared to the app (a magnet link, a .torrent file, an IMDb or TMDB page), handled once signed in. */
+    val pendingShare: StateFlow<Shared?> = _share
+    fun share(s: Shared?) { if (s != null) _share.value = s }
+    fun shareDone() { _share.value = null }
     private val _updates = MutableStateFlow<Updates?>(null)
     /** The newest release, asked of the server once per start (an older server without the check just leaves it empty). */
     val updates: StateFlow<Updates?> = _updates

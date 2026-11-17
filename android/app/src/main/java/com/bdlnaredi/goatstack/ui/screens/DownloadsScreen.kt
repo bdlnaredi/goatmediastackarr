@@ -256,11 +256,11 @@ private fun Torrents(sid: String, qbit: Boolean = true) {
     fun act(action: String, hashes: Any, ok: String, files: Boolean = false, force: Boolean = false) {
         scope.launch {
             try {
-                ctx.api.send("POST", "/api/qb/$sid/act", buildJsonObject {
+                val binned = ctx.api.sendBinned("POST", "/api/qb/$sid/act", buildJsonObject {
                     put("action", action); if (hashes is String) put("hashes", hashes) else put("hash", (hashes as Torrent).hash)
                     if (files) put("files", true); if (force) put("force", true)
                 })
-                toast(ok)
+                toast(if (binned) "$ok · in the recycle bin, to put back" else ok)
             } catch (e: com.bdlnaredi.goatstack.data.ApiError) {
                 // Not seeded long enough for its tracker yet: asked again (removing now can be a hit and run).
                 if (e.code == 409 && action == "delete" && hashes is Torrent) early = Triple(hashes, files, e.message ?: "")

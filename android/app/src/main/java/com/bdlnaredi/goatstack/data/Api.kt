@@ -113,6 +113,11 @@ class Api(private val onSession: (String?) -> Unit) {
     suspend inline fun <reified T> get(path: String): T = json.decodeFromString(call("GET", path))
     suspend inline fun <reified T> post(path: String, body: JsonObject = JsonObject(emptyMap())): T = json.decodeFromString(call("POST", path, body.toString()))
     suspend fun send(method: String, path: String, body: JsonObject? = null) { call(method, path, body?.toString()) }
+    /** Sends a delete; true when the server moved what was deleted into the recycle bin (it can be put back there). */
+    suspend fun sendBinned(method: String, path: String, body: JsonObject? = null): Boolean {
+        val text = call(method, path, body?.toString())
+        return try { (json.parseToJsonElement(text).jsonObject["binned"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: 0) > 0 } catch (_: Exception) { false }
+    }
 
     /** The server's live feed (downloads, playing now, health), one update about every second. Reconnects by itself. */
     fun live(): Flow<Live> = flow {

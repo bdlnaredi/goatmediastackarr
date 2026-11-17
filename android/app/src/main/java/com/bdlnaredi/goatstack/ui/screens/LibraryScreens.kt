@@ -331,9 +331,12 @@ fun DetailScreen(sid: String, kind: String, id: Long) {
             "Delete the file${if (k == "season") "s" else ""}?", "The downloaded file${if (k == "season") "s" else ""} of $what ${if (k == "season") "are" else "is"} deleted from the disk. It stays in the library${if (x.monitored) " and may be downloaded again while monitored" else ""}.", "Delete", danger = true,
             onYes = {
                 delFile = null
-                act("Deleted") {
-                    ctx.api.send("DELETE", if (k == "season") "/api/files?sid=$sid&kind=season&id=$id&season=$did" else "/api/files?sid=$sid&kind=$k&id=$did")
-                    LibCache.lists.remove(sid); reload++
+                scope.launch {
+                    try {
+                        val binned = ctx.api.sendBinned("DELETE", if (k == "season") "/api/files?sid=$sid&kind=season&id=$id&season=$did" else "/api/files?sid=$sid&kind=$k&id=$did")
+                        LibCache.lists.remove(sid); reload++
+                        toast(if (binned) "Deleted · in the recycle bin, to put back" else "Deleted")
+                    } catch (e: Exception) { toast(e.message ?: "That did not work") }
                 }
             },
             onNo = { delFile = null },
@@ -345,8 +348,8 @@ fun DetailScreen(sid: String, kind: String, id: Long) {
                 remove = false
                 scope.launch {
                     try {
-                        ctx.api.send("DELETE", "/api/library/$sid/$id?files=${if (withFiles) 1 else 0}")
-                        LibCache.lists.remove(sid); toast("Removed"); ctx.back()
+                        val binned = ctx.api.sendBinned("DELETE", "/api/library/$sid/$id?files=${if (withFiles) 1 else 0}")
+                        LibCache.lists.remove(sid); toast(if (binned) "Removed · in the recycle bin, to put back" else "Removed"); ctx.back()
                     } catch (e: Exception) { toast(e.message ?: "Could not remove it") }
                 }
             },
