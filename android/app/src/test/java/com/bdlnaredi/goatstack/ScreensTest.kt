@@ -287,7 +287,7 @@ class ScreensTest {
         openFromMore("Recycle bin"); waitFor("Quiet Orbit (2026)"); waitFor("Put back"); shot("78-recycle-bin"); back()
         // A magnet link shared from a browser: offered as a download, into a category.
         compose.runOnUiThread { state.share(com.bdlnaredi.goatstack.data.Shared.parse("Check this magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Neon.Saints.2026.1080p")) }
-        waitFor("Add a download"); waitFor("Neon.Saints.2026.1080p"); shot("79-share-magnet")
+        waitFor("Add a download"); waitFor("Neon.Saints.2026.1080p")
         tap("Add")
         compose.waitUntil(10_000) { fake.calls.any { it.startsWith("POST /api/torrent/add") } }
         // An IMDb page: its title page opens.
