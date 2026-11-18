@@ -106,7 +106,7 @@ fun OfflineScreen() {
                         if (apps.size > 1) Pills(apps.map { it.id to it.name }, sid) { sid = it; pick = null }
                         val p = pick
                         if (p == null) {
-                            GoatField(q, { q = it }, "Find a movie or episode", Icons.Rounded.Search, Modifier.fillMaxWidth())
+                            GoatField(q, { q = it }, "Find a movie, episode or show", Icons.Rounded.Search, Modifier.fillMaxWidth())
                             hits.forEach { h ->
                                 Column(Modifier.fillMaxWidth().clickable { pick = h; q = "" }.padding(vertical = 8.dp)) {
                                     Text(h.title, style = MaterialTheme.typography.bodyMedium, color = g.text)
