@@ -335,4 +335,18 @@ class ScreensTest {
         openFromMore("Settings"); waitFor("Appearance"); scrollTo("Sign in with Plex"); waitFor("Linked to ann.plex"); shot("53-settings-plex")
         assertTrue("calls the pretend server does not know: ${fake.misses}", fake.misses.isEmpty())
     }
+
+    /** A tap on Continue watching plays the title in the app's own player, from where it was left. */
+    @Test fun playsInTheApp() {
+        connect()
+        show()
+        waitFor("Playing now")
+        scrollTo("Continue watching"); waitFor("Glass Meridian")
+        compose.onAllNodesWithText("Glass Meridian").onFirst().performClick()
+        compose.waitForIdle()
+        val started = org.robolectric.Shadows.shadowOf(ApplicationProvider.getApplicationContext<android.app.Application>()).nextStartedActivity
+        assertTrue("the player opened", started?.component?.className == PlayerActivity::class.java.name)
+        assertTrue("for that title", started.getStringExtra("key") == "m1" && started.getStringExtra("sid") == "j1")
+        assertTrue("from where it was left", started.getDoubleExtra("at", 0.0) in 0.36..0.38)
+    }
 }

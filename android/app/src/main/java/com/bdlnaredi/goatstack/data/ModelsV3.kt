@@ -121,6 +121,8 @@ data class Device(val id: String = "", val user: String = "", val device: String
 @Serializable data class OfflineEp(val key: String = "", val title: String = "", val sub: String = "")
 @Serializable data class OfflineNext(val title: String = "", val items: List<OfflineEp> = emptyList())
 /** Offline: the short-lived link a saved video is fetched with. */
+/** A link for the app's player: the original file, or a smaller stream (HLS) starting [from] seconds in; [duration] in seconds (0 when not known). */
+@Serializable data class PlayLink(val url: String = "", val hls: Boolean = false, val duration: Long = 0, val from: Long = 0)
 @Serializable data class OfflineLink(val url: String = "", val name: String = "", val ext: String = "")
 /** Watch together. */
 @Serializable data class PartyHit(val key: String = "", val kind: String = "movie", val title: String = "", val sub: String = "", val thumb: String = "")

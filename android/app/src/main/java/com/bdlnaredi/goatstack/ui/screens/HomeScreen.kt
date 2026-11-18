@@ -2,6 +2,7 @@ package com.bdlnaredi.goatstack.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.Box
@@ -67,9 +68,11 @@ import com.bdlnaredi.goatstack.ui.rememberLoad
 import com.bdlnaredi.goatstack.ui.theme.LocalGoat
 import java.time.LocalTime
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun HomeScreen() {
     val ctx = LocalCtx.current
+    val context = androidx.compose.ui.platform.LocalContext.current
     val g = LocalGoat.current
     val svcs = services()
     var live by remember { mutableStateOf<Live?>(null) }
@@ -223,7 +226,11 @@ fun HomeScreen() {
                                 b?.let { "${it}web/index.html#/details?id=${c.key}" + if (d.server.isNotBlank()) "&serverId=${d.server}" else "" }
                             }
                         }
-                        Column(Modifier.width(118.dp).clickable(enabled = link != null) { link?.let { runCatching { uri.openUri(it) } } }) {
+                        // A tap plays it here, in the app's player; a long press opens it in Plex or Jellyfin.
+                        Column(Modifier.width(118.dp).combinedClickable(enabled = c.key.isNotBlank(),
+                            onClickLabel = "Play here", onLongClickLabel = "Open in ${media.name}",
+                            onLongClick = { link?.let { runCatching { uri.openUri(it) } } },
+                            onClick = { com.bdlnaredi.goatstack.PlayerActivity.stream(context, media.id, c.key, c.title, c.sub, if (c.next) 0.0 else c.progress) })) {
                             Poster(ctx.api.mediaImage(media.id, media.type, c.thumb), c.title, Modifier.fillMaxWidth(), corner = 12.dp)
                             Spacer(Modifier.height(6.dp))
                             if (c.next) Text("Up next", style = MaterialTheme.typography.labelSmall, color = g.primary)

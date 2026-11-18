@@ -72,6 +72,16 @@
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- The app's own video player (picture-in-picture when you leave it while playing). -->
+        <activity
+            android:name=".PlayerActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:supportsPictureInPicture="true"
+            android:resizeableActivity="true"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboardHidden|keyboard|navigation"
+            android:screenOrientation="sensorLandscape"
+            android:theme="@style/Theme.Goat.Player" />
         <!-- The home-screen widget: speeds and what is playing. -->
         <receiver android:name=".GoatWidget" android:exported="true" android:label="@string/app_name">
             <intent-filter>

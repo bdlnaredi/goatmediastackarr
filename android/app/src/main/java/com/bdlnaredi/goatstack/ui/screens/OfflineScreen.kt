@@ -139,6 +139,9 @@ fun OfflineScreen() {
                             Pills(QUALITY, quality) { quality = it }
                             Text(if (quality == "orig") "The file as it is on the server: best picture, but large." else "Made smaller by ${apps.firstOrNull { it.id == sid }?.name ?: "the server"} while it downloads. About ${mbPerHour(quality)} an hour.",
                                 style = MaterialTheme.typography.labelSmall, color = g.muted, modifier = Modifier.padding(vertical = 6.dp))
+                            GhostButton("Play here", icon = Icons.Rounded.PlayArrow, modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp), onClick = {
+                                com.bdlnaredi.goatstack.PlayerActivity.stream(context, sid, p.key, p.title, p.sub)
+                            })
                             GhostButton("Play on a TV", icon = Icons.Rounded.Cast, modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp), onClick = {
                                 casting = CastWhat(p.title, p.sub) {
                                     val r = ctx.api.post<OfflineLink>("/api/offline", buildJsonObject { put("sid", sid); put("key", p.key); put("title", p.title); put("sub", p.sub); put("q", if (quality == "orig") "1080" else quality) })
@@ -259,6 +262,7 @@ internal fun mbPerHour(q: String) = when (q) { "480" -> "0.7 GB"; "720" -> "1.4 
 
 /** Opens a saved video in the phone's video player. */
 private fun play(ctx: Context, f: File, fail: (String) -> Unit) {
+    try { com.bdlnaredi.goatstack.PlayerActivity.file(ctx, f); return } catch (_: Exception) {}
     try {
         val uri = androidx.core.content.FileProvider.getUriForFile(ctx, ctx.packageName + ".offline", f)
         ctx.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, if (f.extension == "mp4") "video/mp4" else "video/*")

@@ -1352,6 +1352,35 @@ async function partyView(x) {
 // Jellyfin makes a smaller copy as it is fetched (720p and so on), or sends the original file.
 const OFF_Q = { orig: null, 1080: { w: 1920, h: 1080, kbps: 8000 }, 720: { w: 1280, h: 720, kbps: 3000 }, 480: { w: 854, h: 480, kbps: 1500 } };
 const offTickets = new Map();
+// ---- The app's own player: a short-lived link (no sign-in, no Plex or Jellyfin key in it) to the original file, or to
+// a stream Plex or Jellyfin makes smaller as it plays (HLS). Everything under the link is passed on to Plex or Jellyfin
+// with the key added, and playlists are rewritten so no key or server address leaks into them.
+const playTickets = new Map();
+function playUpstream(sv, t, rest, query) {
+  const base = sv.url.replace(/\/+$/, ''), Q = OFF_Q[t.q] || OFF_Q[720], qs = new URLSearchParams(query || '');
+  if (sv.type === 'plex') {
+    if (rest === 'master.m3u8') {
+      const ps = new URLSearchParams({ path: '/library/metadata/' + t.key, mediaIndex: '0', partIndex: '0', protocol: 'hls', fastSeek: '1', directPlay: '0', directStream: '1', directStreamAudio: '1',
+        videoQuality: '100', videoResolution: `${Q.w}x${Q.h}`, maxVideoBitrate: String(Q.kbps), subtitles: 'burn', subtitleSize: '100', audioBoost: '100', session: t.session, offset: String(t.from || 0),
+        'X-Plex-Session-Identifier': t.session, 'X-Plex-Client-Identifier': 'goatmediastackarr-player-' + t.session, 'X-Plex-Product': 'GoatMediaStackarr', 'X-Plex-Platform': 'Chrome' });
+      return `${base}/video/:/transcode/universal/start.m3u8?${ps}&X-Plex-Token=${encodeURIComponent(sv.apiKey || '')}`;
+    }
+    qs.set('X-Plex-Token', sv.apiKey || ''); qs.set('X-Plex-Client-Identifier', 'goatmediastackarr-player-' + t.session);
+    return `${base}/video/:/transcode/universal/${rest}?${qs}`;
+  }
+  const id = encodeURIComponent(t.key);
+  if (rest === 'master.m3u8') return `${base}/Videos/${id}/master.m3u8?MediaSourceId=${id}&VideoCodec=h264&AudioCodec=aac&AudioChannels=2&MaxStreamingBitrate=${Q.kbps * 1000}&MaxWidth=${Q.w}&MaxHeight=${Q.h}&SegmentContainer=ts&StartTimeTicks=${(t.from || 0) * 1e7}&PlaySessionId=${t.session}&DeviceId=goatmediastackarr-player&api_key=${encodeURIComponent(sv.apiKey || '')}`;
+  qs.set('api_key', sv.apiKey || '');
+  return `${base}/Videos/${id}/${rest}?${qs}`;
+}
+// Playlists: links to Plex or Jellyfin become links under the ticket; keys in them are taken out.
+function playRewrite(text, sv, t, prefix) {
+  const base = sv.url.replace(/\/+$/, ''), path = sv.type === 'plex' ? '/video/:/transcode/universal/' : `/Videos/${encodeURIComponent(t.key)}/`;
+  // Full addresses, ones without the scheme, and ones from the server's root all become ones under the ticket.
+  return text.split(base + path).join(prefix).split(base.replace(/^https?:/, '') + path).join(prefix)
+    .replace(/^\/(video\/:\/transcode\/universal|Videos\/[^/\s]+)\//gm, prefix).replace(/(URI=")\/(video\/:\/transcode\/universal|Videos\/[^/\s"]+)\//g, '$1' + prefix)
+    .replace(/([?&])(X-Plex-Token|api_key|ApiKey)=[^&\s"]*/gi, '$1').replace(/[?&](?=\s|$|")/g, '');
+}
 /** Whether this person may take the title away: their app access, their libraries; never for kids or limited profiles. */
 async function offlineMay(u, sv, key) {
   if (u.role === 'admin') return true;
@@ -3385,6 +3414,27 @@ const goatServer = http.createServer(async (req, res) => {
       req.on('close', () => rs.destroy()); rs.on('error', () => res.destroy()); rs.pipe(res);
       return;
     }
+    // The app's player: everything under a play link (see playUpstream).
+    const plm = p.match(/^\/api\/play\/([a-f0-9]{48})\/([\w./:-]{1,300})$/);
+    if (plm && (m === 'GET' || m === 'HEAD')) {
+      const t = playTickets.get(plm[1]);
+      if (!t || t.exp < Date.now() || plm[2].includes('..')) return send(res, 404, { error: 'This play link has run out. Start it again in the app.' });
+      const sv = db.services.find(x => x.id === t.sid); if (!sv) return send(res, 404, { error: 'Not found' });
+      const x = await fetch(playUpstream(sv, t, plm[2], new URL(req.url, 'http://x').search.slice(1)), { headers: { Accept: '*/*', ...(req.headers.range ? { Range: req.headers.range } : {}) }, signal: AbortSignal.timeout(60000) }).catch(() => null);
+      if (!x || (!x.ok && x.status !== 206)) return send(res, 502, { error: `${sv.name} could not play that (${x ? x.status : 'no answer'})` });
+      const ct = x.headers.get('content-type') || '';
+      if (/mpegurl|m3u8/i.test(ct) || plm[2].endsWith('.m3u8')) {
+        const body = playRewrite(await x.text(), sv, t, `/api/play/${plm[1]}/`);
+        res.writeHead(200, { 'Content-Type': 'application/vnd.apple.mpegurl', 'Cache-Control': 'no-store' }); return res.end(body);
+      }
+      const h = { 'Content-Type': ct || 'video/mp2t', 'Cache-Control': 'no-store' };
+      for (const k of ['content-length', 'content-range', 'accept-ranges']) if (x.headers.get(k)) h[k] = x.headers.get(k);
+      res.writeHead(x.status, h);
+      if (m === 'HEAD') return res.end();
+      const { Readable } = require('stream'); const rs = Readable.fromWeb(x.body);
+      req.on('close', () => rs.destroy()); rs.on('error', () => res.destroy()); rs.pipe(res);
+      return;
+    }
     if (p === '/api/logout') { sessions.delete(th(token)); saveSess(); return send(res, 200, {}, { 'Set-Cookie': 'sid=; Path=/; Max-Age=0' }); }
     if (!me) return send(res, 401, { error: 'Sign in first' });
     // Two-step sign-in is required and not set up yet: only setting it up (and signing out) works until it is.
@@ -4053,6 +4103,40 @@ const goatServer = http.createServer(async (req, res) => {
       if (!sv || !show) return send(res, 400, { error: 'Pick a show on Plex or Jellyfin' });
       if (!(await offlineMay(me, sv, show).catch(() => false))) return send(res, 403, { error: 'Saving to the phone is not available for this show on your profile' });
       return send(res, 200, await nextUnwatched(me, sv, show, Math.min(5, Math.max(1, +q.get('n') || 2))));
+    }
+    // The app's player: a link to play a movie or episode with, the original (seekable, every track) or made smaller.
+    if (p === '/api/play' && m === 'POST') {
+      const b = await readBody(req), sv = db.services.find(x => x.id === b.sid && isMS(x) && allowed(x)), q = String(b.q || 'orig');
+      if (!sv || !b.key || !(q in OFF_Q)) return send(res, 400, { error: 'Pick a movie or episode on Plex or Jellyfin' });
+      if (!(await offlineMay(me, sv, String(b.key)).catch(() => false))) return send(res, 403, { error: 'Playing in the app is not available for this title on your profile. Open it in Plex or Jellyfin.' });
+      const t = crypto.randomBytes(24).toString('hex'), key = cut(String(b.key), 80), name = cut(String(b.title || 'Video') + (b.sub ? ' - ' + b.sub : ''), 120), exp = Date.now() + 12 * 3600e3;
+      for (const [k, v] of playTickets) if (v.exp < Date.now()) playTickets.delete(k);
+      for (const [k, v] of offTickets) if (v.exp < Date.now()) offTickets.delete(k);
+      // How long it is (to start part way: [at] is the part watched, or [from] seconds in).
+      let duration = 0;
+      try {
+        if (sv.type === 'plex') duration = Math.round(((((await plexGet(sv, '/library/metadata/' + encodeURIComponent(key))).MediaContainer) || {}).Metadata || [{}])[0].duration / 1000) || 0;
+        else duration = Math.round((((await (await jfGet(sv, `/Items?Ids=${encodeURIComponent(key)}&Fields=RunTimeTicks`)).json()).Items || [{}])[0].RunTimeTicks || 0) / 1e7);
+      } catch {}
+      let from = Math.max(0, Math.floor(Number(b.from) || 0));
+      if (!from && b.at > 0 && b.at < 0.95 && duration) from = Math.floor(duration * b.at);
+      if (duration && from > duration - 5) from = 0;
+      if (q === 'orig') { offTickets.set(t, { uid: me.id, sid: sv.id, key, q, name, exp }); return send(res, 200, { url: '/api/offline/file/' + t, hls: false, duration, from }); }
+      playTickets.set(t, { uid: me.id, sid: sv.id, key, q, exp, from, session: crypto.randomBytes(8).toString('hex') });
+      // A smaller stream starts at [from]: the player's time 0 is [from] seconds in.
+      return send(res, 200, { url: `/api/play/${t}/master.m3u8`, hls: true, duration, from });
+    }
+    // Watched to the end in the app's player: marked as watched in Plex (for the owner's account) or Jellyfin (their own).
+    if (p === '/api/play/done' && m === 'POST') {
+      const b = await readBody(req), sv = db.services.find(x => x.id === b.sid && isMS(x) && allowed(x)), key = String(b.key || '');
+      if (!sv || !key) return send(res, 400, { error: 'Bad request' });
+      try {
+        if (sv.type === 'jellyfin') {
+          const names = partyNames(me), ju = ((await (await jfGet(sv, '/Users')).json()) || []).find(x => names.includes(String(x.Name || '').trim().toLowerCase()));
+          if (ju) await jfGet(sv, `/Users/${ju.Id}/PlayedItems/${encodeURIComponent(key)}`, { method: 'POST' });
+        } else if (me.role === 'admin') await fetch(`${sv.url.replace(/\/+$/, '')}/:/scrobble?identifier=com.plexapp.plugins.library&key=${encodeURIComponent(key)}`, { headers: { 'X-Plex-Token': sv.apiKey || '' }, signal: AbortSignal.timeout(8000) });
+      } catch {}
+      return send(res, 200, {});
     }
     // Offline: a short-lived link for the phone to fetch a movie or episode with (see offlineSource).
     if (p === '/api/offline' && m === 'POST') {

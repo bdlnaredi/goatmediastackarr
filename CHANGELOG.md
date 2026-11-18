@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- Android: a video player in the app. A tap on Continue watching on Home plays the title right there, from where you left it (a long press still opens Plex or Jellyfin). Seeking, audio and subtitle tracks, speed, picture-in-picture when you leave it, and it remembers where you stopped. On Wi-Fi it plays the original file; on mobile data Plex or Jellyfin makes it smaller as it plays (the quality button switches between original, 1080p, 720p and 480p). More → Offline gets Play here, and saved videos play in the app too. The phone gets a short-lived link from the server, never a Plex or Jellyfin key. Played to the end, it is marked as watched (in Plex for the owner's account).
+
 ## v1.0.35 — 2026-11-18
 
 - Before an update: at each start, every app whose version changed gets a backup of its settings before it runs ("Before an update" under Settings → Backup, with the versions; the newest 3 are kept). Put back undoes an update that spoiled something.
