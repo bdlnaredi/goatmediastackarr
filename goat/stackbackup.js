@@ -13,7 +13,7 @@ const E = require('./engines');
 
 const C = () => E.CONFIG;
 const DIR = () => process.env.GOAT_BACKUP_DIR || path.join(C(), 'backups');
-const NAME_RE = /^stack-(auto|manual|before-restore)-(\d{4}-\d{2}-\d{2}-\d{6}(?:\d{3})?)\.tar\.gz$/;
+const NAME_RE = /^stack-(auto|manual|before-restore|before-update)-(\d{4}-\d{2}-\d{2}-\d{6}(?:\d{3})?)\.tar\.gz$/;
 
 // Folder in /config for each part of the backup, and what is left out of it (paths inside that folder).
 const PARTS = {
@@ -68,13 +68,14 @@ function list() {
   try { names = fs.readdirSync(d).filter(n => NAME_RE.test(n)); } catch {}
   return names.map(n => {
     const st = fs.statSync(path.join(d, n)), m = n.match(NAME_RE);
-    let parts = []; try { parts = JSON.parse(fs.readFileSync(path.join(d, n + '.json'), 'utf8')).parts || []; } catch {}
-    return { name: n, kind: m[1], at: st.mtimeMs, size: st.size, parts };
+    let parts = [], note = ''; try { const j = JSON.parse(fs.readFileSync(path.join(d, n + '.json'), 'utf8')); parts = j.parts || []; note = String(j.note || '').slice(0, 300); } catch {}
+    return { name: n, kind: m[1], at: st.mtimeMs, size: st.size, parts, note };
   }).sort((a, b) => b.at - a.at);
 }
 
-// Makes one backup. kind: auto, manual or before-restore. only: the parts to include (all that exist when empty).
-async function backup({ kind = 'manual', keep = 7, only = [], log = () => {} } = {}) {
+// Makes one backup. kind: auto, manual, before-restore or before-update. only: the parts to include (all that exist
+// when empty). note: a line kept with it (what was updated, say).
+async function backup({ kind = 'manual', keep = 7, only = [], log = () => {}, note = '' } = {}) {
   const d = DIR(); fs.mkdirSync(d, { recursive: true, mode: 0o700 });
   const free = await sh('df', ['-Pk', d]).then(o => +o.trim().split('\n').pop().split(/\s+/)[3] * 1024).catch(() => 0);
   const parts = Object.entries(PARTS).filter(([k, p]) => (!only.length || only.includes(k)) && exists(path.join(C(), p.dir)));
@@ -105,12 +106,12 @@ async function backup({ kind = 'manual', keep = 7, only = [], log = () => {} } =
     fs.writeFileSync(path.join(work, 'goat-backup.json'), JSON.stringify({ made: Date.now(), kind, parts: parts.map(([k]) => k), version: process.env.GOAT_VERSION || '' }));
     await sh('tar', ['-czf', out + '.part', '-C', work, '.']);
     fs.renameSync(out + '.part', out); fs.chmodSync(out, 0o600);
-    fs.writeFileSync(out + '.json', JSON.stringify({ parts: parts.map(([k]) => k) })); fs.chmodSync(out + '.json', 0o600);
+    fs.writeFileSync(out + '.json', JSON.stringify({ parts: parts.map(([k]) => k), ...(note ? { note } : {}) })); fs.chmodSync(out + '.json', 0o600);
   } finally {
     fs.rmSync(work, { recursive: true, force: true }); try { fs.rmSync(out + '.part', { force: true }); } catch {}
   }
   // Keep the newest few of each kind (manual and before-restore copies are kept until removed, up to 20).
-  const mine = list().filter(x => x.kind === kind), limit = kind === 'auto' ? Math.max(1, keep) : 20;
+  const mine = list().filter(x => x.kind === kind), limit = kind === 'auto' || kind === 'before-update' ? Math.max(1, keep) : 20;
   for (const x of mine.slice(limit)) remove(x.name);
   return { name, size: fs.statSync(out).size, parts: parts.map(([k]) => k) };
 }

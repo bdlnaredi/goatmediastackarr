@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Groups
+import androidx.compose.material.icons.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.DownloadForOffline
 import androidx.compose.material.icons.rounded.HighQuality
 import androidx.compose.material.icons.rounded.Bookmark
@@ -275,6 +276,7 @@ fun MoreScreen() {
             Dest(Icons.Rounded.CalendarMonth, "Upcoming", "New episodes and releases") { ctx.go("upcoming") },
             if (ctx.user.kids == null && (has("plex") || has("jellyfin"))) Dest(Icons.Rounded.Groups, "Watch together", "A title, a time, and friends") { ctx.go("parties") } else null,
             if (ctx.user.kids == null && (has("plex") || has("jellyfin"))) Dest(Icons.Rounded.DownloadForOffline, "Offline", "Saved on this phone, for a flight") { ctx.go("offline") } else null,
+            if (ctx.user.can("request") && has("seerr")) Dest(Icons.Rounded.PlaylistAdd, "Lists you follow", "IMDb, Letterboxd, Trakt") { ctx.go("follows") } else null,
             if (has("lidarr")) Dest(Icons.Rounded.LibraryMusic, "Music", "Your artists, from Lidarr") { ctx.go("music") } else null,
             if (has("tautulli")) Dest(Icons.Rounded.Insights, "Stats", "What gets watched") { ctx.go("stats") } else null,
         ),

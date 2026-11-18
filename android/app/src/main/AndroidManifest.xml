@@ -88,6 +88,8 @@
             </intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_list" />
         </receiver>
+        <!-- Chromecast: which player the TV uses (Google's own). -->
+        <meta-data android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME" android:value="com.bdlnaredi.goatstack.CastOptionsProvider" />
         <!-- Android TV's home screen reads the posters of the app's rows from here. -->
         <provider
             android:name=".PosterProvider"

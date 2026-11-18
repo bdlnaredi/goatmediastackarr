@@ -7,5 +7,7 @@ echo "[goat] GoatMediaStackarr $(cat /opt/goat/VERSION 2>/dev/null) starting as 
 # Name lookups: make sure TMDB and GitHub can be found (see dns.js); never holds up the start for long.
 timeout 30 /usr/local/bin/node /opt/goat/bin/dns.js || true
 /usr/local/bin/node /opt/goat/bin/init.js
+# Before an update: the settings of each app whose version changed are backed up before it starts (see preupdate.js).
+timeout 900 /usr/local/bin/node /opt/goat/bin/preupdate.js || true
 # Seerr and Bazarr write a few files next to their own code.
 chown -R "$PUID:$PGID" /opt/seerr/.next /opt/seerr/config /opt/bazarr 2>/dev/null || true

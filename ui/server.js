@@ -1384,6 +1384,30 @@ async function offlineSource(sv, key, q) {
   if (!Q) return { url: `${base}/Items/${id}/Download?api_key=${k}`, ext: 'mkv' };
   return { url: `${base}/Videos/${id}/stream.mp4?static=false&mediaSourceId=${id}&container=mp4&videoCodec=h264&audioCodec=aac&audioChannels=2&audioBitRate=160000&maxWidth=${Q.w}&maxHeight=${Q.h}&videoBitRate=${Q.kbps * 1000}&api_key=${k}`, ext: 'mp4' };
 }
+/** The next [n] episodes of a show this person has not watched yet: after the last one they watched, in order.
+ *  Plex: from the server's watch history of their account (covers everyone); Jellyfin: their own account. */
+async function nextUnwatched(u, sv, show, n) {
+  const names = partyNames(u);
+  if (sv.type === 'plex') {
+    const leaves = ((((await plexGet(sv, `/library/metadata/${encodeURIComponent(show)}/allLeaves`)).MediaContainer) || {}).Metadata || [])
+      .filter(x => x.type === 'episode').sort((a, b) => (a.parentIndex - b.parentIndex) || (a.index - b.index));
+    const acc = ((((await plexGet(sv, '/accounts')).MediaContainer) || {}).Account || []).find(x => names.includes(String(x.name || '').trim().toLowerCase()) || (u.plex && String(x.id) === String(u.plex.id)));
+    let seen = new Set();
+    if (acc) {
+      const h = (((await plexGet(sv, `/status/sessions/history/all?sort=viewedAt:desc&accountID=${encodeURIComponent(acc.id)}&X-Plex-Container-Start=0&X-Plex-Container-Size=500`)).MediaContainer) || {}).Metadata || [];
+      seen = new Set(h.filter(x => x.type === 'episode').map(x => String(x.ratingKey)));
+    } else if (u.role === 'admin') seen = new Set(leaves.filter(x => x.viewCount > 0).map(x => String(x.ratingKey)));
+    let last = -1; leaves.forEach((x, i) => { if (seen.has(String(x.ratingKey))) last = i; });
+    const title = (leaves[0] || {}).grandparentTitle || '';
+    return { title, items: leaves.slice(last + 1).filter(x => !seen.has(String(x.ratingKey))).slice(0, n).map(x => ({ key: String(x.ratingKey), title, sub: `S${pad2(x.parentIndex)}E${pad2(x.index)} ${x.title || ''}`.trim() })) };
+  }
+  const ju = ((await (await jfGet(sv, '/Users')).json()) || []).find(x => names.includes(String(x.Name || '').trim().toLowerCase()));
+  if (!ju) return { title: '', items: [] };
+  const d = await (await jfGet(sv, `/Users/${ju.Id}/Items?ParentId=${encodeURIComponent(show)}&IncludeItemTypes=Episode&Recursive=true&SortBy=ParentIndexNumber,IndexNumber&SortOrder=Ascending&Fields=UserData&Limit=1000`)).json();
+  const eps = (d.Items || []); let last = -1; eps.forEach((x, i) => { if ((x.UserData || {}).Played) last = i; });
+  const title = (eps[0] || {}).SeriesName || '';
+  return { title, items: eps.slice(last + 1).filter(x => !(x.UserData || {}).Played).slice(0, n).map(x => ({ key: x.Id, title, sub: `S${pad2(x.ParentIndexNumber)}E${pad2(x.IndexNumber)} ${x.Name || ''}`.trim() })) };
+}
 const binPub = e => ({ id: e.id, kind: e.kind, name: e.name, by: e.by || '', app: e.app || '', at: e.at, size: e.size, until: e.at + binDays() * 864e5,
   files: e.items.length, where: e.items.length ? cut(e.items[0].from, 400) : '' });
 
@@ -1600,6 +1624,138 @@ async function packTick() {
   }
   save();
 }
+// ---- Maintenance window: a weekly (or daily) quiet time when the heavy jobs run together: backups, the library
+// scans of Plex and Jellyfin, the duplicate scan and the season-pack search. Never while someone is watching: then
+// they wait (until the window ends, and the next one).
+const maintCfg = () => ({ on: false, day: 0, from: '03:00', to: '05:00', scans: true, dupes: true, ...(db.settings.maint || {}) });
+/** The window now open, as { key, start, end }, or null. day 0–6 is that weekday (Sunday first), 7 every day. */
+function maintNow(c = maintCfg(), d = new Date()) {
+  if (!c.on) return null;
+  const f = hm(c.from), t = hm(c.to); if (f == null || t == null || f === t) return null;
+  const len = ((t - f + 1440) % 1440) * 60000;
+  for (const back of [0, 1]) {
+    const st = new Date(d); st.setDate(st.getDate() - back); st.setHours(Math.floor(f / 60), f % 60, 0, 0);
+    if ((c.day === 7 || st.getDay() === +c.day) && d >= st && d < st.getTime() + len) return { key: st.toISOString().slice(0, 16), start: +st, end: st.getTime() + len };
+  }
+  return null;
+}
+// Asked of Plex and Jellyfin themselves (the live list is only kept while someone has the page open).
+let watchSeen = { at: 0, v: false };
+async function watchingNow() {
+  if (Date.now() - watchSeen.at < 20000) return watchSeen.v;
+  let v = false;
+  for (const sv of db.services.filter(isMS)) { const l = await mediaSessions(sv).catch(() => null); if ((l || []).length) { v = true; break; } }
+  watchSeen = { at: Date.now(), v }; return v;
+}
+/** Whether a scheduled heavy job may run now: always without a window; in the window and with nobody watching with one. */
+const maintOk = async () => !maintCfg().on || (!!maintNow() && !(await watchingNow()));
+async function maintTick() {
+  const c = maintCfg(), w = maintNow(c); if (!w) return;
+  const st = db.settings.maintState || (db.settings.maintState = {});
+  if (st.key === w.key && st.done) return;
+  if (await watchingNow()) { if (st.key !== w.key) { st.key = w.key; st.done = false; st.waited = true; save(); } return; }
+  st.key = w.key; st.done = true; st.at = Date.now(); st.ran = []; save();
+  if (c.scans) for (const sv of db.services.filter(isMS)) {
+    try { if (sv.type === 'jellyfin') await jfGet(sv, '/Library/Refresh', { method: 'POST' }); else await fetch(sv.url.replace(/\/+$/, '') + '/library/sections/all/refresh', { signal: AbortSignal.timeout(8000), headers: { 'X-Plex-Token': sv.apiKey || '' } });
+      st.ran.push(`${sv.name}: library scan`); } catch {}
+  }
+  if (c.dupes && db.services.some(x => x.type === 'radarr' || x.type === 'sonarr')) { dupScan().catch(() => {}); st.ran.push('Duplicate copies: scan'); }
+  if (packCfg().on) { await packTick().catch(() => {}); st.ran.push('Season packs: search'); }
+  save();
+}
+// ---- Lists you follow: an IMDb, Trakt or Letterboxd list someone follows; what is new on it is requested for them
+// (through Seerr, with the same approval as their own requests), at most so many a week.
+const FOLLOW_UA = { 'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36', 'Accept-Language': 'en' };
+const followList = () => (db.follows = Array.isArray(db.follows) ? db.follows : []);
+/** What a list address is: { kind, url } (the page to read), or null. */
+function followKind(raw) {
+  let u; try { u = new URL(String(raw || '').trim()); } catch { return null; }
+  if (!/^https?:$/.test(u.protocol)) return null;
+  const h = u.hostname.replace(/^(www|m)\./, ''), pth = u.pathname.replace(/\/+$/, '');
+  if (h === 'imdb.com' && /^\/(list\/ls\d+|user\/ur\d+\/watchlist)$/.test(pth)) return { kind: 'imdb', url: 'https://www.imdb.com' + pth + '/' };
+  if (h === 'letterboxd.com' && /^\/[\w-]+\/(list\/[\w-]+|watchlist)$/.test(pth)) return { kind: 'letterboxd', url: 'https://letterboxd.com' + pth + '/' };
+  if (h === 'trakt.tv' && /^\/users\/[\w.-]+\/(lists\/[\w-]+|watchlist)$/.test(pth)) return { kind: 'trakt', url: 'https://trakt.tv' + pth };
+  return null;
+}
+// Tests point the list sites at a pretend server (FOLLOW_TEST_BASE).
+const followUrl = u => process.env.FOLLOW_TEST_BASE ? u.replace(/^https:\/\/(www\.imdb\.com|letterboxd\.com|api\.trakt\.tv)/, (_, h) => process.env.FOLLOW_TEST_BASE + '/' + h) : u;
+const followGet = async (url, json) => { url = followUrl(url); const r = await fetch(url, { headers: { ...FOLLOW_UA, ...(json || {}) }, signal: AbortSignal.timeout(20000), redirect: 'follow' }); if (!r.ok) throw new Error(`The list could not be read (${r.status})`); return json ? r.json() : r.text(); };
+async function imdbToTmdb(imdb) {
+  db.imdbMap = db.imdbMap || {}; if (db.imdbMap[imdb]) return db.imdbMap[imdb];
+  let hit = null;
+  if (listKeys().tmdb) hit = await lists.findImdb(imdb).catch(() => null);
+  for (const sv of db.services.filter(x => x.type === 'radarr')) { if (hit) break; const x = await ext(sv, '/api/v3/movie/lookup/imdb?imdbId=' + imdb).catch(() => null); if (x && x.tmdbId) hit = { type: 'movie', id: x.tmdbId }; }
+  for (const sv of db.services.filter(x => x.type === 'sonarr')) { if (hit) break; const l = await ext(sv, '/api/v3/series/lookup?term=' + encodeURIComponent('imdb:' + imdb)).catch(() => null); if (Array.isArray(l) && l[0] && l[0].tmdbId) hit = { type: 'tv', id: l[0].tmdbId }; }
+  if (hit) db.imdbMap[imdb] = hit;
+  return hit;
+}
+/** The titles on a list, newest first where the list says so: [{ type, id }] (TMDB), and its name. */
+async function followRead(f) {
+  const out = [], seen = new Set(), push = x => { const k = x.type + ':' + x.id; if (x.id > 0 && !seen.has(k)) { seen.add(k); out.push(x); } };
+  let name = '';
+  if (f.kind === 'imdb') {
+    const html = await followGet(f.url);
+    name = ((/<title>([^<]*)<\/title>/i.exec(html) || [])[1] || '').replace(/\s*-\s*IMDb\s*$/i, '').trim();
+    const ids = [...new Set([...html.matchAll(/\/title\/(tt\d{6,10})/g)].map(m => m[1]))].slice(0, 250);
+    for (const t of ids) { const h = await imdbToTmdb(t).catch(() => null); if (h) push(h); }
+  } else if (f.kind === 'letterboxd') {
+    db.lbMap = db.lbMap || {};
+    for (let pg = 1; pg <= 5; pg++) {
+      const html = await followGet(f.url + (pg > 1 ? `page/${pg}/` : ''));
+      if (pg === 1) name = ((/<meta property="og:title" content="([^"]*)"/i.exec(html) || [])[1] || '').trim();
+      const slugs = [...new Set([...html.matchAll(/data-(?:film|item)-slug="([\w-]+)"/g)].map(m => m[1]))];
+      if (!slugs.length) break;
+      for (const sl of slugs) {
+        if (!db.lbMap[sl]) { try { const fh = await followGet(`https://letterboxd.com/film/${sl}/`), id = +((/data-tmdb-id="(\d+)"/.exec(fh) || [])[1] || 0), ty = (/data-tmdb-type="(\w+)"/.exec(fh) || [])[1] === 'tv' ? 'tv' : 'movie'; if (id) db.lbMap[sl] = { type: ty, id }; } catch {} }
+        if (db.lbMap[sl]) push(db.lbMap[sl]);
+      }
+      if (out.length >= 250) break;
+    }
+  } else {
+    const key = listKeys().trakt; if (!key) throw new Error('A Trakt list needs a Trakt client ID under Settings → Discover lists');
+    const m = /\/users\/([\w.-]+)\/(?:lists\/([\w-]+)|watchlist)$/.exec(new URL(f.url).pathname);
+    const api = m[2] ? `https://api.trakt.tv/users/${m[1]}/lists/${m[2]}/items?limit=250` : `https://api.trakt.tv/users/${m[1]}/watchlist?limit=250`;
+    const items = await followGet(api, { 'Content-Type': 'application/json', 'trakt-api-version': '2', 'trakt-api-key': key });
+    if (m[2]) { try { name = (await followGet(`https://api.trakt.tv/users/${m[1]}/lists/${m[2]}`, { 'trakt-api-version': '2', 'trakt-api-key': key })).name || ''; } catch {} } else name = `${m[1]}'s watchlist`;
+    for (const x of Array.isArray(items) ? items : []) { const t = x.movie ? 'movie' : x.show ? 'tv' : ''; const id = t && +(((x.movie || x.show).ids || {}).tmdb || 0); if (t) push({ type: t, id }); }
+  }
+  return { name: cut(name, 120), items: out };
+}
+/** Asks for a title for [u], as their own request would (Seerr; approved for admins and those auto-approved). */
+async function followRequest(u, f, it) {
+  const s = db.services.find(x => x.type === 'seerr' && svcOk(u, x)); if (!s) throw new Error('Following a list needs Seerr');
+  const d = await ext(s, `/api/v1/${it.type}/${it.id}`).catch(() => ({})) || {};
+  const x = { id: uid(), sid: s.id, uid: u.id, user: u.name, mediaType: it.type, mediaId: it.id, title: cut(d.title || d.name || `${it.type} ${it.id}`, 200), year: String(d.releaseDate || d.firstAirDate || '').slice(0, 4),
+    poster: d.posterPath ? 'https://image.tmdb.org/t/p/w342' + d.posterPath : '', status: 'pending', at: Date.now(), via: 'list', list: f.id };
+  if (u.role === 'admin' || u.autoApprove) {
+    const r = await ext(s, '/api/v1/request', { method: 'POST', body: JSON.stringify({ mediaType: x.mediaType, mediaId: x.mediaId, ...(x.mediaType === 'tv' ? { seasons: 'all' } : {}) }) });
+    x.seerrId = r && r.id; x.status = 'approved'; x.stage = 'approved';
+  } else feed('@admins', 'request', 'New request', `${u.name} asked for ${x.title} (from a list they follow)`, 'requests', x.id);
+  seerrMedia.t = 0; db.requests.push(x);
+  return x;
+}
+async function followSync(f, force) {
+  const u = db.users.find(x => x.id === f.uid); if (!u || f.off) return;
+  if (!force && Date.now() - (f.last || 0) < 6 * 3600e3) return;
+  f.last = Date.now();
+  try {
+    const r = await followRead(f); if (r.name) f.name = r.name; f.count = r.items.length; f.error = '';
+    f.seen = Array.isArray(f.seen) ? f.seen : [];
+    const known = new Set(f.seen), idx = await libIndex().catch(() => null), week = Date.now() - 7 * 864e5;
+    // The first time (unless asked for everything on it): only what is added from now on.
+    if (!f.started) { f.started = true; if (f.fromNow !== false) { f.seen = r.items.map(x => x.type + ':' + x.id).slice(0, 2000); save(); return; } }
+    let made = db.requests.filter(x => x.list === f.id && x.at > week).length;
+    for (const it of r.items) {
+      const k = it.type + ':' + it.id; if (known.has(k)) continue;
+      const have = idx && idx[it.type] && idx[it.type].get(it.id), asked = db.requests.some(x => x.mediaType === it.type && +x.mediaId === it.id && x.status !== 'declined');
+      if (!have && !asked) { if (made >= f.perWeek) break; await followRequest(u, f, it); made++; }
+      f.seen.push(k); known.add(k);
+    }
+    if (f.seen.length > 2000) f.seen = f.seen.slice(-2000);
+  } catch (e) { f.error = cut(e.message, 200); }
+  save();
+}
+async function followTick() { for (const f of followList()) await followSync(f).catch(() => {}); }
 async function camTick() {
   const c = camCfg(); if (!c.on) return;
   const done = db.camDone || (db.camDone = {});
@@ -2714,15 +2870,17 @@ async function monitor() {
       if ((wk.last || 0) < d.getTime()) { wk.last = Date.now(); save(); await sendNews(); }
     });
     const sb = db.settings.stackBackup || {};
-    if (GOAT_MANAGED && !DEMO && sb.on && new Date(sb.last || 0).toDateString() !== new Date().toDateString() && new Date().getHours() >= (sb.hour ?? 4)
-      && (!sb.weekly || new Date().getDay() === (sb.day ?? 0))) await safe(async () => {
+    // With a maintenance window, the automatic backups wait for it (and for nobody to be watching).
+    const mw = maintCfg().on;
+    if (GOAT_MANAGED && !DEMO && sb.on && new Date(sb.last || 0).toDateString() !== new Date().toDateString() && (mw ? await maintOk() : new Date().getHours() >= (sb.hour ?? 4))
+      && (!sb.weekly || mw && maintCfg().day !== 7 || new Date().getDay() === (sb.day ?? 0))) await safe(async () => {
       sb.last = Date.now(); db.settings.stackBackup = sb; save();
       const r = await goatControl({ cmd: 'stack-backup', auto: true, keep: sb.keep || 7 });
       if (!r.ok) { feed('@admins', 'problem', 'Backup failed', r.error || '', 'settings'); notify('backup', 'Backup of the stack failed', r.error || '').catch(() => {}); }
     });
     if (GOAT_MANAGED) sbWatch();
     const bc = db.settings.backup || {};
-    if (bc.on && new Date(bc.last || 0).toDateString() !== new Date().toDateString() && new Date().getHours() >= (bc.hour ?? 3)) await safe(async () => { backupNow(); });
+    if (bc.on && new Date(bc.last || 0).toDateString() !== new Date().toDateString() && (mw ? await maintOk() : new Date().getHours() >= (bc.hour ?? 3))) await safe(async () => { backupNow(); });
     for (const [k, v] of tickets) if (v.exp < Date.now()) tickets.delete(k);
     if (mon.n % 10 === 0) uptSave();
     await safe(streamTick);
@@ -2734,7 +2892,9 @@ async function monitor() {
     if (mon.n % 4 === 2) await safe(autoImport);
     if (mon.n % 2 === 1) await safe(() => catLimitTick());
     { const e = +process.env.CAM_EVERY || 120; if (mon.n % e === 90 % e) await safe(camTick); }
-    { const e = +process.env.PACK_EVERY || 240; if (mon.n % e === 150 % e) await safe(packTick); }
+    { const e = +process.env.PACK_EVERY || 240; if (mon.n % e === 150 % e && !maintCfg().on) await safe(packTick); }
+    if (mon.n % 4 === 2) await safe(maintTick);
+    if (mon.n % 20 === 11) await safe(followTick);
     { const e = +process.env.LOGALERT_EVERY || 10; if (mon.n % e === 7 % e) await safe(logAlertTick); }
     await safe(nlTick);
     if (mon.n % 120 === 0 && !DEMO) await safe(latestRelease);
@@ -3887,6 +4047,13 @@ const goatServer = http.createServer(async (req, res) => {
       ]);
       return send(res, 200, out);
     }
+    // Offline sync: the next episodes of a show this person has not watched, for the phone to keep saved.
+    if (p === '/api/offline/next' && m === 'GET') {
+      const q = new URL(req.url, 'http://x').searchParams, sv = db.services.find(x => x.id === q.get('sid') && isMS(x) && allowed(x)), show = String(q.get('show') || '');
+      if (!sv || !show) return send(res, 400, { error: 'Pick a show on Plex or Jellyfin' });
+      if (!(await offlineMay(me, sv, show).catch(() => false))) return send(res, 403, { error: 'Saving to the phone is not available for this show on your profile' });
+      return send(res, 200, await nextUnwatched(me, sv, show, Math.min(5, Math.max(1, +q.get('n') || 2))));
+    }
     // Offline: a short-lived link for the phone to fetch a movie or episode with (see offlineSource).
     if (p === '/api/offline' && m === 'POST') {
       const b = await readBody(req), sv = db.services.find(x => x.id === b.sid && isMS(x) && allowed(x)), q = String(b.q || '720');
@@ -4113,6 +4280,32 @@ const goatServer = http.createServer(async (req, res) => {
       const [code, body] = await makeRequest(await readBody(req));
       return send(res, code, body);
     }
+    // ---------- Lists you follow (see followSync) ----------
+    if (p === '/api/follows' && m === 'GET') {
+      const l = followList().filter(f => f.uid === me.id || me.role === 'admin');
+      return send(res, 200, { follows: l.map(f => ({ id: f.id, url: f.url, kind: f.kind, name: f.name || '', perWeek: f.perWeek, off: !!f.off, mine: f.uid === me.id, who: (db.users.find(u => u.id === f.uid) || {}).name || '',
+        count: f.count || 0, last: f.last || 0, error: f.error || '', week: db.requests.filter(x => x.list === f.id && x.at > Date.now() - 7 * 864e5).length,
+        recent: db.requests.filter(x => x.list === f.id).slice(-5).reverse().map(x => ({ title: x.title, at: x.at, status: x.stage || x.status })) })) });
+    }
+    if (p === '/api/follows' && m === 'POST') {
+      if (deny('request', 'make requests')) return;
+      const b = await readBody(req), k = followKind(b.url);
+      if (!k) return send(res, 400, { error: 'Paste the address of an IMDb list or watchlist, a Letterboxd list or watchlist, or a Trakt list or watchlist' });
+      if (!db.services.some(x => x.type === 'seerr' && allowed(x))) return send(res, 400, { error: 'Following a list needs Seerr' });
+      if (k.kind === 'trakt' && !listKeys().trakt) return send(res, 400, { error: 'A Trakt list needs a Trakt client ID under Settings → Discover lists' });
+      if (followList().filter(f => f.uid === me.id).length >= 20) return send(res, 400, { error: 'You follow 20 lists already' });
+      if (followList().some(f => f.uid === me.id && f.url === k.url)) return send(res, 400, { error: 'You follow that list already' });
+      const f = { id: uid(), uid: me.id, ...k, perWeek: Math.min(50, Math.max(1, Math.round(+b.perWeek) || 5)), fromNow: b.fromNow !== false, seen: [], added: Date.now() };
+      followList().push(f); save(); audit(me.name, 'Followed a list', f.url);
+      await followSync(f, true);
+      return send(res, 200, { id: f.id, name: f.name || '', count: f.count || 0, error: f.error || '' });
+    }
+    if ((r = p.match(/^\/api\/follows\/([a-f0-9]{12})(\/sync)?$/))) {
+      const f = followList().find(x => x.id === r[1] && (x.uid === me.id || me.role === 'admin')); if (!f) return send(res, 404, { error: 'Not found' });
+      if (r[2] && m === 'POST') { await followSync(f, true); return send(res, 200, { count: f.count || 0, error: f.error || '' }); }
+      if (!r[2] && m === 'PUT') { const b = await readBody(req); if ('perWeek' in b) f.perWeek = Math.min(50, Math.max(1, Math.round(+b.perWeek) || 5)); if ('off' in b) f.off = !!b.off; save(); return send(res, 200, {}); }
+      if (!r[2] && m === 'DELETE') { db.follows = followList().filter(x => x !== f); save(); audit(me.name, 'Stopped following a list', f.url); return send(res, 200, {}); }
+    }
     // ---------- Watchlist: what each person wants to watch. They hear when it lands in the library. ----------
     const wlOf = () => (db.watchlist || []).filter(w => w.uid === me.id);
     const wlState = async l => {
@@ -4181,6 +4374,14 @@ const goatServer = http.createServer(async (req, res) => {
     }
     // ---------- For you: "Because you watched …" from what this person watched (Jellyfin, or Plex through Tautulli),
     // or else from what they asked for and put on their watchlist. Kept for six hours per person.
+    // "Not interested": that title is not suggested to this person again.
+    if (p === '/api/foryou/hide' && m === 'POST') {
+      const b = await readBody(req), k = (b.type === 'tv' ? 'tv' : 'movie') + ':' + Math.round(+b.id);
+      if (!(+b.id > 0)) return send(res, 400, { error: 'Bad request' });
+      me.notInto = [...new Set([...(me.notInto || []), k])].slice(-300); save();
+      if (mon.forYou && mon.forYou[me.id]) for (const row of mon.forYou[me.id].v.rows) row.items = row.items.filter(x => x.type + ':' + x.id !== k);
+      return send(res, 200, { ok: true });
+    }
     if (p === '/api/foryou' && m === 'GET') {
       mon.forYou = mon.forYou || {};
       const hit = mon.forYou[me.id]; if (hit && Date.now() - hit.at < 6 * 3600e3 && !new URL(req.url, 'http://x').searchParams.get('fresh')) return send(res, 200, hit.v);
@@ -4214,6 +4415,18 @@ const goatServer = http.createServer(async (req, res) => {
           } catch {} }
         }
       } catch {} }
+      // Plex itself, when there is no Tautulli: the person's account on the server, its watch history, and Plex's TMDB ids.
+      if (seeds.length < 3) for (const sv of db.services.filter(x => x.type === 'plex' && allowed(x))) { try {
+        const acc = ((((await plexGet(sv, '/accounts')).MediaContainer) || {}).Account || []).find(x => names.includes(String(x.name || '').trim().toLowerCase()));
+        if (!acc) continue;
+        const h = (((await plexGet(sv, `/status/sessions/history/all?sort=viewedAt:desc&accountID=${encodeURIComponent(acc.id)}&X-Plex-Container-Start=0&X-Plex-Container-Size=60`)).MediaContainer) || {}).Metadata || [];
+        const keys = [...new Map(h.map(x => { const k = x.type === 'episode' ? x.grandparentRatingKey || String(x.grandparentKey || '').split('/').pop() : x.ratingKey; return [k, { k, type: x.type === 'episode' ? 'tv' : 'movie' }]; })).values()].filter(x => x.k).slice(0, 6);
+        for (const x of keys) { try {
+          const md = ((((await plexGet(sv, `/library/metadata/${encodeURIComponent(x.k)}?includeGuids=1`)).MediaContainer) || {}).Metadata || [])[0];
+          const g = ((md && md.Guid) || []).map(y => String(y.id)).find(v => v.startsWith('tmdb://'));
+          if (g) { const tm = +g.slice(7); watched.add(x.type + ':' + tm); add(x.type, tm, md.title, 'watched'); }
+        } catch {} }
+      } catch {} }
       // What they asked for, and their watchlist.
       for (const r2 of db.requests.filter(x => x.uid === me.id && x.status !== 'declined').slice(-10).reverse()) add(r2.mediaType, +r2.mediaId, r2.title, 'asked');
       for (const w of (db.watchlist || []).filter(x => x.uid === me.id).sort((a, b) => b.added - a.added).slice(0, 5)) add(w.type, w.id, w.title, 'watchlist');
@@ -4223,7 +4436,7 @@ const goatServer = http.createServer(async (req, res) => {
         if (sv) rec = await call(sv, `/api/v1/${sd.type}/${sd.id}/recommendations`).catch(() => null);
         if (!((rec && rec.results) || []).length && listKeys().tmdb) rec = await lists.recommendations(sd.type, sd.id).catch(() => null);
         const items = ((rec && rec.results) || []).map(x => mediaCard(x, idx, x.mediaType || x.media_type || sd.type)).filter(Boolean)
-          .filter(x => kidCard(idx, x) && !watched.has(x.type + ':' + x.id) && !shown.has(x.type + ':' + x.id) && !seeds.some(y => y.type === x.type && y.id === x.id)).slice(0, 16);
+          .filter(x => kidCard(idx, x) && !watched.has(x.type + ':' + x.id) && !shown.has(x.type + ':' + x.id) && !seeds.some(y => y.type === x.type && y.id === x.id) && !(me.notInto || []).includes(x.type + ':' + x.id)).slice(0, 16);
         items.forEach(x => shown.add(x.type + ':' + x.id));
         if (items.length >= 2) rows.push({ because: { type: sd.type, id: sd.id, title: sd.title }, source: sd.source, items: items.map(({ votes, date, ...x }) => x) });
         if (rows.length >= 3) break;
@@ -4683,6 +4896,20 @@ const goatServer = http.createServer(async (req, res) => {
       const b = await readBody(req), r2 = await crossSeedAsk(String(b.hash || ''), true);
       if (r2.ok) audit(me.name, 'Asked cross-seed to search', cut(b.name || b.hash, 120));
       return send(res, r2.ok ? 200 : 400, r2.ok ? { done: 'cross-seed is searching your other trackers. Matches show in Downloads, and the steps in Logs → cross-seed.' } : { error: r2.error });
+    }
+    if (p === '/api/maintenance' && m === 'GET') {
+      if (adminOnly()) return;
+      const c = maintCfg(), w = maintNow(c), st = db.settings.maintState || {};
+      return send(res, 200, { ...c, open: !!w, watching: await watchingNow(), last: st.at ? { at: st.at, ran: st.ran || [] } : null, waiting: !!(w && !st.done) });
+    }
+    if (p === '/api/maintenance' && m === 'PUT') {
+      if (adminOnly()) return;
+      const b = await readBody(req), o = maintCfg(), d = Math.round(+b.day);
+      if ('from' in b && hm(b.from) == null || 'to' in b && hm(b.to) == null) return send(res, 400, { error: 'Times are like 03:00' });
+      db.settings.maint = { on: 'on' in b ? !!b.on : o.on, day: 'day' in b ? (d >= 0 && d <= 7 ? d : 0) : o.day, from: 'from' in b ? String(b.from).padStart(5, '0') : o.from, to: 'to' in b ? String(b.to).padStart(5, '0') : o.to,
+        scans: 'scans' in b ? !!b.scans : o.scans, dupes: 'dupes' in b ? !!b.dupes : o.dupes };
+      save(); audit(me.name, 'Changed the maintenance window', db.settings.maint.on ? `${db.settings.maint.from}–${db.settings.maint.to}` : 'off');
+      return send(res, 200, db.settings.maint);
     }
     if (p === '/api/packs' && m === 'GET') {
       if (adminOnly()) return;

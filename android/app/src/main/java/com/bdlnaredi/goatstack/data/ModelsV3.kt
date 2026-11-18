@@ -111,6 +111,15 @@ data class Device(val id: String = "", val user: String = "", val device: String
 @Serializable data class UpgItem(val id: Long = 0, val title: String = "", val sub: String = "", val quality: String = "", val size: Long = 0, val wants: String = "", val parent: Long = 0)
 @Serializable data class UpgApp(val sid: String = "", val name: String = "", val type: String = "", val total: Int = 0, val items: List<UpgItem> = emptyList(), val error: String = "")
 @Serializable data class UpgList(val apps: List<UpgApp> = emptyList())
+/** Lists you follow. */
+@Serializable data class FollowRecent(val title: String = "", val at: Long = 0, val status: String = "")
+@Serializable data class Follow(val id: String = "", val url: String = "", val kind: String = "", val name: String = "", val perWeek: Int = 5, val off: Boolean = false, val mine: Boolean = true,
+    val who: String = "", val count: Int = 0, val last: Long = 0, val error: String = "", val week: Int = 0, val recent: List<FollowRecent> = emptyList())
+@Serializable data class FollowList(val follows: List<Follow> = emptyList())
+@Serializable data class FollowMade(val id: String = "", val name: String = "", val count: Int = 0, val error: String = "")
+/** Offline sync: the next episodes of a show this person has not watched. */
+@Serializable data class OfflineEp(val key: String = "", val title: String = "", val sub: String = "")
+@Serializable data class OfflineNext(val title: String = "", val items: List<OfflineEp> = emptyList())
 /** Offline: the short-lived link a saved video is fetched with. */
 @Serializable data class OfflineLink(val url: String = "", val name: String = "", val ext: String = "")
 /** Watch together. */

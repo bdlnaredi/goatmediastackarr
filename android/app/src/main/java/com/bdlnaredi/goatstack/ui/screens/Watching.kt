@@ -249,10 +249,27 @@ fun ForYouRows() {
     val ctx = LocalCtx.current
     val data = rememberLoad { ctx.api.get<ForYou>("/api/foryou") }
     val rows = data.value?.rows.orEmpty()
+    val scope = rememberCoroutineScope()
+    val toast = toaster()
+    // "Not interested": gone from the row now, and not suggested again.
+    var hidden by remember { mutableStateOf(setOf<String>()) }
     rows.forEach { r ->
+        val items = r.items.filter { "${it.type}:${it.id}" !in hidden }
+        if (items.isEmpty()) return@forEach
         SectionTitle(tr("Because you watched") + " " + r.because.title)
         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            items(r.items, key = { "${it.type}${it.id}" }) { x -> MediaPoster(x, Modifier.width(112.dp)) }
+            items(items, key = { "${it.type}${it.id}" }) { x ->
+                androidx.compose.foundation.layout.Box(Modifier.width(112.dp)) {
+                    MediaPoster(x, Modifier.width(112.dp))
+                    androidx.compose.material3.IconButton(
+                        onClick = {
+                            hidden = hidden + "${x.type}:${x.id}"
+                            scope.launch { try { ctx.api.send("POST", "/api/foryou/hide", kotlinx.serialization.json.buildJsonObject { put("type", x.type); put("id", x.id) }); toast(tr("Not suggested again")) } catch (_: Exception) {} }
+                        },
+                        modifier = Modifier.padding(4.dp).size(28.dp).background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.6f), androidx.compose.foundation.shape.CircleShape),
+                    ) { androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Rounded.Close, tr("Not interested"), tint = androidx.compose.ui.graphics.Color.White, modifier = Modifier.size(16.dp)) }
+                }
+            }
         }
     }
 }

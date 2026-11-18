@@ -273,5 +273,8 @@ test('because you watched: from the person\'s own Jellyfin history, then what th
     assert.deepEqual(f.rows.map(r => [r.because.title, r.source, r.items.map(x => [x.id, x.inLib])]), [['Demo movie 5001', 'watched', [[5002, true], [6100, false]]]]);
     // The admin has no history and asked for nothing: nothing to go on.
     assert.deepEqual((await a.get('/api/foryou')).data.rows, []);
+    // Not interested: not suggested again (here the row then has too few to show).
+    assert.equal((await k.post('/api/foryou/hide', { type: 'movie', id: 6100 })).status, 200);
+    for (const q of ['', '?fresh=1']) assert.ok(!JSON.stringify((await k.get('/api/foryou' + q)).data.rows).includes('"id":6100'));
   } finally { await w.stop(); }
 });

@@ -10,6 +10,10 @@ test('a title saved to the phone comes through a short-lived link', async () => 
     const j = o => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(o)); };
     if (u.pathname === '/library/metadata/77') return j({ MediaContainer: { Metadata: [{ ratingKey: '77', librarySectionID: 1, Media: [{ Part: [{ key: '/library/parts/5/1/file.mkv', container: 'mkv' }] }] }] } });
     if (u.pathname === '/library/parts/5/1/file.mkv') { assert.equal(u.searchParams.get('X-Plex-Token'), 'tok'); res.writeHead(200, { 'Content-Type': 'video/x-matroska', 'Content-Length': 8 }); return res.end('ORIGINAL'); }
+    if (u.pathname === '/library/metadata/9/allLeaves') return j({ MediaContainer: { Metadata: [1, 2, 3, 4, 5].map(n => ({ type: 'episode', ratingKey: String(900 + n), parentIndex: 1, index: n, title: 'Ep ' + n, grandparentTitle: 'Paper Moon' })) } });
+    if (u.pathname === '/library/metadata/9') return j({ MediaContainer: { Metadata: [{ ratingKey: '9', librarySectionID: 1 }] } });
+    if (u.pathname === '/accounts') return j({ MediaContainer: { Account: [{ id: 1, name: 'admin' }] } });
+    if (u.pathname === '/status/sessions/history/all') return j({ MediaContainer: { Metadata: [{ type: 'episode', ratingKey: '901' }, { type: 'episode', ratingKey: '902' }] } });
     if (u.pathname === '/video/:/transcode/universal/start.mp4') { assert.equal(u.searchParams.get('videoResolution'), '1280x720'); res.writeHead(200, { 'Content-Type': 'video/mp4' }); return res.end('SMALLER'); }
     j({ MediaContainer: { machineIdentifier: 'm1' } });
   }).listen(0);
@@ -28,6 +32,9 @@ test('a title saved to the phone comes through a short-lived link', async () => 
     assert.equal(await f.text(), 'ORIGINAL'); assert.match(f.headers.get('content-disposition'), /\.mkv"/);
     assert.equal((await fetch(s.base + '/api/offline/file/' + 'ab'.repeat(24))).status, 404, 'a made-up link does nothing');
     assert.equal((await a.post('/api/offline', { sid, key: '77', q: '4k' })).status, 400);
+    // Offline sync: the next two after the last one watched (episodes 1 and 2 are watched).
+    const nx = (await a.get(`/api/offline/next?sid=${sid}&show=9&n=2`)).data;
+    assert.equal(nx.title, 'Paper Moon'); assert.deepEqual(nx.items.map(x => x.key), ['903', '904']); assert.equal(nx.items[0].sub, 'S01E03 Ep 3');
 
     // Someone without access to Plex cannot.
     const u = (await a.post('/api/users', { name: 'kim', password: 'password-kim', role: 'user' })).data;

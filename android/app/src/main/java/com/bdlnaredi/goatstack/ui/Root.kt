@@ -91,7 +91,7 @@ class Ctx(val app: AppState, val me: Me, val user: User, val nav: NavHostControl
             l == "update" -> go("settings")
             l == "profile" -> profile()
             l == "watchlist" -> go("watchlist")
-            l in listOf("requests", "downloads", "health", "stack", "users", "unraid", "notifications", "upcoming", "search", "discover", "recyclebin", "upgrades", "parties", "offline") -> go(l)
+            l in listOf("requests", "downloads", "health", "stack", "users", "unraid", "notifications", "upcoming", "search", "discover", "recyclebin", "upgrades", "parties", "offline", "follows") -> go(l)
             l == "suggestions" || l == "logs" -> go(l)
             else -> go("notifications")
         }
@@ -287,6 +287,7 @@ private fun MainShell(state: AppState, me: Me, user: User) {
                 composable("upgrades") { com.bdlnaredi.goatstack.ui.screens.UpgradesScreen() }
                 composable("parties") { com.bdlnaredi.goatstack.ui.screens.PartiesScreen() }
                 composable("offline") { com.bdlnaredi.goatstack.ui.screens.OfflineScreen() }
+                composable("follows") { com.bdlnaredi.goatstack.ui.screens.FollowsScreen() }
                 composable("party/{id}") { e -> com.bdlnaredi.goatstack.ui.screens.PartyScreen(e.arguments?.getString("id").orEmpty()) }
                 composable("trackers") { com.bdlnaredi.goatstack.ui.screens.TrackersScreen() }
                 composable("notifications") { com.bdlnaredi.goatstack.ui.screens.NotificationsScreen() }

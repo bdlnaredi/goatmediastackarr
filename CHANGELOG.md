@@ -4,6 +4,13 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- Before an update: at each start, every app whose version changed gets a backup of its settings before it runs ("Before an update" under Settings → Backup, with the versions; the newest 3 are kept). Put back undoes an update that spoiled something.
+- Maintenance window (Settings → Backup): a quiet time when backups, library scans, the duplicate scan and the season-pack search run together, never while someone is watching.
+- Lists you follow: an IMDb, Letterboxd or Trakt list or watchlist; what is added to it is requested, at most so many a week.
+- Because you watched: works from Plex itself when there is no Tautulli, and each suggestion has Not interested.
+- App, Offline: keep the next episodes of a show saved (over Wi-Fi), the watched ones deleted.
+- App: Chromecast. Play a Plex or Jellyfin title, or a saved video, on a TV.
+
 - When the disk with the settings folder is full, the dashboard no longer stops at start: it keeps running, says so in the log and on the Health page, and saves again once there is room.
 - Recycle bin: nothing more goes into it on a disk that is over 90% full (deleting frees the space at once there), and what waits in it on such a disk is deleted for good, oldest first, until there is room.
 
