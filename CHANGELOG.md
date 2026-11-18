@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+## v1.0.35 — 2026-11-18
+
 - Before an update: at each start, every app whose version changed gets a backup of its settings before it runs ("Before an update" under Settings → Backup, with the versions; the newest 3 are kept). Put back undoes an update that spoiled something.
 - Maintenance window (Settings → Backup): a quiet time when backups, library scans, the duplicate scan and the season-pack search run together, never while someone is watching.
 - Lists you follow: an IMDb, Letterboxd or Trakt list or watchlist; what is added to it is requested, at most so many a week.
