@@ -686,10 +686,43 @@ const goatKeyOk = (req, t) => {
   const given = [req.headers['x-api-key'], q.get('apikey'), q.get('api_key'), q.get('access_token')].filter(Boolean).map(String);
   return given.some(k => k.length === String(s.apiKey).length && crypto.timingSafeEqual(Buffer.from(k), Buffer.from(String(s.apiKey))));
 };
+// Phone and desktop apps for qBittorrent (nzb360, qBitController, Arrmada360…) sign in with qBittorrent's own user
+// name and password. qBittorrent lets everything from inside the container in without one, so the check is made here:
+// the login made for you (Stack → Logins made for you) gives the app a session of its own, and only then are its
+// calls passed on. Wrong passwords are limited per address.
+const qbOut = new Map(), qbFails = {};
+const qbSid = req => { const c = String(req.headers.cookie || ''); const m = c.match(/(?:^|;\s*)(?:SID|QBT_SID_\d+)=([a-f0-9]{48})(?:;|$)/); return m && m[1]; };
+async function qbOutside(req, res, t) {
+  const p = String(req.url).split('?')[0], rest = p.slice('/engines/qbittorrent/api/v2/'.length), now = Date.now();
+  const text = (code, body, h = {}) => { res.writeHead(code, { 'Content-Type': 'text/plain; charset=UTF-8', 'Cache-Control': 'no-store', ...h }); res.end(body); };
+  for (const [k, v] of qbOut) if (v < now) qbOut.delete(k);
+  if (rest === 'auth/login') {
+    if (req.method !== 'POST') return text(405, 'Method Not Allowed');
+    const ip = ipOf(req), fl = qbFails[ip] || { n: 0, t: 0 }; if (now - fl.t > 600000) fl.n = 0;
+    if (fl.n >= 8) return text(403, 'Your IP address has been banned after too many failed authentication attempts.');
+    const raw = await new Promise(r => { let b = ''; req.on('data', d => { b += d; if (b.length > 65536) req.destroy(); }); req.on('end', () => r(b)); req.on('error', () => r('')); });
+    let f = new URLSearchParams(String(req.url).split('?')[1] || '');
+    if (/multipart\/form-data/i.test(req.headers['content-type'] || '')) {
+      f = new URLSearchParams(); for (const m of raw.matchAll(/name="(username|password)"\r?\n\r?\n([^\r\n]*)/g)) f.set(m[1], m[2]);
+    } else for (const [k, v] of new URLSearchParams(raw)) f.set(k, v);
+    const sec = goatRead(path.join(GOAT_CONFIG, 'goat', 'secrets.json')) || {};
+    if (!sec.qbitUser || !sec.qbitPass || !same(f.get('username'), sec.qbitUser) || !same(f.get('password'), sec.qbitPass)) {
+      fl.n++; fl.t = now; qbFails[ip] = fl; return text(200, 'Fails.');
+    }
+    delete qbFails[ip];
+    const tok = crypto.randomBytes(24).toString('hex'); qbOut.set(tok, now + 3600e3);
+    return text(200, 'Ok.', { 'Set-Cookie': `SID=${tok}; HttpOnly; SameSite=Strict; path=/` });
+  }
+  const tok = qbSid(req);
+  if (!tok || !qbOut.has(tok)) return text(403, 'Forbidden');
+  if (rest === 'auth/logout') { qbOut.delete(tok); return text(200, ''); }
+  qbOut.set(tok, now + 3600e3);
+  return goatProxy(req, res, t);
+}
 const goatHeaders = (req, t) => {
   const h = { ...req.headers, host: '127.0.0.1:' + t.port };
   delete h['x-forwarded-for']; delete h['x-forwarded-host']; delete h['x-forwarded-proto'];
-  h.cookie = String(h.cookie || '').split(/;\s*/).filter(c => c && !/^sid=/.test(c)).join('; '); if (!h.cookie) delete h.cookie;
+  h.cookie = String(h.cookie || '').split(/;\s*/).filter(c => c && !/^sid=/.test(c) && !(t.key === 'qbittorrent' && /^(SID|QBT_SID_\d+)=/.test(c))).join('; '); if (!h.cookie) delete h.cookie;
   return h;
 };
 const goatLocal = (loc, port) => { try { const u = new URL(String(loc)); return ['127.0.0.1', 'localhost', '0.0.0.0', '[::1]'].includes(u.hostname) && (+u.port || (u.protocol === 'https:' ? 443 : 80)) === +port ? u.pathname + u.search + u.hash : String(loc); } catch { return String(loc); } };
@@ -3183,6 +3216,7 @@ const goatServer = http.createServer(async (req, res) => {
   if (p.startsWith('/engines/')) {
     const t = goatTarget(req.url);
     if (!t) return send(res, 404, { error: 'Not found' });
+    if (t.key === 'qbittorrent' && !goatAdmin(req) && p.startsWith('/engines/qbittorrent/api/v2/')) return qbOutside(req, res, t).catch(() => { if (!res.headersSent) { res.writeHead(500); res.end(); } });
     if (!goatAdmin(req) && !goatKeyOk(req, t) && !fbPublic(req, t)) { res.writeHead(302, { Location: '/' }); return res.end(); }
     if (t.bare) { res.writeHead(301, { Location: '/engines/' + t.key + '/' }); return res.end(); }
     return goatProxy(req, res, t);

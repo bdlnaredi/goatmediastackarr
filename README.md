@@ -324,7 +324,7 @@ GoatMediaStackarr's own page (port 2806) is the way in to everything except Jell
 
 - **Tailscale** (the Unraid plugin): use `http://<unraid's tailscale name>:2806` in the browser and the app; the other ports work as they are. Best for watching Jellyfin away from home.
 - **Cloudflare Tunnel**: point a hostname such as `goat.example.com` at port 2806, and give Jellyfin, Seerr (and ruTorrent or Deluge, if you use their pages) their own hostnames. Enter those on the Stack page under *From outside your home* so the Open buttons use them. Cloudflare's terms don't allow streaming lots of video through a free tunnel.
-- **Phone apps** for Sonarr, Radarr and the others (nzb360, LunaSea, Ruddarr…): use `https://goat.example.com/engines/sonarr` (or `/engines/radarr`…) with that app's API key from its Settings → General.
+- **Phone apps** for Sonarr, Radarr and the others (nzb360, LunaSea, Ruddarr…): use `https://goat.example.com/engines/sonarr` (or `/engines/radarr`…) with that app's API key from its Settings → General. For qBittorrent apps (nzb360, qBitController…), use `https://goat.example.com/engines/qbittorrent` with the qBittorrent login from the Stack page (Logins made for you).
 
 ## Moving from your current setup
 

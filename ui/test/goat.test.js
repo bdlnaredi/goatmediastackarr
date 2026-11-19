@@ -68,7 +68,9 @@ test('engine pages open through the sign-in, including live updates', async () =
     { key: 'sonarr', type: 'sonarr', name: 'Sonarr', url: `http://127.0.0.1:${port}/engines/sonarr`, apiKey: '0123456789abcdef0123456789abcdef' },
     { key: 'qbittorrent', type: 'qbittorrent', name: 'qBittorrent', url: `http://127.0.0.1:${port}`, user: 'u', pass: 'p' },
     { key: 'seerr', type: 'seerr', name: 'Seerr', url: `http://127.0.0.1:${port}`, apiKey: 's' }] }));
-  const s = await boot({ GOAT_MANAGED: mf }, dir);
+  fs.mkdirSync(path.join(dir, 'goat'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'goat', 'secrets.json'), JSON.stringify({ qbitUser: 'goat', qbitPass: 'torrent-pass-1' }));
+  const s = await boot({ GOAT_MANAGED: mf, GOAT_CONFIG_DIR: dir }, dir);
   try {
     let r = await fetch(s.base + '/engines/sonarr/', { redirect: 'manual' });
     assert.equal(r.status, 302, 'signed-out visitors are sent to the sign-in page');
@@ -106,7 +108,22 @@ test('engine pages open through the sign-in, including live updates', async () =
     assert.equal(r.status, 200, 'the right API key is let through'); assert.equal(await r.text(), 'engine /engines/sonarr/api/v3/system/status');
     assert.equal((await fetch(s.base + '/engines/sonarr/api/v3/system/status?apikey=' + key, { redirect: 'manual' })).status, 200);
     assert.equal((await fetch(s.base + '/engines/sonarr/api/v3/system/status', { redirect: 'manual', headers: { 'X-Api-Key': key.replace('0', '1') } })).status, 302, 'a wrong key is not');
-    assert.equal((await fetch(s.base + '/engines/qbittorrent/api/v2/app/version', { redirect: 'manual', headers: { 'X-Api-Key': key } })).status, 302, 'one app\'s key does not open another');
+    assert.equal((await fetch(s.base + '/engines/qbittorrent/api/v2/app/version', { redirect: 'manual', headers: { 'X-Api-Key': key } })).status, 403, 'one app\'s key does not open another');
+    // qBittorrent apps (nzb360, qBitController…) sign in with the qBittorrent login made for you.
+    const qlog = body => fetch(s.base + '/engines/qbittorrent/api/v2/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
+    r = await qlog('username=goat&password=wrong'); assert.equal(await r.text(), 'Fails.'); assert.equal(r.headers.get('set-cookie'), null);
+    r = await qlog('username=goat&password=torrent-pass-1'); assert.equal(await r.text(), 'Ok.');
+    const sid = r.headers.get('set-cookie').split(';')[0]; assert.match(sid, /^SID=[a-f0-9]{48}$/);
+    let n = seen.length;
+    r = await fetch(s.base + '/engines/qbittorrent/api/v2/torrents/info?filter=all', { headers: { Cookie: sid } });
+    assert.equal(await r.text(), 'engine /api/v2/torrents/info?filter=all'); assert.equal(seen.length, n + 1);
+    assert.equal(seen.at(-1).cookie, '', 'its session is not passed on');
+    assert.equal((await fetch(s.base + '/engines/qbittorrent/api/v2/torrents/info', { headers: { Cookie: 'SID=' + 'ab'.repeat(24) } })).status, 403, 'a made-up session is not let in');
+    assert.equal((await fetch(s.base + '/engines/qbittorrent/api/v2/torrents/info')).status, 403);
+    await fetch(s.base + '/engines/qbittorrent/api/v2/auth/logout', { method: 'POST', headers: { Cookie: sid } });
+    assert.equal((await fetch(s.base + '/engines/qbittorrent/api/v2/torrents/info', { headers: { Cookie: sid } })).status, 403, 'signed out');
+    for (let i = 0; i < 8; i++) await qlog('username=goat&password=nope' + i);
+    r = await qlog('username=goat&password=torrent-pass-1'); assert.equal(r.status, 403, 'too many wrong passwords: that address waits');
     assert.match(await ws('x=1\r\nX-Api-Key: ' + key), /101 Switching Protocols/);
     // Where Jellyfin, Seerr and Plex are from outside the home.
     assert.equal((await c.post('/api/goat/outside', { jellyfin: 'ftp://nope' })).status, 400);
