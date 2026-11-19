@@ -39,6 +39,8 @@ ARG SABNZBD_VERSION=latest
 ARG VERSION=dev
 ENV DEBIAN_FRONTEND=noninteractive
 COPY goat/fetch-release.sh /usr/local/bin/fetch-release
+# Ubuntu's and Debian's download servers are sometimes slow or briefly out of step: apt tries again instead of failing the build.
+RUN printf 'Acquire::Retries "10";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' > /etc/apt/apt.conf.d/80-retries
 RUN chmod +x /usr/local/bin/fetch-release && apt-get update && \
     apt-get install -y --no-install-recommends ca-certificates curl jq unzip python3 python3-venv python3-dev build-essential libxml2-dev libxslt1-dev
 RUN --mount=type=secret,id=GITHUB_TOKEN,env=GITHUB_TOKEN \
@@ -80,6 +82,8 @@ ARG RTORRENT_VERSION=latest
 # Changes on every build, so "latest" is looked up again instead of reused from the cache.
 ARG VERSION=dev
 ENV DEBIAN_FRONTEND=noninteractive
+# Ubuntu's and Debian's download servers are sometimes slow or briefly out of step: apt tries again instead of failing the build.
+RUN printf 'Acquire::Retries "10";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' > /etc/apt/apt.conf.d/80-retries
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl jq git build-essential autoconf autoconf-archive automake libtool pkg-config \
       libcurl4-openssl-dev libssl-dev zlib1g-dev libncurses-dev
 RUN --mount=type=secret,id=GITHUB_TOKEN,env=GITHUB_TOKEN \
@@ -103,6 +107,8 @@ FROM node:${NODE_VERSION}-bookworm-slim AS node
 # ---------- cross-seed (a Node program) with its own packages ----------
 FROM node:${NODE_VERSION}-bookworm-slim AS crossseed
 ARG CROSSSEED_VERSION=6
+# Ubuntu's and Debian's download servers are sometimes slow or briefly out of step: apt tries again instead of failing the build.
+RUN printf 'Acquire::Retries "10";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' > /etc/apt/apt.conf.d/80-retries
 RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ ca-certificates && \
     mkdir -p /opt/cross-seed && cd /opt/cross-seed && npm init -y >/dev/null && \
     npm install --omit=dev --no-audit --no-fund "cross-seed@${CROSSSEED_VERSION}" && \
@@ -156,6 +162,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 COPY goat/fetch-release.sh /usr/local/bin/fetch-release
 
+# Ubuntu's and Debian's download servers are sometimes slow or briefly out of step: apt tries again instead of failing the build.
+RUN printf 'Acquire::Retries "10";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' > /etc/apt/apt.conf.d/80-retries
 # System packages: networking/VPN tools, Python for Bazarr/SABnzbd/Tautulli, .NET runtime needs, unpackers for SABnzbd.
 RUN chmod +x /usr/local/bin/fetch-release && \
     apt-get update && \
