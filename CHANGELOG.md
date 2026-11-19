@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+## v1.0.36 — 2026-11-19
+
 - qBittorrent in other apps: phone and desktop apps for qBittorrent (nzb360, qBitController and the like) could not sign in, because the built-in qBittorrent is only reachable through GoatMediaStackarr's page. They now sign in at this page's address plus `/engines/qbittorrent` with the qBittorrent login from Stack → Logins made for you. After 8 wrong passwords that address waits 10 minutes.
 
 - Android: a video player in the app. A tap on Continue watching on Home plays the title right there, from where you left it (a long press still opens Plex or Jellyfin). Seeking, audio and subtitle tracks, speed, picture-in-picture when you leave it, and it remembers where you stopped. On Wi-Fi it plays the original file; on mobile data Plex or Jellyfin makes it smaller as it plays (the quality button switches between original, 1080p, 720p and 480p). More → Offline gets Play here, and saved videos play in the app too. The phone gets a short-lived link from the server, never a Plex or Jellyfin key. Played to the end, it is marked as watched (in Plex for the owner's account).
