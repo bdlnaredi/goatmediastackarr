@@ -57,7 +57,7 @@ function loadSecrets(file) {
   let s = {};
   try { s = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
   const want = {
-    sonarr: key, radarr: key, lidarr: key, prowlarr: key, bazarr: key, tautulli: key,
+    sonarr: key, radarr: key, lidarr: key, prowlarr: key, bazarr: key, tautulli: key, tautulliPass: password,
     sabnzbd: key, sabnzbdNzb: key, qbitUser: () => 'goat', qbitPass: password,
     jellyfinUser: () => 'goat-admin', jellyfinPass: password,
     rutorrentUser: () => 'goat', rutorrentPass: password, delugePass: password,
@@ -220,6 +220,19 @@ function tautulliConfig(existing, s, plex) {
   set('api_key', s.tautulli);
   set('launch_browser', '0');
   set('check_github', '0');
+  // Tautulli 2.19 sets a random password on a first start (or on upgrade without one) and only writes it to its log.
+  // GoatMediaStackarr gives it a password of its own instead and signs in with it when an admin opens Tautulli
+  // (basic auth, which the proxy adds). Only an empty password or that temporary one is replaced: a password you
+  // chose in Tautulli yourself stays.
+  const val = k => iniGet(x, 'General', k).replace(/^"(.*)"$/, '$1');
+  const pw = val('http_password'), gen = val('http_generated_password');
+  if (s.tautulliPass && (!pw || pw === gen)) {
+    if (!val('http_username')) set('http_username', 'tautulli');
+    set('http_password', s.tautulliPass); set('http_generated_password', '');
+    set('http_hash_password', '0'); set('http_hashed_password', '1'); set('http_basic_auth', '1');
+  }
+  // Tautulli 2.19 calls a settings file without these four sections damaged and starts from a copy.
+  for (const sec of ['Advanced', 'PMS', 'Monitoring']) if (!new RegExp(`^\\[${sec}\\]\\s*$`, 'm').test(x)) x = x.replace(/\n*$/, '\n') + `\n[${sec}]\n`;
   // Connect Tautulli to Plex: the built-in one once it has been claimed, or your own (plex.ip and friends set).
   if (plex && plex.token && plex.id) {
     const pms = (k, v) => { x = iniSet(x, 'PMS', k, v, ' = '); };
@@ -346,7 +359,7 @@ function run(env = process.env) {
 
 // The value of one setting in an ini file, or ''.
 const iniGet = (text, section, k) => {
-  const m = String(text || '').match(new RegExp(`\\[${section}\\][^\\[]*?^${k}\\s*=\\s*(.*)$`, 'm'));
+  const m = String(text || '').match(new RegExp(`\\[${section}\\][^\\[]*?^${k}[ \\t]*=[ \\t]*(.*)$`, 'm'));
   return m ? m[1].trim() : '';
 };
 

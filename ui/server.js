@@ -723,7 +723,21 @@ const goatHeaders = (req, t) => {
   const h = { ...req.headers, host: '127.0.0.1:' + t.port };
   delete h['x-forwarded-for']; delete h['x-forwarded-host']; delete h['x-forwarded-proto'];
   h.cookie = String(h.cookie || '').split(/;\s*/).filter(c => c && !/^sid=/.test(c) && !(t.key === 'qbittorrent' && /^(SID|QBT_SID_\d+)=/.test(c))).join('; '); if (!h.cookie) delete h.cookie;
+  // Tautulli has a password of its own (it insists on one since 2.19). An admin opening it is signed in with it.
+  if (t.key === 'tautulli' && goatAdmin(req)) { const a = tautulliAuth(); if (a) h.authorization = a; }
   return h;
+};
+// The sign-in for the built-in Tautulli, read from its own settings (whatever is stored there is what it checks).
+let tautAuthCache = { at: 0, v: '' };
+const tautulliAuth = () => {
+  if (Date.now() - tautAuthCache.at < 30000) return tautAuthCache.v;
+  let v = '';
+  try {
+    const x = fs.readFileSync(path.join(GOAT_CONFIG, 'tautulli', 'config.ini'), 'utf8'), g = x.split(/^\[/m).find(b => b.startsWith('General]')) || '';
+    const get = k => ((g.match(new RegExp(`^${k}\\s*=\\s*(.*)$`, 'm')) || [])[1] || '').trim().replace(/^"(.*)"$/, '$1');
+    if (get('http_basic_auth') === '1' && get('http_password')) v = 'Basic ' + Buffer.from(`${get('http_username')}:${get('http_password')}`).toString('base64');
+  } catch {}
+  tautAuthCache = { at: Date.now(), v }; return v;
 };
 const goatLocal = (loc, port) => { try { const u = new URL(String(loc)); return ['127.0.0.1', 'localhost', '0.0.0.0', '[::1]'].includes(u.hostname) && (+u.port || (u.protocol === 'https:' ? 443 : 80)) === +port ? u.pathname + u.search + u.hash : String(loc); } catch { return String(loc); } };
 const goatProxy = (req, res, t) => {

@@ -131,3 +131,23 @@ test('a folder inside an app folder owned by someone else is handed back (rutorr
   init.run(env);
   for (const p of [ses, deep, path.join(deep, 'x.torrent')]) { const st = fs.statSync(p); assert.deepEqual([st.uid, st.gid], [99, 100], p); }
 });
+
+test('Tautulli gets a password GoatMediaStackarr knows, instead of the random one 2.19 writes only to its log', () => {
+  const init = require('../goat/init.js');
+  const s = { tautulli: 'k'.repeat(32), tautulliPass: 'our-pass-1' };
+  const get = (x, k) => init.iniGet(x, 'General', k).replace(/^"(.*)"$/, '$1');
+  // A first start: our password, basic auth, and the four sections Tautulli 2.19 wants (or it calls the file damaged).
+  let x = init.tautulliConfig('', s, null);
+  assert.equal(get(x, 'http_password'), 'our-pass-1'); assert.equal(get(x, 'http_basic_auth'), '1'); assert.equal(get(x, 'http_username'), 'tautulli');
+  for (const sec of ['General', 'Advanced', 'PMS', 'Monitoring']) assert.match(x, new RegExp(`^\\[${sec}\\]$`, 'm'));
+  assert.equal(init.tautulliConfig(x, s, null), x, 'nothing changes on the next start');
+  // Tautulli already made its temporary password: replaced.
+  x = init.tautulliConfig('[General]\nhttp_username = tautulli\nhttp_password = PBKDF2$h\nhttp_generated_password = PBKDF2$h\n[Advanced]\n[PMS]\n[Monitoring]\n', s, null);
+  assert.equal(get(x, 'http_password'), 'our-pass-1'); assert.equal(get(x, 'http_generated_password'), '');
+  // No password, written by Tautulli as "": ours.
+  x = init.tautulliConfig('[General]\nhttp_password = ""\nhttp_generated_password = ""\n', s, null);
+  assert.equal(get(x, 'http_password'), 'our-pass-1');
+  // A password you chose in Tautulli yourself stays.
+  x = init.tautulliConfig('[General]\nhttp_username = me\nhttp_password = PBKDF2$mine\nhttp_generated_password = ""\nhttp_basic_auth = 0\n', s, null);
+  assert.equal(get(x, 'http_password'), 'PBKDF2$mine'); assert.equal(get(x, 'http_basic_auth'), '0'); assert.equal(get(x, 'http_username'), 'me');
+});

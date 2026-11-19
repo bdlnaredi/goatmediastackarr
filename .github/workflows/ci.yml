@@ -103,7 +103,7 @@ jobs:
             [sabnzbd]=http://127.0.0.1:8085/engines/sabnzbd/
             [jellyfin]=http://127.0.0.1:8096/health
             [seerr]=http://127.0.0.1:5055/api/v1/status
-            [tautulli]=http://127.0.0.1:8181/engines/tautulli/
+            [tautulli]='"http://127.0.0.1:8181/engines/tautulli/api/v2?cmd=status&apikey=$(jq -r .tautulli /config/goat/secrets.json)"'
             [rutorrent]='-u goat:$(jq -r .rutorrentPass /config/goat/secrets.json) http://127.0.0.1:8090/'
             [deluge]=http://127.0.0.1:8112/
             [autobrr]=http://127.0.0.1:7474/engines/autobrr/api/healthz/liveness
@@ -196,6 +196,8 @@ jobs:
           code=$(curl -s -o /dev/null -w '%{http_code}' -b /tmp/ck -H "$J" -H "Origin: $B" -d '{"engine":"nope"}' $B/api/goat/restart)
           [ "$code" = 500 ] || { echo "::error::Unknown app was not refused ($code)"; exit 1; }
           curl -fsS -b /tmp/ck -H "Origin: $B" -o /dev/null $B/engines/sonarr/
+          # Tautulli insists on a password since 2.19: an admin opening it gets its home page, not its login page.
+          t=$(curl -fsSL -b /tmp/ck $B/engines/tautulli/home); echo "$t" | grep -q '<title>Tautulli - Home' || { echo "::error::Tautulli did not open signed in: $(echo "$t" | grep -o '<title>[^<]*')"; exit 1; }
           # File Browser opens through the page, with the media and downloads folders in it.
           ok=""; for i in $(seq 1 20); do curl -fsS -b /tmp/ck -o /dev/null $B/engines/filebrowser/ && { ok=1; break; }; sleep 3; done
           [ -n "$ok" ] || { echo "::error::File Browser did not open at /engines/filebrowser/"; docker logs goat 2>&1 | grep -i filebrowser | tail -20; exit 1; }

@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- Tautulli opened on its login page: Tautulli 2.19 sets a random password on its own and writes it only to its log. The built-in Tautulli now gets a password GoatMediaStackarr knows, and Open on the Stack page signs you in with it, as before. A password you set in Tautulli yourself is left alone. Phone apps still use Tautulli's API key at `/engines/tautulli`. Tautulli also no longer reports its settings file as damaged on a first start.
+
 ## v1.0.36 — 2026-11-19
 
 - qBittorrent in other apps: phone and desktop apps for qBittorrent (nzb360, qBitController and the like) could not sign in, because the built-in qBittorrent is only reachable through GoatMediaStackarr's page. They now sign in at this page's address plus `/engines/qbittorrent` with the qBittorrent login from Stack → Logins made for you. After 8 wrong passwords that address waits 10 minutes.

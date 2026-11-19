@@ -59,7 +59,7 @@ test('the status page is for admins only', async () => {
 test('engine pages open through the sign-in, including live updates', async () => {
   const http = require('node:http'), net = require('node:net');
   const seen = [];
-  const eng = http.createServer((req, res) => { seen.push({ url: req.url, host: req.headers.host, cookie: req.headers.cookie || '' }); if (req.url.endsWith('/go-home')) { res.writeHead(303, { Location: `http://127.0.0.1:${eng.address().port}/engines/sonarr/home?a=1` }); return res.end(); } if (req.url.endsWith('/go-out')) { res.writeHead(302, { Location: 'https://example.com/x' }); return res.end(); } res.writeHead(200, { 'X-Engine': 'yes' }); res.end('engine ' + req.url); });
+  const eng = http.createServer((req, res) => { seen.push({ url: req.url, host: req.headers.host, cookie: req.headers.cookie || '', auth: req.headers.authorization || '' }); if (req.url.endsWith('/go-home')) { res.writeHead(303, { Location: `http://127.0.0.1:${eng.address().port}/engines/sonarr/home?a=1` }); return res.end(); } if (req.url.endsWith('/go-out')) { res.writeHead(302, { Location: 'https://example.com/x' }); return res.end(); } res.writeHead(200, { 'X-Engine': 'yes' }); res.end('engine ' + req.url); });
   eng.on('upgrade', (req, sock) => { sock.write('HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n'); sock.end('hello ' + req.url); });
   await new Promise(r => eng.listen(0, '127.0.0.1', r));
   const port = eng.address().port;
@@ -67,9 +67,12 @@ test('engine pages open through the sign-in, including live updates', async () =
   fs.writeFileSync(mf, JSON.stringify({ services: [
     { key: 'sonarr', type: 'sonarr', name: 'Sonarr', url: `http://127.0.0.1:${port}/engines/sonarr`, apiKey: '0123456789abcdef0123456789abcdef' },
     { key: 'qbittorrent', type: 'qbittorrent', name: 'qBittorrent', url: `http://127.0.0.1:${port}`, user: 'u', pass: 'p' },
+    { key: 'tautulli', type: 'tautulli', name: 'Tautulli', url: `http://127.0.0.1:${port}/engines/tautulli`, apiKey: 'fedcba9876543210fedcba9876543210' },
     { key: 'seerr', type: 'seerr', name: 'Seerr', url: `http://127.0.0.1:${port}`, apiKey: 's' }] }));
   fs.mkdirSync(path.join(dir, 'goat'), { recursive: true });
   fs.writeFileSync(path.join(dir, 'goat', 'secrets.json'), JSON.stringify({ qbitUser: 'goat', qbitPass: 'torrent-pass-1' }));
+  fs.mkdirSync(path.join(dir, 'tautulli'));
+  fs.writeFileSync(path.join(dir, 'tautulli', 'config.ini'), '[General]\nhttp_username = tautulli\nhttp_password = taut-pass-1\nhttp_basic_auth = 1\n[PMS]\nhttp_password = not-this\n');
   const s = await boot({ GOAT_MANAGED: mf, GOAT_CONFIG_DIR: dir }, dir);
   try {
     let r = await fetch(s.base + '/engines/sonarr/', { redirect: 'manual' });
@@ -125,6 +128,12 @@ test('engine pages open through the sign-in, including live updates', async () =
     for (let i = 0; i < 8; i++) await qlog('username=goat&password=nope' + i);
     r = await qlog('username=goat&password=torrent-pass-1'); assert.equal(r.status, 403, 'too many wrong passwords: that address waits');
     assert.match(await ws('x=1\r\nX-Api-Key: ' + key), /101 Switching Protocols/);
+    // Tautulli has its own password (since 2.19): an admin is signed in with it, an app with only the API key is not.
+    r = await get('/engines/tautulli/home'); assert.equal(await r.text(), 'engine /engines/tautulli/home');
+    assert.equal(seen.at(-1).auth, 'Basic ' + Buffer.from('tautulli:taut-pass-1').toString('base64'));
+    r = await fetch(s.base + '/engines/tautulli/api/v2?cmd=status&apikey=fedcba9876543210fedcba9876543210'); assert.equal(r.status, 200);
+    assert.equal(seen.at(-1).auth, '', 'the password is not handed to apps that bring only the API key');
+    assert.equal((await fetch(s.base + '/engines/tautulli/home', { redirect: 'manual' })).status, 302);
     // Where Jellyfin, Seerr and Plex are from outside the home.
     assert.equal((await c.post('/api/goat/outside', { jellyfin: 'ftp://nope' })).status, 400);
     assert.deepEqual((await c.post('/api/goat/outside', { jellyfin: 'https://jellyfin.example.com/', seerr: '' })).data, { jellyfin: 'https://jellyfin.example.com' });
