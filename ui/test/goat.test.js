@@ -59,7 +59,7 @@ test('the status page is for admins only', async () => {
 test('engine pages open through the sign-in, including live updates', async () => {
   const http = require('node:http'), net = require('node:net');
   const seen = [];
-  const eng = http.createServer((req, res) => { seen.push({ url: req.url, host: req.headers.host, cookie: req.headers.cookie || '', auth: req.headers.authorization || '' }); if (req.url.endsWith('/go-home')) { res.writeHead(303, { Location: `http://127.0.0.1:${eng.address().port}/engines/sonarr/home?a=1` }); return res.end(); } if (req.url.endsWith('/go-out')) { res.writeHead(302, { Location: 'https://example.com/x' }); return res.end(); } res.writeHead(200, { 'X-Engine': 'yes' }); res.end('engine ' + req.url); });
+  const eng = http.createServer((req, res) => { seen.push({ url: req.url, host: req.headers.host, cookie: req.headers.cookie || '', auth: req.headers.authorization || '' }); if (req.url.endsWith('/go-home')) { res.writeHead(303, { Location: `http://127.0.0.1:${eng.address().port}/engines/sonarr/home?a=1` }); return res.end(); } if (req.url.endsWith('/go-out')) { res.writeHead(302, { Location: 'https://example.com/x' }); return res.end(); } res.writeHead(200, { 'X-Engine': 'yes', ...(req.url.startsWith('/api/v2/') ? { 'Set-Cookie': 'QBT_SID_8080=qb-sess-' + seen.length + '; HttpOnly; path=/' } : {}) }); res.end('engine ' + req.url); });
   eng.on('upgrade', (req, sock) => { sock.write('HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n'); sock.end('hello ' + req.url); });
   await new Promise(r => eng.listen(0, '127.0.0.1', r));
   const port = eng.address().port;
@@ -94,6 +94,10 @@ test('engine pages open through the sign-in, including live updates', async () =
 
     r = await get('/engines/qbittorrent/api/v2/app/version');
     assert.equal(await r.text(), 'engine /api/v2/app/version', 'qBittorrent has no sub-path, so it is removed');
+    // The qBittorrent page keeps its own session: it holds an uploaded .torrent file until the page adds it.
+    r = await fetch(s.base + '/engines/qbittorrent/api/v2/torrents/parseMetadata', { method: 'POST', redirect: 'manual', headers: { Cookie: c.cookie + '; QBT_SID_8080=browser-sess' } });
+    assert.equal(seen.at(-1).cookie, 'QBT_SID_8080=browser-sess', "the page's qBittorrent session is passed on");
+    assert.match(r.headers.get('set-cookie') || '', /QBT_SID_8080=qb-sess/, "and qBittorrent's session cookie reaches the page");
     r = await get('/engines/qbittorrent');
     assert.equal(r.status, 301); assert.equal(r.headers.get('location'), '/engines/qbittorrent/');
     assert.equal((await get('/engines/seerr/')).status, 404);
@@ -121,6 +125,10 @@ test('engine pages open through the sign-in, including live updates', async () =
     r = await fetch(s.base + '/engines/qbittorrent/api/v2/torrents/info?filter=all', { headers: { Cookie: sid } });
     assert.equal(await r.text(), 'engine /api/v2/torrents/info?filter=all'); assert.equal(seen.length, n + 1);
     assert.equal(seen.at(-1).cookie, '', 'its session is not passed on');
+    assert.equal(r.headers.get('set-cookie'), null, "qBittorrent's own session stays here");
+    const qs = 'QBT_SID_8080=qb-sess-' + seen.length;
+    await fetch(s.base + '/engines/qbittorrent/api/v2/torrents/add', { method: 'POST', headers: { Cookie: sid } });
+    assert.equal(seen.at(-1).cookie, qs, 'the next call uses the same qBittorrent session');
     assert.equal((await fetch(s.base + '/engines/qbittorrent/api/v2/torrents/info', { headers: { Cookie: 'SID=' + 'ab'.repeat(24) } })).status, 403, 'a made-up session is not let in');
     assert.equal((await fetch(s.base + '/engines/qbittorrent/api/v2/torrents/info')).status, 403);
     await fetch(s.base + '/engines/qbittorrent/api/v2/auth/logout', { method: 'POST', headers: { Cookie: sid } });

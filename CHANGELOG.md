@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- qBittorrent's page did not add uploaded .torrent files (since v1.0.36): the file was chosen, but the torrent never appeared. The page's qBittorrent session was dropped on its way through GoatMediaStackarr, and qBittorrent keeps an uploaded file in that session until the page adds it. The session is passed on again. Phone apps signed in at `/engines/qbittorrent` now keep one qBittorrent session each, instead of starting a new one on every call.
+
 ## v1.0.37 — 2026-11-19
 
 - Tautulli opened on its login page: Tautulli 2.19 sets a random password on its own and writes it only to its log. The built-in Tautulli now gets a password GoatMediaStackarr knows, and Open on the Stack page signs you in with it, as before. A password you set in Tautulli yourself is left alone. Phone apps still use Tautulli's API key at `/engines/tautulli`. Tautulli also no longer reports its settings file as damaged on a first start.

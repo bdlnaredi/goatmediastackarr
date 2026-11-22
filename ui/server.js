@@ -689,13 +689,14 @@ const goatKeyOk = (req, t) => {
 // Phone and desktop apps for qBittorrent (nzb360, qBitController, Arrmada360…) sign in with qBittorrent's own user
 // name and password. qBittorrent lets everything from inside the container in without one, so the check is made here:
 // the login made for you (Stack → Logins made for you) gives the app a session of its own, and only then are its
-// calls passed on. Wrong passwords are limited per address.
+// calls passed on. Wrong passwords are limited per address. Each app session keeps the qBittorrent session it was
+// given (qBittorrent keeps an uploaded .torrent file there between "read the file" and "add it"), in place of its own.
 const qbOut = new Map(), qbFails = {};
 const qbSid = req => { const c = String(req.headers.cookie || ''); const m = c.match(/(?:^|;\s*)(?:SID|QBT_SID_\d+)=([a-f0-9]{48})(?:;|$)/); return m && m[1]; };
 async function qbOutside(req, res, t) {
   const p = String(req.url).split('?')[0], rest = p.slice('/engines/qbittorrent/api/v2/'.length), now = Date.now();
   const text = (code, body, h = {}) => { res.writeHead(code, { 'Content-Type': 'text/plain; charset=UTF-8', 'Cache-Control': 'no-store', ...h }); res.end(body); };
-  for (const [k, v] of qbOut) if (v < now) qbOut.delete(k);
+  for (const [k, v] of qbOut) if (v.exp < now) qbOut.delete(k);
   if (rest === 'auth/login') {
     if (req.method !== 'POST') return text(405, 'Method Not Allowed');
     const ip = ipOf(req), fl = qbFails[ip] || { n: 0, t: 0 }; if (now - fl.t > 600000) fl.n = 0;
@@ -710,19 +711,22 @@ async function qbOutside(req, res, t) {
       fl.n++; fl.t = now; qbFails[ip] = fl; return text(200, 'Fails.');
     }
     delete qbFails[ip];
-    const tok = crypto.randomBytes(24).toString('hex'); qbOut.set(tok, now + 3600e3);
+    const tok = crypto.randomBytes(24).toString('hex'); qbOut.set(tok, { exp: now + 3600e3, qb: '' });
     return text(200, 'Ok.', { 'Set-Cookie': `SID=${tok}; HttpOnly; SameSite=Strict; path=/` });
   }
   const tok = qbSid(req);
   if (!tok || !qbOut.has(tok)) return text(403, 'Forbidden');
   if (rest === 'auth/logout') { qbOut.delete(tok); return text(200, ''); }
-  qbOut.set(tok, now + 3600e3);
-  return goatProxy(req, res, t);
+  const jar = qbOut.get(tok); jar.exp = now + 3600e3;
+  return goatProxy(req, res, { ...t, qbJar: jar });
 }
 const goatHeaders = (req, t) => {
   const h = { ...req.headers, host: '127.0.0.1:' + t.port };
   delete h['x-forwarded-for']; delete h['x-forwarded-host']; delete h['x-forwarded-proto'];
-  h.cookie = String(h.cookie || '').split(/;\s*/).filter(c => c && !/^sid=/.test(c) && !(t.key === 'qbittorrent' && /^(SID|QBT_SID_\d+)=/.test(c))).join('; '); if (!h.cookie) delete h.cookie;
+  // A qBittorrent app's session is this server's, so it is swapped for the qBittorrent session that goes with it. The
+  // qBittorrent page in your browser keeps its own session cookie: without it, every call would be a new session, and
+  // a .torrent file uploaded on the page would be forgotten before it is added.
+  h.cookie = String(h.cookie || '').split(/;\s*/).filter(c => c && !/^sid=/.test(c) && !(t.qbJar && /^(SID|QBT_SID_\d+)=/.test(c))).concat(t.qbJar && t.qbJar.qb ? [t.qbJar.qb] : []).join('; '); if (!h.cookie) delete h.cookie;
   // Tautulli has a password of its own (it insists on one since 2.19). An admin opening it is signed in with it.
   if (t.key === 'tautulli' && goatAdmin(req)) { const a = tautulliAuth(); if (a) h.authorization = a; }
   return h;
@@ -747,6 +751,10 @@ const goatProxy = (req, res, t) => {
     // would send the browser to 127.0.0.1. The address part is dropped, so the browser stays on this server's address.
     const h = { ...r.headers };
     if (h.location) h.location = goatLocal(h.location, t.port);
+    if (t.qbJar && h['set-cookie']) {
+      for (const c of [].concat(h['set-cookie'])) { const m = /^(QBT_SID_\d+=[^;]*)/.exec(c); if (m) t.qbJar.qb = m[1]; }
+      h['set-cookie'] = [].concat(h['set-cookie']).filter(c => !/^QBT_SID_\d+=/.test(c)); if (!h['set-cookie'].length) delete h['set-cookie'];
+    }
     // Files File Browser hands out (downloads, previews, share links) come from this site's own address. A web page or
     // picture with scripts in it (from a torrent, say) must not run as this site, so they are opened sandboxed: they
     // show, but run nothing and reach nothing of GoatMediaStackarr.
