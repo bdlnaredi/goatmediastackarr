@@ -561,5 +561,13 @@
   "Your profile has no Sonarr or Radarr to show. Ask an admin for access.": "Votre profil n’a ni Sonarr ni Radarr à afficher. Demandez l’accès à un admin.",
   "Your profile has no Sonarr or Radarr.": "Votre profil n’a ni Sonarr ni Radarr.",
   "Your provider's news servers in SABnzbd": "Les serveurs de news de votre fournisseur dans SABnzbd",
-  "Your version": "Votre version"
+  "Your version": "Votre version",
+  "Your shows": "Vos séries",
+  "Your movies": "Vos films",
+  "Its torrents": "Ses torrents",
+  "Its Usenet downloads": "Ses téléchargements Usenet",
+  "The sites it searches": "Les sites où il cherche",
+  "Your artists": "Vos artistes",
+  "What people asked for": "Ce que les gens ont demandé",
+  "Opens its own page": "Ouvre sa propre page"
 }
