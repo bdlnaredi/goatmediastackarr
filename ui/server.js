@@ -3272,6 +3272,19 @@ const goatServer = http.createServer(async (req, res) => {
     if (me && Date.now() - sess.seen > 60000) sess.seen = Date.now();
     const setup = !db.users.length;
     if (p === '/api/health') return send(res, 200, { ok: true, version: VERSION });
+    // Back from Google's sign-in (through the GitHub Pages forwarding page). No session cookie comes along (it is only
+    // sent from this site's own pages), so the state, kept by this server and used once, is what lets it in.
+    if (p === CLOUD.RETURN_PATH && m === 'GET') {
+      const q = new URL(req.url, 'http://x').searchParams, escHtml = v => String(v).replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`), page = (title, msg, ok) => { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
+        res.end(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escHtml(title)}</title><body style="font:16px system-ui,sans-serif;max-width:32em;margin:15vh auto;padding:0 16px;color-scheme:light dark"><h2>${escHtml(title)}</h2><p>${escHtml(msg)}</p><p><a href="/settings/backup">Back to GoatMediaStackarr</a></p>${ok ? '<script>setTimeout(function(){location.replace("/settings/backup")},800)</script>' : ''}`); };
+      if (q.get('error')) return page('Google Drive was not connected', q.get('error') === 'access_denied' ? 'You did not allow access. Connect Google Drive again to try once more.' : 'Google said: ' + cut(q.get('error_description') || q.get('error'), 200), false);
+      try {
+        const r2 = await CLOUD.googleFinish(q.get('state'), q.get('code'));
+        db.settings.cloud = { ...CLOUD.clean({ type: 'drive' }, {}), on: true, connected: true, account: cut(r2.account, 120), folder: (db.settings.cloud || {}).folder || 'GoatMediaStackarr', keep: (db.settings.cloud || {}).keep || 7 };
+        save(); audit(r2.account, 'Connected cloud backup', 'Google Drive');
+        return page('Google Drive connected', 'Backups will be copied there. Taking you back…', true);
+      } catch (e) { return page('Google Drive was not connected', e.message, false); }
+    }
     // What changed in each version, for the "What's new" page.
     if (p === '/api/changelog' && m === 'GET') return send(res, 200, { current: VERSION, versions: changelog.read(VERSION) });
     if (p === '/api/wallpapers' && m === 'GET') { if (!DEMO && wpMode() === 'library' && !wpList().some(f => LIBWP.test(f)) && !wpBusy) wpKick(); return send(res, 200, wpMode() === 'scenes' ? [] : DEMO ? demo.fanarts() : wpList()); }
@@ -6110,7 +6123,7 @@ const goatServer = http.createServer(async (req, res) => {
       audit(me.name, 'Changed watchlists', db.settings.watchlist.auto ? 'request automatically' : 'do not request'); return send(res, 200, { auto: db.settings.watchlist.auto });
     }
     // Copying backups to Google Drive, OneDrive or iCloud Drive (lib/cloud.js; rclone does the work).
-    const cloudPub = () => { const o = db.settings.cloud || {}, c = CLOUD.clean({}, o); return { ...c, types: CLOUD.TYPES, old: ['s3', 'webdav'].includes(o.type) ? o.type : '', ...(c.connected ? {} : { pending: CLOUD.authPending() }) }; };
+    const cloudPub = () => { const o = db.settings.cloud || {}, c = CLOUD.clean({}, o); return { ...c, types: CLOUD.TYPES, old: ['s3', 'webdav'].includes(o.type) ? o.type : '', oneTap: CLOUD.googleOn(), ...(c.connected ? {} : { pending: CLOUD.authPending() }) }; };
     if (p === '/api/cloud' && m === 'GET') return send(res, 200, cloudPub());
     if (p === '/api/cloud' && m === 'PUT') {
       const b = await readBody(req), c = CLOUD.clean({ ...b, type: (db.settings.cloud || {}).type }, db.settings.cloud || {}), bad = CLOUD.problem(c);
@@ -6126,6 +6139,7 @@ const goatServer = http.createServer(async (req, res) => {
       if (DEMO) return send(res, 403, { error: 'This is turned off in the demo' });
       const b = await readBody(req), type = String(b.type || '');
       try {
+        if (b.step === 'start' && type === 'drive' && b.back && CLOUD.googleOn()) return send(res, 200, { ...CLOUD.googleStart(b.back), oneTap: true });
         if (b.step === 'start' && ['drive', 'onedrive'].includes(type)) return send(res, 200, await CLOUD.authStart(type));
         const done = acct => { db.settings.cloud = { ...CLOUD.clean({ type }, {}), on: true, connected: true, account: cut(acct || CLOUD.TYPES[type], 120), folder: (db.settings.cloud || {}).folder || 'GoatMediaStackarr', keep: (db.settings.cloud || {}).keep || 7 };
           save(); audit(me.name, 'Connected cloud backup', CLOUD.TYPES[type]); return send(res, 200, cloudPub()); };

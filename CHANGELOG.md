@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- **Google Drive connects in one tap** (Settings → Backup → Google Drive): Google's page opens, you allow access, and you are sent straight back to GoatMediaStackarr, connected, with your Google account shown. No address to copy and paste. It uses GoatMediaStackarr's own Google app, which only gets access to the files GoatMediaStackarr puts in your Drive, and passes through a small page on GitHub Pages that sends you back to your own GoatMediaStackarr. Images built without that app (your own builds) keep the pasted address. OneDrive and iCloud Drive connect as before.
+
 - Connecting Google Drive or OneDrive for cloud backups is more forgiving. The address can be pasted whole, without `http://`, cut short, or as the code alone, and pasting it connects straight away (no Connect button needed). It keeps working if the page was reloaded, Google Drive was pressed again, or the server restarted while you were signing in; before, any of these made the pasted address fail. The sign-in waits 30 minutes. A sign-in helper left over from before a restart no longer blocks the next one ("rclone did not start signing in"), and a code that is too old says to sign in again.
 
 - qBittorrent's page did not add uploaded .torrent files (since v1.0.36): the file was chosen, but the torrent never appeared. The page's qBittorrent session was dropped on its way through GoatMediaStackarr, and qBittorrent keeps an uploaded file in that session until the page adds it. The session is passed on again. Phone apps signed in at `/engines/qbittorrent` now keep one qBittorrent session each, instead of starting a new one on every call.

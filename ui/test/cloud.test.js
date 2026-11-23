@@ -77,3 +77,46 @@ test('iCloud Drive: Apple ID, then the code; an old S3 or WebDAV setting is show
   const s2 = await boot({ RCLONE_BIN: FAKE }, d2), b = client(s2.base); await setup(b);
   try { const c = (await b.get('/api/cloud')).data; assert.equal(c.on, false); assert.equal(c.old, 's3'); assert.equal(c.connected, false); } finally { await s2.stop(); }
 });
+
+test('Google Drive in one tap: Google sends you back (through the forwarding page) and it is connected', async () => {
+  const http = require('node:http'), crypto = require('node:crypto'), { free } = require('./helpers');
+  const seen = [], gport = await free();
+  const google = http.createServer((q, r) => { let b = ''; q.on('data', d => b += d); q.on('end', () => {
+    const f = new URLSearchParams(b); seen.push(f);
+    const want = seen.challenge, got = crypto.createHash('sha256').update(f.get('code_verifier') || '').digest('base64url');
+    if (f.get('code') !== 'good' || got !== want || f.get('client_secret') !== 'shh' || f.get('redirect_uri') !== 'https://relay.example/signin/') { r.writeHead(400); return r.end(JSON.stringify({ error: 'invalid_grant' })); }
+    const idt = 'x.' + Buffer.from(JSON.stringify({ email: 'me@gmail.com' })).toString('base64url') + '.y';
+    r.writeHead(200, { 'Content-Type': 'application/json' }); r.end(JSON.stringify({ access_token: 'at', refresh_token: 'rt1', expires_in: 3599, token_type: 'Bearer', id_token: idt }));
+  }); }).listen(gport, '127.0.0.1');
+  const dir = tmp(), s = await boot({ RCLONE_BIN: FAKE, GOOGLE_CLIENT_ID: 'goat.apps.googleusercontent.com', GOOGLE_CLIENT_SECRET: 'shh', GOOGLE_RELAY_URL: 'https://relay.example/signin/',
+    GOOGLE_AUTH_URL: 'https://accounts.example/auth', GOOGLE_TOKEN_URL: `http://127.0.0.1:${gport}/token` }, dir), a = client(s.base); await setup(a);
+  try {
+    assert.equal((await a.get('/api/cloud')).data.oneTap, true);
+    const st = (await a.post('/api/cloud/connect', { type: 'drive', step: 'start', back: 'http://192.168.1.5:2806' })).data;
+    assert.equal(st.oneTap, true);
+    const g = new URL(st.url), q = g.searchParams; seen.challenge = q.get('code_challenge');
+    assert.equal(g.origin + g.pathname, 'https://accounts.example/auth');
+    assert.equal(q.get('client_id'), 'goat.apps.googleusercontent.com'); assert.equal(q.get('redirect_uri'), 'https://relay.example/signin/');
+    assert.match(q.get('scope'), /auth\/drive\.file/); assert.doesNotMatch(q.get('scope'), /auth\/drive( |$)/, 'only the files it makes');
+    assert.equal(q.get('code_challenge_method'), 'S256'); assert.equal(q.get('access_type'), 'offline');
+    const state = q.get('state');
+    assert.equal(JSON.parse(Buffer.from(state, 'base64url')).r, 'http://192.168.1.5:2806/api/cloud/google/return', 'the forwarding page sends you back here');
+    // Back from Google: no session cookie comes along.
+    const ret = u => fetch(s.base + '/api/cloud/google/return?' + new URLSearchParams(u)).then(async r => ({ status: r.status, text: await r.text() }));
+    assert.match((await ret({ state: 'made-up', code: 'good' })).text, /not connected[\s\S]*has ended/, 'only a state this server made');
+    assert.match((await ret({ state, error: 'access_denied' })).text, /did not allow access/);
+    const ok = await ret({ state, code: 'good' });
+    assert.match(ok.text, /Google Drive connected/, ok.text); assert.match(ok.text, /location\.replace\("\/settings\/backup"\)/);
+    const conf = fs.readFileSync(path.join(s.dir, 'rclone.conf'), 'utf8');
+    assert.match(conf, /client_id = goat\.apps\.googleusercontent\.com/); assert.match(conf, /client_secret = shh/); assert.match(conf, /scope = drive\.file/); assert.match(conf, /"refresh_token":"rt1"/);
+    const c = (await a.get('/api/cloud')).data; assert.equal(c.connected, true); assert.equal(c.on, true); assert.equal(c.account, 'me@gmail.com');
+    assert.match((await ret({ state, code: 'good' })).text, /already used/, 'a state works once');
+    // Without the app's ID in the image, connecting Google Drive is the pasted address, as before.
+  } finally { await s.stop(); google.close(); }
+  const s2 = await boot({ RCLONE_BIN: FAKE, CLOUD_AUTH_PORT: '53792' }), b = client(s2.base); await setup(b);
+  try {
+    assert.equal((await b.get('/api/cloud')).data.oneTap, false);
+    const st = (await b.post('/api/cloud/connect', { type: 'drive', step: 'start', back: 'http://192.168.1.5:2806' })).data;
+    assert.match(st.url, /^https:\/\/accounts\.example\/o\/oauth2\/auth\?state=st/); assert.equal(st.oneTap, undefined);
+  } finally { await s2.stop(); }
+});

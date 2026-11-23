@@ -15,7 +15,7 @@
 // iCloud: Apple ID, password, then the 6-digit code Apple shows on their devices (rclone's own steps). Apple asks again
 // about once a month, and it only works with Advanced Data Protection off.
 'use strict';
-const { spawn, execFile } = require('node:child_process'), fs = require('node:fs'), path = require('node:path');
+const { spawn, execFile } = require('node:child_process'), fs = require('node:fs'), path = require('node:path'), crypto = require('node:crypto');
 
 const TYPES = { drive: 'Google Drive', onedrive: 'OneDrive', iclouddrive: 'iCloud Drive' };
 const REMOTE = 'goatcloud';
@@ -151,6 +151,49 @@ async function authFinish(pasted, type) {
   return { account: (d.owner && d.owner.user && (d.owner.user.email || d.owner.user.displayName)) || 'OneDrive' };
 }
 
+// ---- Google Drive in one tap: GoatMediaStackarr's own Google app (its ID and secret are built into the image).
+// Google sends people back only to an address registered beforehand, and everyone's GoatMediaStackarr has its own
+// address, so Google sends them to a small page on GitHub Pages (site/signin/), which forwards them to the address
+// written in the state. The state is random and kept here (30 minutes, used once), and the code is worth nothing
+// without the PKCE verifier that never leaves this server, so a code sent anywhere else cannot be used.
+const G = () => ({ id: process.env.GOOGLE_CLIENT_ID || '', secret: process.env.GOOGLE_CLIENT_SECRET || '',
+  relay: process.env.GOOGLE_RELAY_URL || 'https://bdlnaredi.github.io/goatmediastackarr/signin/',
+  auth: process.env.GOOGLE_AUTH_URL || 'https://accounts.google.com/o/oauth2/v2/auth', token: process.env.GOOGLE_TOKEN_URL || 'https://oauth2.googleapis.com/token' });
+const googleOn = () => !!(G().id && G().secret);
+const RETURN_PATH = '/api/cloud/google/return';
+const gWait = new Map();   // state -> { verifier, at }
+
+/** Starts the one-tap sign-in; `back` is the address GoatMediaStackarr is open at. Resolves Google's page. */
+function googleStart(back) {
+  const g = G(); if (!googleOn()) throw new Error('One-tap Google sign-in is not set up in this image');
+  let u; try { u = new URL(String(back)); } catch { throw new Error('Bad address'); }
+  if (!/^https?:$/.test(u.protocol)) throw new Error('Bad address');
+  const now = Date.now(); for (const [k, v] of gWait) if (now - v.at > 30 * 60e3) gWait.delete(k);
+  const verifier = crypto.randomBytes(48).toString('base64url');
+  const state = Buffer.from(JSON.stringify({ r: u.origin + RETURN_PATH, n: crypto.randomBytes(18).toString('base64url') })).toString('base64url');
+  gWait.set(state, { verifier, at: now });
+  const q = new URLSearchParams({ client_id: g.id, redirect_uri: g.relay, response_type: 'code', scope: 'openid email https://www.googleapis.com/auth/drive.file',
+    access_type: 'offline', prompt: 'consent', state, code_challenge: crypto.createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256' });
+  return { url: `${g.auth}?${q}` };
+}
+
+/** Finishes it with what Google sent back. Resolves { account }. */
+async function googleFinish(state, code) {
+  const g = G(), w = gWait.get(String(state || ''));
+  if (!w || Date.now() - w.at > 30 * 60e3) throw new Error('That sign-in has ended or was already used. Connect Google Drive again');
+  gWait.delete(String(state));
+  if (!code) throw new Error('Google sent no sign-in code back');
+  const r = await fetch(g.token, { method: 'POST', body: new URLSearchParams({ code: String(code), client_id: g.id, client_secret: g.secret, redirect_uri: g.relay, grant_type: 'authorization_code', code_verifier: w.verifier }), signal: AbortSignal.timeout(20000) });
+  const t = await r.json().catch(() => ({}));
+  if (!r.ok || !t.access_token) throw new Error('Google did not finish signing in: ' + cut(t.error_description || t.error || 'error ' + r.status, 200));
+  if (!t.refresh_token) throw new Error('Google gave no lasting access. Connect Google Drive again');
+  stopAuth();
+  const token = JSON.stringify({ access_token: t.access_token, token_type: t.token_type || 'Bearer', refresh_token: t.refresh_token, expiry: new Date(Date.now() + (+t.expires_in || 3600) * 1000).toISOString() });
+  writeRemote({ type: 'drive', client_id: g.id, client_secret: g.secret, scope: 'drive.file', token });
+  let email = ''; try { email = JSON.parse(Buffer.from(String(t.id_token).split('.')[1], 'base64url')).email || ''; } catch {}
+  return { account: cut(email, 120) || 'Google Drive' };
+}
+
 // ---- iCloud Drive: rclone's own steps, one answer at a time.
 const parse = s => { try { return JSON.parse(s); } catch { return {}; } };
 async function icloudStart(appleId, password) {
@@ -194,4 +237,4 @@ async function test(c) {
   return true;
 }
 
-module.exports = { TYPES, clean, problem, setConfDir, conf, authStart, authFinish, authPending, readPaste, stopAuth, icloudStart, icloudCode, forget, put, list, del, send, test, writeRemote };
+module.exports = { TYPES, clean, problem, setConfDir, conf, googleOn, googleStart, googleFinish, RETURN_PATH, authStart, authFinish, authPending, readPaste, stopAuth, icloudStart, icloudCode, forget, put, list, del, send, test, writeRemote };

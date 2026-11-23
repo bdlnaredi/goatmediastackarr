@@ -1812,6 +1812,9 @@ async function cloudPanel(){
           }catch(x){$('#cfe').textContent=x.message;b.disabled=false}};
         return;
       }
+      // One tap: Google's page opens here and sends you back, connected.
+      if(type==='drive'&&c.oneTap){box.innerHTML='<p class="mute">Taking you to Google…</p>';
+        try{const r=await api('/api/cloud/connect','POST',{type,step:'start',back:location.origin});location.href=r.url}catch(x){box.innerHTML='';$('#cfe').textContent=x.message}return}
       box.innerHTML='<p class="mute">Starting…</p>';
       let r;try{r=await api('/api/cloud/connect','POST',{type,step:'start'})}catch(x){box.innerHTML='';$('#cfe').textContent=x.message;return}
       const host=type==='drive'?'127.0.0.1':'localhost';

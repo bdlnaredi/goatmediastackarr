@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Back to GoatMediaStackarr</title>
+<style>
+  :root { --bg: #fafafa; --fg: #1d1d1f; --mute: #6e6e73; --acc: #b45309; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #161618; --fg: #f2f2f4; --mute: #a1a1a6; --acc: #fbbf24; } }
+  body { background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; }
+  main { max-width: 32em; margin: 18vh auto; padding: 0 16px; }
+  p { color: var(--mute); }
+  a { color: var(--acc); font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+  <h2 id="t">Taking you back to GoatMediaStackarr…</h2>
+  <p id="m">Google has sent you here after you allowed access. This page only passes you on to your own GoatMediaStackarr.</p>
+  <p id="l"></p>
+</main>
+<script>
+// Google sends people here (the one address registered with GoatMediaStackarr's Google app). The state that
+// GoatMediaStackarr made says where it is open; this page sends the browser there with what Google gave. Nothing is
+// kept or sent anywhere else, and the code only works for the GoatMediaStackarr that started the sign-in.
+(function () {
+  var q = new URLSearchParams(location.search), back = null;
+  try {
+    var s = (q.get('state') || '').replace(/-/g, '+').replace(/_/g, '/');
+    var r = JSON.parse(atob(s + '==='.slice((s.length + 3) % 4))).r;
+    back = new URL(r);
+    if (!/^https?:$/.test(back.protocol) || back.pathname !== '/api/cloud/google/return' || back.username || back.password) back = null;
+  } catch (e) { back = null; }
+  if (!back) {
+    document.getElementById('t').textContent = 'This page could not find your GoatMediaStackarr';
+    document.getElementById('m').textContent = 'Open GoatMediaStackarr, go to Settings → Backup and connect Google Drive again.';
+    return;
+  }
+  ['code', 'state', 'error', 'error_description'].forEach(function (k) { if (q.get(k)) back.searchParams.set(k, q.get(k)); });
+  history.replaceState(null, '', location.pathname);
+  var a = document.createElement('a'); a.href = back.href; a.textContent = 'Continue to ' + back.host;
+  document.getElementById('l').appendChild(a);
+  location.replace(back.href);
+})();
+</script>
+</body>
+</html>
