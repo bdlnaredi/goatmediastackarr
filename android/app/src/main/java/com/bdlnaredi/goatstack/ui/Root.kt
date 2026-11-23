@@ -227,7 +227,8 @@ private fun MainShell(state: AppState, me: Me, user: User) {
     // The side menu: everything that is not a tab at the bottom (the apps of the stack, every other page, Settings).
     val drawer = androidx.compose.material3.rememberDrawerState(androidx.compose.material3.DrawerValue.Closed)
     val scope = androidx.compose.runtime.rememberCoroutineScope()
-    val openMenu: () -> Unit = { scope.launch { drawer.open() } }
+    // Kept between redraws: a new one each time would make every page redraw with it.
+    val openMenu: () -> Unit = androidx.compose.runtime.remember(scope, drawer) { { scope.launch { drawer.open() } } }
     androidx.activity.compose.BackHandler(enabled = drawer.isOpen) { scope.launch { drawer.close() } }
     CompositionLocalProvider(LocalCtx provides ctx, LocalMenu provides openMenu) {
         // Not while the PIN is asked: a dialog would show above the lock screen.

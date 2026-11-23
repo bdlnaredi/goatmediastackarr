@@ -99,6 +99,26 @@ class ScreensTest {
         compose.waitForIdle()
     }
 
+    /** Opens a season on a show's page: scroll to it, tap it, and its episodes show (tried again if the tap was lost). */
+    private fun openSeason(season: String, episode: String) {
+        fun shown(): Boolean {
+            val until = System.currentTimeMillis() + 6_000
+            while (System.currentTimeMillis() < until) {
+                if (compose.onAllNodesWithText(episode, substring = true).fetchSemanticsNodes().isNotEmpty()) return true
+                compose.mainClock.advanceTimeBy(250); Thread.sleep(100); compose.waitForIdle()
+            }
+            return false
+        }
+        repeat(3) { attempt ->
+            scrollTo(season); tap(season)
+            if (shown()) return
+            // Open, but scrolled away from it? Then it is further down the page.
+            if (runCatching { scrollTo(episode) }.isSuccess && shown()) return
+            println("openSeason: \"$episode\" not shown after try ${attempt + 1} (lists on screen: ${compose.onAllNodes(hasScrollAction()).fetchSemanticsNodes().size})")
+        }
+        waitFor(episode)
+    }
+
     private fun back() { compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }; compose.waitForIdle() }
 
     private fun connect() {
@@ -234,7 +254,7 @@ class ScreensTest {
         // A show's episodes have their story, and a missing one can be searched for.
         tap("Library"); waitFor("Paper Moon")
         compose.onAllNodesWithText("Paper Moon").onFirst().performClick(); waitFor("Search now")
-        scrollTo("Season 3"); tap("Season 3"); waitFor("The storm cuts"); waitFor("Search season")
+        openSeason("Season 3", "The storm cuts"); waitFor("Search season")
         scrollTo("5. Chapter 21"); tap("5. Chapter 21"); waitFor("Choose a release"); shot("33-episodes")
         back()
         tap("Downloads"); waitFor("Every category"); waitFor("Newest"); shot("34-downloads-categories")
