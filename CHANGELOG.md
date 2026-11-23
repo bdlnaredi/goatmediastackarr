@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+## v1.0.39 — 2026-11-23
+
 - Copying backups to the cloud failed with "permission denied" for the backup of the stack made before an update. That backup was made at start as root and kept unreadable to GoatMediaStackarr; every backup of the stack now belongs to the app user, and ones already there are fixed at the next start.
 - Category speed limits: changing or removing a limit while a regular check was running could leave the old limit on a torrent for a few more seconds. Checks now take turns.
 
