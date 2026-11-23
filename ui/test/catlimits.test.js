@@ -21,11 +21,11 @@ test('a category limit is shared among its moving torrents, follows changes, and
     assert.ok(!mv.dl_limit && !sw.dl_limit, 'other categories untouched');
     // One stops moving: the other gets the whole limit.
     Object.assign(t2, { state: 'stalledDL', dlspeed: 0, upspeed: 0 });
-    for (let i = 0; i < 40 && t1.dl_limit !== 1024000; i++) await sleep(100);
+    for (let i = 0; i < 40 && (t1.dl_limit !== 1024000 || t1.up_limit !== 102400); i++) await sleep(100);
     assert.equal(t1.dl_limit, 1024000); assert.equal(t2.dl_limit, 1024000); assert.equal(t1.up_limit, 102400);
     // One moved to another category: its limit is taken off.
     t2.category = 'software';
-    for (let i = 0; i < 40 && t2.dl_limit; i++) await sleep(100);
+    for (let i = 0; i < 40 && (t2.dl_limit || t2.up_limit); i++) await sleep(100);
     assert.equal(t2.dl_limit, 0); assert.equal(t2.up_limit, 0);
     // The limit removed: the rest are freed too.
     await a.put(`/api/qb/${id}/catlimits`, { limits: {} });

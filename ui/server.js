@@ -2745,7 +2745,10 @@ function catLimitNow(l, d = new Date()) {
   return false;
 }
 const DL_ON = /^(downloading|forcedDL|metaDL|forcedMetaDL)$/, UP_ON = /^(uploading|forcedUP)$/;
-async function catLimitTick(only) {
+// One pass at a time: a pass for a changed limit waits for the one running, so it cannot be undone by older values.
+let catLimitChain = Promise.resolve();
+function catLimitTick(only) { const run = catLimitChain.then(() => catLimitPass(only)); catLimitChain = run.catch(() => {}); return run; }
+async function catLimitPass(only) {
   for (const s of db.services.filter(x => x.type === 'qbittorrent' && (!only || x.id === only))) try {
     const lim = catLimits(s.id), heldAll = db.settings.catLimitHeld || {}, held = new Set(heldAll[s.id] || []);
     if (!Object.keys(lim).length && !held.size) continue;
