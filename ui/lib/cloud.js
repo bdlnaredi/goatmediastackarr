@@ -7,6 +7,11 @@
 // helper is on the server). They copy that address and paste it in GoatMediaStackarr, which hands it to the helper here;
 // rclone finishes the sign-in and prints the token.
 //
+// That step forgives a lot: the address can be pasted whole, without http://, cut short, or as the code alone, and it
+// still works after the page was reloaded, Connect was pressed again, or the server restarted. The sign-in that is
+// running is reused rather than started over, and only the code matters: rclone's sign-in has no per-start secret
+// (PKCE), so the code is given to whichever helper is running now (with that helper's state), or a new one.
+//
 // iCloud: Apple ID, password, then the 6-digit code Apple shows on their devices (rclone's own steps). Apple asks again
 // about once a month, and it only works with Advanced Data Protection off.
 'use strict';
@@ -59,18 +64,51 @@ function forget() { try { fs.unlinkSync(CONF); } catch {} }
 // ---- Google Drive and OneDrive: the sign-in helper.
 let auth = null;   // { type, proc, out, url, at }
 function stopAuth() { if (auth && auth.proc && auth.proc.exitCode == null) try { auth.proc.kill(); } catch {} auth = null; }
+const alive = a => !!(a && a.proc && a.proc.exitCode == null && a.url);
+const stateOf = a => { try { return new URL(a.url).searchParams.get('state') || ''; } catch { return ''; } };
+/** The sign-in that is waiting for its address, if any: { type, url }. */
+const authPending = () => alive(auth) ? { type: auth.type, url: auth.url } : null;
 
-/** Starts signing in; resolves the provider's page to open. */
+/** What was pasted: the whole address, part of it (with or without http://), or only the code. */
+function readPaste(text) {
+  const t = String(text || '').trim().replace(/^["'<]+|["'>]+$/g, '');
+  if (!t) throw new Error('Paste the address of the page you were sent to after allowing access');
+  const i = t.search(/[?&#]?(code|error|state)=/);
+  if (i >= 0) {
+    const q = new URLSearchParams(t.slice(i).replace(/^[?&#]/, ''));
+    if (q.get('error')) return { error: q.get('error_description') || q.get('error') };
+    if (q.get('code')) return { code: q.get('code') };
+    throw new Error('That address has no sign-in code in it. Copy the address of the page you were sent to after allowing access, all of it');
+  }
+  // Only the code (Google's look like 4/0Ab…; Microsoft's are long too).
+  if (/^[\w./~%*!-]{10,}$/.test(t) && !/^https?:/i.test(t)) { try { return { code: decodeURIComponent(t) }; } catch { return { code: t }; } }
+  throw new Error('That is not the address from the page you were sent to. Copy it from the address bar after allowing access (it starts with 127.0.0.1:53682 or localhost:53682)');
+}
+
+/** Stops sign-in helpers left over from before this server (re)started: they keep the port the new one needs. */
+function stopLeftovers() {
+  const bin = path.basename(BIN());
+  let pids = []; try { pids = fs.readdirSync('/proc').filter(d => /^\d+$/.test(d) && +d !== process.pid); } catch { return; }
+  for (const pid of pids) {
+    let argv; try { argv = fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8').split('\0'); } catch { continue; }
+    const i = argv.findIndex(x => path.basename(x) === bin);
+    if (i >= 0 && argv[i + 1] === 'authorize') try { process.kill(+pid); } catch {}
+  }
+}
+
+/** Starts signing in; resolves the provider's page to open. A sign-in already waiting is reused. */
 async function authStart(type) {
   if (!['drive', 'onedrive'].includes(type)) throw new Error('Pick Google Drive or OneDrive');
-  stopAuth();
+  if (alive(auth) && auth.type === type) { auth.at = Date.now(); return { url: auth.url }; }
+  stopAuth(); stopLeftovers(); await new Promise(r => setTimeout(r, 200));
   // Google: only the files rclone makes (drive.file), not the whole Drive.
   const args = ['authorize', type, ...(type === 'drive' ? [Buffer.from(JSON.stringify({ scope: 'drive.file' })).toString('base64url')] : []), '--auth-no-open-browser'];
   const proc = spawn(BIN(), args, { env: env() }), a = auth = { type, proc, out: '', at: Date.now(), done: null };
   const take = d => { a.out += String(d); };
   proc.stdout.on('data', take); proc.stderr.on('data', take);
   a.done = new Promise(r => proc.on('close', () => r()));
-  setTimeout(() => { if (auth === a) stopAuth(); }, 15 * 60e3).unref();
+  const end = () => { if (auth !== a) return; if (Date.now() - a.at < 30 * 60e3) return setTimeout(end, 60e3).unref(); stopAuth(); };
+  setTimeout(end, 60e3).unref();
   // Its local page says where to go: follow it once to get the provider's own address.
   for (let i = 0; i < 60; i++) {
     const m = /http:\/\/127\.0\.0\.1:\d+\/auth\?state=[\w-]+/.exec(a.out);
@@ -85,17 +123,24 @@ async function authStart(type) {
   stopAuth(); throw new Error('rclone did not start signing in: ' + cut(a.out.split('\n').filter(Boolean).pop(), 200));
 }
 
-/** Finishes signing in with the address the provider sent the browser to. Resolves { account }. */
-async function authFinish(pasted) {
-  const a = auth; if (!a) throw new Error('Start connecting again: that sign-in timed out');
-  let u; try { u = new URL(String(pasted).trim()); } catch { throw new Error('Paste the whole address from the address bar (it starts with http://127.0.0.1 or http://localhost)'); }
-  const q = u.searchParams;
-  if (q.get('error')) { stopAuth(); throw new Error(`${TYPES[a.type]} said: ${q.get('error_description') || q.get('error')}`); }
-  if (!q.get('code') || !q.get('state')) throw new Error('That address has no sign-in code in it. Copy the address of the page you were sent to after allowing access');
-  await fetch(`http://127.0.0.1:${AUTH_PORT()}/?${q.toString()}`, { signal: AbortSignal.timeout(20000) }).catch(() => {});
+/** Finishes signing in with the address the provider sent the browser to (or its code). Resolves { account }. */
+async function authFinish(pasted, type) {
+  type = type || (auth && auth.type);
+  if (!['drive', 'onedrive'].includes(type)) throw new Error('Pick Google Drive or OneDrive');
+  const p = readPaste(pasted);
+  if (p.error) { stopAuth(); throw new Error(`${TYPES[type]} said: ${p.error}. Press Open sign-in and allow access again`); }
+  // No helper waiting (it was stopped, timed out, or the server restarted): a new one takes the code.
+  if (!alive(auth) || auth.type !== type) await authStart(type);
+  const a = auth;
+  await fetch(`http://127.0.0.1:${AUTH_PORT()}/?${new URLSearchParams({ state: stateOf(a), code: p.code })}`, { signal: AbortSignal.timeout(20000) }).catch(() => {});
   await Promise.race([a.done, new Promise(r => setTimeout(r, 30000))]);
   const m = /--->\s*([\s\S]*?)\s*<---End paste/.exec(a.out); stopAuth();
-  if (!m) throw new Error(`${TYPES[a.type]} did not finish signing in: ` + cut((a.out.split('\n').filter(l => /error|fail/i.test(l)).pop() || '').replace(/^.*?(ERROR|NOTICE|Fatal error):?\s*/, ''), 200));
+  if (!m) {
+    const why = cut((a.out.split('\n').filter(l => /error|fail/i.test(l)).pop() || '').replace(/^.*?(ERROR|NOTICE|Fatal error):?\s*/, ''), 200);
+    // The code is used up or too old (Google's last about 10 minutes, and work once).
+    if (/invalid_grant|expired|malformed|bad request/i.test(why)) throw new Error(`That sign-in code is used up or too old. Press Open sign-in again, allow access, and paste the new address (within a few minutes)`);
+    throw new Error(`${TYPES[a.type]} did not finish signing in: ` + why);
+  }
   const token = m[1].trim(); let tok; try { tok = JSON.parse(token); } catch { throw new Error('rclone gave a token that could not be read'); }
   if (a.type === 'drive') { writeRemote({ type: 'drive', scope: 'drive.file', token }); return { account: 'Google Drive' }; }
   // OneDrive: which drive is theirs (rclone's own setup asks the same of Microsoft).
@@ -149,4 +194,4 @@ async function test(c) {
   return true;
 }
 
-module.exports = { TYPES, clean, problem, setConfDir, conf, authStart, authFinish, stopAuth, icloudStart, icloudCode, forget, put, list, del, send, test, writeRemote };
+module.exports = { TYPES, clean, problem, setConfDir, conf, authStart, authFinish, authPending, readPaste, stopAuth, icloudStart, icloudCode, forget, put, list, del, send, test, writeRemote };

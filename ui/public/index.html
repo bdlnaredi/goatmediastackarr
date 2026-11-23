@@ -1815,15 +1815,21 @@ async function cloudPanel(){
       box.innerHTML='<p class="mute">Starting…</p>';
       let r;try{r=await api('/api/cloud/connect','POST',{type,step:'start'})}catch(x){box.innerHTML='';$('#cfe').textContent=x.message;return}
       const host=type==='drive'?'127.0.0.1':'localhost';
-      box.innerHTML=`<ol class="mute" style="padding-left:20px;line-height:1.6;margin:6px 0">
+      box.innerHTML=`<ol class="mute" style="padding-left:20px;line-height:1.7;margin:6px 0">
           <li><a class="btn primary" href="${esc(r.url)}" target="_blank" rel="noopener">${ic('ext')}Open ${esc(T3[type])} sign-in</a> and allow access.</li>
-          <li>You are then sent to a page that <b>does not open</b> (its address starts with <code>http://${host}:53682</code>). That is expected.</li>
-          <li>Copy the whole address from the address bar of that page and paste it here:</li></ol>
-        <form id="caf" class="nlform"><input name="url" placeholder="http://${host}:53682/?state=…&code=…" autocomplete="off" required><div class="row"><button class="primary">Connect</button></div></form>`;
-      $('#caf').onsubmit=async e=>{e.preventDefault();const b=e.target.querySelector('.primary');b.disabled=true;b.textContent='Connecting…';$('#cfe').textContent='';
-        try{await api('/api/cloud/connect','POST',{type,step:'finish',url:e.target.url.value});toast(T3[type]+' connected','ok');cloudPanel()}catch(x){$('#cfe').textContent=x.message;b.disabled=false;b.textContent='Connect'}};
+          <li>You land on a page that <b>won't open</b> (<code>${host}:53682</code>). That's expected: copy its address from the address bar.</li>
+          <li>Paste it here. It connects by itself.</li></ol>
+        <form id="caf" class="nlform"><input name="url" placeholder="${host}:53682/?state=…&amp;code=…" autocomplete="off" autocapitalize="off" spellcheck="false" required><div class="row">${navigator.clipboard&&navigator.clipboard.readText?'<button type="button" id="cpaste">Paste</button>':''}<button class="primary">Connect</button></div>
+        <p class="mute" style="font-size:13px;margin:4px 0 0">You can switch tabs or reload this page in between: the sign-in waits for you (30 minutes).</p></form>`;
+      const f=$('#caf'),go=async()=>{const b=f.querySelector('.primary');if(b.disabled||!f.url.value.trim())return;b.disabled=true;b.textContent='Connecting…';$('#cfe').textContent='';
+        try{await api('/api/cloud/connect','POST',{type,step:'finish',url:f.url.value});toast(T3[type]+' connected','ok');cloudPanel()}catch(x){$('#cfe').textContent=x.message;b.disabled=false;b.textContent='Connect'}};
+      f.onsubmit=e=>{e.preventDefault();go()};
+      f.url.addEventListener('paste',()=>setTimeout(go,50));
+      const pb=$('#cpaste');if(pb)pb.onclick=async()=>{try{f.url.value=(await navigator.clipboard.readText()).trim();go()}catch{f.url.focus()}};
     };
-    $('#cty').onclick=e=>{const b=e.target.closest('[data-ct]');if(!b)return;document.querySelectorAll('#cty [data-ct]').forEach(x=>x.classList.toggle('on',x===b));connect(b.dataset.ct)};
+    const pick=t=>{document.querySelectorAll('#cty [data-ct]').forEach(x=>x.classList.toggle('on',x.dataset.ct===t));connect(t)};
+    $('#cty').onclick=e=>{const b=e.target.closest('[data-ct]');if(b)pick(b.dataset.ct)};
+    if(c.pending&&c.pending.type)pick(c.pending.type);
     return;
   }
   const f=$('#cf');

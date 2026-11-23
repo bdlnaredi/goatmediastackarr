@@ -6110,7 +6110,7 @@ const goatServer = http.createServer(async (req, res) => {
       audit(me.name, 'Changed watchlists', db.settings.watchlist.auto ? 'request automatically' : 'do not request'); return send(res, 200, { auto: db.settings.watchlist.auto });
     }
     // Copying backups to Google Drive, OneDrive or iCloud Drive (lib/cloud.js; rclone does the work).
-    const cloudPub = () => { const o = db.settings.cloud || {}, c = CLOUD.clean({}, o); return { ...c, types: CLOUD.TYPES, old: ['s3', 'webdav'].includes(o.type) ? o.type : '' }; };
+    const cloudPub = () => { const o = db.settings.cloud || {}, c = CLOUD.clean({}, o); return { ...c, types: CLOUD.TYPES, old: ['s3', 'webdav'].includes(o.type) ? o.type : '', ...(c.connected ? {} : { pending: CLOUD.authPending() }) }; };
     if (p === '/api/cloud' && m === 'GET') return send(res, 200, cloudPub());
     if (p === '/api/cloud' && m === 'PUT') {
       const b = await readBody(req), c = CLOUD.clean({ ...b, type: (db.settings.cloud || {}).type }, db.settings.cloud || {}), bad = CLOUD.problem(c);
@@ -6129,7 +6129,7 @@ const goatServer = http.createServer(async (req, res) => {
         if (b.step === 'start' && ['drive', 'onedrive'].includes(type)) return send(res, 200, await CLOUD.authStart(type));
         const done = acct => { db.settings.cloud = { ...CLOUD.clean({ type }, {}), on: true, connected: true, account: cut(acct || CLOUD.TYPES[type], 120), folder: (db.settings.cloud || {}).folder || 'GoatMediaStackarr', keep: (db.settings.cloud || {}).keep || 7 };
           save(); audit(me.name, 'Connected cloud backup', CLOUD.TYPES[type]); return send(res, 200, cloudPub()); };
-        if (b.step === 'finish' && ['drive', 'onedrive'].includes(type)) { const r2 = await CLOUD.authFinish(b.url); return done(r2.account); }
+        if (b.step === 'finish' && ['drive', 'onedrive'].includes(type)) { const r2 = await CLOUD.authFinish(b.url, type); return done(r2.account); }
         if (b.step === 'start' && type === 'iclouddrive') { const r2 = await CLOUD.icloudStart(b.appleId, b.password); if (r2.need) return send(res, 200, r2); return done(r2.account); }
         if (b.step === 'code' && type === 'iclouddrive') { const r2 = await CLOUD.icloudCode(b.state, b.code); if (r2.need) return send(res, 200, { ...r2, error: 'Apple asked for another code' }); return done(cut(b.appleId, 120)); }
         return send(res, 400, { error: 'Bad request' });

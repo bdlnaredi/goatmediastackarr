@@ -17,7 +17,14 @@ test('Google Drive: connect with the pasted address, copy backups, keep the newe
     const state = new URL(st.url).searchParams.get('state');
     assert.equal((await a.post('/api/cloud/connect', { type: 'drive', step: 'finish', url: 'not an address' })).status, 400);
     assert.equal((await a.post('/api/cloud/connect', { type: 'drive', step: 'finish', url: 'http://127.0.0.1:53682/?state=x' })).status, 400, 'no code in it');
-    const fin = await a.post('/api/cloud/connect', { type: 'drive', step: 'finish', url: `http://127.0.0.1:53682/?state=${state}&code=4/abc&scope=x` });
+    // A reload or a second press reuses the sign-in that is waiting, and the page shows it again.
+    assert.equal((await a.post('/api/cloud/connect', { type: 'drive', step: 'start' })).data.url, st.url, 'the same sign-in');
+    assert.deepEqual((await a.get('/api/cloud')).data.pending, { type: 'drive', url: st.url });
+    // A used-up code says so; pressing Open sign-in again is all it takes.
+    const bad = await a.post('/api/cloud/connect', { type: 'drive', step: 'finish', url: `127.0.0.1:53682/?state=${state}&code=bad` });
+    assert.equal(bad.status, 400); assert.match(bad.data.error, /used up or too old/);
+    // The helper has gone (as after a restart): an address with an old state, without http://, still connects.
+    const fin = await a.post('/api/cloud/connect', { type: 'drive', step: 'finish', url: `  127.0.0.1:53682/?state=old-one&code=4/abc&scope=x ` });
     assert.equal(fin.status, 200, JSON.stringify(fin.data)); assert.equal(fin.data.connected, true); assert.equal(fin.data.on, true);
     const conf = fs.readFileSync(path.join(s.dir, 'rclone.conf'), 'utf8'); assert.match(conf, /type = drive/); assert.match(conf, /scope = drive\.file/); assert.match(conf, /"refresh_token":"rt"/);
     assert.equal((fs.statSync(path.join(s.dir, 'rclone.conf')).mode & 0o777), 0o600, 'only readable by this app');
@@ -32,7 +39,23 @@ test('Google Drive: connect with the pasted address, copy backups, keep the newe
     c = (await a.get('/api/cloud')).data; assert.equal(c.last.ok, true);
     assert.equal((await a.post('/api/cloud/disconnect')).status, 200);
     assert.ok(!fs.existsSync(path.join(s.dir, 'rclone.conf'))); assert.equal((await a.get('/api/cloud')).data.connected, false);
+    // A helper left over from before a restart (here: one started by hand) is stopped, so the port is free again.
+    const { spawn } = require('node:child_process');
+    const stale = spawn(FAKE, ['authorize', 'drive'], { env: { ...process.env, CLOUD_AUTH_PORT: '53791' } });
+    await new Promise(r => stale.stderr.once('data', r));
+    // Only the code, pasted with no sign-in running at all.
+    const only = await a.post('/api/cloud/connect', { type: 'drive', step: 'finish', url: '4%2F0AbCdEfGhIjK' });
+    assert.equal(only.status, 200, JSON.stringify(only.data)); assert.equal(only.data.connected, true);
+    assert.notEqual(stale.exitCode ?? stale.signalCode, null, 'the leftover helper was stopped');
   } finally { await s.stop(); }
+});
+
+test('the pasted address is read however it was copied', () => {
+  const { readPaste } = require('../lib/cloud');
+  for (const t of ['http://127.0.0.1:53682/?state=s&code=4/0Ab-c_d&scope=x', '127.0.0.1:53682/?code=4%2F0Ab-c_d&state=s', '"http://localhost:53682/?code=4/0Ab-c_d&state=s"', '?state=s&code=4/0Ab-c_d', 'code=4/0Ab-c_d', '4/0Ab-c_d1234', '4%2F0Ab-c_d1234'])
+    assert.match(readPaste(t).code, /^4\/0Ab-c_d/, t);
+  assert.equal(readPaste('http://127.0.0.1:53682/?state=s&error=access_denied').error, 'access_denied');
+  for (const t of ['', 'http://127.0.0.1:53682/?state=s', 'https://accounts.google.com/o/oauth2/auth', 'hello there']) assert.throws(() => readPaste(t), t);
 });
 
 test('iCloud Drive: Apple ID, then the code; an old S3 or WebDAV setting is shown as gone', async () => {
