@@ -78,7 +78,7 @@ let job = null;
 const jobWrite = j => { try { fs.writeFileSync(JOB(), JSON.stringify(j)); fs.chmodSync(JOB(), 0o644); } catch {} };
 const owner = () => ({ uid: Number(process.env.PUID || 99), gid: Number(process.env.PGID || 100) });
 // Backups belong to the PUID user, like the rest of App data, so the interface can list and download them.
-const giveBackups = () => { const { uid, gid } = owner(); try { const d = SB.DIR(); fs.chownSync(d, uid, gid); for (const f of fs.readdirSync(d)) if (!f.startsWith('.')) fs.chownSync(require('path').join(d, f), uid, gid); } catch {} };
+const giveBackups = () => SB.giveToApp();
 function startJob(kind, fn, extra = {}) {
   if (job && job.running) return { ok: false, error: 'A backup or restore is already running' };
   job = { kind, ...extra, running: true, started: Date.now(), log: [] };
@@ -201,6 +201,7 @@ function serve() {
     });
     sock.on('error', () => {});
   });
+  giveBackups();   // ones made before this start (before an update) included
   server.listen(SOCK, () => {
     fs.chownSync(SOCK, uid, gid);
     fs.chmodSync(SOCK, 0o600);

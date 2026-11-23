@@ -107,6 +107,7 @@ async function backup({ kind = 'manual', keep = 7, only = [], log = () => {}, no
     await sh('tar', ['-czf', out + '.part', '-C', work, '.']);
     fs.renameSync(out + '.part', out); fs.chmodSync(out, 0o600);
     fs.writeFileSync(out + '.json', JSON.stringify({ parts: parts.map(([k]) => k), ...(note ? { note } : {}) })); fs.chmodSync(out + '.json', 0o600);
+    giveToApp();
   } finally {
     fs.rmSync(work, { recursive: true, force: true }); try { fs.rmSync(out + '.part', { force: true }); } catch {}
   }
@@ -117,6 +118,14 @@ async function backup({ kind = 'manual', keep = 7, only = [], log = () => {}, no
     : all.filter(x => x.kind === kind).slice(kind === 'before-update' ? Math.max(1, keep) : 20);
   for (const x of drop) if (x.name !== name) remove(x.name);
   return { name, size: fs.statSync(out).size, parts: parts.map(([k]) => k) };
+}
+
+// Backups belong to the PUID user, like the rest of App data: GoatMediaStackarr runs as that user, and lists, downloads
+// and copies them to the cloud. Made as root (at start, before an update) they could not be read by it.
+function giveToApp() {
+  if (typeof process.getuid !== 'function' || process.getuid() !== 0) return;
+  const uid = Number(process.env.PUID || 99), gid = Number(process.env.PGID || 100), d = DIR();
+  try { fs.chownSync(d, uid, gid); for (const f of fs.readdirSync(d)) if (!f.startsWith('.')) fs.chownSync(path.join(d, f), uid, gid); } catch {}
 }
 
 function remove(name) {
@@ -172,4 +181,4 @@ async function restore({ name, only = [], svc, uid, gid, log = () => {} }) {
   return { restored: want, before: before.name, services };
 }
 
-module.exports = { PARTS, SERVICES, DIR, NAME_RE, list, backup, restore, remove, parts };
+module.exports = { giveToApp, PARTS, SERVICES, DIR, NAME_RE, list, backup, restore, remove, parts };

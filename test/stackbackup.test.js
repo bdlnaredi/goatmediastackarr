@@ -89,3 +89,11 @@ test('backups keep only the number set, all kinds together', async () => {
   const left = SB.list(); assert.equal(left.length, 2, left.map(x => x.name).join(', '));
   assert.equal(left[0].name, m.name, 'the newest is kept'); assert.equal(left[1].kind, 'before-update');
 });
+
+test('a backup made as root (at start, before an update) belongs to the app user, so the app can copy it', { skip: process.getuid() !== 0 && 'needs root' }, async () => {
+  const was = [process.env.PUID, process.env.PGID]; process.env.PUID = '4321'; process.env.PGID = '4322';
+  try {
+    const r = await SB.backup({ kind: 'before-update', keep: 3, only: ['goat'] });
+    for (const f of [r.name, r.name + '.json', '']) { const st = fs.statSync(path.join(SB.DIR(), f)); assert.deepEqual([st.uid, st.gid], [4321, 4322], f || 'the folder'); }
+  } finally { [process.env.PUID, process.env.PGID] = was; if (was[0] == null) delete process.env.PUID; if (was[1] == null) delete process.env.PGID; }
+});
