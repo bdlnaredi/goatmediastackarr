@@ -146,7 +146,12 @@ class ScreensTest {
     private fun openMenu() {
         compose.waitForIdle()
         if (compose.onAllNodes(androidx.compose.ui.test.hasTestTag("menu")).fetchSemanticsNodes().isEmpty()) {
-            compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("Menu") and hasClickAction()).onFirst().performClick()
+            val button = androidx.compose.ui.test.hasContentDescription("Menu") and hasClickAction()
+            // Scrolled down the page, ☰ is off the top: back up to it first.
+            if (compose.onAllNodes(button).fetchSemanticsNodes().isEmpty()) {
+                compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(button); compose.waitForIdle()
+            }
+            compose.onAllNodes(button).onFirst().performClick()
         }
         compose.waitUntil(10_000) { compose.onAllNodes(androidx.compose.ui.test.hasTestTag("menu")).fetchSemanticsNodes().isNotEmpty() }
         compose.waitForIdle()
@@ -251,7 +256,7 @@ class ScreensTest {
         tap("Ready to watch"); waitFor("Some signals"); back()
         // Alerts: each channel's triggers, and the newsletters. (Back from the notifications first.)
         back(); waitFor("Playing now")
-        openMenu(); waitFor("Health")
+        openMenu(); waitFor("Go to")
         openFromMore("Alerts"); waitFor("Family"); waitFor("New request"); shot("75-alerts")
         tap("Newsletters"); waitFor("Friday movie night"); shot("76-newsletters"); back()
         assertTrue("calls the pretend server does not know: ${fake.misses}", fake.misses.isEmpty())
