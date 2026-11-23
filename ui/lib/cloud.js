@@ -151,7 +151,7 @@ async function authFinish(pasted, type) {
   return { account: (d.owner && d.owner.user && (d.owner.user.email || d.owner.user.displayName)) || 'OneDrive' };
 }
 
-// ---- Google Drive in one tap: GoatMediaStackarr's own Google app (its ID and secret are built into the image).
+// ---- Google Drive in one tap, with your own Google app: GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET on the container.
 // Google sends people back only to an address registered beforehand, and everyone's GoatMediaStackarr has its own
 // address, so Google sends them to a small page on GitHub Pages (site/signin/), which forwards them to the address
 // written in the state. The state is random and kept here (30 minutes, used once), and the code is worth nothing
@@ -159,13 +159,13 @@ async function authFinish(pasted, type) {
 const G = () => ({ id: process.env.GOOGLE_CLIENT_ID || '', secret: process.env.GOOGLE_CLIENT_SECRET || '',
   relay: process.env.GOOGLE_RELAY_URL || 'https://bdlnaredi.github.io/goatmediastackarr/signin/',
   auth: process.env.GOOGLE_AUTH_URL || 'https://accounts.google.com/o/oauth2/v2/auth', token: process.env.GOOGLE_TOKEN_URL || 'https://oauth2.googleapis.com/token' });
-const googleOn = () => !!(G().id && G().secret);
+const googleOn = () => !!(G().id && G().secret);   // without them: rclone's sign-in and a pasted address
 const RETURN_PATH = '/api/cloud/google/return';
 const gWait = new Map();   // state -> { verifier, at }
 
 /** Starts the one-tap sign-in; `back` is the address GoatMediaStackarr is open at. Resolves Google's page. */
 function googleStart(back) {
-  const g = G(); if (!googleOn()) throw new Error('One-tap Google sign-in is not set up in this image');
+  const g = G(); if (!googleOn()) throw new Error('One-tap Google sign-in is not set up (GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)');
   let u; try { u = new URL(String(back)); } catch { throw new Error('Bad address'); }
   if (!/^https?:$/.test(u.protocol)) throw new Error('Bad address');
   const now = Date.now(); for (const [k, v] of gWait) if (now - v.at > 30 * 60e3) gWait.delete(k);

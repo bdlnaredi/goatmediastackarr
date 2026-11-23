@@ -1,4 +1,3 @@
-# check=skip=SecretsUsedInArgOrEnv
 # GoatMediaStackarr: one container that runs a whole media stack.
 # Engines are the official open-source releases, fetched at build time and run side by side under s6-overlay.
 
@@ -306,13 +305,6 @@ RUN chmod +x /opt/goat/bin/*.sh /opt/goat/bin/*.js && \
       jq -R -s --arg built "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg goat "${VERSION}" \
         '{built: $built, goat: $goat, apps: (split("\n") | map(select(length > 0) | split("\t") | {(.[0]): (.[1] | sub("^(v|release-)"; "") | sub("_v[0-9.]+$"; ""))}) | add)}' > /opt/goat/versions.json && \
     cat /opt/goat/versions.json
-
-# GoatMediaStackarr's own Google app, so Google Drive backups connect in one tap (Settings → Backup). Set from the
-# repository's secrets when the image is published; without them, connecting Google Drive uses rclone's sign-in and a
-# pasted address instead. Setting either one when running the container replaces it.
-ARG GOOGLE_CLIENT_ID=""
-ARG GOOGLE_CLIENT_SECRET=""
-ENV GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID} GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
 
 # /media and /downloads are not declared as volumes, so mapping one shared folder instead leaves no stray volumes behind.
 VOLUME ["/config"]

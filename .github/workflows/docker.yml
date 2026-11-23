@@ -47,11 +47,7 @@ jobs:
         with:
           context: .
           platforms: linux/${{ matrix.arch }}
-          # GoatMediaStackarr's own Google app, for one-tap Google Drive backups (repository secrets; empty = paste instead).
-          build-args: |
-            VERSION=${{ steps.ver.outputs.version }}
-            GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
-            GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
+          build-args: VERSION=${{ steps.ver.outputs.version }}
           secrets: |
             GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
           outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
