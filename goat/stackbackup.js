@@ -110,9 +110,12 @@ async function backup({ kind = 'manual', keep = 7, only = [], log = () => {}, no
   } finally {
     fs.rmSync(work, { recursive: true, force: true }); try { fs.rmSync(out + '.part', { force: true }); } catch {}
   }
-  // Keep the newest few of each kind (manual and before-restore copies are kept until removed, up to 20).
-  const mine = list().filter(x => x.kind === kind), limit = kind === 'auto' || kind === 'before-update' ? Math.max(1, keep) : 20;
-  for (const x of mine.slice(limit)) remove(x.name);
+  // The number set ("keep the last …") is for all of them together, newest first, whatever made them: the scheduled
+  // ones and Back up now alike, and the copies made before an update or a restore. Those two trim only their own
+  // kind (an update keeps its last 3, a restore its last 20) and the next backup trims the rest.
+  const all = list(), drop = kind === 'auto' || kind === 'manual' ? all.slice(Math.max(1, keep))
+    : all.filter(x => x.kind === kind).slice(kind === 'before-update' ? Math.max(1, keep) : 20);
+  for (const x of drop) if (x.name !== name) remove(x.name);
   return { name, size: fs.statSync(out).size, parts: parts.map(([k]) => k) };
 }
 

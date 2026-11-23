@@ -2190,8 +2190,11 @@ function backupNow(kind = 'auto', toCloud = true) {
   fs.mkdirSync(BK, { recursive: true, mode: 0o700 });
   const d = new Date().toISOString(), name = `${kind}-${d.slice(0, 10)}-${d.slice(11, 13)}${d.slice(14, 16)}.json`;
   fs.writeFileSync(path.join(BK, name), dehydrate(db), { mode: 0o600 });
-  const keep = (db.settings.backup && db.settings.backup.keep) || 7, all = fs.readdirSync(BK).filter(f => BKRE.test(f)).sort();
-  for (const f of all.slice(0, Math.max(0, all.length - keep - 3))) try { fs.unlinkSync(path.join(BK, f)); } catch {}
+  // Keep the number set, all kinds together, newest first (by the date in the name, not the name itself: "auto-…" and
+  // "pre-restore-…" sort apart).
+  const keep = (db.settings.backup && db.settings.backup.keep) || 7, when = f => f.replace(/^[a-z-]+-/, ''),
+    all = fs.readdirSync(BK).filter(f => BKRE.test(f)).sort((a, b) => when(b).localeCompare(when(a)) || (b === name) - (a === name));
+  for (const f of all.slice(Math.max(1, keep))) if (f !== name) try { fs.unlinkSync(path.join(BK, f)); } catch {}
   db.settings.backup = { ...(db.settings.backup || {}), last: Date.now() }; save();
   if (toCloud) cloudCopy(path.join(BK, name), name).catch(() => {});
   return name;
@@ -6213,7 +6216,7 @@ const goatServer = http.createServer(async (req, res) => {
         save(); audit(me.name, 'Changed backups of the stack', db.settings.stackBackup.on ? 'on' : 'off'); return send(res, 200, {});
       }
       if (p === '/api/stack/backups/run' && m === 'POST') {
-        const b = await readBody(req), r = await goatControl({ cmd: 'stack-backup', only: Array.isArray(b.only) ? b.only.map(String) : [] });
+        const b = await readBody(req), r = await goatControl({ cmd: 'stack-backup', only: Array.isArray(b.only) ? b.only.map(String) : [], keep: (db.settings.stackBackup || {}).keep || 7 });
         audit(me.name, 'Started a backup of the stack', ''); return send(res, r.ok ? 200 : 400, r.ok ? { job: sbJob() } : { error: r.error });
       }
       if (p === '/api/stack/backups/restore' && m === 'POST') {

@@ -123,8 +123,12 @@ test('automatic backups: made on schedule, listed, kept to a limit, and restorab
     assert.equal((await a.get('/api/services')).data.length, 1);
     const files = fs.readdirSync(path.join(s.dir, 'backups')); assert.ok(files.some(f => f.startsWith('pre-restore-')), 'a safety copy is made before restoring');
     // limit
-    for (let i = 0; i < 4; i++) { await a.post('/api/backups/run'); await sleep(20); }
-    assert.ok(fs.readdirSync(path.join(s.dir, 'backups')).filter(f => /^auto-/.test(f) || /^pre-/.test(f)).length <= 2 + 3 + 1, 'old copies are removed');
+    // limit: exactly the number set, all kinds together, newest by date (a copy from before a restore is not kept for
+    // ever just because its name sorts last)
+    const bk = path.join(s.dir, 'backups'); for (const f of fs.readdirSync(bk)) fs.unlinkSync(path.join(bk, f));
+    for (const f of ['auto-2026-01-01-0300.json', 'auto-2026-01-02-0300.json', 'pre-restore-2026-01-01-1200.json', 'auto-2026-01-03-0300.json']) fs.writeFileSync(path.join(bk, f), '{}');
+    const made = (await a.post('/api/backups/run')).data.name;
+    assert.deepEqual(fs.readdirSync(bk).sort(), ['auto-2026-01-03-0300.json', made].sort(), 'old copies are removed');
     const k = client(s.base); await a.post('/api/users', { name: 'kid', password: 'kid-password-1' }); await k.post('/api/login', { name: 'kid', password: 'kid-password-1' });
     assert.equal((await k.get('/api/backups')).status, 403);
   } finally { await s.stop(); }

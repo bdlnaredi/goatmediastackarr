@@ -76,7 +76,16 @@ test('names are checked; a broken backup changes nothing', async () => {
   SB.remove(bad); assert.ok(!SB.list().some(x => x.name === bad));
 });
 
-test('automatic backups keep only the newest few', async () => {
-  for (let i = 0; i < 3; i++) { await SB.backup({ kind: 'auto', keep: 2, only: ['goat'] }); await new Promise(r => setTimeout(r, 1100)); }
-  assert.equal(SB.list().filter(x => x.kind === 'auto').length, 2);
+test('backups keep only the number set, all kinds together', async () => {
+  for (const n of SB.list()) SB.remove(n.name);
+  const pause = () => new Promise(r => setTimeout(r, 1100));
+  for (let i = 0; i < 3; i++) { await SB.backup({ kind: 'auto', keep: 2, only: ['goat'] }); await pause(); }
+  assert.equal(SB.list().length, 2);
+  // Before an update: its own kind only, so the number can be passed until the next backup.
+  await SB.backup({ kind: 'before-update', keep: 3, only: ['goat'] }); await pause();
+  assert.equal(SB.list().length, 3);
+  // Back up now counts too, and trims the rest.
+  const m = await SB.backup({ kind: 'manual', keep: 2, only: ['goat'] });
+  const left = SB.list(); assert.equal(left.length, 2, left.map(x => x.name).join(', '));
+  assert.equal(left[0].name, m.name, 'the newest is kept'); assert.equal(left[1].kind, 'before-update');
 });
