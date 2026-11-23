@@ -561,5 +561,13 @@
   "Your profile has no Sonarr or Radarr to show. Ask an admin for access.": "आपकी प्रोफ़ाइल में दिखाने को कोई Sonarr या Radarr नहीं है। एडमिन से पहुँच माँगें।",
   "Your profile has no Sonarr or Radarr.": "आपकी प्रोफ़ाइल में कोई Sonarr या Radarr नहीं है।",
   "Your provider's news servers in SABnzbd": "SABnzbd में आपके प्रदाता के न्यूज़ सर्वर",
-  "Your version": "आपका संस्करण"
+  "Your version": "आपका संस्करण",
+  "Your shows": "आपके शो",
+  "Your movies": "आपकी फ़िल्में",
+  "Its torrents": "इसके टॉरेंट",
+  "Its Usenet downloads": "इसके यूज़नेट डाउनलोड",
+  "The sites it searches": "जिन साइटों पर यह खोजता है",
+  "Your artists": "आपके कलाकार",
+  "What people asked for": "लोगों ने क्या माँगा",
+  "Opens its own page": "इसका अपना पेज खुलता है"
 }

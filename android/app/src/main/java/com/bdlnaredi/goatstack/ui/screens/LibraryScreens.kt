@@ -43,6 +43,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -100,12 +101,15 @@ fun LibraryScreen() {
     val g = LocalGoat.current
     val libs = services().filter { it.type == "sonarr" || it.type == "radarr" }
     var sid by rememberSaveable { mutableStateOf(ctx.app.lastLibrary) }
+    // Picked in the side menu: that Sonarr or Radarr.
+    val want by ctx.app.openService.collectAsStateWithLifecycle()
+    androidx.compose.runtime.LaunchedEffect(want, libs) { want?.let { id -> if (libs.any { it.id == id }) { sid = id; ctx.app.rememberLibrary(id); ctx.app.openService.value = null } } }
     val cur = libs.firstOrNull { it.id == sid } ?: libs.firstOrNull()
     var filter by rememberSaveable { mutableStateOf("") }
     var sort by rememberSaveable { mutableStateOf("added") }
 
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
-        PageTitle("Library", cur?.let { if (it.type == "sonarr") "Your shows" else "Your movies" })
+        PageTitle("Library", cur?.let { if (it.type == "sonarr") "Your shows" else "Your movies" }, menu = true)
         if (cur == null) {
             EmptyState(Icons.Rounded.GridView, "No library here", "Your profile has no Sonarr or Radarr to show. Ask an admin for access.")
             return@Column

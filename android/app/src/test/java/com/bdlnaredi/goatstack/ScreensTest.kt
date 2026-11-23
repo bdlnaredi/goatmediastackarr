@@ -128,7 +128,7 @@ class ScreensTest {
         compose.onAllNodesWithText("Paper Moon").onFirst().performClick(); waitFor("Monitored"); waitFor("3 episodes are missing subtitles"); waitFor("Search now"); shot("06-show")
         back()
         tap("Downloads"); waitFor("Downloading"); shot("07-downloads")
-        tap("More"); waitFor("Go to"); shot("08-more")
+        openMenu(); waitFor("Go to"); shot("08-more")
         openFromMore("Requests"); waitFor("Waiting for an admin"); shot("09-requests"); back()
         openFromMore("Upcoming"); waitFor("Being downloaded"); shot("10-upcoming"); back()
         openFromMore("Stack"); waitFor("VPN connected"); shot("11-stack"); back()
@@ -142,18 +142,31 @@ class ScreensTest {
         assertTrue("calls the pretend server does not know: ${fake.misses}", fake.misses.isEmpty())
     }
 
-    /** On the More page: scroll to an entry and open it. */
-    private fun openFromMore(text: String) {
-        compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText(text) and hasClickAction())
+    /** Opens the side menu (☰ at the top left of the main pages), unless it is open already. */
+    private fun openMenu() {
         compose.waitForIdle()
-        tap(text)
+        if (compose.onAllNodes(androidx.compose.ui.test.hasTestTag("menu")).fetchSemanticsNodes().isEmpty()) {
+            compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("Menu") and hasClickAction()).onFirst().performClick()
+        }
+        compose.waitUntil(10_000) { compose.onAllNodes(androidx.compose.ui.test.hasTestTag("menu")).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitForIdle()
+    }
+
+    /** In the side menu: scroll to an entry and open it. */
+    private fun openFromMore(text: String) {
+        openMenu()
+        val inMenu = hasText(text) and hasClickAction() and androidx.compose.ui.test.hasAnyAncestor(androidx.compose.ui.test.hasTestTag("menu"))
+        compose.onNode(androidx.compose.ui.test.hasTestTag("menu")).performScrollToNode(inMenu)
+        compose.waitForIdle()
+        compose.onAllNodes(inMenu).onFirst().performClick()
+        compose.waitForIdle()
     }
 
     @Test fun morePages() {
         connect()
         show()
         waitFor("Playing now")
-        tap("More"); waitFor("Go to"); shot("20-more-v2")
+        openMenu(); waitFor("Go to"); shot("20-more-v2")
         for ((entry, wait, name) in listOf(
             Triple("Wanted", "in total", "21-wanted"),
             Triple("Music", "Aurora Lines", "22-music"),
@@ -165,7 +178,7 @@ class ScreensTest {
             Triple("Unraid", "Array started", "28-unraid"),
             Triple("Users", "Ravi", "29-users"),
         )) {
-            openFromMore(entry); waitFor(wait); shot(name); back(); waitFor(entry)
+            openFromMore(entry); waitFor(wait); shot(name); back()
         }
         openFromMore("Trackers"); waitFor("Search your trackers")
         compose.onNode(hasSetTextAction()).performTextInput("Dune")
@@ -220,7 +233,7 @@ class ScreensTest {
         scrollTo("5. Chapter 21"); tap("5. Chapter 21"); waitFor("Choose a release"); shot("33-episodes")
         back()
         tap("Downloads"); waitFor("Every category"); waitFor("Newest"); shot("34-downloads-categories")
-        tap("More"); waitFor("Go to")
+        openMenu(); waitFor("Go to")
         openFromMore("RSS"); waitFor("Ubuntu 26.04"); shot("35-rss")
         tap("Rules"); waitFor("Ubuntu releases"); shot("36-rss-rules"); back()
         openFromMore("Profile"); waitFor("Space on the server"); shot("37-profile")
@@ -238,13 +251,13 @@ class ScreensTest {
         tap("Ready to watch"); waitFor("Some signals"); back()
         // Alerts: each channel's triggers, and the newsletters. (Back from the notifications first.)
         back(); waitFor("Playing now")
-        tap("More"); waitFor("Health")
+        openMenu(); waitFor("Health")
         openFromMore("Alerts"); waitFor("Family"); waitFor("New request"); shot("75-alerts")
         tap("Newsletters"); waitFor("Friday movie night"); shot("76-newsletters"); back()
         assertTrue("calls the pretend server does not know: ${fake.misses}", fake.misses.isEmpty())
     }
 
-    /** The four styles, each photographed on Home and More, and the What's new page. */
+    /** The four styles, each photographed on Home and with the side menu open, and the What's new page. */
     @Test fun styles() {
         connect()
         show()
@@ -252,10 +265,10 @@ class ScreensTest {
         for (st in listOf("cinema", "dash", "glass", "compact")) {
             compose.runOnUiThread { state.setPrefs(state.prefs.value.copy(style = st)) }
             compose.waitForIdle(); waitFor("Playing now"); shot("60-home-$st")
-            tap("More"); waitFor("Go to"); shot("61-more-$st")
-            tap("Home"); waitFor("Playing now")
+            openMenu(); waitFor("Go to"); shot("61-more-$st")
+            back(); compose.waitUntil(10_000) { compose.onAllNodes(androidx.compose.ui.test.hasTestTag("menu")).fetchSemanticsNodes().isEmpty() }; waitFor("Playing now")
         }
-        tap("More"); waitFor("Go to"); openFromMore("What's new"); waitFor("A new design in four styles"); waitFor("Your version"); shot("62-whats-new"); back()
+        openMenu(); waitFor("Go to"); openFromMore("What's new"); waitFor("A new design in four styles"); waitFor("Your version"); shot("62-whats-new"); back()
         openFromMore("Settings"); waitFor("Style"); waitFor("Dashboard"); shot("63-settings-style")
         assertTrue("calls the pretend server does not know: ${fake.misses}", fake.misses.isEmpty())
     }
@@ -268,7 +281,7 @@ class ScreensTest {
         waitFor("Version 9.9.0 is out"); waitFor("Kids profiles"); shot("71-home-update-notes")
         waitFor("Playing now")
         scrollTo("Because you watched"); waitFor("Ember Falls"); shot("72-for-you")
-        tap("More"); waitFor("Go to")
+        openMenu(); waitFor("Go to")
         openFromMore("Watchlist"); waitFor("Waiting for approval"); shot("73-watchlist"); back()
         openFromMore("Health"); waitFor("to look at"); waitFor("Fix problems by itself"); waitFor("Glass.City.S02E06"); shot("74-health-healing"); back()
         openFromMore("Suggestions"); waitFor("Suggest something"); waitFor("Dark mode for the widget"); shot("76-suggestions"); back()
@@ -289,7 +302,7 @@ class ScreensTest {
         compose.waitUntil(10_000) { fake.calls.any { it.startsWith("GET /api/resolve?imdb=tt0111161") } }
         waitFor("Some signals"); shot("80-share-imdb")
         back()
-        tap("More"); waitFor("Go to")
+        openMenu(); waitFor("Go to")
         openFromMore("Recycle bin"); waitFor("Quiet Orbit (2026)"); waitFor("Put back"); shot("78-recycle-bin"); back()
         openFromMore("Upgrades"); waitFor("Riverside (2025)"); waitFor("Search all"); shot("82-upgrades"); back()
         openFromMore("Watch together"); waitFor("Start one"); waitFor("Coming up and on now"); shot("83-watch-together")
@@ -309,7 +322,7 @@ class ScreensTest {
         connect()
         show()
         waitFor("Playing now")
-        tap("More"); waitFor("Go to")
+        openMenu(); waitFor("Go to")
         // Upcoming has a month calendar as well as the list.
         openFromMore("Upcoming"); waitFor("Being downloaded"); tap("Calendar")
         waitFor(java.time.YearMonth.now().format(java.time.format.DateTimeFormatter.ofPattern("MMMM yyyy", java.util.Locale.getDefault())))

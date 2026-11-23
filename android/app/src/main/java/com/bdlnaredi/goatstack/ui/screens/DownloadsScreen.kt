@@ -50,6 +50,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -94,11 +95,15 @@ fun DownloadsScreen() {
     val sabs = svcs.filter { it.type == "sabnzbd" }
     val kinds = buildList { qbs.forEach { add(it.id to it.name) }; sabs.forEach { add(it.id to it.name) } }
     var sel by rememberSaveable { mutableStateOf(kinds.firstOrNull()?.first ?: "") }
+    // Picked in the side menu: that download app.
+    val want by com.bdlnaredi.goatstack.ui.LocalCtx.current.app.openService.collectAsStateWithLifecycle()
+    val app = com.bdlnaredi.goatstack.ui.LocalCtx.current.app
+    androidx.compose.runtime.LaunchedEffect(want, kinds) { want?.let { id -> if (kinds.any { it.first == id }) { sel = id; app.openService.value = null } } }
     val cur = svcs.firstOrNull { it.id == sel } ?: svcs.firstOrNull { it.type in TORRENT_CLIENTS || it.type == "sabnzbd" }
     val g = LocalGoat.current
 
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
-        PageTitle("Downloads", cur?.name)
+        PageTitle("Downloads", cur?.name, menu = true)
         if (cur == null) { EmptyState(Icons.Rounded.Download, "No download apps", "Your profile has no qBittorrent, ruTorrent, Deluge or SABnzbd to show."); return@Column }
         if (kinds.size > 1) { ChoiceRow(kinds, cur.id, { sel = it }); Spacer(Modifier.height(8.dp)) }
         // Torrents show it inside their list (with the speeds now), so it scrolls away with the rest of the top.

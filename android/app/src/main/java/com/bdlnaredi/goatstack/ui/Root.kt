@@ -26,7 +26,6 @@ import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Explore
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.Home
-import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -48,6 +47,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import kotlinx.coroutines.launch
 import com.bdlnaredi.goatstack.data.AppState
 import com.bdlnaredi.goatstack.data.Me
 import com.bdlnaredi.goatstack.data.Phase
@@ -72,6 +72,11 @@ import com.bdlnaredi.goatstack.ui.theme.LocalGoat
 class Ctx(val app: AppState, val me: Me, val user: User, val nav: NavHostController) {
     val api get() = app.api
     fun go(route: String) = nav.navigate(route) { launchSingleTop = true }
+    /** One of the main pages at the bottom, the way its tab opens it. */
+    fun tab(route: String) = nav.navigate(route) {
+        popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+        launchSingleTop = true; restoreState = true
+    }
     fun back() { nav.popBackStack() }
     fun item(sid: String, kind: String, id: Long) = go("item/$sid/$kind/$id")
     /** Interactive search for one Radarr movie or Sonarr episode. */
@@ -99,6 +104,8 @@ class Ctx(val app: AppState, val me: Me, val user: User, val nav: NavHostControl
 }
 
 val LocalCtx = staticCompositionLocalOf<Ctx> { error("No context") }
+/** Opens the side menu (☰ at the top left of the main pages). */
+val LocalMenu = staticCompositionLocalOf<() -> Unit> { {} }
 
 @Composable
 fun GoatRoot(state: AppState) {
@@ -135,7 +142,6 @@ private val TABS = listOf(
     Tab("discover", "Discover", Icons.Rounded.Explore),
     Tab("library", "Library", Icons.Rounded.GridView),
     Tab("downloads", "Downloads", Icons.Rounded.Download),
-    Tab("more", "More", Icons.Rounded.MoreHoriz),
 )
 
 /** The bar of main pages at the bottom, drawn the way the style wants: a floating pill (Glass), a dark strip (Cinema), or flat. */
@@ -218,7 +224,12 @@ private fun MainShell(state: AppState, me: Me, user: User) {
             state.setPrefs(p.copy(askedNotify = true)); ask.launch(android.Manifest.permission.POST_NOTIFICATIONS)
         }
     }
-    CompositionLocalProvider(LocalCtx provides ctx) {
+    // The side menu: everything that is not a tab at the bottom (the apps of the stack, every other page, Settings).
+    val drawer = androidx.compose.material3.rememberDrawerState(androidx.compose.material3.DrawerValue.Closed)
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val openMenu: () -> Unit = { scope.launch { drawer.open() } }
+    androidx.activity.compose.BackHandler(enabled = drawer.isOpen) { scope.launch { drawer.close() } }
+    CompositionLocalProvider(LocalCtx provides ctx, LocalMenu provides openMenu) {
         // Not while the PIN is asked: a dialog would show above the lock screen.
         val pinLocked by state.locked.collectAsStateWithLifecycle()
         val shareToast = com.bdlnaredi.goatstack.ui.screens.toaster()
@@ -240,15 +251,22 @@ private fun MainShell(state: AppState, me: Me, user: User) {
         }
         if (!(pinLocked && user.pin)) (shared as? com.bdlnaredi.goatstack.data.Shared.Links ?: shared as? com.bdlnaredi.goatstack.data.Shared.TorrentFile)?.let { sh ->
             com.bdlnaredi.goatstack.ui.screens.SharedHandler(sh) { state.shareDone() } }
+        androidx.compose.material3.ModalNavigationDrawer(
+            drawerState = drawer,
+            gesturesEnabled = showBar || drawer.isOpen,
+            drawerContent = {
+                androidx.compose.material3.ModalDrawerSheet(drawerContainerColor = g.surface, drawerContentColor = g.text,
+                    modifier = Modifier.fillMaxWidth(0.84f)) {
+                    // Only drawn while it shows, so the page behind keeps its own lists and texts to itself.
+                    if (drawer.isOpen || drawer.isAnimationRunning || drawer.targetValue == androidx.compose.material3.DrawerValue.Open)
+                        com.bdlnaredi.goatstack.ui.screens.SideMenu(route) { scope.launch { drawer.close() } }
+                }
+            },
+        ) {
         Scaffold(
             containerColor = g.bg,
             bottomBar = {
-                if (showBar) GoatBar(route, user.kids != null) { t ->
-                    nav.navigate(t.route) {
-                        popUpTo(nav.graph.findStartDestination().id) { saveState = true }
-                        launchSingleTop = true; restoreState = true
-                    }
-                }
+                if (showBar) GoatBar(route, user.kids != null) { t -> ctx.tab(t.route) }
             },
         ) { pad ->
             val start = androidx.compose.runtime.remember { state.prefs.value.start.takeIf { s -> TABS.any { it.route == s } } ?: "home" }
@@ -318,6 +336,7 @@ private fun MainShell(state: AppState, me: Me, user: User) {
                     DetailScreen(a.getString("sid").orEmpty(), a.getString("kind").orEmpty(), a.getLong("id"))
                 }
             }
+        }
         }
     }
 }

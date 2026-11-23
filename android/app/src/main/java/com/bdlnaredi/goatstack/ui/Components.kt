@@ -30,6 +30,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilledTonalButton
@@ -114,13 +115,23 @@ fun GoatCard(modifier: Modifier = Modifier, onClick: (() -> Unit)? = null, paddi
 
 /** The big serif title at the top of each page. */
 @Composable
-fun PageTitle(title: String, subtitle: String? = null, modifier: Modifier = Modifier, actions: @Composable RowScope.() -> Unit = {}) {
-    Row(modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 18.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+fun PageTitle(title: String, subtitle: String? = null, modifier: Modifier = Modifier, menu: Boolean = false, actions: @Composable RowScope.() -> Unit = {}) {
+    Row(modifier.fillMaxWidth().padding(start = if (menu) 8.dp else 20.dp, end = 12.dp, top = 18.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (menu) MenuButton()
         Column(Modifier.weight(1f)) {
             Text(tr(title), style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onBackground)
             if (subtitle != null) Text(tr(subtitle), style = MaterialTheme.typography.bodyMedium, color = LocalGoat.current.muted)
         }
         actions()
+    }
+}
+
+/** ☰: opens the side menu (on the main pages). */
+@Composable
+fun MenuButton(modifier: Modifier = Modifier) {
+    val open = LocalMenu.current
+    androidx.compose.material3.IconButton(onClick = open, modifier = modifier) {
+        androidx.compose.material3.Icon(Icons.Rounded.Menu, tr("Menu"), tint = LocalGoat.current.text)
     }
 }
 

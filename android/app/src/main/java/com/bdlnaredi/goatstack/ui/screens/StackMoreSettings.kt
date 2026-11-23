@@ -237,7 +237,7 @@ private fun MenuRow(icon: ImageVector, title: String, text: String, onClick: () 
 }
 
 /** One page in the More grid: an icon, its name and a line about it. */
-private data class Dest(val icon: ImageVector, val title: String, val text: String, val go: () -> Unit)
+internal data class Dest(val icon: ImageVector, val title: String, val text: String, val go: () -> Unit)
 
 @Composable
 private fun DestTile(d: Dest, modifier: Modifier) {
@@ -262,10 +262,10 @@ private fun DestTile(d: Dest, modifier: Modifier) {
  * Every other page, grouped the same way as the web page's menu: Watch, Requests, Downloads, Server, and You.
  * The bottom bar keeps Home, Discover, Library and Downloads one tap away.
  */
+/** Every page, in groups: the side menu (and the old More page) list these. */
 @Composable
-fun MoreScreen() {
+internal fun moreGroups(): List<Pair<String, List<Dest>>> {
     val ctx = LocalCtx.current
-    val g = LocalGoat.current
     val svcs = services()
     val has = { t: String -> svcs.any { it.type == t } }
     val admin = ctx.user.admin
@@ -309,6 +309,15 @@ fun MoreScreen() {
             if (ctx.user.kids == null) Dest(Icons.Rounded.Lightbulb, "Suggestions", "Ideas and problems to fix") { ctx.go("suggestions") } else null,
         ),
     ).filter { it.second.isNotEmpty() }
+    return groups
+}
+
+@Composable
+fun MoreScreen() {
+    val ctx = LocalCtx.current
+    val g = LocalGoat.current
+    val admin = ctx.user.admin
+    val groups = moreGroups()
     LazyColumn(Modifier.fillMaxSize().statusBarsPadding(), contentPadding = PaddingValues(bottom = 24.dp)) {
         item { PageTitle("More", "Go to any page") }
         item {

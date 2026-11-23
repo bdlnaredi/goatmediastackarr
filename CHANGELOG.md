@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- **Android app: a side menu.** ☰ at the top left of Home, Discover, Library and Downloads (or a swipe from the left edge) opens it: the apps of your stack first, each opening its page in the app (Sonarr and Radarr their library, qBittorrent and SABnzbd their downloads, Prowlarr the indexers, Bazarr subtitles, Lidarr music, Tautulli stats, Seerr requests, Unraid its page; the others their own web page), then every other page, and Settings at the bottom. It replaces the More tab, so the bar at the bottom has four.
+
 - Logins made for you (Stack page) are only made and shown for the apps that run: no Jellyfin admin password when Jellyfin is not in *Apps to run*, and the same for qBittorrent, ruTorrent and Deluge. A login made before is kept (hidden), so turning the app on again still works.
 
 ## v1.0.39 — 2026-11-23

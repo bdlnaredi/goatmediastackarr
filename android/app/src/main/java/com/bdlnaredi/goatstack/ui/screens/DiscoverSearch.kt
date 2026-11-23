@@ -90,7 +90,7 @@ fun DiscoverScreen() {
     val cur = if (list in lists) list else lists.first()
 
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
-        PageTitle("Discover", "What everyone is watching", actions = {
+        PageTitle("Discover", "What everyone is watching", menu = true, actions = {
             IconButton(onClick = { ctx.go("search") }) { Icon(Icons.Rounded.Search, "Search", tint = g.text) }
         })
         if (sources.isEmpty()) {

@@ -64,6 +64,8 @@ class AppState(val store: Store) {
     var server: String = ""
         private set
     var lastLibrary: String = ""
+    /** An app picked in the side menu, for the Library or Downloads page to open. */
+    val openService = MutableStateFlow<String?>(null)
         private set
     /** The server's address at home (see [watchNetwork]), and whether the app is using it right now. */
     var home: String = ""

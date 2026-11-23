@@ -105,6 +105,7 @@ fun HomeScreen() {
             Box(Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(g.primary.copy(alpha = 0.20f), g.bg)))) {
                 Column(Modifier.statusBarsPadding().padding(horizontal = 20.dp, vertical = 18.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        com.bdlnaredi.goatstack.ui.MenuButton(Modifier.padding(end = 6.dp).size(48.dp).clip(CircleShape).background(g.card))
                         Column(Modifier.weight(1f)) {
                             Text(greeting(), style = MaterialTheme.typography.labelLarge, color = g.primary)
                             Text(ctx.user.name, style = MaterialTheme.typography.displaySmall, color = g.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
