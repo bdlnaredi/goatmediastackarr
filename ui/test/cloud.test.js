@@ -50,6 +50,14 @@ test('Google Drive: connect with the pasted address, copy backups, keep the newe
   } finally { await s.stop(); }
 });
 
+test('an old Google sign-in without Drive access says what to do', async () => {
+  const cloud = require('../lib/cloud'), bin = path.join(tmp(), 'rclone');
+  fs.writeFileSync(bin, '#!/bin/sh\necho \'2026/11/23 11:40:00 CRITICAL: Failed to create file system for destination "goatcloud:GoatMediaStackarr/": couldn\'"\'"\'t find root directory ID: googleapi: Error 403: Request had insufficient authentication scopes.\' >&2\nexit 1\n', { mode: 0o755 });
+  const old = process.env.RCLONE_BIN; process.env.RCLONE_BIN = bin;
+  try { await assert.rejects(cloud.rc(['lsjson', 'goatcloud:GoatMediaStackarr/']), /without access to Drive\. Press Disconnect/); }
+  finally { if (old == null) delete process.env.RCLONE_BIN; else process.env.RCLONE_BIN = old; }
+});
+
 test('the pasted address is read however it was copied', () => {
   const { readPaste } = require('../lib/cloud');
   for (const t of ['http://127.0.0.1:53682/?state=s&code=4/0Ab-c_d&scope=x', '127.0.0.1:53682/?code=4%2F0Ab-c_d&state=s', '"http://localhost:53682/?code=4/0Ab-c_d&state=s"', '?state=s&code=4/0Ab-c_d', 'code=4/0Ab-c_d', '4/0Ab-c_d1234', '4%2F0Ab-c_d1234'])
@@ -82,14 +90,15 @@ test('Google Drive in one tap: Google sends you back (through the forwarding pag
   const http = require('node:http'), crypto = require('node:crypto'), { free } = require('./helpers');
   const seen = [], gport = await free();
   const google = http.createServer((q, r) => { let b = ''; q.on('data', d => b += d); q.on('end', () => {
+    if (q.url.startsWith('/about')) { r.writeHead(q.headers.authorization === 'Bearer at' ? 200 : 401, { 'Content-Type': 'application/json' }); return r.end(JSON.stringify({ user: { emailAddress: 'me@gmail.com' } })); }
     const f = new URLSearchParams(b); seen.push(f);
     const want = seen.challenge, got = crypto.createHash('sha256').update(f.get('code_verifier') || '').digest('base64url');
+    if (f.get('code') === 'nodrive') { r.writeHead(200); return r.end(JSON.stringify({ access_token: 'at', refresh_token: 'rt0', expires_in: 3599, scope: 'openid' })); }
     if (f.get('code') !== 'good' || got !== want || f.get('client_secret') !== 'shh' || f.get('redirect_uri') !== 'https://relay.example/signin/') { r.writeHead(400); return r.end(JSON.stringify({ error: 'invalid_grant' })); }
-    const idt = 'x.' + Buffer.from(JSON.stringify({ email: 'me@gmail.com' })).toString('base64url') + '.y';
-    r.writeHead(200, { 'Content-Type': 'application/json' }); r.end(JSON.stringify({ access_token: 'at', refresh_token: 'rt1', expires_in: 3599, token_type: 'Bearer', id_token: idt }));
+    r.writeHead(200, { 'Content-Type': 'application/json' }); r.end(JSON.stringify({ access_token: 'at', refresh_token: 'rt1', expires_in: 3599, token_type: 'Bearer', scope: 'https://www.googleapis.com/auth/drive.file' }));
   }); }).listen(gport, '127.0.0.1');
   const dir = tmp(), s = await boot({ RCLONE_BIN: FAKE, GOOGLE_CLIENT_ID: 'goat.apps.googleusercontent.com', GOOGLE_CLIENT_SECRET: 'shh', GOOGLE_RELAY_URL: 'https://relay.example/signin/',
-    GOOGLE_AUTH_URL: 'https://accounts.example/auth', GOOGLE_TOKEN_URL: `http://127.0.0.1:${gport}/token` }, dir), a = client(s.base); await setup(a);
+    GOOGLE_AUTH_URL: 'https://accounts.example/auth', GOOGLE_TOKEN_URL: `http://127.0.0.1:${gport}/token`, GOOGLE_ABOUT_URL: `http://127.0.0.1:${gport}/about` }, dir), a = client(s.base); await setup(a);
   try {
     assert.equal((await a.get('/api/cloud')).data.oneTap, true);
     const st = (await a.post('/api/cloud/connect', { type: 'drive', step: 'start', back: 'http://192.168.1.5:2806' })).data;
@@ -97,7 +106,7 @@ test('Google Drive in one tap: Google sends you back (through the forwarding pag
     const g = new URL(st.url), q = g.searchParams; seen.challenge = q.get('code_challenge');
     assert.equal(g.origin + g.pathname, 'https://accounts.example/auth');
     assert.equal(q.get('client_id'), 'goat.apps.googleusercontent.com'); assert.equal(q.get('redirect_uri'), 'https://relay.example/signin/');
-    assert.match(q.get('scope'), /auth\/drive\.file/); assert.doesNotMatch(q.get('scope'), /auth\/drive( |$)/, 'only the files it makes');
+    assert.equal(q.get('scope'), 'https://www.googleapis.com/auth/drive.file', 'only the files it makes, and nothing else (so Google shows no boxes to tick)');
     assert.equal(q.get('code_challenge_method'), 'S256'); assert.equal(q.get('access_type'), 'offline');
     const state = q.get('state');
     assert.equal(JSON.parse(Buffer.from(state, 'base64url')).r, 'http://192.168.1.5:2806/api/cloud/google/return', 'the forwarding page sends you back here');
@@ -105,6 +114,10 @@ test('Google Drive in one tap: Google sends you back (through the forwarding pag
     const ret = u => fetch(s.base + '/api/cloud/google/return?' + new URLSearchParams(u)).then(async r => ({ status: r.status, text: await r.text() }));
     assert.match((await ret({ state: 'made-up', code: 'good' })).text, /not connected[\s\S]*has ended/, 'only a state this server made');
     assert.match((await ret({ state, error: 'access_denied' })).text, /did not allow access/);
+    // Google gave no Drive access (its box was not ticked): not connected, and it says why.
+    const st2 = new URL((await a.post('/api/cloud/connect', { type: 'drive', step: 'start', back: 'http://192.168.1.5:2806' })).data.url).searchParams.get('state');
+    assert.match((await ret({ state: st2, code: 'nodrive' })).text, /not connected[\s\S]*no access to Drive/);
+    assert.equal((await a.get('/api/cloud')).data.connected, false);
     const ok = await ret({ state, code: 'good' });
     assert.match(ok.text, /Google Drive connected/, ok.text); assert.match(ok.text, /location\.replace\("\/settings\/backup"\)/);
     const conf = fs.readFileSync(path.join(s.dir, 'rclone.conf'), 'utf8');

@@ -33,7 +33,10 @@ function rc(args, { timeout = +process.env.CLOUD_TIMEOUT_MS || 6 * 3600e3, input
   return new Promise((ok, no) => {
     const p = execFile(BIN(), args, { env: env(), timeout, maxBuffer: 32 * 1024 * 1024 }, (e, out, err) => {
       if (e) { const m = String(err || e.message).split('\n').map(l => l.replace(/^\d{4}\/\d\d\/\d\d \d\d:\d\d:\d\d (ERROR|NOTICE|CRITICAL|Failed to \w+)?:?\s*/, '').trim()).filter(l => l && !/^Usage:|^\s*rclone |^Flags:|^Use "rclone/.test(l));
-        return no(new Error(m.find(l => /error|fail|denied|invalid|forbidden|expired|not found/i.test(l)) || m[0] || 'rclone failed')); }
+        const said = m.find(l => /error|fail|denied|invalid|forbidden|expired|not found/i.test(l)) || m[0] || 'rclone failed';
+        // A Google sign-in that was not given Drive access (its box on Google's page was not ticked).
+        if (/insufficient authentication scopes|insufficientPermissions|ACCESS_TOKEN_SCOPE_INSUFFICIENT/i.test(String(err))) return no(new Error('Google Drive was connected without access to Drive. Press Disconnect, then connect Google Drive again and allow access to Drive'));
+        return no(new Error(said)); }
       ok(String(out));
     });
     if (input != null) { p.stdin.end(input); }
@@ -158,7 +161,9 @@ async function authFinish(pasted, type) {
 // without the PKCE verifier that never leaves this server, so a code sent anywhere else cannot be used.
 const G = () => ({ id: process.env.GOOGLE_CLIENT_ID || '', secret: process.env.GOOGLE_CLIENT_SECRET || '',
   relay: process.env.GOOGLE_RELAY_URL || 'https://bdlnaredi.github.io/goatmediastackarr/signin/',
-  auth: process.env.GOOGLE_AUTH_URL || 'https://accounts.google.com/o/oauth2/v2/auth', token: process.env.GOOGLE_TOKEN_URL || 'https://oauth2.googleapis.com/token' });
+  auth: process.env.GOOGLE_AUTH_URL || 'https://accounts.google.com/o/oauth2/v2/auth', token: process.env.GOOGLE_TOKEN_URL || 'https://oauth2.googleapis.com/token',
+  about: process.env.GOOGLE_ABOUT_URL || 'https://www.googleapis.com/drive/v3/about?fields=user(emailAddress)' });
+const DRIVE_FILE = 'https://www.googleapis.com/auth/drive.file';
 const googleOn = () => !!(G().id && G().secret);   // without them: rclone's sign-in and a pasted address
 const RETURN_PATH = '/api/cloud/google/return';
 const gWait = new Map();   // state -> { verifier, at }
@@ -172,7 +177,7 @@ function googleStart(back) {
   const verifier = crypto.randomBytes(48).toString('base64url');
   const state = Buffer.from(JSON.stringify({ r: u.origin + RETURN_PATH, n: crypto.randomBytes(18).toString('base64url') })).toString('base64url');
   gWait.set(state, { verifier, at: now });
-  const q = new URLSearchParams({ client_id: g.id, redirect_uri: g.relay, response_type: 'code', scope: 'openid email https://www.googleapis.com/auth/drive.file',
+  const q = new URLSearchParams({ client_id: g.id, redirect_uri: g.relay, response_type: 'code', scope: DRIVE_FILE,   // the only one: with more, Google shows a box per permission and an unticked Drive box leaves no access
     access_type: 'offline', prompt: 'consent', state, code_challenge: crypto.createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256' });
   return { url: `${g.auth}?${q}` };
 }
@@ -186,11 +191,13 @@ async function googleFinish(state, code) {
   const r = await fetch(g.token, { method: 'POST', body: new URLSearchParams({ code: String(code), client_id: g.id, client_secret: g.secret, redirect_uri: g.relay, grant_type: 'authorization_code', code_verifier: w.verifier }), signal: AbortSignal.timeout(20000) });
   const t = await r.json().catch(() => ({}));
   if (!r.ok || !t.access_token) throw new Error('Google did not finish signing in: ' + cut(t.error_description || t.error || 'error ' + r.status, 200));
+  if (t.scope && !String(t.scope).split(/\s+/).includes(DRIVE_FILE)) throw new Error('Google gave no access to Drive (the Drive box on Google\'s page was not ticked). Connect Google Drive again and allow access to Drive');
   if (!t.refresh_token) throw new Error('Google gave no lasting access. Connect Google Drive again');
   stopAuth();
   const token = JSON.stringify({ access_token: t.access_token, token_type: t.token_type || 'Bearer', refresh_token: t.refresh_token, expiry: new Date(Date.now() + (+t.expires_in || 3600) * 1000).toISOString() });
   writeRemote({ type: 'drive', client_id: g.id, client_secret: g.secret, scope: 'drive.file', token });
-  let email = ''; try { email = JSON.parse(Buffer.from(String(t.id_token).split('.')[1], 'base64url')).email || ''; } catch {}
+  // Which account, for the page (Drive says so with the same access).
+  let email = ''; try { const ab = await fetch(g.about, { headers: { Authorization: 'Bearer ' + t.access_token }, signal: AbortSignal.timeout(10000) }); if (ab.ok) email = ((await ab.json()).user || {}).emailAddress || ''; } catch {}
   return { account: cut(email, 120) || 'Google Drive' };
 }
 
@@ -237,4 +244,4 @@ async function test(c) {
   return true;
 }
 
-module.exports = { TYPES, clean, problem, setConfDir, conf, googleOn, googleStart, googleFinish, RETURN_PATH, authStart, authFinish, authPending, readPaste, stopAuth, icloudStart, icloudCode, forget, put, list, del, send, test, writeRemote };
+module.exports = { TYPES, clean, problem, setConfDir, conf, rc, googleOn, googleStart, googleFinish, RETURN_PATH, authStart, authFinish, authPending, readPaste, stopAuth, icloudStart, icloudCode, forget, put, list, del, send, test, writeRemote };

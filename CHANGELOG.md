@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- One-tap Google Drive asks Google for Drive access only. Before, it also asked for your email address, so Google's page showed a box for each, and if the Drive box was left unticked, backups failed with "Request had insufficient authentication scopes". A sign-in without Drive access is now refused with a clear message, and that error from an older connection says to disconnect and connect again.
+
 ## v1.0.38 — 2026-11-23
 
 - **Google Drive can connect in one tap** (Settings → Backup → Google Drive): Google's page opens, you allow access, and you are sent straight back to GoatMediaStackarr, connected, with your Google account shown. No address to copy and paste. It needs your own Google app: set *Google client ID* and *Google client secret* on the container (Unraid: advanced view; the description links to Google Cloud and says what to set). It only gets access to the files GoatMediaStackarr puts in your Drive, and passes through a small page on GitHub Pages that sends you back to your own GoatMediaStackarr. Without them, Google Drive connects with the pasted address, as before.
