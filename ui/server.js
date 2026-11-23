@@ -2256,6 +2256,7 @@ async function dupScan() {
     dupState = { at: Date.now(), running: false, groups: groups.sort((a, b) => b.extra - a.extra), error: '' };
   } catch (e) { dupState = { ...dupState, running: false, error: e.message }; }
 }
+let cloudBusy = null;   // the copy started by "Back up to the cloud now", while it runs
 async function cloudCopy(file, name) {
   const c = CLOUD.clean({}, db.settings.cloud || {}); if (!c.on || CLOUD.problem(c) || DEMO) return null;
   try { const r = await CLOUD.send(c, file, name); db.settings.cloud = { ...db.settings.cloud, last: { at: Date.now(), ok: true, name } }; save(); return r; }
@@ -6123,7 +6124,7 @@ const goatServer = http.createServer(async (req, res) => {
       audit(me.name, 'Changed watchlists', db.settings.watchlist.auto ? 'request automatically' : 'do not request'); return send(res, 200, { auto: db.settings.watchlist.auto });
     }
     // Copying backups to Google Drive, OneDrive or iCloud Drive (lib/cloud.js; rclone does the work).
-    const cloudPub = () => { const o = db.settings.cloud || {}, c = CLOUD.clean({}, o); return { ...c, types: CLOUD.TYPES, old: ['s3', 'webdav'].includes(o.type) ? o.type : '', oneTap: CLOUD.googleOn(), ...(c.connected ? {} : { pending: CLOUD.authPending() }) }; };
+    const cloudPub = () => { const o = db.settings.cloud || {}, c = CLOUD.clean({}, o); return { ...c, types: CLOUD.TYPES, old: ['s3', 'webdav'].includes(o.type) ? o.type : '', oneTap: CLOUD.googleOn(), busy: !!cloudBusy, ...(c.connected ? {} : { pending: CLOUD.authPending() }) }; };
     if (p === '/api/cloud' && m === 'GET') return send(res, 200, cloudPub());
     if (p === '/api/cloud' && m === 'PUT') {
       const b = await readBody(req), c = CLOUD.clean({ ...b, type: (db.settings.cloud || {}).type }, db.settings.cloud || {}), bad = CLOUD.problem(c);
@@ -6153,14 +6154,17 @@ const goatServer = http.createServer(async (req, res) => {
       CLOUD.stopAuth(); CLOUD.forget(); db.settings.cloud = { ...CLOUD.clean({}, {}), folder: (db.settings.cloud || {}).folder, keep: (db.settings.cloud || {}).keep }; save();
       audit(me.name, 'Disconnected cloud backup', ''); return send(res, 200, cloudPub());
     }
+    // Runs in the background: the whole stack's backup can take many minutes to upload, longer than a browser or a
+    // proxy in front (Cloudflare gives up after 100 seconds) waits. The page watches "busy", then shows "last".
     if (p === '/api/cloud/now' && m === 'POST') {
       const c = CLOUD.clean({}, db.settings.cloud || {}); if (!c.on) return send(res, 400, { error: 'Turn cloud backup on first' });
-      const name = backupNow('auto', false), out = [];
-      try { out.push((await cloudCopy(path.join(BK, name), name)).name); } catch (e) { return send(res, 502, { error: e.message }); }
-      // The newest backup of the whole stack goes along too.
-      const st = goatSB ? (goatSB.list() || []).sort((a, b) => String(b.name).localeCompare(String(a.name)))[0] : null;
-      if (st) { try { out.push((await cloudCopy(path.join(goatSB.DIR(), st.name), st.name)).name); } catch (e) { return send(res, 502, { error: e.message, sent: out }); } }
-      return send(res, 200, { sent: out });
+      if (!cloudBusy) cloudBusy = (async () => {
+        const name = backupNow('auto', false); await cloudCopy(path.join(BK, name), name);
+        // The newest backup of the whole stack goes along too.
+        const st = goatSB ? (goatSB.list() || []).sort((a, b) => String(b.name).localeCompare(String(a.name)))[0] : null;
+        if (st) await cloudCopy(path.join(goatSB.DIR(), st.name), st.name);
+      })().catch(() => {}).finally(() => { cloudBusy = null; });
+      return send(res, 202, cloudPub());
     }
     if (p === '/api/bots' && m === 'GET') { const c = db.settings.bots || {}, st = bots.state();
       return send(res, 200, { telegram: { set: !!(c.telegram || {}).token, name: (c.telegram || {}).name || '', ...st.telegram }, discord: { set: !!(c.discord || {}).token, name: (c.discord || {}).name || '', ...st.discord }, linked: db.users.filter(u => u.chats && Object.keys(u.chats).length).map(u => ({ name: u.name, chats: Object.keys(u.chats) })) }); }

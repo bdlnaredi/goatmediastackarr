@@ -556,7 +556,7 @@ async function api(url,method='GET',body){
   const r=await fetch(url,{method,headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});
   const d=await r.json().catch(()=>({}));
   if(!r.ok&&d.need2fa&&!api.gated){api.gated=true;location.reload()}
-  if(!r.ok){const e=new Error(d.error||'Something went wrong');e.status=r.status;e.data=d;throw e}
+  if(!r.ok){const e=new Error(d.error||([502,504,520,522,523,524].includes(r.status)?`No answer from GoatMediaStackarr in time (error ${r.status}${r.status>=520?' from Cloudflare':''}): something between your browser and the server gave up waiting`:`Something went wrong (error ${r.status})`));e.status=r.status;e.data=d;throw e}
   return d;
 }
 let DEMO=false;
@@ -1839,7 +1839,12 @@ async function cloudPanel(){
   $('#cdis').onclick=async()=>{if(!confirm(`Disconnect ${T3[c.type]}? Backups stop being copied there; what is already there stays.`))return;try{await api('/api/cloud/disconnect','POST');cloudPanel()}catch(x){toast(x.message,'bad')}};
   f.onsubmit=async e=>{e.preventDefault();$('#cfe').textContent='';try{await api('/api/cloud','PUT',{on:f.on.checked,folder:f.folder.value,keep:f.keep.value});toast('Saved','ok');cloudPanel()}catch(x){$('#cfe').textContent=x.message}};
   $('#ctst').onclick=async()=>{const b=$('#ctst');b.disabled=true;$('#cfe').textContent='';try{await api('/api/cloud/test','POST');toast('It works: a test file was written and removed','ok')}catch(x){$('#cfe').textContent=x.message}b.disabled=false};
-  $('#cnow').onclick=async()=>{const b=$('#cnow');b.disabled=true;b.textContent='Copying…';try{const r=await api('/api/cloud/now','POST');toast('Copied: '+r.sent.join(', '),'ok');cloudPanel()}catch(x){$('#cfe').textContent=x.message;b.disabled=false;b.textContent='Back up to the cloud now'}};
+  // Copying runs on the server (the whole stack's backup can take many minutes); this only watches it.
+  const watch=async()=>{const b=$('#cnow');if(!b)return;b.disabled=true;b.textContent='Copying… (you can leave this page)';
+    for(;;){await new Promise(r=>setTimeout(r,4000));if(!document.body.contains(b))return;let n;try{n=await api('/api/cloud')}catch{continue}
+      if(!n.busy){if(n.last&&n.last.ok)toast('Copied to '+T3[n.type],'ok');else if(n.last)toast('Copying to the cloud failed','bad');return cloudPanel()}}};
+  $('#cnow').onclick=async()=>{$('#cfe').textContent='';try{await api('/api/cloud/now','POST');watch()}catch(x){$('#cfe').textContent=x.message}};
+  if(c.busy)watch();
 }
 
 // ---------- Backups of the whole stack: every app's settings and databases, on a schedule, and putting them back.

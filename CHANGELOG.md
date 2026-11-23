@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- "Back up to the cloud now" copies in the background. It used to keep the page waiting until the whole stack's backup had uploaded, which can take many minutes; a proxy in front (Cloudflare gives up after 100 seconds) then ended the wait, and the page said only "Something went wrong". The button now shows it is copying (you can leave the page), then the result or the real error. Errors with no message from the server now say what happened (for example, Cloudflare giving up).
+
 - One-tap Google Drive asks Google for Drive access only. Before, it also asked for your email address, so Google's page showed a box for each, and if the Drive box was left unticked, backups failed with "Request had insufficient authentication scopes". A sign-in without Drive access is now refused with a clear message, and that error from an older connection says to disconnect and connect again.
 
 ## v1.0.38 — 2026-11-23

@@ -6,6 +6,9 @@ const fs = require('node:fs'), path = require('node:path');
 const { tmp, boot, client, setup } = require('./helpers');
 const FAKE = path.join(__dirname, 'fixtures', 'fake-rclone.js');
 
+// Waits for "Back up to the cloud now" to finish.
+async function done(a) { for (let i = 0; i < 100; i++) { if (!(await a.get('/api/cloud')).data.busy) return; await new Promise(r => setTimeout(r, 100)); } throw new Error('still copying'); }
+
 test('Google Drive: connect with the pasted address, copy backups, keep the newest, disconnect', async () => {
   const dir = tmp(), cloud = path.join(dir, 'cloud'); fs.mkdirSync(cloud);
   const s = await boot({ RCLONE_BIN: FAKE, FAKE_CLOUD: cloud, CLOUD_AUTH_PORT: '53791' }, dir), a = client(s.base); await setup(a);
@@ -32,7 +35,8 @@ test('Google Drive: connect with the pasted address, copy backups, keep the newe
     assert.equal((await a.post('/api/cloud/test')).status, 200);
     fs.mkdirSync(path.join(cloud, 'Goat'), { recursive: true });
     for (const n of ['auto-2026-01-01-0100.json', 'auto-2026-02-01-0100.json', 'stack-2026-01-01.tar.gz', 'my-notes.txt']) fs.writeFileSync(path.join(cloud, 'Goat', n), 'old');
-    const r = await a.post('/api/cloud/now'); assert.equal(r.status, 200, JSON.stringify(r.data));
+    const r = await a.post('/api/cloud/now'); assert.equal(r.status, 202, JSON.stringify(r.data)); assert.equal(r.data.busy, true, 'it copies in the background');
+    await done(a);
     const left = fs.readdirSync(path.join(cloud, 'Goat')).sort();
     assert.equal(left.length, 4, left.join(', ')); assert.ok(left.includes('auto-2026-02-01-0100.json') && !left.includes('auto-2026-01-01-0100.json'), 'the newest two of its own kind: ' + left.join(', '));
     assert.ok(left.includes('stack-2026-01-01.tar.gz') && left.includes('my-notes.txt'), 'other files are left alone');
@@ -78,7 +82,7 @@ test('iCloud Drive: Apple ID, then the code; an old S3 or WebDAV setting is show
     assert.equal(wrong.status, 400);
     const ok = (await a.post('/api/cloud/connect', { type: 'iclouddrive', step: 'code', state: r1.state, code: '123456', appleId: 'me@icloud.com' })).data;
     assert.equal(ok.connected, true); assert.equal(ok.account, 'me@icloud.com'); assert.equal(ok.type, 'iclouddrive');
-    assert.equal((await a.post('/api/cloud/now')).status, 200); assert.equal(fs.readdirSync(path.join(cloud, 'GoatMediaStackarr')).length, 1);
+    assert.equal((await a.post('/api/cloud/now')).status, 202); await done(a); assert.equal(fs.readdirSync(path.join(cloud, 'GoatMediaStackarr')).length, 1);
   } finally { await s.stop(); }
   // A setting from before (S3) comes back off, saying so.
   const d2 = tmp(); fs.writeFileSync(path.join(d2, 'db.json'), JSON.stringify({ users: [], services: [], settings: { cloud: { on: true, type: 's3', bucket: 'b' } } }));
