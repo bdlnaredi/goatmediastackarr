@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- Logins made for you (Stack page) are only made and shown for the apps that run: no Jellyfin admin password when Jellyfin is not in *Apps to run*, and the same for qBittorrent, ruTorrent and Deluge. A login made before is kept (hidden), so turning the app on again still works.
+
 ## v1.0.39 — 2026-11-23
 
 - Copying backups to the cloud failed with "permission denied" for the backup of the stack made before an update. That backup was made at start as root and kept unreadable to GoatMediaStackarr; every backup of the stack now belongs to the app user, and ones already there are fixed at the next start.

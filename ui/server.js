@@ -476,7 +476,9 @@ const goatStatus = () => {
     engines: [...db.services.filter(x => x.managed).map(x => ({ id: x.id, key: x.managed, name: x.name, version: appVersions()[x.managed] || '', ok: health[x.id] ? health[x.id].ok : null, stopped: (goatRead(path.join(GOAT_RUN, 'stopped.json')) || []).includes(x.managed) })),
       ...((GOAT_MANAGED && (goatRead(GOAT_MANAGED) || {}).extras) || []).map(x => ({ key: x.key, name: x.name, ok: null, stopped: (goatRead(path.join(GOAT_RUN, 'stopped.json')) || []).includes(x.key) }))],
     settings: goatSettings ? goatSettings.view() : null, vpnFiles: goatVpnFiles(), container: !!GOAT_MANAGED, outside: { ...((db.settings || {}).outside || {}) },
-    logins: { jellyfin: sec.jellyfinUser ? { user: sec.jellyfinUser, pass: sec.jellyfinPass } : null, qbittorrent: sec.qbitUser ? { user: sec.qbitUser, pass: sec.qbitPass } : null,
+    // Only for the apps that run here (a login made before stays saved, for when the app is turned on again).
+    logins: { jellyfin: sec.jellyfinUser && db.services.some(x => x.managed === 'jellyfin') ? { user: sec.jellyfinUser, pass: sec.jellyfinPass } : null,
+      qbittorrent: sec.qbitUser && db.services.some(x => x.managed === 'qbittorrent') ? { user: sec.qbitUser, pass: sec.qbitPass } : null,
       rutorrent: sec.rutorrentPass && db.services.some(x => x.managed === 'rutorrent') ? { user: sec.rutorrentUser, pass: sec.rutorrentPass } : null,
       deluge: sec.delugePass && db.services.some(x => x.managed === 'deluge') ? { user: '(password only)', pass: sec.delugePass } : null } };
 };

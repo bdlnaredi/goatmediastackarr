@@ -151,3 +151,13 @@ test('Tautulli gets a password GoatMediaStackarr knows, instead of the random on
   x = init.tautulliConfig('[General]\nhttp_username = me\nhttp_password = PBKDF2$mine\nhttp_generated_password = ""\nhttp_basic_auth = 0\n', s, null);
   assert.equal(get(x, 'http_password'), 'PBKDF2$mine'); assert.equal(get(x, 'http_basic_auth'), '0'); assert.equal(get(x, 'http_username'), 'me');
 });
+
+test('logins are made only for the apps that run, and one made before is kept', () => {
+  const I = require('../goat/init'), f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'sec-')), 'secrets.json');
+  let r = I.loadSecrets(f, ['sonarr', 'radarr', 'qbittorrent']);
+  assert.ok(!r.secrets.jellyfinPass && !r.secrets.rutorrentPass && !r.secrets.delugePass, 'no Jellyfin, ruTorrent or Deluge login');
+  assert.ok(r.secrets.qbitPass && r.secrets.sonarr);
+  r = I.loadSecrets(f, ['jellyfin']); assert.ok(r.secrets.jellyfinPass, 'made once Jellyfin is turned on');
+  fs.writeFileSync(f, JSON.stringify(r.secrets));
+  assert.equal(I.loadSecrets(f, ['sonarr']).secrets.jellyfinPass, r.secrets.jellyfinPass, 'kept when it is turned off again');
+});

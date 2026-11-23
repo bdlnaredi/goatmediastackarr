@@ -159,7 +159,7 @@ test('container settings, VPN file upload, control commands and the leak test', 
   const dir = tmp(), cfg = path.join(dir, 'config'), run = tmp();
   fs.mkdirSync(path.join(cfg, 'goat'), { recursive: true });
   fs.writeFileSync(path.join(cfg, 'goat', 'secrets.json'), JSON.stringify({ jellyfinUser: 'goat-admin', jellyfinPass: 'jfpw', qbitUser: 'goat', qbitPass: 'qbpw' }));
-  const mf = path.join(dir, 'managed.json'); fs.writeFileSync(mf, JSON.stringify({ services: [] }));
+  const mf = path.join(dir, 'managed.json'); fs.writeFileSync(mf, JSON.stringify({ services: [{ key: 'jellyfin', type: 'jellyfin', name: 'Jellyfin', url: 'http://127.0.0.1:9', apiKey: 'k' }] }));
   fs.writeFileSync(path.join(run, 'vpn.json'), JSON.stringify({ enabled: true, state: 'up', ip: '203.0.113.9', country: 'NL' }));
   // Pretend control service.
   const sockPath = path.join(run, 'control.sock'), got = [];
@@ -174,6 +174,7 @@ test('container settings, VPN file upload, control commands and the leak test', 
     const c = client(s.base); await setup(c);
     let r = await c.get('/api/goat/status');
     assert.equal(r.data.logins.jellyfin.pass, 'jfpw');
+    assert.equal(r.data.logins.qbittorrent, null, 'only logins for the apps that run here');
     assert.equal(r.data.container, true);
 
     r = await c.post('/api/goat/settings', { vpn: { enabled: true, pass: 'secret' } });

@@ -53,14 +53,18 @@ function qbitHash(pw, salt = crypto.randomBytes(16)) {
 }
 
 // ---------- secrets ----------
-function loadSecrets(file) {
+// on: the apps that run (GOAT_ENGINES). A login is made only for an app that runs; one made before stays (the app
+// keeps it in its own settings, so turning it off and on again needs the same one).
+function loadSecrets(file, on = null) {
   let s = {};
   try { s = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
+  const runs = k => !on || on.includes(k);
   const want = {
     sonarr: key, radarr: key, lidarr: key, prowlarr: key, bazarr: key, tautulli: key, tautulliPass: password,
     sabnzbd: key, sabnzbdNzb: key, qbitUser: () => 'goat', qbitPass: password,
-    jellyfinUser: () => 'goat-admin', jellyfinPass: password,
-    rutorrentUser: () => 'goat', rutorrentPass: password, delugePass: password,
+    ...(runs('jellyfin') ? { jellyfinUser: () => 'goat-admin', jellyfinPass: password } : {}),
+    ...(runs('rutorrent') ? { rutorrentUser: () => 'goat', rutorrentPass: password } : {}),
+    ...(runs('deluge') ? { delugePass: password } : {}),
   };
   let changed = false;
   for (const [k, make] of Object.entries(want)) if (!s[k]) { s[k] = make(); changed = true; }
@@ -267,7 +271,7 @@ function run(env = process.env) {
   fs.mkdirSync(goatDir, { recursive: true });
   seerrNetwork(`${C}/seerr/settings.json`, `${goatDir}/seerr-network.done`);
   const secFile = `${goatDir}/secrets.json`;
-  const { secrets: s, changed } = loadSecrets(secFile);
+  const { secrets: s, changed } = loadSecrets(secFile, on);
   if (changed) fs.writeFileSync(secFile, JSON.stringify(s, null, 1), { mode: 0o600 });
 
   const made = [];
