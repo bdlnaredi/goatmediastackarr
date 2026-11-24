@@ -321,16 +321,6 @@ html[data-run=sections] .tile::after{animation-delay:calc(var(--i,0) * -0.6s)}
 @media(prefers-reduced-motion:reduce){html[data-run] *::after{animation:none!important}}
 
 /* ============================== Settings, more compact ============================== */
-main.sx .sxn{gap:6px 16px;margin:0 0 12px;padding-bottom:10px}
-main.sx .sxg{gap:5px}
-main.sx .sxh{font-size:10.5px}
-main.sx .sxn button,
-main.sx .sxn a{padding:4px 11px;gap:6px}
-main.sx .sxn b{font-size:13px;font-weight:560}
-main.sx .sxn button .ic,
-main.sx .sxn a .ic{width:15px;height:15px}
-main.sx .sxt{margin:0 0 10px}main.sx .sxt h2{font-size:19px}main.sx .sxt p{font-size:13px}
-main.sx #m .panel{padding:14px 16px}
 main.sx #m .panel[style*="margin-top:16px"]{margin-top:10px!important}
 main.sx #m .panel[style*="margin-bottom:16px"],main.sx #m .panel[style*="margin-bottom:14px"]{margin-bottom:10px!important}
 main.sx #m h3{margin:0 0 6px;font-size:15px}

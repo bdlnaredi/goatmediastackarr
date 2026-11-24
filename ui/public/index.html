@@ -269,32 +269,7 @@ progress::-moz-progress-bar{background:linear-gradient(90deg,var(--accent),color
 .av{background:linear-gradient(135deg,var(--accent),color-mix(in srgb,var(--accent) 50%,#7b6cff));color:var(--onacc)}
 main{max-width:1180px;padding:34px 36px 70px}
 html[data-rail=min]{--rail:70px}
-/* settings: side menu + content */
-/* settings: the sections as a row of tabs across the top, grouped (You, Server, Care) */
-main.sx{display:block}
-.sxn{display:flex;flex-wrap:wrap;gap:10px 22px;margin:0 0 20px;padding-bottom:14px;border-bottom:1px solid var(--line)}
-.sxg{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-.sxh{font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--mute);padding:0 4px 0 0}
-.sxn button,
-.sxn a{display:flex;gap:7px;align-items:center;width:auto;flex:none;text-align:left;border:1px solid var(--line);background:none;border-radius:999px;padding:7px 14px;color:var(--text);white-space:nowrap}
-.sxn button small,
-.sxn a small{display:none}
-.sxn button:hover,
-.sxn a:hover{background:color-mix(in srgb,var(--s2) 80%,transparent)}
-.sxn button.on,.sxn button.on:hover,
-.sxn a.on,.sxn a.on:hover{background:var(--s1);box-shadow:var(--hl),0 4px 14px -8px rgba(0,0,0,.55)}
-.sxn button .ic,
-.sxn a .ic{width:18px;height:18px;margin:0;flex:none;color:var(--mute)}.sxn button.on .ic,.sxn a.on .ic{color:var(--accent)}
-.sxn b{display:block;font-weight:600;font-size:14px}.sxn small{display:block;font-size:12px;color:var(--mute);line-height:1.35;margin-top:1px}
-.sxt{margin:0 0 16px}.sxt h2{margin:0;font-size:22px;letter-spacing:-.025em}.sxt p{margin:3px 0 0}
-main.sx #m .panel{max-width:760px!important}
-@media(max-width:860px){
- main.sx{display:block}
- .sxn{position:static;flex-direction:row;gap:6px;overflow-x:auto;margin:0 -16px 16px;padding:0 16px 4px;scrollbar-width:none}.sxn::-webkit-scrollbar{display:none}
- .sxg{display:contents}.sxh{display:none}
- .sxn button,
- .sxn a{width:auto;flex:none;align-items:center;padding:8px 14px;border:1px solid var(--line);border-radius:999px;white-space:nowrap}.sxn button small,.sxn a small{display:none}.sxn button .ic,.sxn a .ic{margin:0;width:18px;height:18px}
-}
+/* Settings: see settings.css */
 /* phone: top bar + dock */
 .dock,.mtools{display:none}
 @media(max-width:860px){
@@ -454,7 +429,7 @@ html.pinon body>*:not(.pinlock){visibility:hidden}
 .ov.pg>.dlg{position:relative;z-index:1}
 </style></head><body>
 <div id="app"></div><div id="toasts" aria-live="polite"></div>
-<link rel="stylesheet" href="/statuskit.css"><link rel="stylesheet" href="/cinema.css"><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/arr.css"><script src="/statuskit.js"></script><script src="/scenes.js"></script><script src="/cinema.js"></script><script src="/qr.js"></script>
+<link rel="stylesheet" href="/statuskit.css"><link rel="stylesheet" href="/cinema.css"><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/settings.css"><link rel="stylesheet" href="/arr.css"><script src="/statuskit.js"></script><script src="/scenes.js"></script><script src="/cinema.js"></script><script src="/qr.js"></script>
 <script>
 const $=s=>document.querySelector(s);
 // A picture that cannot load (an address that is gone, no internet) leaves an empty space instead of a broken-image sign.
@@ -953,12 +928,12 @@ const PICK={sub:'bazarr',nzb:'sabnzbd',dl:'torrent',rss:'qbittorrent',idx:'jacke
 const visibleTabs=()=>TABS.filter(([k])=>!TYPE_TABS[k]||TYPE_TABS[k].some(t=>ofType(t).length)).filter(([k])=>k!=='disc'||Object.values(me.lists||{}).some(Boolean)).filter(([k])=>k!=='hl'||(me.role==='admin'&&services.some(s=>['sonarr','radarr','lidarr','readarr','prowlarr'].includes(s.type)))).filter(([k])=>k!=='goat'||(GOAT&&me.role==='admin')).filter(([k])=>k!=='trk'||me.role==='admin').filter(([k])=>k!=='logs'||me.role==='admin').filter(([k])=>!me.kids||KIDS_TABS.includes(k));
 // Kids profiles get a short, simple menu: what is here to watch, and their own settings.
 const KIDS_TABS=['dash','lib','mb','set'],KIDS_DASH=['hero','foryou','ticker','rails'];
-let stSub='acct';
+let stSub='';   // the Settings section open; '' is the start page that lists them all
 // ---------- Addresses: every tab and every Settings section has its own address (/downloads, /settings/apps),
 // so the browser's back button, bookmarks and links work.
 const SLUG={dash:'dashboard',wl:'watchlist',find:'search',disc:'discover',rq:'requests',lib:'library',wt:'wanted',dl:'downloads',rss:'rss',up:'upcoming',idx:'indexers',trk:'trackers',mb:'music',sub:'subtitles',nzb:'usenet',hl:'health',ur:'unraid',stats:'stats',goat:'stack',logs:'logs',sug:'suggestions',set:'settings'};
 const UNSLUG=Object.fromEntries(Object.entries(SLUG).map(([k,v])=>[v,k]));
-const pathFor=()=>tab==='dash'?'/':'/'+(SLUG[tab]||tab)+(tab==='set'&&stSub&&stSub!=='acct'?'/'+encodeURIComponent(stSub):'');
+const pathFor=()=>tab==='dash'?'/':'/'+(SLUG[tab]||tab)+(tab==='set'&&stSub?'/'+encodeURIComponent(stSub):'');
 // Reads the tab (and Settings section) from the address. Returns false when the address names no page.
 function readPath(){
   const parts=location.pathname.split('/').filter(Boolean).map(x=>{try{return decodeURIComponent(x)}catch{return x}});
@@ -966,7 +941,7 @@ function readPath(){
   if(parts[0]==='title'&&['movie','tv'].includes(parts[1])&&parts[2]){tab='disc';TITLE_OPEN={type:parts[1],id:+parts[2]||parts[2]};return true}
   if(parts[0]==='party'&&/^[a-f0-9]{12}$/.test(parts[1]||'')){tab='dash';PARTY_OPEN=parts[1];return true}
   const k=UNSLUG[parts[0].toLowerCase()];if(!k)return false;
-  tab=k;if(k==='set')stSub=parts[1]||'acct';
+  tab=k;if(k==='set')stSub=parts[1]||'';
   // /library/tv/<app>/<id> and /library/movies/<app>/<id>: the library opens with that show or movie on top.
   if(k==='lib'&&['tv','movies'].includes(parts[1])&&parts[2]&&parts[3]){libSel=parts[2];LIB_OPEN={sid:parts[2],id:parts[3]}}
   return true;
@@ -1012,7 +987,7 @@ function render(){
     <button class="nv wn" id="wn" title="What's new">${ic('new')}<span>What's new</span>${fresh?'<i class="ndot" aria-label="New"></i>':''}</button>
     <div class="who"><span class="av">${esc((me.name[0]||'?').toUpperCase())}</span><span class="nm">${esc(me.name)}</span><button class="ghost" id="ap" aria-label="Appearance" title="Appearance">${ic('pal')}</button><button id="out" class="ghost" aria-label="Sign out" title="Sign out">${ic('out')}</button></div><div class="ver" title="GoatMediaStackarr version, see Settings, About">GoatMediaStackarr ${esc(VER)}${APPMODE?' · Android app':''}</div></nav>
     <main>${DEMO?'<div class="demo" role="note">Demo mode: the apps here are pretend and nothing is saved. Risky settings are locked.</div>':''}<div class="ph">${pg[0]?`<div class="phg">${navGroupOf(tab)?`<span class="phk">${navGroupOf(tab)}</span>`:''}<h1>${pg[0]}</h1><p class="mute">${pg[1]}</p></div>`:''}</div><div id="m" tabindex="-1"></div></main>${dockHtml}</div>`;
-  document.querySelectorAll('.nv[data-t],.dock [data-t]').forEach(b=>b.onclick=e=>{if(newTabClick(e))return;e.preventDefault();tab=b.dataset.t;render()});
+  document.querySelectorAll('.nv[data-t],.dock [data-t]').forEach(b=>b.onclick=e=>{if(newTabClick(e))return;e.preventDefault();tab=b.dataset.t;if(tab==='set')stSub='';render()});
   // A group's name opens its list on hover; tapped (a touch screen) it goes to the group's first page.
   document.querySelectorAll('.nghb[data-g]').forEach(b=>b.onclick=()=>{const g=b.closest('.ng');if(g&&g.classList.contains('on')&&!matchMedia('(hover:hover)').matches)return;tab=b.dataset.g;render()});
   document.querySelectorAll('#home,.tbrand').forEach(b=>b.onclick=e=>{e.preventDefault();tab='dash';render();window.scrollTo&&window.scrollTo(0,0)});
@@ -1252,17 +1227,23 @@ function dashView(){
   timer=[tick(fallback,4000),setInterval(glide,1000),tick(slow,60000),tick(attn,60000),tick(rq,60000),tick(upt,300000),tick(()=>{if(!LIVE.ok)checks()},30000)];
 }
 const ST_SECTIONS=[['acct','Account',false,'Your password, sign-in and devices','usr','You'],['look','Appearance',false,'Theme, colours and layout','pal','You'],['apps','Apps',true,'The apps GoatMediaStackarr connects to','svc','Server'],['lists','Discover lists',true,'Keys for the Trakt, TMDB and TheTVDB lists','find','Server'],['users','Users',true,'Profiles and what each can do','usr','Server'],['limits','Limits',true,'How much each person may stream and keep, and who is using what','dl','Server'],['alerts','Alerts',true,'Email, phone messages and reports','al','Care'],['status','Status page',true,'A page friends can open to see if everything is up','eye','Care'],['rules','Download rules',true,'Speed schedule and stream throttling','dl','Care'],['backup','Backup',true,'Save and restore your setup','pw','Care'],['audit','Activity',true,'Who did what, and when','hl','Care'],['about','About',false,'Version and where you are connected','eye','Help']];
+// Settings, laid out like Sonarr's: a start page listing every section (grouped, each with what it is for), and each
+// section on its own page with the list of sections down the side (on a wide screen) and a way back to the start.
 function setView(){
   const admin=me.role==='admin',secs=ST_SECTIONS.filter(s=>admin||!s[2]);
-  if(!secs.some(s=>s[0]===stSub))stSub='acct';
-  const cur=secs.find(s=>s[0]===stSub);
-  const groups=[...new Set(secs.map(s=>s[5]))];
-  const nav=`<nav class="sxn" id="sn" aria-label="Settings sections">${groups.map(g=>`<div class="sxg"><div class="sxh">${g}</div>${secs.filter(s=>s[5]===g).map(([k,n,,d,i])=>`<a href="/settings/${k}" data-k="${k}" class="${k===stSub?'on':''}"${k===stSub?' aria-current="page"':''}>${ic(i)}<span><b>${n}</b><small>${d}</small></span></a>`).join('')}</div>`).join('')}</nav>`;
-  const mm=$('#m');mm.insertAdjacentHTML('beforebegin',nav);
-  mm.closest('main').classList.add('sx');
-  mm.insertAdjacentHTML('beforebegin',`<div class="sxt"><h2>${cur[1]}</h2><p class="mute">${cur[3]}</p></div>`);
-  $('#sn').onclick=e=>{const b=e.target.closest('[data-k]');if(!b||newTabClick(e))return;e.preventDefault();stSub=b.dataset.k;render()};
-  const ob=$('#sn .on');if(ob&&ob.scrollIntoView)ob.scrollIntoView({inline:'center',block:'nearest'});
+  const groups=[...new Set(secs.map(s=>s[5]))],cur=secs.find(s=>s[0]===stSub);
+  const mm=$('#m'),main=mm.closest('main');main.classList.add('sx');
+  const open=e=>{const b=e.target.closest('[data-k]');if(!b||newTabClick(e))return;e.preventDefault();stSub=b.dataset.k;render();window.scrollTo(0,0)};
+  if(!cur){
+    stSub='';main.classList.add('sxi');
+    mm.innerHTML=`<div class="sxi-g">${groups.map(g=>`<section class="sxi-s" aria-label="${T(g)}"><h2 class="sxi-h">${T(g)}</h2><div class="sxi-l">${secs.filter(s=>s[5]===g).map(([k,n,,d,i])=>
+      `<a class="sxi-a" href="/settings/${k}" data-k="${k}"><span class="sxi-ic">${ic(i)}</span><span class="sxi-t"><b>${n}</b><small>${d}</small></span><span class="sxi-go">${ic('chev')}</span></a>`).join('')}</div></section>`).join('')}</div>`;
+    mm.onclick=open;return;
+  }
+  const nav=`<nav class="sxn" id="sn" aria-label="Settings sections">${groups.map(g=>`<div class="sxg"><div class="sxh">${T(g)}</div>${secs.filter(s=>s[5]===g).map(([k,n,,d,i])=>`<a href="/settings/${k}" data-k="${k}" class="${k===stSub?'on':''}"${k===stSub?' aria-current="page"':''} title="${esc(d)}">${ic(i)}<span><b>${n}</b></span></a>`).join('')}</div>`).join('')}</nav>`;
+  mm.insertAdjacentHTML('beforebegin',nav);
+  mm.insertAdjacentHTML('beforebegin',`<div class="sxt"><a class="sxb" href="/settings" data-k="">${ic('back')}<span>${T('Settings')}</span></a><h2>${cur[1]}</h2><p class="mute">${cur[3]}</p></div>`);
+  $('#sn').onclick=open;document.querySelector('.sxt .sxb').onclick=e=>{if(newTabClick(e))return;e.preventDefault();stSub='';render();window.scrollTo(0,0)};
   ({limits:stLimits,acct:stAcct,look:stLook,apps:svcView,lists:stLists,users:usrView,alerts:alView,status:stStatus,rules:stRules,backup:stBackup,audit:stAudit,about:stAbout})[stSub]();
 }
 // Settings → Limits: request rules. A request that fits one is approved without waiting for an admin.

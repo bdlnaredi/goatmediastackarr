@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- **Settings, redesigned** (like Sonarr's settings, in every style). Settings opens on a start page listing every section under You, Server, Care and Help, each with what it is for. Each section has its own page: the sections down the side on a computer, the section's parts as headed groups instead of boxes, names in front of their fields on wide screens, and "‹ Settings" back to the start. On a phone the start page is the menu. Addresses: `/settings` is the start page, `/settings/acct` your account, and so on.
+
 - **New style: Arr** (Settings → Appearance → Style), laid out like Sonarr and Radarr: a header bar across the top with the name, search and you; the sections down a dark sidebar, the open one showing its pages under it; the page title as a toolbar strip; flat 4px corners, posters edge to edge, Sonarr's greys and blue (any accent colour still works). Light keeps the dark header and sidebar. On a phone it uses the menu at the bottom, in the same colours.
 
 - **A switch for every app** in the Unraid template: *App: Sonarr*, *App: Plex*, *App: Unpackerr*, *App: cross-seed*, *App: autobrr* and the rest, each true or false, instead of typing names into *Apps to run*. `GOAT_APP_<NAME>` outside Unraid. *Apps to run* still works: when it holds a list of your own it keeps deciding (so updating the template cannot turn your apps on or off); empty it to use the switches. The log names the apps that run at every start.
