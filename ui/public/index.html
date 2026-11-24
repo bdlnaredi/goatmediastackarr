@@ -1226,7 +1226,7 @@ function dashView(){
   checks();upt();slow();attn();rq();
   timer=[tick(fallback,4000),setInterval(glide,1000),tick(slow,60000),tick(attn,60000),tick(rq,60000),tick(upt,300000),tick(()=>{if(!LIVE.ok)checks()},30000)];
 }
-const ST_SECTIONS=[['acct','Account',false,'Your password, sign-in and devices','usr','You'],['look','Appearance',false,'Theme, colours and layout','pal','You'],['apps','Apps',true,'The apps GoatMediaStackarr connects to','svc','Server'],['lists','Discover lists',true,'Keys for the Trakt, TMDB and TheTVDB lists','find','Server'],['users','Users',true,'Profiles and what each can do','usr','Server'],['limits','Limits',true,'How much each person may stream and keep, and who is using what','dl','Server'],['alerts','Alerts',true,'Email, phone messages and reports','al','Care'],['status','Status page',true,'A page friends can open to see if everything is up','eye','Care'],['rules','Download rules',true,'Speed schedule and stream throttling','dl','Care'],['backup','Backup',true,'Save and restore your setup','pw','Care'],['audit','Activity',true,'Who did what, and when','hl','Care'],['about','About',false,'Version and where you are connected','eye','Help']];
+const ST_SECTIONS=[['acct','Account',false,'Your password, sign-in and devices','usr','You'],['look','Appearance',false,'Theme, colours and layout','pal','You'],['apps','Apps',true,'The apps GoatMediaStackarr connects to','svc','Server'],['lists','Discover lists',true,'Keys for the Trakt, TMDB and TheTVDB lists','find','Server'],['users','Users',true,'Profiles and what each can do','usr','Server'],['limits','Limits',true,'How much each person may stream and keep, and who is using what','dl','Server'],['alerts','Alerts',true,'Email, phone messages and reports','al','Care'],['status','Status page',true,'A page friends can open to see if everything is up','eye','Care'],['rules','Download rules',true,'Speed schedule and stream throttling','dl','Care'],['backup','Backup',true,'Save and restore your setup','pw','Care'],['audit','Activity',true,'Who did what, and when','hl','Care'],['faq','FAQ',false,'Answers to common questions: setting up each app, Plex from outside, problems','find','Help'],['about','About',false,'Version and where you are connected','eye','Help']];
 // Settings, laid out like Sonarr's: a start page listing every section (grouped, each with what it is for), and each
 // section on its own page with the list of sections down the side (on a wide screen) and a way back to the start.
 function setView(){
@@ -1244,7 +1244,26 @@ function setView(){
   mm.insertAdjacentHTML('beforebegin',nav);
   mm.insertAdjacentHTML('beforebegin',`<div class="sxt"><a class="sxb" href="/settings" data-k="">${ic('back')}<span>${T('Settings')}</span></a><h2>${cur[1]}</h2><p class="mute">${cur[3]}</p></div>`);
   $('#sn').onclick=open;document.querySelector('.sxt .sxb').onclick=e=>{if(newTabClick(e))return;e.preventDefault();stSub='';render();window.scrollTo(0,0)};
-  ({limits:stLimits,acct:stAcct,look:stLook,apps:svcView,lists:stLists,users:usrView,alerts:alView,status:stStatus,rules:stRules,backup:stBackup,audit:stAudit,about:stAbout})[stSub]();
+  ({faq:stFaq,limits:stLimits,acct:stAcct,look:stLook,apps:svcView,lists:stLists,users:usrView,alerts:alView,status:stStatus,rules:stRules,backup:stBackup,audit:stAudit,about:stAbout})[stSub]();
+}
+// Settings → FAQ: the questions only; a question opens its answer under it. From docs/FAQ.md, the same as on GitHub.
+const faqMd=t=>esc(t).replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>').replace(/(^|[\s(])\*([^*\s][^*]*)\*/g,'$1<i>$2</i>')
+  .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g,(_,x,u)=>u.startsWith('#')?`<a href="${u}" data-faq="${u.slice(1)}">${x}</a>`:`<a href="${u}" target="_blank" rel="noopener">${x}</a>`);
+const faqBlocks=bs=>bs.map(b=>b.t==='p'?`<p>${faqMd(b.text)}</p>`:`<${b.t}>${b.items.map(i=>`<li>${faqMd(i.text)}${i.sub?`<ul>${i.sub.map(x=>`<li>${faqMd(x)}</li>`).join('')}</ul>`:''}</li>`).join('')}</${b.t}>`).join('');
+async function stFaq(){
+  let d;try{d=await api('/api/faq')}catch(x){$('#m').innerHTML=`<div class="panel err">${esc(x.message)}</div>`;return}
+  if(tab!=='set'||stSub!=='faq')return;
+  const secs=d.sections||[];
+  $('#m').innerHTML=`<div class="faq"><input type="search" id="fqs" class="fqs" placeholder="${T('Search the questions')}" aria-label="${T('Search the questions')}">
+    <div class="fqj">${secs.map(s=>`<a href="#${s.id}" data-faq="${s.id}">${esc(s.title)}</a>`).join('')}</div>
+    ${secs.map(s=>`<section class="fqsec" id="fq-${s.id}"><h3>${esc(s.title)}</h3>${s.items.map(it=>`<details class="fqi"><summary>${faqMd(it.q)}</summary><div class="fqa">${faqBlocks(it.blocks)}</div></details>`).join('')}</section>`).join('')||'<p class="mute">No questions here yet.</p>'}
+    <p class="mute fqnone" hidden>${T('No question matches. Try other words, or look in Logs → Problems.')}</p></div>`;
+  const box=$('#m .faq');
+  // A link to another section (#downloads…) goes to it; the section list at the top does the same.
+  box.addEventListener('click',e=>{const a=e.target.closest('[data-faq]');if(!a)return;e.preventDefault();const el=$('#fq-'+a.dataset.faq);if(el)el.scrollIntoView({behavior:'smooth',block:'start'})});
+  $('#fqs').oninput=()=>{const q=$('#fqs').value.trim().toLowerCase();let any=false;
+    box.querySelectorAll('.fqsec').forEach(sec=>{let n=0;sec.querySelectorAll('.fqi').forEach(it=>{const hit=!q||it.textContent.toLowerCase().includes(q);it.hidden=!hit;if(hit)n++;if(q&&hit&&q.length>2)it.open=it.querySelector('.fqa').textContent.toLowerCase().includes(q)&&!it.querySelector('summary').textContent.toLowerCase().includes(q)});sec.hidden=!n;if(n)any=true});
+    box.querySelector('.fqj').hidden=!!q;box.querySelector('.fqnone').hidden=any};
 }
 // Settings → Limits: request rules. A request that fits one is approved without waiting for an admin.
 async function reqRulesPanel(users){

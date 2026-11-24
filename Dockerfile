@@ -287,6 +287,8 @@ RUN cp /opt/cross-seed/.goat-version /opt/goat/versions/cross-seed 2>/dev/null |
 COPY ui /opt/goat/ui
 # What changed in each version, for the "What's new" page.
 COPY CHANGELOG.md /opt/goat/CHANGELOG.md
+# The FAQ, shown in Settings → FAQ and in the app.
+COPY docs/FAQ.md /opt/goat/FAQ.md
 COPY goat /opt/goat/bin
 COPY rootfs /
 # PIA's list of regions, built in so the VPN page shows them at once without asking PIA's site.

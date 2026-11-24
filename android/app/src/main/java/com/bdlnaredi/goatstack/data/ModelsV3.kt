@@ -189,6 +189,14 @@ data class Changelog(val current: String = "", val versions: List<ChangeVersion>
 @Serializable
 data class ChangeVersion(val version: String = "", val date: String = "", val items: List<String> = emptyList(), val current: Boolean = false, val next: Boolean = false)
 
+// ---------- FAQ (/api/faq, from docs/FAQ.md) ----------
+@Serializable data class Faq(val sections: List<FaqSection> = emptyList())
+@Serializable data class FaqSection(val id: String = "", val title: String = "", val items: List<FaqItem> = emptyList())
+@Serializable data class FaqItem(val q: String = "", val blocks: List<FaqBlock> = emptyList())
+/** A paragraph (t = "p", text) or a list (t = "ul" or "ol", items). */
+@Serializable data class FaqBlock(val t: String = "p", val text: String = "", val items: List<FaqLi> = emptyList())
+@Serializable data class FaqLi(val text: String = "", val sub: List<String> = emptyList())
+
 // ---------- Choices when asking for something (/api/request/options) ----------
 @Serializable data class ReqOptions(val choose: Boolean = false, val kind: String = "", val servers: List<ReqServer> = emptyList())
 @Serializable data class ReqServer(

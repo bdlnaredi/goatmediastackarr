@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- **The FAQ in the web page and the app**: Settings → Help → **FAQ** (web page) and ☰ → **FAQ** (Android app) show the questions only, in sections; tap one and its answer opens under it. A search box finds questions by their answers too, and the sections at the top jump to their questions. It is the same FAQ as on GitHub ([docs/FAQ.md](docs/FAQ.md)), read from the server, so it is never out of date.
+
 - **FAQ** ([docs/FAQ.md](docs/FAQ.md)): installing, signing in, turning apps on and off, setting up each app (Plex, Tautulli, FlareSolverr, Unpackerr, cross-seed, autobrr…), watching Plex from outside your home with Plex and Tautulli in the container, reaching everything from outside, the VPN, downloads, requests, the Android app, backups, updates and CPU use. Linked from the README.
 
 ## v1.0.41 — 2026-11-24

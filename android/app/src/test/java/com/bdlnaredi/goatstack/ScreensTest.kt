@@ -293,6 +293,7 @@ class ScreensTest {
             openMenu(); waitFor("Go to"); shot("61-more-$st")
             back(); compose.waitUntil(10_000) { compose.onAllNodes(androidx.compose.ui.test.hasTestTag("menu")).fetchSemanticsNodes().isEmpty() }; waitFor("Playing now")
         }
+        openFromMore("FAQ"); waitFor("Tap a question"); tap("The steps (direct connection, best quality):"); waitFor("Map port 32400"); waitFor("LAN Networks"); shot("64-faq"); back()
         openMenu(); waitFor("Go to"); openFromMore("What's new"); waitFor("A new design in four styles"); waitFor("Your version"); shot("62-whats-new"); back()
         openFromMore("Settings"); waitFor("Style"); waitFor("Dashboard"); shot("63-settings-style")
         assertTrue("calls the pretend server does not know: ${fake.misses}", fake.misses.isEmpty())

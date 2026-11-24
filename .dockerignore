@@ -4,9 +4,10 @@ test
 ui/test
 ui/scripts
 unraid
-docs
+docs/*
 *.md
 !CHANGELOG.md
+!docs/FAQ.md
 .gitignore
 .dockerignore
 config

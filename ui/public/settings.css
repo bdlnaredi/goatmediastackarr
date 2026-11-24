@@ -63,3 +63,23 @@ main.sx #m h4{font-size:15px;margin:18px 0 8px}
   .sxb{color:var(--accent);font-size:14px}
   .sxi-l{grid-template-columns:1fr}
 }
+
+/* ---- Settings → FAQ: questions only; one opens its answer under it */
+.faq{max-width:860px}
+.fqs{width:100%;margin:0 0 14px}
+.fqj{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 22px}
+.fqj a{padding:5px 11px;border:1px solid var(--line);border-radius:999px;color:var(--text);text-decoration:none;font-size:13px}
+.fqj a:hover{border-color:var(--accent);color:var(--accent)}
+.fqsec{margin:0 0 28px;scroll-margin-top:80px}
+main.sx #m .fqsec>h3{margin:0 0 6px;padding:0 0 8px;border-bottom:1px solid var(--line);font-size:19px;font-weight:600}
+.fqi{border-bottom:1px solid var(--line)}
+.fqi>summary{display:flex;align-items:center;gap:10px;padding:13px 4px;cursor:pointer;list-style:none;font-weight:550;color:var(--text)}
+.fqi>summary::-webkit-details-marker{display:none}
+.fqi>summary::after{content:'';flex:none;margin-left:auto;width:8px;height:8px;border-right:2px solid var(--mute);border-bottom:2px solid var(--mute);transform:rotate(45deg);transition:transform .15s}
+.fqi[open]>summary::after{transform:rotate(-135deg);border-color:var(--accent)}
+.fqi>summary:hover{color:var(--accent)}
+.fqi>summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+.fqa{padding:0 4px 14px;color:var(--text);line-height:1.6}
+.fqa p{margin:0 0 10px}.fqa ul,.fqa ol{margin:0 0 10px;padding-left:22px}.fqa li{margin:3px 0}
+.fqa code{font-size:.9em;padding:1px 5px;border-radius:4px;background:var(--s2)}
+.fqa a{color:var(--accent)}

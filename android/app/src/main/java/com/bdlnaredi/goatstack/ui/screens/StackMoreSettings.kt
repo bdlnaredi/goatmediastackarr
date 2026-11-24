@@ -31,6 +31,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Quiz
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Lightbulb
 import androidx.compose.material.icons.rounded.CalendarMonth
@@ -306,6 +307,7 @@ internal fun moreGroups(): List<Pair<String, List<Dest>>> {
             Dest(Icons.Rounded.Person, "Profile", "Picture, space and watch time") { ctx.profile() },
             Dest(Icons.Rounded.Settings, "Settings", "Style, theme, account, devices") { ctx.go("settings") },
             Dest(Icons.Rounded.AutoAwesome, "What's new", "Changes in each version") { ctx.go("whatsnew") },
+            Dest(Icons.Rounded.Quiz, "FAQ", "Answers to common questions") { ctx.go("faq") },
             if (ctx.user.kids == null) Dest(Icons.Rounded.Lightbulb, "Suggestions", "Ideas and problems to fix") { ctx.go("suggestions") } else null,
         ),
     ).filter { it.second.isNotEmpty() }

@@ -319,6 +319,7 @@ private fun MainShell(state: AppState, me: Me, user: User) {
                     com.bdlnaredi.goatstack.ui.screens.CollectionScreen(e.arguments?.getLong("id") ?: 0)
                 }
                 composable("whatsnew") { com.bdlnaredi.goatstack.ui.screens.WhatsNewScreen() }
+                composable("faq") { com.bdlnaredi.goatstack.ui.screens.FaqScreen() }
                 composable("suggestions") { com.bdlnaredi.goatstack.ui.screens.SuggestionsScreen() }
                 composable("logs") { com.bdlnaredi.goatstack.ui.screens.LogsScreen() }
                 composable("person/{id}", arguments = listOf(navArgument("id") { type = NavType.LongType })) { e ->
