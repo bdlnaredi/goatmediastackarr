@@ -7,7 +7,7 @@ services:
       - "2806:2806"   # GoatMediaStackarr
       - "8096:8096"   # Jellyfin for TV and phone apps
       - "5055:5055"   # Seerr request page
-      # - "32400:32400" # Plex, if you add plex to GOAT_ENGINES
+      # - "32400:32400" # Plex, if GOAT_APP_PLEX=true
     environment:
       - PUID=1000
       - PGID=1000
@@ -17,7 +17,17 @@ services:
       # - VPN_USER=                # OpenVPN only
       # - VPN_PASS=
       # - VPN_PORT_FORWARD=natpmp  # ProtonVPN and other NAT-PMP providers
-      # - GOAT_ENGINES=sonarr,radarr,lidarr,prowlarr,bazarr,qbittorrent,sabnzbd,jellyfin,seerr,plex,tautulli
+      # Apps: each one on (true) or off (false). Sonarr, Radarr, Lidarr, Prowlarr, Bazarr, qBittorrent, SABnzbd,
+      # Jellyfin, Seerr and File Browser are on unless set to false; the rest are off unless set to true.
+      # - GOAT_APP_JELLYFIN=false
+      # - GOAT_APP_PLEX=true
+      # - GOAT_APP_TAUTULLI=true
+      # - GOAT_APP_FLARESOLVERR=true   # x86 only
+      # - GOAT_APP_RUTORRENT=true      # page on port 8090
+      # - GOAT_APP_DELUGE=true         # page on port 8112
+      # - GOAT_APP_UNPACKERR=true
+      # - GOAT_APP_CROSS_SEED=true
+      # - GOAT_APP_AUTOBRR=true
       # - PLEX_CLAIM=claim-xxxx    # from https://plex.tv/claim, to link the built-in Plex to your account
     volumes:
       - ./config:/config           # every app's settings: back this up

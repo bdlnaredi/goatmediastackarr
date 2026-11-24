@@ -4,6 +4,9 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- **A switch for every app** in the Unraid template: *App: Sonarr*, *App: Plex*, *App: Unpackerr*, *App: cross-seed*, *App: autobrr* and the rest, each true or false, instead of typing names into *Apps to run*. `GOAT_APP_<NAME>` outside Unraid. *Apps to run* still works: when it holds a list of your own it keeps deciding (so updating the template cannot turn your apps on or off); empty it to use the switches. The log names the apps that run at every start.
+- README: every app in one table near the top, and *Switch apps on and off* right after Install.
+
 ## v1.0.40 — 2026-11-23
 
 - **Android app: a side menu.** ☰ at the top left of Home, Discover, Library and Downloads (or a swipe from the left edge) opens it: the apps of your stack first, each opening its page in the app (Sonarr and Radarr their library, qBittorrent and SABnzbd their downloads, Prowlarr the indexers, Bazarr subtitles, Lidarr music, Tautulli stats, Seerr requests, Unraid its page; the others their own web page), then every other page, and Settings at the bottom. It replaces the More tab, so the bar at the bottom has four.

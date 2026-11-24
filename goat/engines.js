@@ -59,7 +59,17 @@ const DEFAULT_ENGINES = 'sonarr,radarr,lidarr,prowlarr,bazarr,qbittorrent,sabnzb
 const DEFAULT_VPN_APPS = 'qbittorrent,sabnzbd,prowlarr';
 
 const list = (v, def) => String(v == null || v === '' ? def : v).split(',').map(s => s.trim().toLowerCase()).filter(s => ENGINES[s]);
-const enabled = (env = process.env) => list(env.GOAT_ENGINES, DEFAULT_ENGINES);
+// The apps that run. The template has a switch per app, GOAT_APP_<NAME> (GOAT_APP_SONARR, GOAT_APP_CROSS_SEED…) set
+// to true or false. The older list, GOAT_ENGINES, still works: when it holds a list of your own (not empty, not the
+// default one), it decides and the switches are left alone, so a template update cannot turn apps on or off by itself.
+const switchName = key => 'GOAT_APP_' + key.toUpperCase().replace(/[^A-Z0-9]/g, '_');
+const switchOf = (env, key) => { const v = String(env[switchName(key)] ?? '').trim().toLowerCase(); return /^(true|yes|on|1)$/.test(v) ? true : /^(false|no|off|0)$/.test(v) ? false : null; };
+const ownList = (env = process.env) => { const l = list(env.GOAT_ENGINES, ''); return l.length > 0 && l.slice().sort().join() !== list(DEFAULT_ENGINES).sort().join(); };
+const enabled = (env = process.env) => {
+  const base = list(env.GOAT_ENGINES, DEFAULT_ENGINES);
+  if (ownList(env)) return Object.keys(ENGINES).filter(k => base.includes(k));
+  return Object.keys(ENGINES).filter(k => { const s = switchOf(env, k); return s === null ? base.includes(k) : s; });
+};
 const vpnApps = (env = process.env) => {
   if (String(env.VPN_ENABLED).toLowerCase() !== 'true') return [];
   const l = list(env.VPN_APPS, DEFAULT_VPN_APPS);
@@ -90,4 +100,10 @@ const seerrServer = (env = process.env, on = enabled(env)) => {
 const PLEX_PREFS = () => `${CONFIG}/plex/Library/Application Support/Plex Media Server/Preferences.xml`;
 const url = key => `http://127.0.0.1:${ENGINES[key].port}${ENGINES[key].base}`;
 
-module.exports = { CONFIG, MEDIA, DOWNLOADS, ENGINES, DIRS, DEFAULT_ENGINES, DEFAULT_VPN_APPS, enabled, vpnApps, url, list, seerrServer, externalPlex, PLEX_PREFS };
+module.exports = { CONFIG, MEDIA, DOWNLOADS, ENGINES, DIRS, DEFAULT_ENGINES, DEFAULT_VPN_APPS, enabled, switchName, switchOf, ownList, vpnApps, url, list, seerrServer, externalPlex, PLEX_PREFS };
+
+// `node engines.js enabled`: the apps that run, comma-separated, for the start-up script (init-goat.sh).
+if (require.main === module && process.argv[2] === 'enabled') {
+  if (ownList() && Object.keys(ENGINES).some(k => switchOf(process.env, k) !== null)) console.error('[goat] Apps to run (list) has a list of its own, so it decides which apps run and the App switches are not used. Empty it to use the switches.');
+  console.log(enabled().filter(k => k !== 'filebrowser').join(','));
+}

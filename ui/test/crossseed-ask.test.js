@@ -33,6 +33,6 @@ test('a finished torrent is sent to cross-seed, with single episodes; Find on ot
     fs.writeFileSync(path.join(cfg, 'cross-seed', 'goat-api-key'), 'wrong-key');
     assert.match((await a.post('/api/crossseed/search', { hash: h })).data.error, /did not accept its key/);
     fs.rmSync(path.join(cfg, 'cross-seed'), { recursive: true });
-    assert.match((await a.post('/api/crossseed/search', { hash: h })).data.error, /Add cross-seed to Apps to run/);
+    assert.match((await a.post('/api/crossseed/search', { hash: h })).data.error, /Switch on App: cross-seed/);
   } finally { await s.stop(); srv.close(); cs.close(); }
 });

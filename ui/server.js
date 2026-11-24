@@ -1634,7 +1634,7 @@ function csPaused(now = Date.now()) {
   } catch { return []; } finally { try { d && d.close(); } catch {} }
 }
 async function crossSeedAsk(hash, now = false) {
-  let k; try { k = fs.readFileSync(csKeyFile(), 'utf8').trim(); } catch { return { ok: false, error: 'cross-seed is not running here. Add cross-seed to Apps to run.' }; }
+  let k; try { k = fs.readFileSync(csKeyFile(), 'utf8').trim(); } catch { return { ok: false, error: 'cross-seed is not running here. Switch on App: cross-seed in the container settings.' }; }
   if (!/^[a-f0-9]{40}$/i.test(String(hash || ''))) return { ok: false, error: 'Not a torrent' };
   try {
     const r = await fetch((process.env.CROSSSEED_URL || 'http://127.0.0.1:2468') + '/api/webhook', { method: 'POST', signal: AbortSignal.timeout(15000), headers: { 'X-Api-Key': k, 'Content-Type': 'application/json' },

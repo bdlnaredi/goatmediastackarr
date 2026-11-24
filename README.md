@@ -3,7 +3,8 @@
 <h1 align="center">GoatMediaStackarr</h1>
 
 <p align="center"><b>Your whole media server in one container.</b><br>
-Sonarr, Radarr, Lidarr, Prowlarr, Bazarr, qBittorrent, SABnzbd, Jellyfin and Seerr, already set up and talking to each other,<br>
+Sonarr, Radarr, Lidarr, Prowlarr, Bazarr, qBittorrent, SABnzbd, Jellyfin, Seerr and File Browser, already set up and talking to each other,<br>
+plus Plex, Tautulli, FlareSolverr, ruTorrent, Deluge, Unpackerr, cross-seed and autobrr when you switch them on,<br>
 behind one web page, one Android app and one login, with a VPN and kill switch for the download apps.</p>
 
 <p align="center">
@@ -21,7 +22,7 @@ behind one web page, one Android app and one login, with a VPN and kill switch f
 <a href="#for-the-people-who-use-it">Your people</a> ·
 <a href="#on-your-phone-and-tv">Phone &amp; TV</a> ·
 <a href="#the-vpn">VPN</a> ·
-<a href="#switch-on-more-apps">More apps</a> ·
+<a href="#switch-apps-on-and-off">Apps on/off</a> ·
 <a href="#troubleshooting">Troubleshooting</a>
 </p>
 
@@ -33,9 +34,32 @@ Running a media server usually means a dozen containers, a dozen web pages, a do
 
 **GoatMediaStackarr is all of that in one container.** On its first start it gives every app its own keys and passwords, connects every app to the ones it needs, and opens one web page where you sign in once. From there you watch what's new, ask for shows and movies, follow downloads and look after the server. The same things are in a native Android app.
 
-| On by default | Turn on when you want it | Bring your own |
+### Every app in the box
+
+Each one has its own **App:** switch in the Unraid template (Yes/No); see [Switch apps on and off](#switch-apps-on-and-off).
+
+| App | What it does | |
 |---|---|---|
-| Sonarr (TV) · Radarr (movies) · Lidarr (music) · Prowlarr (indexers) · Bazarr (subtitles) · qBittorrent · SABnzbd (usenet) · Jellyfin · Seerr (requests) · File Browser | Plex · Tautulli · FlareSolverr · ruTorrent (with rTorrent) · Deluge · cross-seed · autobrr · Unpackerr | Any of these you already run, plus Readarr, Jackett, Unraid itself and an existing Plex |
+| **Sonarr** | Finds and downloads TV shows, keeps series up to date | on |
+| **Radarr** | Finds and downloads movies | on |
+| **Lidarr** | Finds and downloads music | on |
+| **Prowlarr** | Your indexer sites in one place, given to Sonarr, Radarr and Lidarr | on |
+| **Bazarr** | Subtitles for your shows and movies | on |
+| **qBittorrent** | The main torrent app (through the VPN when it is on) | on |
+| **SABnzbd** | Usenet downloads (through the VPN when it is on) | on |
+| **Jellyfin** | Plays your library on TVs, phones and the web | on |
+| **Seerr** | Family and friends ask for shows and movies | on |
+| **File Browser** | Your media and downloads folders in the browser | on |
+| **Plex** | A built-in Plex server (downloaded from plex.tv on first start) | off |
+| **Tautulli** | Plex statistics, Stats and Year in review | off |
+| **FlareSolverr** | Gets past Cloudflare checks on indexer sites (x86 only) | off |
+| **ruTorrent** | Another torrent app (rTorrent), with its own page | off |
+| **Deluge** | Another torrent app, with its own page | off |
+| **Unpackerr** | Unpacks `.rar`, `.zip` and `.7z` downloads so they can be imported | off |
+| **cross-seed** | Seeds the torrents you have on your other trackers too, with no extra download | off |
+| **autobrr** | Grabs releases from your trackers' IRC announce channels as they appear | off |
+
+**Bring your own:** any of these that you already run elsewhere, plus Readarr, Jackett, Unraid itself and an existing Plex, under Settings → Apps.
 
 - **Already connected.** Library folders and download clients in Sonarr, Radarr and Lidarr. Prowlarr sends its indexers to all three. Bazarr works with Sonarr and Radarr. Jellyfin gets Movies, TV Shows and Music libraries. Seerr signs in through Jellyfin or Plex and sends requests to Sonarr and Radarr.
 - **Kept connected.** Every start checks the connections again, so a restored backup with an old API key just works.
@@ -70,6 +94,41 @@ Five steps, about ten minutes, most of it waiting.
 <p align="center"><img src="docs/screenshots/stack-setup.png" alt="First start: the setup checklist" width="760"></p>
 
 Keep App data on a cache drive or SSD with room to grow. The image is about 2.5 GB; Jellyfin won't start with less than 2 GB free in App data, and FlareSolverr needs about 1.5 GB when it is turned on.
+
+---
+
+## Switch apps on and off
+
+Every app has its own **App:** switch in the Unraid template: set it to **true** to run the app, **false** to leave it out, then **Apply**. The first ten are on and the rest off unless you change them. Not on Unraid? Set `GOAT_APP_<NAME>=true` or `false` (`GOAT_APP_SONARR`, `GOAT_APP_CROSS_SEED`, …) in [`docker-compose.yml`](docker-compose.yml).
+
+> **Already had a list in *Apps to run*?** It keeps deciding, so an updated template can't turn your apps on or off by itself. Set the switches to match, then empty *Apps to run (list)* (advanced view) to use them. The log says which one is in charge at every start.
+
+What the ones that start off need:
+
+- **Plex**: for a built-in Plex server: map port 32400, put a claim code from [plex.tv/claim](https://plex.tv/claim) in `PLEX_CLAIM` and start within 4 minutes. Its libraries are made for you. Plex isn't shipped in the image (it isn't open source); it is downloaded from plex.tv on first start, like the official container. `PLEX_UPDATE=false` keeps the installed version. Already have a Plex server? Add it under Settings → Apps instead; both work alongside Jellyfin.
+- **Tautulli**: for Plex statistics, Stats and Year in review (needs Plex).
+- **FlareSolverr**: for when indexer sites show Cloudflare's "checking your browser" page. It is downloaded on first start with its own browser, added to Prowlarr as a proxy with the tag `flaresolverr` (tag the sites that need it), and follows Prowlarr onto the VPN. x86 only.
+- **ruTorrent** and **Deluge**: for more torrent apps next to qBittorrent ([below](#rutorrent-and-deluge)).
+- **cross-seed** finds the torrents you already have on your *other* trackers and seeds them there too, with no extra download (hard links in `downloads/cross-seed`, so no extra space either). It is set up from the stack: every torrent tracker in Prowlarr, qBittorrent, Sonarr and Radarr. Each torrent that finishes in qBittorrent is searched right away, single episodes included; **Find on other trackers** on a torrent in Downloads searches it on demand; and it also checks the trackers' new releases every 30 minutes and your recent torrents once a day (`CROSSSEED_RSS_CADENCE`, `CROSSSEED_SEARCH_CADENCE`, `CROSSSEED_EXCLUDE_OLDER`). After adding a tracker to Prowlarr, restart cross-seed on the Stack page. If a tracker had an error or said "too many requests", cross-seed pauses it for a while (Logs → cross-seed: *Failed to reach* or *rate limit*); restarting cross-seed starts every tracker afresh.
+- **autobrr** grabs new releases from your private trackers' IRC announce channels the moment they appear, which is the fastest way to build ratio. Open it from the Stack page (it is at `/engines/autobrr`, admins only), make its account, add your trackers' IRC details and filters, and add qBittorrent as the download client (`127.0.0.1:8080` with the qBittorrent login from the Stack page).
+- **Unpackerr**: for downloads that arrive as `.rar` (or `.zip`, `.7z`) archives, which Sonarr, Radarr and Lidarr can't import on their own. It unpacks them in the downloads folder, waits for the import, then removes the unpacked copy (the archive keeps seeding). It is connected to Sonarr, Radarr and Lidarr for you and has no page of its own; it shows on the Stack page. `UNPACKERR_PROTOCOLS=torrent,usenet` also handles usenet (SABnzbd unpacks its own by default).
+
+Seerr works with one media server: Jellyfin when it runs, otherwise Plex. `SEERR_MEDIA_SERVER=plex` picks Plex while both run (decided on Seerr's first setup).
+
+### ruTorrent and Deluge
+
+**Built in.** Switch on *App: ruTorrent* and/or *App: Deluge* and map their ports.
+
+| | ruTorrent | Deluge |
+|---|---|---|
+| Its page | `http://<server>:8090` | `http://<server>:8112` |
+| Sign-in | user `goat` and a password made for you | a password made for you |
+| Torrent port | 50414 | 50415 |
+| Settings | `appdata/goatmediastackarr/rutorrent` (your own rTorrent settings go in `rtorrent.local.rc`) | `appdata/goatmediastackarr/deluge` |
+
+The logins are on the Stack page (*Logins made for you*), where you can change them. Sonarr, Radarr, Lidarr and Prowlarr get both as download clients after qBittorrent (used only when qBittorrent isn't available; change the priorities in their Download Clients settings to make one the main one). Finished files go to `downloads/torrents/complete`.
+
+**Ones you already run** (in another container or on a seedbox): add them under Settings → Apps. They appear in Downloads like the built-in ones, and **Use in Sonarr/Radarr** adds them to Sonarr, Radarr and Lidarr as a download client.
 
 ---
 
@@ -287,37 +346,6 @@ Settings changed on the Stack page are saved in `appdata/goatmediastackarr/goat/
 
 ---
 
-## Switch on more apps
-
-`GOAT_ENGINES` lists the apps to run. Take out any you don't want, and add:
-
-- **`plex`** for a built-in Plex server: map port 32400, put a claim code from [plex.tv/claim](https://plex.tv/claim) in `PLEX_CLAIM` and start within 4 minutes. Its libraries are made for you. Plex isn't shipped in the image (it isn't open source); it is downloaded from plex.tv on first start, like the official container. `PLEX_UPDATE=false` keeps the installed version. Already have a Plex server? Add it under Settings → Apps instead; both work alongside Jellyfin.
-- **`tautulli`** for Plex statistics, Stats and Year in review (needs Plex).
-- **`flaresolverr`** when indexer sites show Cloudflare's "checking your browser" page. It is downloaded on first start with its own browser, added to Prowlarr as a proxy with the tag `flaresolverr` (tag the sites that need it), and follows Prowlarr onto the VPN. x86 only.
-- **`rutorrent`** and **`deluge`** for more torrent apps next to qBittorrent ([below](#rutorrent-and-deluge)).
-- **`cross-seed`** finds the torrents you already have on your *other* trackers and seeds them there too, with no extra download (hard links in `downloads/cross-seed`, so no extra space either). It is set up from the stack: every torrent tracker in Prowlarr, qBittorrent, Sonarr and Radarr. Each torrent that finishes in qBittorrent is searched right away, single episodes included; **Find on other trackers** on a torrent in Downloads searches it on demand; and it also checks the trackers' new releases every 30 minutes and your recent torrents once a day (`CROSSSEED_RSS_CADENCE`, `CROSSSEED_SEARCH_CADENCE`, `CROSSSEED_EXCLUDE_OLDER`). After adding a tracker to Prowlarr, restart cross-seed on the Stack page. If a tracker had an error or said "too many requests", cross-seed pauses it for a while (Logs → cross-seed: *Failed to reach* or *rate limit*); restarting cross-seed starts every tracker afresh.
-- **`autobrr`** grabs new releases from your private trackers' IRC announce channels the moment they appear, which is the fastest way to build ratio. Open it from the Stack page (it is at `/engines/autobrr`, admins only), make its account, add your trackers' IRC details and filters, and add qBittorrent as the download client (`127.0.0.1:8080` with the qBittorrent login from the Stack page).
-- **`unpackerr`** for downloads that arrive as `.rar` (or `.zip`, `.7z`) archives, which Sonarr, Radarr and Lidarr can't import on their own. It unpacks them in the downloads folder, waits for the import, then removes the unpacked copy (the archive keeps seeding). It is connected to Sonarr, Radarr and Lidarr for you and has no page of its own; it shows on the Stack page. `UNPACKERR_PROTOCOLS=torrent,usenet` also handles usenet (SABnzbd unpacks its own by default).
-
-Seerr works with one media server: Jellyfin when it runs, otherwise Plex. `SEERR_MEDIA_SERVER=plex` picks Plex while both run (decided on Seerr's first setup).
-
-### ruTorrent and Deluge
-
-**Built in.** Add `rutorrent` and/or `deluge` to `GOAT_ENGINES` and map their ports.
-
-| | ruTorrent | Deluge |
-|---|---|---|
-| Its page | `http://<server>:8090` | `http://<server>:8112` |
-| Sign-in | user `goat` and a password made for you | a password made for you |
-| Torrent port | 50414 | 50415 |
-| Settings | `appdata/goatmediastackarr/rutorrent` (your own rTorrent settings go in `rtorrent.local.rc`) | `appdata/goatmediastackarr/deluge` |
-
-The logins are on the Stack page (*Logins made for you*), where you can change them. Sonarr, Radarr, Lidarr and Prowlarr get both as download clients after qBittorrent (used only when qBittorrent isn't available; change the priorities in their Download Clients settings to make one the main one). Finished files go to `downloads/torrents/complete`.
-
-**Ones you already run** (in another container or on a seedbox): add them under Settings → Apps. They appear in Downloads like the built-in ones, and **Use in Sonarr/Radarr** adds them to Sonarr, Radarr and Lidarr as a download client.
-
----
-
 ## From outside your home
 
 GoatMediaStackarr's own page (port 2806) is the way in to everything except Jellyfin, Seerr, Plex, ruTorrent and Deluge, which have their own ports. The other apps' own pages are at `/engines/<app>/` (Sonarr, Radarr, Lidarr, Prowlarr, Bazarr, qBittorrent, SABnzbd, Tautulli, autobrr), for admins, signed in through GoatMediaStackarr.
@@ -353,7 +381,9 @@ What's kept in `appdata/goatmediastackarr/`: each app's own folder; `goat/secret
 | `PUID` / `PGID` | `99` / `100` | User and group that own the files (Unraid's nobody/users) |
 | `TZ` | `Etc/UTC` | Time zone |
 | `UMASK` | `002` | New files are group-writable |
-| `GOAT_FILEBROWSER` | `true` | File Browser: your media and downloads folders in the browser (Stack page → File Browser, admins only). `false` turns it off |
+| `GOAT_APP_<NAME>` | see [Switch apps on and off](#switch-apps-on-and-off) | One per app: `GOAT_APP_SONARR`, `GOAT_APP_PLEX`, `GOAT_APP_CROSS_SEED`… `true` runs it, `false` leaves it out |
+| `GOAT_ENGINES` | *(empty)* | The older way to pick apps, as a list (`sonarr,radarr,…`). When it holds a list of your own, it decides and the switches are not used |
+| `GOAT_FILEBROWSER` | `true` | File Browser (its switch in the template): your media and downloads folders in the browser (Stack page → File Browser, admins only). `false` turns it off |
 | `GOAT_APP_LOGS` | `true` | Each app of the stack keeps its own log in `/config/logs/<app>/` for the Logs page (the lines still go to the container's log too). `false` turns it off. |
 | `GOAT_DNS` | *(automatic)* | DNS servers for the apps, like `1.1.1.1,8.8.8.8`. Left empty, GoatMediaStackarr checks at every start that TMDB can be looked up and, if your network's DNS fails it, adds public servers after your own. `off` leaves DNS alone |
 | `TORRENT_PORT` | `50413` | qBittorrent's incoming port (6881 is blocked by many trackers) |
@@ -389,7 +419,7 @@ Still stuck? [Open an issue](https://github.com/bdlnaredi/goatmediastackarr/issu
 No. *Bring in your current setup* copies your shows, movies, artists, indexers and quality settings. Or keep them where they are and add them under Settings → Apps: GoatMediaStackarr works with apps it didn't start, too.
 
 **I use Plex, not Jellyfin. Is that fine?**
-Yes. Add your Plex under Settings → Apps (or run the built-in one), and take `jellyfin` out of `GOAT_ENGINES` if you don't want it.
+Yes. Add your Plex under Settings → Apps (or run the built-in one), and set *App: Jellyfin* to false if you don't want it.
 
 **Will it touch my files?**
 Only what Sonarr, Radarr and Lidarr do anyway: rename, move into the library, and upgrade to better copies. It never re-owns or moves your existing library. Replace cam copies only deletes when you turn it on.

@@ -85,7 +85,7 @@ jobs:
           mkdir -p /tmp/goat/config /tmp/goat/media /tmp/goat/downloads
           docker run -d --name goat -p 2806:2806 -p 8096:8096 \
             -e PUID=1001 -e PGID=121 -e TZ=Asia/Kolkata \
-            -e GOAT_ENGINES=sonarr,radarr,lidarr,prowlarr,bazarr,qbittorrent,rutorrent,deluge,sabnzbd,jellyfin,seerr,tautulli,unpackerr,cross-seed,autobrr \
+            -e GOAT_APP_RUTORRENT=true -e GOAT_APP_DELUGE=true -e GOAT_APP_TAUTULLI=true -e GOAT_APP_UNPACKERR=true -e GOAT_APP_CROSS_SEED=true -e GOAT_APP_AUTOBRR=true \
             -v /tmp/goat/config:/config -v /tmp/goat/media:/media -v /tmp/goat/downloads:/downloads \
             --cap-add=NET_ADMIN --device=/dev/net/tun \
             --sysctl net.ipv4.conf.all.src_valid_mark=1 --sysctl net.ipv4.conf.all.rp_filter=2 \

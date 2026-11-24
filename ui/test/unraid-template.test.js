@@ -12,10 +12,10 @@ test('the Unraid template has every setting and every app', () => {
   assert.ok(documented.length > 10);
   assert.deepEqual(documented.filter(v => !inTpl.has(v)), [], 'settings in the README but not in the template');
   const { ENGINES } = require(path.join(root, 'goat', 'engines.js'));
-  const apps = (tpl.match(/<Config Name="Apps to run"[^>]*Description="([^"]*)"/) || [])[1] || '', over = (tpl.match(/<Overview>([\s\S]*?)<\/Overview>/) || [])[1] || '';
+  const over = (tpl.match(/<Overview>([\s\S]*?)<\/Overview>/) || [])[1] || '';
   const missing = Object.entries(ENGINES).filter(([k, e]) => !new RegExp(e.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').test(over)).map(([k]) => k);
   assert.deepEqual(missing, [], 'apps the overview does not name');
-  const def = (tpl.match(/<Config Name="Apps to run"[^>]*Default="([^"]*)"/) || [])[1].split(',');
-  const extra = Object.keys(ENGINES).filter(k => !def.includes(k) && k !== 'filebrowser' && !new RegExp('\\b' + k + '\\b', 'i').test(apps));
-  assert.deepEqual(extra, [], 'optional apps that "Apps to run" does not mention');
+  // And each app has its own on/off switch (test/engines.test.js checks their names and defaults).
+  const switches = [...tpl.matchAll(/<Config Name="App: ([^"]+)"/g)].map(m => m[1]);
+  assert.equal(switches.length, Object.keys(ENGINES).length, 'one App: switch per app: ' + switches.join(', '));
 });

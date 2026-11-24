@@ -13,7 +13,7 @@ app="${name%-web}"
 # File Browser is always there (it is small), unless GOAT_FILEBROWSER=false.
 if [[ "$name" == filebrowser && "${GOAT_FILEBROWSER:-true}" == false ]]; then echo "[goat] File Browser is turned off (GOAT_FILEBROWSER)."; exec sleep infinity; fi
 if [[ "$name" != ui && "$name" != wire && "$name" != sitefetch && "$name" != filebrowser ]] && ! in_list "$app" "${GOAT_ENGINES,,}"; then
-  echo "[goat] $name is turned off (GOAT_ENGINES)."
+  echo "[goat] $name is turned off (its App switch, or Apps to run)."
   exec sleep infinity
 fi
 

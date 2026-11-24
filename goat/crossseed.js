@@ -7,7 +7,7 @@ const fs = require('fs'), path = require('path'), crypto = require('crypto');
 const E = require('./engines.js');
 const dir = process.env.CONFIG_DIR || '/config/cross-seed', dl = process.env.DOWNLOADS_DIR || '/downloads';
 const key = a => { try { return (/<ApiKey>([^<]+)<\/ApiKey>/.exec(fs.readFileSync(`/config/${a}/config.xml`, 'utf8')) || [])[1] || ''; } catch { return ''; } };
-const on = String(process.env.GOAT_ENGINES || '').toLowerCase().split(',').map(s => s.trim());
+const on = E.enabled();   // the App switches or the Apps to run list
 const local = k => `http://127.0.0.1:${E.ENGINES[k].port}${E.ENGINES[k].base || ''}`;
 const js = v => JSON.stringify(v);
 
@@ -31,7 +31,7 @@ const js = v => JSON.stringify(v);
 
   let m = {}; try { m = JSON.parse(fs.readFileSync(process.env.GOAT_MANAGED || '/config/goat/managed.json', 'utf8')); } catch {}
   const qb = (m.services || []).find(x => x.key === 'qbittorrent');
-  if (!qb) { console.log('[goat] cross-seed needs qBittorrent (in GOAT_ENGINES).'); process.exit(3); }
+  if (!qb) { console.log('[goat] cross-seed needs qBittorrent (switch on App: qBittorrent).'); process.exit(3); }
   const qurl = `qbittorrent:http://${encodeURIComponent(qb.user || 'admin')}:${encodeURIComponent(qb.pass || '')}@127.0.0.1:${E.ENGINES.qbittorrent.port}`;
   const arr = a => on.includes(a) && key(a) ? [`${local(a)}?apikey=${key(a)}`] : [];
   const env = (k, d) => process.env[k] || d;
