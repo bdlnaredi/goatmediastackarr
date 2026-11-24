@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- **FAQ** ([docs/FAQ.md](docs/FAQ.md)): installing, signing in, turning apps on and off, setting up each app (Plex, Tautulli, FlareSolverr, Unpackerr, cross-seed, autobrr…), watching Plex from outside your home with Plex and Tautulli in the container, reaching everything from outside, the VPN, downloads, requests, the Android app, backups, updates and CPU use. Linked from the README.
+
 ## v1.0.41 — 2026-11-24
 
 - **Settings, redesigned** (like Sonarr's settings, in every style). Settings opens on a start page listing every section under You, Server, Care and Help, each with what it is for. Each section has its own page: the sections down the side on a computer, the section's parts as headed groups instead of boxes, names in front of their fields on wide screens, and "‹ Settings" back to the start. On a phone the start page is the menu. Addresses: `/settings` is the start page, `/settings/acct` your account, and so on.

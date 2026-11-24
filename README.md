@@ -23,6 +23,7 @@ behind one web page, one Android app and one login, with a VPN and kill switch f
 <a href="#on-your-phone-and-tv">Phone &amp; TV</a> ·
 <a href="#the-vpn">VPN</a> ·
 <a href="#switch-apps-on-and-off">Apps on/off</a> ·
+<a href="docs/FAQ.md">FAQ</a> ·
 <a href="#troubleshooting">Troubleshooting</a>
 </p>
 
@@ -399,6 +400,8 @@ What's kept in `appdata/goatmediastackarr/`: each app's own folder; `goat/secret
 - **You choose when to update**: Unraid's Docker tab shows *update ready*; click **Update** (or let the Auto Update plugin do it). Back up App data first: a newer app can change its database so an older one can't read it. Afterwards the Stack page lists each app's version and what changed ("Sonarr 4.0.15 → 4.0.16"), and admins hear about it in the bell and on any alert channel that wants it.
 
 ## Troubleshooting
+
+**The [FAQ](docs/FAQ.md) answers most questions**: installing, setting up each app, Plex from outside your home, the VPN, downloads, the Android app, backups and updates.
 
 Start with **Logs** (in the Server menu) and pick *Problems*: most answers are there in plain words.
 
