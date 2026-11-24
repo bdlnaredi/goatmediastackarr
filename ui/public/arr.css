@@ -1,0 +1,111 @@
+/* The Arr style: laid out and coloured like Sonarr, Radarr and the other *arr apps. A header bar across the top (name,
+   search, you), a dark sidebar under it with the sections and the pages of the open one, flat 4px corners, dense
+   lists. It is the Dashboard style (data-style=dash) with this on top (data-look=arr), so everything Dashboard covers
+   (panels, the phone layout) works here too. Light keeps the dark header and sidebar, like the *arr apps' light theme. */
+
+:root[data-look=arr]{--bg:#202020;--s1:#2a2a2a;--s2:#333333;--line:rgba(255,255,255,.09);--glass:#2a2a2a;--glass2:#2a2a2a;--text:#cccccc;--mute:#8e8e8e;
+  --r1:4px;--r2:4px;--sh:none;--hl:none;--arr-head:#2a2a2a;--arr-side:#2a2a2a;--arr-side-on:#333333;--arr-side-text:#e1e2e3;--arr-tool:#262626;--arr-title:#e1e2e3;--arr-btn:#393f45}
+:root[data-look=arr][data-theme=light]{--bg:#f5f7fa;--s1:#ffffff;--s2:#f1f3f6;--line:#e5e5e5;--glass:#ffffff;--glass2:#ffffff;--text:#515253;--mute:#909293;
+  --arr-head:#3a3f51;--arr-side:#3a3f51;--arr-side-on:#4b5266;--arr-side-text:#e1e2e3;--arr-tool:#ffffff;--arr-title:#3a3f51;--arr-btn:#e6e6e6}
+@media(prefers-color-scheme:light){:root[data-look=arr]:not([data-theme=dark]){--bg:#f5f7fa;--s1:#ffffff;--s2:#f1f3f6;--line:#e5e5e5;--glass:#ffffff;--glass2:#ffffff;--text:#515253;--mute:#909293;
+  --arr-head:#3a3f51;--arr-side:#3a3f51;--arr-side-on:#4b5266;--arr-side-text:#e1e2e3;--arr-tool:#ffffff;--arr-title:#3a3f51;--arr-btn:#e6e6e6}}
+
+[data-look=arr] body{font-family:Roboto,"Open Sans","Helvetica Neue",Helvetica,Arial,system-ui,sans-serif;font-size:14px;letter-spacing:0}
+
+/* ---- Computer: header bar across the top, sidebar down the left. The sidebar's parts become cells of the page grid. */
+@media(min-width:861px){
+  [data-look=arr] .shell{grid-template-columns:240px minmax(0,1fr) auto auto;grid-template-rows:60px 1fr;min-height:100vh}
+  html[data-look=arr][data-rail=min] .shell{grid-template-columns:64px minmax(0,1fr) auto auto}
+  [data-look=arr] .side{display:contents}
+  [data-look=arr] .shell::before{content:'';grid-row:1;grid-column:1/-1;position:sticky;top:0;z-index:20;background:var(--arr-head);box-shadow:0 0 12px rgba(0,0,0,.35)}
+  [data-look=arr] .brand,[data-look=arr] .qs,[data-look=arr] .wn,[data-look=arr] .who{grid-row:1;position:sticky;top:0;z-index:21;align-self:center}
+  [data-look=arr] .brand{grid-column:1;height:60px;margin:0;padding:0 6px 0 16px;color:#fff;font-size:14px;font-weight:600;letter-spacing:0}
+  [data-look=arr] .brand .home{color:#fff;display:flex;align-items:center;gap:10px;min-width:0;overflow:hidden}
+  [data-look=arr] .brand .t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  [data-look=arr] .brand #rl{color:rgba(255,255,255,.6);background:none}
+  [data-look=arr] .qs{grid-column:2;justify-self:start;width:min(420px,100%);height:36px;margin:0 0 0 12px;padding:0 10px;border:0;border-bottom:1px solid rgba(255,255,255,.25);border-radius:0;background:transparent!important;color:rgba(255,255,255,.75)}
+  [data-look=arr] .qs:hover{border-bottom-color:#fff;color:#fff}
+  [data-look=arr] .qs kbd{border-color:rgba(255,255,255,.25);color:rgba(255,255,255,.6)}
+  [data-look=arr] .wn{grid-column:3;width:auto;margin:0 4px 0 0;padding:8px 12px;color:rgba(255,255,255,.75);border-radius:4px}
+  [data-look=arr] .wn span{display:none}[data-look=arr] .wn:hover:not(:disabled){background:rgba(255,255,255,.08);color:#fff}
+  [data-look=arr] .who{grid-column:4;margin:0;padding:0 18px 0 6px;border:0;height:60px;color:#fff}
+  [data-look=arr] .who .ghost{color:rgba(255,255,255,.75);background:none}[data-look=arr] .who .ghost:hover{color:#fff;background:rgba(255,255,255,.08)}
+  [data-look=arr] .who .av{background:var(--accent);color:#fff}
+  [data-look=arr] .ver{display:none}
+  [data-look=arr] .nav{grid-row:2;grid-column:1;position:sticky;top:60px;height:calc(100vh - 60px);overflow:auto;padding:0 0 20px;gap:0;background:var(--arr-side);z-index:10}
+  [data-look=arr] main{grid-row:2;grid-column:2/-1;max-width:none;margin:0;padding:0 0 60px}
+  [data-look=arr] main>:not(.ph){margin-left:20px;margin-right:20px}
+  [data-look=arr] main>.demo{margin-top:16px}
+  /* The page title as the *arr apps' toolbar strip under the header. */
+  [data-look=arr] .ph{margin:0 0 18px;padding:12px 20px;border-bottom:0;background:var(--arr-tool);box-shadow:0 1px 0 var(--line)}
+  [data-look=arr] .ph h1{font-size:20px;font-weight:400;color:var(--arr-title);letter-spacing:0;margin:0}
+  [data-look=arr] .ph .phk{display:none}
+  [data-look=arr] .ph p{margin:2px 0 0;font-size:13px}
+}
+
+/* ---- The sidebar: each section a row with its icon; the open section shows its pages under it. */
+[data-look=arr] .ng{padding:0;gap:0}
+[data-look=arr] .ngh{display:block!important;padding:0;margin:0;font-size:14px;font-weight:400;letter-spacing:0;text-transform:none;color:var(--arr-side-text);opacity:1}
+[data-look=arr] .nghb{display:flex!important;gap:14px;padding:12px 18px 12px 21px;border-left:3px solid transparent;cursor:pointer;color:var(--arr-side-text)}
+[data-look=arr] .nghb .ic{width:16px;height:16px;opacity:1}
+[data-look=arr] .nghb:hover{color:var(--accent)}
+[data-look=arr] .ng.on .nghb{border-left-color:var(--accent);background:var(--arr-side-on);color:var(--accent)}
+[data-look=arr] .ngl{display:none;gap:0}
+[data-look=arr] .ng.on .ngl{display:flex;background:var(--arr-side-on);border-left:3px solid var(--accent);padding:0 0 6px}
+[data-look=arr] .ngl .nv{padding:6px 12px 6px 51px;font-size:13.5px;border-radius:0;color:var(--arr-side-text);opacity:.85;font-weight:400}
+[data-look=arr] .ngl .nv .ic{display:none}
+[data-look=arr] .ngl .nv:hover:not(:disabled){background:none;color:var(--accent);opacity:1}
+[data-look=arr] .ngl .nv.on,[data-look=arr] .ngl .nv.on:hover:not(:disabled){background:none;color:var(--accent);opacity:1;font-weight:500}
+/* Sidebar and header buttons stay see-through (Dashboard gives buttons a white background in light). */
+[data-look=arr] .nghb,[data-look=arr] .ngl .nv,[data-look=arr] .ng1 .nv,[data-look=arr] .wn,[data-look=arr] .brand #rl{background:transparent}
+/* Home, on its own at the top, as a section row. */
+[data-look=arr] .ng1 .nv{gap:14px;padding:12px 18px 12px 21px;border-left:3px solid transparent;border-radius:0;color:var(--arr-side-text);font-weight:400}
+[data-look=arr] .ng1 .nv .ic{width:16px;height:16px}
+[data-look=arr] .ng1 .nv:hover:not(:disabled){background:none;color:var(--accent)}
+[data-look=arr] .ng1 .nv.on,[data-look=arr] .ng1 .nv.on:hover:not(:disabled){border-left-color:var(--accent);background:var(--arr-side-on);color:var(--accent)}
+[data-look=arr] .nv.on::before{display:none}
+/* Shrunk sidebar: icons only. */
+html[data-look=arr][data-rail=min] .ngl,html[data-look=arr][data-rail=min] .nghb span,html[data-look=arr][data-rail=min] .ng1 .nv span,html[data-look=arr][data-rail=min] .brand .t{display:none!important}
+html[data-look=arr][data-rail=min] .ng{border:0}
+
+/* ---- Everything else: flat, 4px corners, the *arr apps' greys. */
+[data-look=arr] .panel,[data-look=arr] .card,[data-look=arr] .tile,[data-look=arr] .np,[data-look=arr] .cal,[data-look=arr] .uc,[data-look=arr] .ud,[data-look=arr] .lk,[data-look=arr] .bulk,[data-look=arr] .sel-bar{border-radius:4px;box-shadow:none;border-color:var(--line)}
+[data-look=arr] .card{background:var(--s2);border:0;overflow:hidden}
+/* Posters fill their card edge to edge, the title under them, like the *arr apps' poster view. */
+[data-look=arr] .grid>.card{padding:0 0 10px;text-align:center}
+[data-look=arr] .grid>.card>img:first-child{border-radius:0!important;display:block}
+[data-look=arr] .grid>.card h3{margin:8px 8px 2px;font-size:14px;font-weight:500;color:var(--arr-title)}
+[data-look=arr] .grid>.card>:not(img):not(h3){margin-left:8px;margin-right:8px}
+[data-look=arr] .card[data-c]:hover,[data-look=arr] .card[data-v]:hover,[data-look=arr] .tile[data-go]:hover{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+[data-look=arr] .dlg{border-radius:6px;background:var(--s1)}
+[data-look=arr] .toast{border-radius:4px}
+[data-look=arr] .sec{font-size:17px;font-weight:400;color:var(--arr-title);margin:24px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+[data-look=arr] .gh{font-weight:400}
+[data-look=arr] button,[data-look=arr] input,[data-look=arr] select,[data-look=arr] textarea{border-radius:4px}
+[data-look=arr] button:not(.ghost):not(.nv):not(.nghb):not(.qs):not(.primary):not(.sw):not(.stc){background:var(--arr-btn);border-color:var(--arr-btn)}
+[data-look=arr] button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+[data-look=arr] input,[data-look=arr] select,[data-look=arr] textarea{background:var(--s2);border-color:color-mix(in srgb,var(--text) 18%,transparent)}
+[data-look=arr] input:focus,[data-look=arr] select:focus,[data-look=arr] textarea:focus{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+[data-look=arr] .seg{border-radius:4px}[data-look=arr] .seg button{border-radius:3px}
+[data-look=arr] .pill{border-radius:3px}
+[data-look=arr] table th{font-weight:500;color:var(--text)}
+[data-look=arr] table td,[data-look=arr] table th{border-color:var(--line)}
+[data-look=arr] table tbody tr:hover{background:color-mix(in srgb,var(--text) 5%,transparent)}
+[data-look=arr] .grid{grid-template-columns:repeat(auto-fill,minmax(162px,1fr));gap:14px}
+[data-look=arr] .cn-hero,[data-look=arr] .cn-pw,[data-look=arr] .pw,[data-look=arr] .cn-tk,[data-look=arr] .cn-tt,[data-look=arr] .si,[data-look=arr] .demo{border-radius:4px}
+
+/* ---- Phone: Dashboard's layout (menu at the bottom), in these colours. */
+@media(max-width:860px){
+  [data-look=arr] .side{background:var(--arr-head);color:#fff}
+  [data-look=arr] .side .brand,[data-look=arr] .side .brand .home{color:#fff}
+  [data-look=arr] .dock{background:var(--arr-head)}
+  [data-look=arr] .dock button{color:rgba(255,255,255,.7)}
+  [data-look=arr] .dock button.on{color:var(--accent)}
+}
+
+/* The picture of this style in Appearance → Style. */
+.stv[data-v=arr]{background:#202020}
+.stv[data-v=arr] i:nth-child(1){left:0;top:0;right:0;height:12px;background:#2a2a2a;box-shadow:0 1px 3px rgba(0,0,0,.5)}
+.stv[data-v=arr] i:nth-child(2){left:0;top:12px;bottom:0;width:24%;background:#2a2a2a}
+.stv[data-v=arr] i:nth-child(3){left:0;top:24px;width:24%;height:8px;background:#333;border-left:2px solid #35c5f4}
+.stv[data-v=arr] b{left:30%;top:20px;width:20%;height:30px;border-radius:2px;background:#35c5f4;box-shadow:22px 0 0 #333,44px 0 0 #333}

@@ -454,7 +454,7 @@ html.pinon body>*:not(.pinlock){visibility:hidden}
 .ov.pg>.dlg{position:relative;z-index:1}
 </style></head><body>
 <div id="app"></div><div id="toasts" aria-live="polite"></div>
-<link rel="stylesheet" href="/statuskit.css"><link rel="stylesheet" href="/cinema.css"><link rel="stylesheet" href="/styles.css"><script src="/statuskit.js"></script><script src="/scenes.js"></script><script src="/cinema.js"></script><script src="/qr.js"></script>
+<link rel="stylesheet" href="/statuskit.css"><link rel="stylesheet" href="/cinema.css"><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/arr.css"><script src="/statuskit.js"></script><script src="/scenes.js"></script><script src="/cinema.js"></script><script src="/qr.js"></script>
 <script>
 const $=s=>document.querySelector(s);
 // A picture that cannot load (an address that is gone, no internet) leaves an empty space instead of a broken-image sign.
@@ -464,10 +464,11 @@ const tick=(f,ms)=>{liveFns.push(f);return setInterval(()=>{if(!document.hidden)
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)liveFns.forEach(f=>{try{f()}catch{}})});
 const UI=(()=>{try{return JSON.parse(localStorage.getItem('mh-ui'))||{}}catch{return{}}})();
 const ACC={Saffron:'#ffb938',Amber:'#f59e0b',Orange:'#fb8c3c',Coral:'#ff7a66',Red:'#ef4444',Crimson:'#e11d48',Rose:'#ff6fae',Magenta:'#e04fd8',Violet:'#a78bfa',Indigo:'#6d7cff',Sky:'#5ab4ff',Cyan:'#22d3ee',Teal:'#2dd4bf',Mint:'#4ade9a',Emerald:'#10b981',Lime:'#a3e635',Gold:'#e6c35c',Slate:'#94a3b8'};
-const STYLE_IDS=['cinema','dash','glass','compact','neon','paper'];
-function applyUI(){const r=document.documentElement;r.dataset.style=STYLE_IDS.includes(UI.style)?UI.style:'cinema';
+const STYLE_IDS=['cinema','dash','glass','compact','neon','paper','arr'];
+// Arr is the Dashboard style with the *arr apps' layout and colours on top (arr.css), so it is shown as dash + look=arr.
+function applyUI(){const r=document.documentElement,st=STYLE_IDS.includes(UI.style)?UI.style:'cinema';r.dataset.style=st==='arr'?'dash':st;if(st==='arr')r.dataset.look='arr';else delete r.dataset.look;
   // The running light: around the screen, every section, or the one under the pointer; its speed is 1 (slow) to 10 (fast).
-  if(['edge','sections','hover'].includes(UI.run))r.dataset.run=UI.run;else delete r.dataset.run;r.style.setProperty('--rld',(13-Math.min(10,Math.max(1,+UI.runSpeed||5)))*0.9+'s');if(UI.theme)r.dataset.theme=UI.theme;else delete r.dataset.theme;if(UI.rail)r.dataset.rail='min';else delete r.dataset.rail;r.style.setProperty('--accent',UI.accent||ACC.Saffron)}
+  if(['edge','sections','hover'].includes(UI.run))r.dataset.run=UI.run;else delete r.dataset.run;r.style.setProperty('--rld',(13-Math.min(10,Math.max(1,+UI.runSpeed||5)))*0.9+'s');if(UI.theme)r.dataset.theme=UI.theme;else delete r.dataset.theme;if(UI.rail)r.dataset.rail='min';else delete r.dataset.rail;r.style.setProperty('--accent',UI.accent||(st==='arr'?'#35c5f4':ACC.Saffron))}
 const saveUI=()=>{try{localStorage.setItem('mh-ui',JSON.stringify(UI))}catch{}applyUI()};
 applyUI();
 
@@ -501,7 +502,7 @@ const skel=(n=4)=>Array.from({length:n},()=>'<div class="box"><div class="sk" st
 const fp=s=>String(s||'').replace(/\\/g,' / ');
 const empty=(t,hint)=>`<div class="empty"><span class="eic">${ic('find')}</span><b>${t}</b><div>${hint||''}</div></div>`;
 // The four looks. Each is a whole design (shapes, density, surfaces, artwork), and works with light, dark and every accent.
-const STYLES=[['cinema','Cinema','Dark and poster-first, like a streaming app: big artwork, quiet controls.'],['neon','Neon','Near-black with glowing accent edges, like a control room at night.'],['paper','Paper','Warm and calm, serif headings and thin lines, like a printed page.'],['dash','Dashboard','Clean cards and clear lists, information first, like Unraid.'],['glass','Glass','Frosted panels floating over the artwork, soft and rounded.'],['compact','Compact','Flat and tight: more on every screen, light on older devices.']];
+const STYLES=[['cinema','Cinema','Dark and poster-first, like a streaming app: big artwork, quiet controls.'],['arr','Arr','Laid out like Sonarr and Radarr: a header bar, the sections down a dark sidebar, flat and dense.'],['neon','Neon','Near-black with glowing accent edges, like a control room at night.'],['paper','Paper','Warm and calm, serif headings and thin lines, like a printed page.'],['dash','Dashboard','Clean cards and clear lists, information first, like Unraid.'],['glass','Glass','Frosted panels floating over the artwork, soft and rounded.'],['compact','Compact','Flat and tight: more on every screen, light on older devices.']];
 const styleOf=()=>STYLES.some(x=>x[0]===UI.style)?UI.style:'cinema';
 function appearHtml(){
   return `<h3>Style</h3><div class="stp" id="stp">${STYLES.map(([k,n,d])=>`<button type="button" class="stc ${styleOf()===k?'on':''}" data-st="${k}" aria-pressed="${styleOf()===k}"><span class="stv" data-v="${k}"><i></i><i></i><i></i><b></b></span><span class="stn">${n}</span><small>${d}</small></button>`).join('')}</div>
