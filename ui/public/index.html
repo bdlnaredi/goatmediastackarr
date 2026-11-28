@@ -1584,7 +1584,7 @@ const PERMS=[['add','Add downloads and things to the library'],['control','Pause
 const presetOf=u=>{if(!u.perms)return 'std';const v=PERMS.map(([k])=>u.perms[k]!==false);return v.every(Boolean)?'std':v.every(x=>!x)?'view':'custom'};
 
 async function stRules(){
-  const s=first('qbittorrent');if(!s){$('#m').innerHTML=`<div class="panel">Connect qBittorrent for the speed schedule and seeding limits.</div>`;seedGoalsPanel([]);langPrefPanel();importPanel();camPanel();packPanel();return}
+  const s=first('qbittorrent');if(!s){$('#m').innerHTML=`<div class="panel">Connect qBittorrent for the speed schedule and seeding limits.</div>`;dlRemovePanel();seedGoalsPanel([]);langPrefPanel();importPanel();camPanel();packPanel();return}
   $('#m').innerHTML=skel(3);
   let sch,rules,meta;
   try{[sch,rules,meta]=await Promise.all([api(`/api/qb/${s.id}/schedule`),api('/api/seedrules'),api(`/api/qb/${s.id}/meta`)])}catch(x){$('#m').innerHTML=`<div class="err">${esc(x.message)}</div>`;return}
@@ -1613,7 +1613,7 @@ async function stRules(){
   $('#rl3').onclick=e=>{const d=e.target.closest('[data-d]');if(d)d.closest('[data-rr]').remove()};
   $('#sr3').onclick=async()=>{const list=[...document.querySelectorAll('[data-rr]')].map(r=>({sid:s.id,category:r.querySelector('[data-c]').value,ratio:r.querySelector('[data-r]').value,minutes:r.querySelector('[data-m]').value}));
     try{await api('/api/seedrules','PUT',{rules:list});toast('Rules saved. They apply within a minute.','ok')}catch(x){toast(x.message,'bad')}};
-  seedGoalsPanel(meta.categories.map(c=>c.name));langPrefPanel();importPanel();camPanel();packPanel();
+  dlRemovePanel();seedGoalsPanel(meta.categories.map(c=>c.name));langPrefPanel();importPanel();camPanel();packPanel();
 }
 // Tracker seeding goals: each tracker's own rule (ratio, days, or both); finished movies and shows are removed once it is met.
 // Preferred audio languages: the order to prefer them in, set up in Radarr and Sonarr, and marked in interactive search.
@@ -1727,6 +1727,26 @@ async function importPanel(){
     if(all&&!confirm("Take every download that waits to be imported off the list? They stay in Downloads; they just won't be imported."))return;
     (k||all).disabled=true;try{const r=await api('/api/import/skip','POST',k?{hash:k.dataset.iskip}:{all:true});toast(r.skipped===1?'Taken off the list':r.skipped+' taken off the list','ok');importPanel()}catch(x){toast(x.message,'bad');(k||all).disabled=false}};
 }
+// Settings → Download rules → Removing downloads: an on/off switch for each part.
+async function dlRemovePanel(){
+  const box=document.createElement('div');box.className='panel';box.style.cssText='max-width:760px;margin-top:16px';$('#m').append(box);
+  let c;try{c=await api('/api/dlremove')}catch(x){box.innerHTML=`<div class="err">${esc(x.message)}</div>`;return}
+  const sw=(k,t,d)=>`<label class="chk" style="display:flex;align-items:flex-start;gap:10px;margin:0 0 12px"><input type="checkbox" data-rk="${k}" ${c[k]?'checked':''} style="margin-top:3px"><span><b style="font-weight:600">${T(t)}</b><br><span class="mute" style="font-size:13px">${T(d)}</span></span></label>`;
+  box.innerHTML=`<h3 style="margin-top:0">${T('Removing downloads')}</h3>
+    <p class="mute" style="margin-top:0">${T('How Remove works on the Downloads page, for everyone who may remove downloads.')}</p>
+    ${sw('ask','Ask what to do when removing','A dialog with the choices below. Off: one short question, and the choices below are used as they are.')}
+    <div style="margin:0 0 6px 28px"><div class="mute" style="font-size:12px;letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px">${T('Ticked to start with')}</div>
+    ${sw('files','Delete the downloaded files','The copies Sonarr and Radarr imported into the library always stay.')}
+    ${sw('arr','Also remove from Sonarr / Radarr','Takes it off their queue, so they do not keep waiting for it.')}
+    ${sw('block','Blocklist the release','Sonarr and Radarr will not pick the same release again.')}
+    ${sw('search','Search for another','Sonarr or Radarr looks for a different release right away.')}</div>
+    ${sw('multi','Select several at once','Tick boxes on each download, with Select all, and Shift-click to take a whole range.')}
+    ${sw('bg','Remove in the background','The downloads leave the list at once and the removing carries on behind, so the page never waits or freezes. Off: the page waits until it is done.')}
+    <p class="mute" style="font-size:13px">${T('Removing finished downloads by themselves, after import and seeding: see “Remove after the tracker’s seeding goal” below.')}</p>
+    <div class="row"><button class="primary" id="rms">${T('Save')}</button></div>`;
+  box.querySelector('#rms').onclick=async()=>{const b={};box.querySelectorAll('[data-rk]').forEach(x=>b[x.dataset.rk]=x.checked);
+    try{DLRM=await api('/api/dlremove','PUT',b);toast(T('Saved'),'ok')}catch(x){toast(x.message,'bad')}};
+}
 async function seedGoalsPanel(catNames){
   const box=document.createElement('div');box.className='panel';box.style.cssText='max-width:760px;margin-top:16px';$('#m').append(box);
   box.innerHTML=`<h3 style="margin-top:0">${T('Remove after the tracker’s seeding goal')}</h3>${skel(2)}`;
@@ -1740,12 +1760,13 @@ async function seedGoalsPanel(catNames){
   const day=t=>new Date(t).toLocaleString(undefined,{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
   const prev=chk.rows.length?`<details style="margin-top:14px"><summary><b>${T('Right now')}</b> <span class="mute">${chk.rows.filter(r=>r.met).length} ${T('of')} ${chk.rows.length} ${T('have met their goal')}</span></summary>
     ${chk.rows.map(r=>`<div class="row" style="margin-top:6px;font-size:13px"><span class="grow" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.name)}</span><span class="mute">${esc(r.host||T('unknown tracker'))} · ${T('ratio')} ${r.ratio} · ${r.days} ${T('days')}</span>
-      <span class="pill ${r.met?(r.importing?'warn':'ok'):''}">${!r.rule?T('No rule'):r.met?(r.importing?T('Waiting for import'):T('Goal met')):T('Seeding')}</span></div>`).join('')}</details>`:'';
+      <span class="pill ${r.met?(r.importing?'warn':'ok'):''}">${!r.rule&&!r.met?T('No rule'):r.met?(r.importing?T('Waiting for import'):T('Goal met')):T('Seeding')}</span></div>`).join('')}</details>`:'';
   box.innerHTML=`<h3 style="margin-top:0">${T('Remove after the tracker’s seeding goal')}</h3>
     <p class="mute" style="margin-top:0">${T('Private trackers want each download seeded to a ratio or for some days. Give each tracker its rule; once a finished movie or show meets it, and Sonarr or Radarr has imported it, the torrent is removed. Works with qBittorrent, ruTorrent and Deluge.')}</p>
     <label class="chk"><input type="checkbox" id="sgon" ${c.on?'checked':''}>${T('Remove torrents that met their tracker’s goal')}</label>
     <div class="mute" style="margin-top:10px">${T('Only these categories')}</div><div>${cats.map(n=>`<label class="chk" style="margin:6px 14px 0 0"><input type="checkbox" data-sc="${esc(n)}" ${c.cats.includes(n)?'checked':''}>${esc(n)}</label>`).join('')||`<span class="mute">tv, movies</span>`}</div>
     <label class="chk" style="margin-top:10px"><input type="checkbox" id="sgf" ${c.files?'checked':''}>${T('Delete the downloaded files too (the copies in the library stay)')}</label>
+    <label class="chk" style="margin-top:10px"><input type="checkbox" id="sgd" ${c.done?'checked':''}>${T('Also when the download app has finished seeding it (its own ratio or time limit reached), for trackers with no rule here')}</label>
     <datalist id="sghosts">${hosts.map(h=>`<option value="${esc(h)}">`).join('')}</datalist>
     <div class="mute" style="margin-top:12px">${T('Trackers')}</div><div id="sgl">${(c.rules.length?c.rules:[{}]).map(row).join('')}</div>
     <div class="row" style="margin-top:8px;flex-wrap:wrap;gap:8px"><label class="chk"><input type="checkbox" id="sgo" ${c.other?'checked':''}>${T('Any other tracker:')}</label>
@@ -1757,7 +1778,7 @@ async function seedGoalsPanel(catNames){
   box.querySelector('#sgl').onclick=e=>{const x=e.target.closest('[data-x]');if(x)x.closest('[data-gr]').remove()};
   box.querySelector('#sgs').onclick=async()=>{box.querySelector('#sge').textContent='';
     const rules=[...box.querySelectorAll('[data-gr]')].map(r=>({tracker:r.querySelector('[data-t]').value,ratio:+r.querySelector('[data-r]').value||0,days:+r.querySelector('[data-d]').value||0,how:r.querySelector('[data-h]').value})).filter(r=>r.tracker.trim());
-    const b={on:box.querySelector('#sgon').checked,files:box.querySelector('#sgf').checked,cats:[...box.querySelectorAll('[data-sc]:checked')].map(x=>x.dataset.sc),rules,
+    const b={on:box.querySelector('#sgon').checked,files:box.querySelector('#sgf').checked,done:box.querySelector('#sgd').checked,cats:[...box.querySelectorAll('[data-sc]:checked')].map(x=>x.dataset.sc),rules,
       other:box.querySelector('#sgo').checked?{ratio:+box.querySelector('#sgor').value||0,days:+box.querySelector('#sgod').value||0,how:box.querySelector('#sgoh').value}:null};
     if(!b.cats.length&&!cats.length)b.cats=['tv','movies'];
     try{await api('/api/seedgoals','PUT',b);toast(T('Saved'),'ok');box.remove();seedGoalsPanel(catNames)}catch(x){box.querySelector('#sge').textContent=x.message}};
@@ -2178,10 +2199,21 @@ function dlView(){
     <div class="err" id="e"></div><div id="l">${skel(4)}</div>`;
   $('#so').value=dlSort;$('#sq').value=dlQ;vpnPill(s,'#vp');
   if(!can('control'))$('#l').classList.add('nc');
-  let t=[],vis=[],key=null,busy=0,csig=null,bbSig='',match={},meta={categories:[],tags:[],free:null};
+  let t=[],vis=[],key=null,busy=0,csig=null,bbSig='',match={},meta={categories:[],tags:[],free:null},cap=150;
   const mt=x=>`<span>${fmt(x.size)}</span>${x.dlspeed>0?`<span style="color:var(--link)">↓ ${fmt(x.dlspeed)}/s</span>`:''}${x.upspeed>0?`<span style="color:var(--ok-t)">↑ ${fmt(x.upspeed)}/s</span>`:''}${x.progress<1&&x.eta<8640000?`<span>${fmtEta(x.eta)} left</span>`:''}${match[x.hash]?`<span class="chip">${esc(match[x.hash])}</span>`:''}<span>ratio ${(+x.ratio).toFixed(2)}</span><span>${x.seeds} seeds, ${x.peers} peers</span>${x.category?`<span class="chip">${esc(x.category)}</span>`:''}<span>added ${new Date(x.added*1000).toLocaleDateString()}</span>`;
   const pillCls=x=>{const g=stOf(x.state);return 'pill '+(g==='errors'?'bad':x.state==='stalledDL'?'warn':g==='seeding'?'ok':g==='downloading'?'acc':'')};
   const run=async(a,hashes,extra)=>{$('#e').textContent='';try{const r=await act({action:a,hashes,...extra});await draw();return r}catch(x){toast(x.message,'bad');return false}};
+  // Removing: the dialog's choices, then (when "in the background" is on) the rows go at once and the removal carries on
+  // behind; a failure brings them back with a message. No waiting on a page that freezes while files are deleted.
+  const removeNow=async hs=>{const pick=t.filter(x=>hs.includes(x.hash));if(!pick.length)return;
+    const ch=await removeDialog(pick.map(x=>x.name),TYPES[s.type]||'the download app',pick.filter(x=>match[x.hash]).length);if(!ch)return;
+    const c=await dlRm(),body={action:'delete',hashes:hs,...ch};
+    const msg=r=>{const n=pick.length,base=(n===1?'Removed':n+' removed')+(ch.block?', blocklisted':'')+(ch.search?', searching for another':'');binNote(r,base)};
+    if(!c.bg){const r=await run('delete',hs,ch);if(r===false)return;hs.forEach(h=>dlSel.delete(h));key=null;paint();bulkBar();msg(r);return}
+    const gone=new Set(hs);t=t.filter(x=>!gone.has(x.hash));hs.forEach(h=>dlSel.delete(h));key=null;paint();bulkBar();
+    toast(pick.length===1?'Removing…':`Removing ${pick.length} downloads…`);
+    act(body).then(r=>{msg(r);draw()}).catch(x=>{toast(x.message,'bad');draw()})};
+  dlView.remove=removeNow;dlView.el=$('#l');
   const syncMaster=()=>{const m=$('#sa');if(!m)return;const n=vis.filter(x=>dlSel.has(x.hash)).length;m.checked=vis.length>0&&n===vis.length;m.indeterminate=n>0&&n<vis.length};
   const bulkBar=()=>{syncMaster();const n=dlSel.size,b=$('#bk');b.style.display=n?'flex':'none';if(!n){bbSig='';return}
     const sig=n+'|'+meta.categories.map(c=>c.name).join(',');if(sig===bbSig)return;bbSig=sig;
@@ -2190,7 +2222,9 @@ function dlView(){
       <button class="danger" data-b="delete">Remove</button><button class="ghost" data-b="clear">Clear</button>`;
     if(!can('control'))b.querySelectorAll('[data-b=pause],[data-b=resume],[data-b=force],[data-b=recheck],#bc').forEach(z=>z.remove());
     if(!can('remove'))b.querySelector('[data-b=delete]').remove()};
-  const upd=(el,x)=>{el.dataset.g=stOf(x.state);el.querySelector('[data-t]').innerHTML=mt(x);const st=el.querySelector('[data-st]');st.textContent=NICE[x.state]||x.state;st.className=pillCls(x);
+  // Each second only what changed is touched (rewriting every row each second is what made long lists sluggish).
+  const upd=(el,x)=>{const sig=x.state+'|'+x.progress+'|'+x.dlspeed+'|'+x.upspeed+'|'+x.eta+'|'+x.ratio+'|'+x.seeds+'|'+x.peers+'|'+x.category+'|'+(match[x.hash]||'');if(el._s===sig)return;el._s=sig;
+    el.dataset.g=stOf(x.state);el.querySelector('[data-t]').innerHTML=mt(x);const st=el.querySelector('[data-st]');st.textContent=NICE[x.state]||x.state;st.className=pillCls(x);
     const pr=el.querySelector('progress');pr.value=x.progress;pr.classList.toggle('done',x.progress>=1);el.querySelector('[data-pc]').textContent=(x.progress*100).toFixed(x.progress>=1?0:1)+'%';
     const pz=stOf(x.state)==='paused',pa=el.querySelector('[data-pa]'),rs=el.querySelector('[data-rs]');if(pa)pa.hidden=pz;if(rs)rs.hidden=!pz};
   const paint=()=>{
@@ -2205,14 +2239,16 @@ function dlView(){
       eta:(a,b)=>{const x=eta(a),y=eta(b);return (x===y?0:x<y?-1:1)||b.dlspeed-a.dlspeed},progress:(a,b)=>b.progress-a.progress||b.added-a.added,seeds:(a,b)=>(b.seeds||0)-(a.seeds||0)||b.added-a.added,peers:(a,b)=>(b.peers||0)-(a.peers||0)||b.added-a.added,
       ratio:(a,b)=>(b.ratio||0)-(a.ratio||0),name:(a,b)=>String(a.name).localeCompare(String(b.name),undefined,{numeric:true,sensitivity:'base'})}[dlSort]||((a,b)=>b.added-a.added),k=dlRev?(a,b)=>k0(b,a):k0;
     vis.sort(k);syncMaster();
-    const nk=vis.map(x=>x.hash).join();
-    if(nk===key){if(vis.length)[...$('#l').children].forEach((el,i)=>vis[i]&&upd(el,vis[i]));return}
+    // A long list is drawn 150 at a time (Show more adds the next), so a page of hundreds of torrents stays quick.
+    const sh=vis.slice(0,cap);
+    const nk=sh.map(x=>x.hash).join()+'|'+vis.length;
+    if(nk===key){if(sh.length)[...$('#l').querySelectorAll(':scope>.tr')].forEach((el,i)=>sh[i]&&upd(el,sh[i]));return}
     key=nk;
-    $('#l').innerHTML=vis.map(x=>`<div class="box tr" data-g="${stOf(x.state)}"><input type="checkbox" data-s="${x.hash}" aria-label="Select ${esc(x.name)}" ${dlSel.has(x.hash)?'checked':''}>
+    $('#l').innerHTML=sh.map(x=>`<div class="box tr" data-g="${stOf(x.state)}"><input type="checkbox" data-s="${x.hash}" aria-label="Select ${esc(x.name)}" ${dlSel.has(x.hash)?'checked':''}>
       <div class="grow"><div class="row top"><b class="nm" data-o="${x.hash}" tabindex="0" role="button">${esc(x.name)}</b><span data-st class="${pillCls(x)}">${esc(NICE[x.state]||x.state)}</span></div>
       <div class="bar"><progress value="${x.progress}" max="1" class="${x.progress>=1?'done':''}"></progress><span data-pc>${(x.progress*100).toFixed(x.progress>=1?0:1)}%</span></div><div class="meta" data-t>${mt(x)}</div></div>
       <div class="acts"><button class="icon" data-pa="${x.hash}" aria-label="Pause" title="Pause" ${stOf(x.state)==='paused'?'hidden':''}>${ic('pause')}</button><button class="icon" data-rs="${x.hash}" aria-label="Resume" title="Resume" ${stOf(x.state)==='paused'?'':'hidden'}>${ic('play')}</button>
-      <button class="icon" data-o="${x.hash}" aria-label="Details" title="Details">${ic('info')}</button></div></div>`).join('')||empty('Nothing here','No torrents match the current filter or search.');
+      <button class="icon" data-o="${x.hash}" aria-label="Details" title="Details">${ic('info')}</button></div></div>`).join('')+(vis.length>cap?`<button class="ghost dlmore" data-more>Show ${Math.min(150,vis.length-cap)} more (${vis.length-cap} not shown)</button>`:'')||empty('Nothing here','No torrents match the current filter or search.');
   };
   const draw=async()=>{if(busy)return;busy=1;
     try{const d=await api(`/api/qb/${s.id}/list`);if(tab!=='dl')return;
@@ -2225,20 +2261,26 @@ function dlView(){
   const loadMeta=async()=>{api(`/api/qb/${s.id}/match`).then(m=>{match=m}).catch(()=>{});try{meta=await api(`/api/qb/${s.id}/meta`);if(tab!=='dl')return;
     const cs=meta.categories.map(c=>c.name).join('|');if(cs!==csig){csig=cs;$('#sc').innerHTML='<option value="">All categories</option><option value="__none">No category</option>'+meta.categories.map(c=>`<option>${esc(c.name)}</option>`).join('');$('#sc').value=dlCat}
     $('#fr').textContent=meta.free!=null?'Free space '+fmt(meta.free):'';bulkBar()}catch{}};
-  $('#l').onclick=e=>{const el=e.target.closest('[data-pa],[data-rs],[data-o]');if(!el)return;
+  $('#l').onclick=e=>{if(e.target.closest('[data-more]')){cap+=150;key=null;paint();return}
+    const el=e.target.closest('[data-pa],[data-rs],[data-o]');if(!el)return;
     if(el.dataset.o!==undefined)return openTorrent(s,t.find(x=>x.hash===el.dataset.o),meta,draw);
     run(el.dataset.pa?'pause':'resume',[el.dataset.pa||el.dataset.rs])};
+  // Several at once: tick one, then Shift-tick another to take every row between them.
+  let lastTick=null;
+  $('#l').onclick=(f=>e=>{const c=e.target.closest('[data-s]');if(c&&e.shiftKey&&lastTick!=null){const i=vis.findIndex(x=>x.hash===lastTick),j=vis.findIndex(x=>x.hash===c.dataset.s);
+    if(i>=0&&j>=0){const [a,z]=i<j?[i,j]:[j,i],on=c.checked;vis.slice(a,z+1).forEach(x=>on?dlSel.add(x.hash):dlSel.delete(x.hash));
+      [...$('#l').querySelectorAll('[data-s]')].forEach(k=>{k.checked=dlSel.has(k.dataset.s)});bulkBar()}}
+    if(c)lastTick=c.dataset.s;return f(e)})($('#l').onclick);
   $('#l').onchange=e=>{const c=e.target.closest('[data-s]');if(!c)return;c.checked?dlSel.add(c.dataset.s):dlSel.delete(c.dataset.s);bulkBar()};
+  dlRm().then(c=>{if(!c.multi){$('#l').classList.add('nosel');const m=$('#sa');if(m)m.closest('label').hidden=true}});
   $('#l').onkeydown=e=>{if(e.key==='Enter'&&e.target.dataset.o!==undefined)e.target.click()};
   $('#bk').onclick=async e=>{const b=e.target.closest('[data-b]');if(!b)return;const a=b.dataset.b,hs=[...dlSel];
     if(a==='clear'){dlSel.clear();key=null;paint();bulkBar();return}
-    if(a==='delete'){if(!confirm(`Remove ${hs.length} torrent${hs.length>1?'s':''} from qBittorrent?`))return;
-      const files=confirm('Also delete the downloaded files?\n\nOK = delete the files, Cancel = keep the files');
-      const r=await run('delete',hs,{files});if(r===false)return;dlSel.clear();key=null;paint();bulkBar();binNote(r,'Removed');return}
+    if(a==='delete'){await removeNow(hs);return}
     await run(a,hs)};
   $('#bk').onchange=async e=>{if(e.target.id!=='bc'||!e.target.value)return;await run('category',[...dlSel],{value:e.target.value==='__none'?'':e.target.value});e.target.value='';toast('Category updated','ok')};
-  $('#fl').onclick=e=>{const b=e.target.closest('[data-f]');if(!b)return;dlF=b.dataset.f;key=null;paint()};
-  $('#sq').oninput=e=>{dlQ=e.target.value;key=null;paint()};
+  $('#fl').onclick=e=>{const b=e.target.closest('[data-f]');if(!b)return;dlF=b.dataset.f;key=null;cap=150;paint()};
+  $('#sq').oninput=e=>{dlQ=e.target.value;key=null;cap=150;paint()};
   $('#sc').onchange=e=>{dlCat=e.target.value;key=null;paint()};
   $('#so').onchange=e=>{dlSort=e.target.value;try{localStorage.setItem('mh-dlsort',dlSort)}catch{}key=null;paint()};
   $('#sor').onclick=e=>{dlRev=!dlRev;e.currentTarget.setAttribute('aria-pressed',dlRev);e.currentTarget.classList.toggle('on',dlRev);try{localStorage.setItem('mh-dlrev',dlRev?'1':'0')}catch{}key=null;paint()};
@@ -2302,9 +2344,9 @@ async function openTorrent(s,x,meta,after){
     const b=e.target.closest('[data-a]');if(!b)return;const a=b.dataset.a;let v;
     if(a==='rename'){v=prompt('New name',x.name);if(!v)return}
     if(a==='location'){v=prompt('Move to this folder (path on the server):',x.path);if(!v)return}
-    if(a==='delete'){if(!confirm(`Remove this torrent from ${TYPES[s.type]||'the download app'}?`))return;
-      const files=confirm('Also delete the downloaded files?\n\nOK = delete the files, Cancel = keep the files');
-      try{const r=await act({action:'delete',files});o.close();after();binNote(r,'Removed')}catch(ex){err(ex.message)}return}
+    if(a==='delete'){if(dlView.remove&&document.contains(dlView.el)){o.close();dlView.remove([x.hash]);return}
+      const ch=await removeDialog([x.name],TYPES[s.type]||'the download app',0);if(!ch)return;
+      try{const r=await act({action:'delete',...ch});o.close();after();binNote(r,'Removed')}catch(ex){err(ex.message)}return}
     try{await act({action:a,value:v});err();if(a==='rename'){x.name=v}after();if(a==='rename'||a==='location')o.close()}catch(ex){err(ex.message)}});
   o.addEventListener('change',async e=>{const c=e.target.closest('[data-fc],#fa');if(!c||!info)return;
     const ids=c.id==='fa'?info.files.map(f=>f.i):[+c.dataset.fc],pr=c.checked?1:0;
@@ -2325,6 +2367,31 @@ function limWhen(l){
   return [l.from?`${l.from}–${l.to}`:'',dt].filter(Boolean).join(', ')||'all the time';
 }
 // Torrent actions; removing ones that have not met their tracker's seeding rule yet asks first.
+// Removing downloads: the choices set in Settings → Download rules → Removing downloads (read once per visit).
+let DLRM=null;
+const dlRm=async()=>DLRM||(DLRM=await api('/api/dlremove').catch(()=>({ask:true,files:false,arr:true,block:false,search:false,multi:true,bg:true})));
+// The Remove dialog: keep or delete the files; also take it off Sonarr's/Radarr's queue, blocklist the release and search
+// for another (shown when they are waiting for it). Resolves to the choices, or null when cancelled.
+function removeDialog(names,appName,tracked){return new Promise(async done=>{
+  const c=await dlRm(),n=names.length,what=n===1?'this download':n+' downloads';
+  if(!c.ask){done(confirm(`Remove ${what} from ${appName}?${c.files?'\n\nThe downloaded files are deleted too.':''}`)?{files:c.files,arr:c.arr,block:c.block,search:c.search}:null);return}
+  const o=modal(`<h2 style="margin-top:0">Remove ${what}?</h2>
+    <div class="mute" style="max-height:120px;overflow:auto;margin:-4px 0 14px;font-size:13px">${names.slice(0,8).map(x=>`<div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(x)}</div>`).join('')}${n>8?`<div>…and ${n-8} more</div>`:''}</div>
+    <div class="rmo">
+      <label class="chk"><input type="checkbox" id="rmf" ${c.files?'checked':''}><span><b>Delete the downloaded files</b><small>Off: the files stay on the disk. Copies Sonarr or Radarr already imported into the library always stay.</small></span></label>
+      ${`<label class="chk"><input type="checkbox" id="rma" ${c.arr||c.block?'checked':''}><span><b>Also remove from Sonarr / Radarr</b><small>${tracked?(tracked===n?(n===1?'It is':'They are'):tracked+' of them are')+' on their queue; this takes '+(tracked===1?'it':'them')+' off, so they stop waiting for '+(tracked===1?'it':'them')+'.':'Takes it off their queue, if they are waiting for it.'}</small></span></label>
+      <label class="chk"><input type="checkbox" id="rmb" ${c.block?'checked':''}><span><b>Blocklist this release</b><small>Sonarr and Radarr will not pick the same release again.</small></span></label>
+      <label class="chk"><input type="checkbox" id="rms" ${c.search?'checked':''}><span><b>Search for another</b><small>Looks for a different release right away.</small></span></label>`}
+    </div>
+    <div class="row" style="justify-content:flex-end;margin-top:16px"><button class="ghost" data-x>Cancel</button><button class="danger" id="rmgo">${ic('trash')}Remove</button></div>`);
+  const $r=q=>o.querySelector(q),A=$r('#rma'),B=$r('#rmb'),S=$r('#rms');
+  // Blocklisting and searching again go through Sonarr/Radarr, so they turn "also remove" on.
+  const sync=()=>{if(!A)return;if(B.checked||S.checked)A.checked=true};if(A){B.onchange=S.onchange=sync;A.onchange=()=>{if(!A.checked)B.checked=S.checked=false}}
+  let ans=null;const close=o.close;o.close=()=>{close();done(ans)};
+  $r('[data-x]').onclick=()=>o.close();
+  $r('#rmgo').onclick=()=>{ans={files:$r('#rmf').checked,arr:!!(A&&A.checked),block:!!(B&&B.checked),search:!!(S&&S.checked)};o.close()};
+  $r('#rmgo').focus();
+})}
 async function qbAct(sid,b){
   try{return await api(`/api/qb/${sid}/act`,'POST',b)}
   catch(e){

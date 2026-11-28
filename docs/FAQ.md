@@ -252,6 +252,17 @@ Some private trackers only allow certain versions of qBittorrent, ruTorrent or D
 **How do I limit download speeds at certain hours?**
 Settings → **Download rules** has a speed schedule, and slowing downloads while someone is streaming. The Downloads page has qBittorrent's own limits and limits per category.
 
+**How do I remove downloads, and what do the choices do?**
+On the Downloads page, open a download (or tick several, then **Remove** in the bar that appears). The dialog asks:
+- **Delete the downloaded files**: off keeps them on the disk. What Sonarr or Radarr already imported into the library always stays.
+- **Also remove from Sonarr / Radarr**: takes it off their queue, so they stop waiting for it.
+- **Blocklist this release** and **Search for another**: Sonarr or Radarr won't pick that release again and look for a different one.
+
+Tick one box, then Shift-click another to select every download in between. Each part can be turned on or off, with the boxes ticked to start with, in Settings → **Download rules** → *Removing downloads*.
+
+**Can finished downloads be removed by themselves?**
+Yes, once Sonarr or Radarr has imported them and they're done seeding: Settings → **Download rules** → *Remove after the tracker's seeding goal*. Give private trackers their ratio or days. For the rest, tick *Also when the download app has finished seeding it*, which uses qBittorrent's own share limits. Nothing is removed while it's still waiting to be imported.
+
 **cross-seed isn't finding anything.**
 It searches only the torrent trackers in Prowlarr: Usenet indexers and public sites don't count. Restart cross-seed on the Stack page after adding a tracker. Logs → cross-seed says *Failed to reach* or *rate limit* when a tracker paused it for a while; restarting starts every tracker afresh.
 

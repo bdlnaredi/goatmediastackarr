@@ -382,6 +382,7 @@ What's kept in `appdata/goatmediastackarr/`: each app's own folder; `goat/secret
 | `PUID` / `PGID` | `99` / `100` | User and group that own the files (Unraid's nobody/users) |
 | `TZ` | `Etc/UTC` | Time zone |
 | `UMASK` | `002` | New files are group-writable |
+| `GOAT_LOW_MEMORY` | `true` | The apps hold on to less memory: fewer memory pools for every app, and a smaller .NET heap for Sonarr, Radarr, Lidarr, Prowlarr and Jellyfin. `false` gives them their usual settings |
 | `GOAT_APP_<NAME>` | see [Switch apps on and off](#switch-apps-on-and-off) | One per app: `GOAT_APP_SONARR`, `GOAT_APP_PLEX`, `GOAT_APP_CROSS_SEED`… `true` runs it, `false` leaves it out |
 | `GOAT_ENGINES` | *(empty)* | The older way to pick apps, as a list (`sonarr,radarr,…`). When it holds a list of your own, it decides and the switches are not used |
 | `GOAT_FILEBROWSER` | `true` | File Browser (its switch in the template): your media and downloads folders in the browser (Stack page → File Browser, admins only). `false` turns it off |

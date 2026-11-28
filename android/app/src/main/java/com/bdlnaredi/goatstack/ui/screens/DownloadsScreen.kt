@@ -242,6 +242,10 @@ private fun Torrents(sid: String, qbit: Boolean = true) {
     var deleting by remember { mutableStateOf<Torrent?>(null) }
     var early by remember { mutableStateOf<Triple<Torrent, Boolean, String>?>(null) }
     var withFiles by remember { mutableStateOf(false) }
+    // The Remove dialog's other choices: off Sonarr's/Radarr's queue, blocklist the release, search for another.
+    var withArr by remember { mutableStateOf(true) }
+    var withBlock by remember { mutableStateOf(false) }
+    var withSearch by remember { mutableStateOf(false) }
     var cat by rememberSaveable { mutableStateOf<String?>(null) }
     var managing by remember { mutableStateOf(false) }
     var limits by remember { mutableStateOf(false) }
@@ -258,12 +262,13 @@ private fun Torrents(sid: String, qbit: Boolean = true) {
     var sort by remember { mutableStateOf(sp.getString("sort", "added")?.takeIf { k -> DL_SORTS.any { it.first == k } } ?: "added") }
     var rev by remember { mutableStateOf(sp.getBoolean("rev", false)) }
 
-    fun act(action: String, hashes: Any, ok: String, files: Boolean = false, force: Boolean = false) {
+    fun act(action: String, hashes: Any, ok: String, files: Boolean = false, force: Boolean = false, arr: Boolean = false, block: Boolean = false, search: Boolean = false) {
         scope.launch {
             try {
                 val binned = ctx.api.sendBinned("POST", "/api/qb/$sid/act", buildJsonObject {
                     put("action", action); if (hashes is String) put("hashes", hashes) else put("hash", (hashes as Torrent).hash)
                     if (files) put("files", true); if (force) put("force", true)
+                    if (arr) put("arr", true); if (block) put("block", true); if (search) put("search", true)
                 })
                 toast(if (binned) "$ok · in the recycle bin, to put back" else ok)
             } catch (e: com.bdlnaredi.goatstack.data.ApiError) {
@@ -375,8 +380,13 @@ private fun Torrents(sid: String, qbit: Boolean = true) {
     }
     deleting?.let { t ->
         Confirm("Remove this download?", t.name, "Remove", danger = true,
-            extra = { CheckLine("Also delete the downloaded files", withFiles, danger = true) { withFiles = it } },
-            onYes = { deleting = null; act("delete", t, "Removed", files = withFiles) }, onNo = { deleting = null })
+            extra = {
+                CheckLine("Also delete the downloaded files", withFiles, danger = true) { withFiles = it }
+                CheckLine("Also remove from Sonarr / Radarr", withArr) { withArr = it; if (!it) { withBlock = false; withSearch = false } }
+                CheckLine("Blocklist this release", withBlock) { withBlock = it; if (it) withArr = true }
+                CheckLine("Search for another", withSearch) { withSearch = it; if (it) withArr = true }
+            },
+            onYes = { deleting = null; act("delete", t, if (withBlock || withSearch) "Removed · Sonarr/Radarr will look for another" else "Removed", files = withFiles, arr = withArr, block = withBlock, search = withSearch) }, onNo = { deleting = null })
     }
 }
 

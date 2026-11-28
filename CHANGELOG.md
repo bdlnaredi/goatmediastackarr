@@ -4,6 +4,17 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- **Removing downloads**: Remove asks in one dialog instead of two pop-ups. You can keep or delete the files, **also remove it from Sonarr / Radarr** (off their queue), **blocklist the release** and **search for another**. The same choices are in the Android app.
+  - Tick boxes select several downloads at once, and Shift-click takes every download in between.
+  - Removed downloads leave the list at once while the removing carries on in the background, so the page no longer waits or freezes.
+  - Settings → Download rules → **Removing downloads** turns each part on or off and sets which boxes start ticked.
+- **Finished downloads removed by themselves, after import and seeding**: *Remove after the tracker's seeding goal* has a new choice, *Also when the download app has finished seeding it*. It uses qBittorrent's own share limits for trackers without a rule. Still nothing is removed before Sonarr or Radarr has imported it.
+- **Less memory** (`GOAT_LOW_MEMORY`, on by default, in the template's advanced view):
+  - Every app gets fewer memory pools.
+  - Sonarr, Radarr, Lidarr, Prowlarr and Jellyfin get a smaller .NET heap that gives memory back sooner.
+  - GoatMediaStackarr no longer keeps every search's answer for good.
+- **A smoother Downloads page**: a long list shows 150 at a time (with *Show more*). Each second, only the rows that changed are redrawn, and rows off the screen are skipped.
+
 - **Show and movie pages laid out like Sonarr's and Radarr's** (every style): a toolbar of actions across the top (Back, Search, Interactive search, Monitor all, Remove, open in Sonarr/Radarr), then a band with the backdrop behind the poster, the title and year, the facts, labels (Path, Size, Quality profile, Status, Episodes), the IDs and the overview. A show's seasons are blocks with their own monitor switch, have/total count, size and buttons, and each opens to a table of its episodes (number, title, air date, status).
 - **Arr style: pages open beside the side menu.** A show's or movie's page used to open behind the side menu; it now opens to the right of it, under the top bar.
 

@@ -211,11 +211,14 @@ let libIdx = { t: 0, v: null, p: null };
 const swrMap = new Map();
 function swr(key, freshMs, maxMs, fn) {
   const e = swrMap.get(key), now = Date.now();
-  const run = () => { if (e && e.p) return e.p; const x = e || {}; x.p = Promise.resolve().then(fn).then(v => { x.v = v; x.at = Date.now(); x.has = true; return v; }).finally(() => { x.p = null; }); swrMap.set(key, x); return x.p; };
+  const run = () => { if (e && e.p) return e.p; const x = e || {}; x.max = maxMs; x.p = Promise.resolve().then(fn).then(v => { x.v = v; x.at = Date.now(); x.has = true; return v; }).finally(() => { x.p = null; }); swrMap.set(key, x); return x.p; };
   if (e && e.has && now - e.at < freshMs) return Promise.resolve(e.v);
   if (e && e.has && now - e.at < maxMs) { run().catch(() => {}); return Promise.resolve(e.v); }
   return run();
 }
+// Answers past their time are let go every 10 minutes (each search's answer used to be kept for good, so the server's
+// memory grew with every search typed).
+setInterval(() => { const now = Date.now(); for (const [k, e] of swrMap) if (!e.p && now - (e.at || 0) > Math.max(e.max || 0, 600000)) swrMap.delete(k); }, 600000).unref();
 const swrDrop = pre => { for (const k of swrMap.keys()) if (k.startsWith(pre)) { const e = swrMap.get(k); if (e) e.at = 0; } };
 // What Seerr knows about every title it has seen (requested, partly or fully on Plex/Jellyfin), kept 5 minutes.
 let seerrMedia = { t: 0, v: null, p: null };
@@ -2777,7 +2780,31 @@ async function catLimitPass(only) {
     if (JSON.stringify(now) !== JSON.stringify([...held].sort())) { db.settings.catLimitHeld = { ...heldAll, [s.id]: now }; if (!now.length) delete db.settings.catLimitHeld[s.id]; save(); }
   } catch {}
 }
-const seedCfg = () => ({ on: false, cats: ['tv', 'movies'], files: true, rules: [], other: null, ...(db.settings.seedGoals || {}) });
+// Removing downloads: what the Remove dialog offers, and its starting choices (Settings → Download rules → Removing downloads).
+const DLRM_DEF = { ask: true, files: false, arr: true, block: false, search: false, multi: true, bg: true };
+const dlRemoveCfg = () => ({ ...DLRM_DEF, ...(db.settings.dlRemove || {}) });
+// Takes the torrents off Sonarr's, Radarr's and Lidarr's queues (the files stay for the download app to deal with),
+// blocklisting the release and searching for another when asked. Returns how many queue items were removed.
+async function arrQueueRemove(hashes, { block = false, search = false } = {}) {
+  const want = new Set(hashes.map(h => String(h).toLowerCase())); let n = 0;
+  await Promise.all(db.services.filter(x => ['sonarr', 'radarr', 'lidarr'].includes(x.type)).map(async sv => { try {
+    const v = sv.type === 'lidarr' ? 'v1' : 'v3';
+    const q = await ext(sv, `/api/${v}/queue?page=1&pageSize=1000`);
+    const recs = ((q && q.records) || []).filter(r => r.downloadId && want.has(String(r.downloadId).toLowerCase()));
+    if (!recs.length) return;
+    await ext(sv, `/api/${v}/queue/bulk?removeFromClient=false&blocklist=${!!block}&skipRedownload=${!search}`, { method: 'DELETE', body: JSON.stringify({ ids: recs.map(r => r.id) }) });
+    n += recs.length;
+    // Searching again without a blocklist: the apps only search by themselves after blocklisting, so ask them.
+    if (search && !block) {
+      const cmd = sv.type === 'sonarr' ? { name: 'EpisodeSearch', episodeIds: [...new Set(recs.map(r => r.episodeId).filter(Boolean))] }
+        : sv.type === 'radarr' ? { name: 'MoviesSearch', movieIds: [...new Set(recs.map(r => r.movieId).filter(Boolean))] }
+        : { name: 'AlbumSearch', albumIds: [...new Set(recs.map(r => r.albumId).filter(Boolean))] };
+      if ((cmd.episodeIds || cmd.movieIds || cmd.albumIds).length) await ext(sv, `/api/${v}/command`, { method: 'POST', body: JSON.stringify(cmd) }).catch(() => {});
+    }
+  } catch (e) { console.log('[downloads] could not update', sv.name + "'s queue:", e.message); } }));
+  return n;
+}
+const seedCfg = () => ({ on: false, cats: ['tv', 'movies'], files: true, rules: [], other: null, done: false, ...(db.settings.seedGoals || {}) });
 const trackerHost = u => { try { return new URL(String(u)).hostname.toLowerCase().replace(/^(tracker|announce|t|tr)\d*\./, ''); } catch { return ''; } };
 const trkCache = new Map();   // hash -> tracker host (a torrent's tracker does not change)
 const ruleFor = (cfg, host) => cfg.rules.find(r => r.tracker && host && host.includes(r.tracker)) || (cfg.other && (cfg.other.ratio > 0 || cfg.other.days > 0) ? { ...cfg.other, tracker: '*' } : null);
@@ -2832,7 +2859,7 @@ async function seedItems(cfg) {
       if (!host) { try { host = trackerHost(((await qb(s, '/api/v2/torrents/trackers?hash=' + x.hash)) || []).map(t => t.url).find(u => /^(https?|udp):/.test(u))); } catch {} }
       if (host) trkCache.set(x.hash, host);
       const fin = x.completion_on > 0 ? x.completion_on * 1000 : 0;
-      out.push({ sid: s.id, app: s.name, kind: 'qb', hash: x.hash, name: x.name, cat: x.category, host, ratio: +x.ratio || 0, seedSecs: +x.seeding_time || (fin ? (Date.now() - fin) / 1000 : 0), size: +x.size || 0 });
+      out.push({ sid: s.id, app: s.name, kind: 'qb', hash: x.hash, name: x.name, cat: x.category, host, state: String(x.state || ''), ratio: +x.ratio || 0, seedSecs: +x.seeding_time || (fin ? (Date.now() - fin) / 1000 : 0), size: +x.size || 0 });
     }
   } catch {} }
   for (const s of db.services.filter(x => tclients.TYPES.includes(x.type))) { try {
@@ -2843,7 +2870,7 @@ async function seedItems(cfg) {
       if (!host || s.type === 'deluge') { try { const i = await c.info(x.hash); host = host || trackerHost(((i.trackers || [])[0] || {}).url); seed = +(i.props || {}).seedTime || 0; } catch {} }
       if (host) trkCache.set(x.hash, host);
       const h = db.history.find(y => y.hash === x.hash);
-      out.push({ sid: s.id, app: s.name, kind: 'tc', hash: x.hash, name: x.name, cat: x.category, host: host || '', ratio: +x.ratio || 0, seedSecs: seed || (h ? (Date.now() - h.at) / 1000 : 0), size: +x.size || 0 });
+      out.push({ sid: s.id, app: s.name, kind: 'tc', hash: x.hash, name: x.name, cat: x.category, host: host || '', state: String(x.state || ''), ratio: +x.ratio || 0, seedSecs: seed || (h ? (Date.now() - h.at) / 1000 : 0), size: +x.size || 0 });
     }
   } catch {} }
   return out;
@@ -2859,7 +2886,8 @@ async function stillImporting() {
 }
 async function seedCheck(dry) {
   const cfg = seedCfg(), items = await seedItems(cfg), busy = await stillImporting(), now = Date.now();
-  const rows = items.map(x => { const r = ruleFor(cfg, x.host); return { ...x, rule: r ? { tracker: r.tracker, ratio: r.ratio || 0, days: r.days || 0, how: r.how || 'either' } : null, met: !!r && goalMet(r, x), importing: busy.has('*') || busy.has(x.hash.toLowerCase()) }; });
+  // "Done seeding": the tracker's goal is met, or (when chosen) the download app has stopped seeding it by its own limit.
+  const rows = items.map(x => { const r = ruleFor(cfg, x.host), stopped = !!cfg.done && /^(paused|stopped)UP$/.test(x.state || ''); return { ...x, rule: r ? { tracker: r.tracker, ratio: r.ratio || 0, days: r.days || 0, how: r.how || 'either' } : null, stopped, met: (!!r && goalMet(r, x)) || stopped, importing: busy.has('*') || busy.has(x.hash.toLowerCase()) }; });
   const removed = [];
   if (!dry && cfg.on) for (const x of rows.filter(r => r.met && !r.importing)) {
     const s = db.services.find(y => y.id === x.sid); if (!s) continue;
@@ -2867,7 +2895,7 @@ async function seedCheck(dry) {
       if (x.kind === 'qb') await qb(s, '/api/v2/torrents/delete', { hashes: x.hash, deleteFiles: cfg.files ? 'true' : 'false' });
       else await tclients.clientFor(s).act('delete', [x.hash], { files: !!cfg.files });
       trkCache.delete(x.hash);
-      const why = [x.rule.ratio > 0 && x.ratio >= x.rule.ratio ? `ratio ${x.ratio.toFixed(2)}` : '', x.rule.days > 0 && x.seedSecs >= x.rule.days * 86400 ? `${Math.floor(x.seedSecs / 86400)} days seeding` : ''].filter(Boolean).join(' and ');
+      const why = (x.rule ? [x.rule.ratio > 0 && x.ratio >= x.rule.ratio ? `ratio ${x.ratio.toFixed(2)}` : '', x.rule.days > 0 && x.seedSecs >= x.rule.days * 86400 ? `${Math.floor(x.seedSecs / 86400)} days seeding` : ''].filter(Boolean).join(' and ') : '') || (x.stopped ? 'finished seeding' : 'goal met');
       removed.push({ at: now, name: x.name, host: x.host, app: x.app, why, size: x.size, files: !!cfg.files });
     } catch (e) { audit('system', 'Could not remove a seeded torrent', x.name + ': ' + e.message); }
   }
@@ -3922,10 +3950,14 @@ const goatServer = http.createServer(async (req, res) => {
         const risk = (await ratioItems({ sid: s.id, hashes: hashes.split('|').map(h => h.toLowerCase()) }).catch(() => [])).filter(x => x.risk);
         if (risk.length) return send(res, 409, { error: `${risk.length === 1 ? 'This torrent has' : risk.length + ' torrents have'} not been seeded long enough for ${risk.length === 1 ? 'its tracker' : 'their trackers'} yet`, risk: risk.map(x => ({ name: x.name, host: x.host, need: x.need })) });
       }
+      // Also off Sonarr's/Radarr's/Lidarr's queue (blocklisted, searched again) when asked: done first, so they do not
+      // report the torrent missing.
+      let fromArr = 0;
+      if (act === 'delete' && hashes !== 'all' && (b.arr || b.block)) fromArr = await arrQueueRemove(hashes.split('|'), { block: !!b.block, search: !!b.search });
       if (s.type !== 'qbittorrent') {
         if (act === 'location' && adminOnly()) return;
         await tclients.clientFor(s).act(act, hashes === 'all' ? 'all' : hashes.split('|'), { value: b.value, files: !!b.files });
-        if (act === 'delete') audit(me.name, 'Removed downloads', (hashes === 'all' ? 'all' : hashes.split('|').length) + ' torrent(s)' + (b.files ? ' with files' : ''));
+        if (act === 'delete') { audit(me.name, 'Removed downloads', (hashes === 'all' ? 'all' : hashes.split('|').length) + ' torrent(s)' + (b.files ? ' with files' : '') + (b.block ? ', blocklisted' : '') + (b.search ? ', searching again' : '')); return send(res, 200, { fromArr }); }
         return send(res, 200, {});
       }
       const either = async (n, f) => { try { await qb(s, '/api/v2/torrents/' + n[0], f); } catch (e) { if (!e.nf) throw e; await qb(s, '/api/v2/torrents/' + n[1], f); } };
@@ -3939,8 +3971,8 @@ const goatServer = http.createServer(async (req, res) => {
         // With their files: the files go to the recycle bin first (when it can take them).
         const binned = b.files ? await qbBinDelete(s, hashes.split('|'), me.name) : 0;
         if (!b.files) await qb(s, '/api/v2/torrents/delete', { ...f, deleteFiles: 'false' });
-        audit(me.name, 'Removed downloads', hashes.split('|').length + ' torrent(s)' + (b.files ? ' with files' : '') + (binned ? ` (${binned} in the recycle bin)` : ''));
-        return send(res, 200, { binned });
+        audit(me.name, 'Removed downloads', hashes.split('|').length + ' torrent(s)' + (b.files ? ' with files' : '') + (binned ? ` (${binned} in the recycle bin)` : '') + (b.block ? ', blocklisted' : '') + (b.search ? ', searching again' : ''));
+        return send(res, 200, { binned, fromArr });
       }
       else if (['top', 'up', 'down', 'bottom'].includes(act)) await qb(s, '/api/v2/torrents/' + { top: 'topPrio', up: 'increasePrio', down: 'decreasePrio', bottom: 'bottomPrio' }[act], f);
       else if (act === 'category') await qb(s, '/api/v2/torrents/setCategory', { ...f, category: cut(b.value) });
@@ -6355,6 +6387,13 @@ const goatServer = http.createServer(async (req, res) => {
         risk: l.filter(x => x.risk).sort((a, b) => (b.stopped - a.stopped) || (a.seedSecs - b.seedSecs)).slice(0, 300).map(x => ({ sid: x.sid, app: x.app, hash: x.hash, name: x.name, host: x.host, need: x.need, stopped: x.stopped, state: x.state, ratio: x.ratio, seedSecs: Math.round(x.seedSecs) })),
         rules: cfg.rules.length > 0 || !!cfg.other });
     }
+    if (p === '/api/dlremove' && m === 'GET') return send(res, 200, dlRemoveCfg());
+    if (p === '/api/dlremove' && m === 'PUT') {
+      if (adminOnly()) return;
+      const b = await readBody(req); db.settings.dlRemove = Object.fromEntries(Object.keys(DLRM_DEF).map(k => [k, b[k] === undefined ? dlRemoveCfg()[k] : !!b[k]])); save();
+      audit(me.name, 'Changed how downloads are removed', Object.entries(db.settings.dlRemove).filter(([, v]) => v).map(([k]) => k).join(', ') || 'all off');
+      return send(res, 200, dlRemoveCfg());
+    }
     if (p === '/api/seedgoals' && m === 'GET') return send(res, 200, { cfg: seedCfg(), log: (db.seedLog || []).slice(0, 50) });
     if (p === '/api/seedgoals' && m === 'PUT') {
       const b = await readBody(req), num = (v, mx) => Math.min(mx, Math.max(0, Math.round((+v || 0) * 100) / 100));
@@ -6363,7 +6402,7 @@ const goatServer = http.createServer(async (req, res) => {
       const cats = [...new Set((Array.isArray(b.cats) ? b.cats : []).map(c => cut(String(c).trim(), 100)).filter(Boolean))].slice(0, 30);
       if (b.on && !cats.length) return send(res, 400, { error: 'Choose at least one category' });
       const other = b.other && (+b.other.ratio > 0 || +b.other.days > 0) ? (({ ratio, days, how }) => ({ ratio, days, how }))(rule({ ...b.other, tracker: 'x' })) : null;
-      db.settings.seedGoals = { on: !!b.on, cats, files: b.files !== false, rules, other }; mon.seedT = 0; save();
+      db.settings.seedGoals = { on: !!b.on, cats, files: b.files !== false, rules, other, done: !!b.done }; mon.seedT = 0; save();
       audit(me.name, 'Changed tracker seeding goals', `${b.on ? 'on' : 'off'}, ${rules.length} trackers`); return send(res, 200, { cfg: seedCfg() });
     }
     // What the rules would do right now, and every tracker seen, without removing anything.

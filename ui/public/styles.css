@@ -480,3 +480,15 @@ button.sm{min-height:30px;padding:4px 10px;font-size:13px}
 .tkm{max-width:85%;align-self:flex-start}.tkm.me{align-self:flex-end;text-align:right}
 .tkb{display:inline-block;padding:8px 12px;border-radius:14px 14px 14px 4px;background:var(--s2);border:1px solid var(--line);white-space:pre-wrap;word-break:break-word;text-align:left}
 .tkm.me .tkb{border-radius:14px 14px 4px 14px;background:var(--accent);color:#111;border-color:transparent}
+
+/* Downloads: the Remove dialog's choices, and the list without its tick boxes (Settings → Removing downloads) */
+.rmo{display:grid;gap:10px}
+.rmo label.chk{display:flex;align-items:flex-start;gap:10px;margin:0;padding:10px 12px;border:1px solid var(--line);border-radius:10px;cursor:pointer}
+.rmo label.chk:has(input:checked){border-color:var(--accent);background:color-mix(in srgb,var(--accent) 7%,transparent)}
+.rmo label.chk input{margin-top:3px}
+.rmo b{display:block;font-weight:600}.rmo small{display:block;margin-top:2px;color:var(--mute);font-size:12.5px;line-height:1.4}
+#l.nosel [data-s]{display:none}
+/* Long lists: rows and cards off the screen are not laid out or painted until they scroll near (a big library or a
+   long download list stays smooth), and the Downloads list's "Show more". */
+#l>.box.tr{content-visibility:auto;contain-intrinsic-size:auto 96px}
+.dlmore{display:block;width:100%;margin-top:10px;padding:12px}

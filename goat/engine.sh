@@ -45,6 +45,19 @@ fi
 
 export HOME="/config/$app"
 umask "${UMASK:-002}"
+# Less memory (GOAT_LOW_MEMORY=false turns this off):
+# - every app: at most two malloc arenas, the C library's memory pools (by default up to 8 per CPU core, each keeping
+#   freed memory for itself), which is where most of a long-running app's "unused but held" memory goes;
+# - Sonarr, Radarr, Lidarr, Prowlarr and Jellyfin (.NET): the workstation garbage collector, which keeps one small heap
+#   instead of one per core, and gives memory back sooner;
+# - GoatMediaStackarr's own page, Seerr and cross-seed (Node.js): a smaller young-object area.
+if [[ "${GOAT_LOW_MEMORY:-true}" != false ]]; then
+  export MALLOC_ARENA_MAX=2 MALLOC_TRIM_THRESHOLD_=131072
+  case "$name" in
+    sonarr|radarr|lidarr|prowlarr|jellyfin) export DOTNET_gcServer=0 DOTNET_GCConserveMemory=5 DOTNET_TieredPGO=0 ;;
+    ui|seerr|cross-seed|sitefetch) export NODE_OPTIONS="${NODE_OPTIONS:-} --max-semi-space-size=4" ;;
+  esac
+fi
 case "$name" in
   sonarr|radarr|lidarr|prowlarr)
     bin="/opt/$name/${name^}"; cmd=("$bin" -nobrowser "-data=/config/$name") ;;

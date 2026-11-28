@@ -19,7 +19,7 @@
 
 /* ---- The band: backdrop, poster, title, facts, labels, overview */
 .ah{position:relative;display:flex;gap:28px;align-items:flex-start;margin:0 -18px 24px;padding:30px 28px;overflow:hidden;isolation:isolate}
-.ah::before{content:'';position:absolute;inset:0;z-index:-2;background:var(--fan,none) center 25%/cover no-repeat;filter:blur(2px);transform:scale(1.04)}
+.ah::before{content:'';position:absolute;inset:0;z-index:-2;background:var(--fan,none) center 25%/cover no-repeat}
 .ah::after{content:'';position:absolute;inset:0;z-index:-1;background:linear-gradient(90deg,color-mix(in srgb,var(--bg) 94%,transparent) 0%,color-mix(in srgb,var(--bg) 82%,transparent) 55%,color-mix(in srgb,var(--bg) 66%,transparent) 100%),linear-gradient(0deg,var(--bg) 0%,transparent 30%)}
 .ahp{flex:none;width:230px;aspect-ratio:2/3;object-fit:cover;border-radius:6px;box-shadow:0 10px 30px rgba(0,0,0,.45)}
 .ahm{flex:1;min-width:0}
