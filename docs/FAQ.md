@@ -260,6 +260,9 @@ On the Downloads page, open a download (or tick several, then **Remove** in the 
 
 Tick one box, then Shift-click another to select every download in between. Each part can be turned on or off, with the boxes ticked to start with, in Settings → **Download rules** → *Removing downloads*.
 
+**Can torrents from public trackers stop by themselves once they've finished?**
+Yes: Settings → **Download rules** → *Stop public torrents when done*. Tick it and choose the categories (none ticked means every category). A torrent from a public tracker is stopped as soon as it finishes downloading, and torrents from private trackers keep seeding. Sonarr and Radarr still import a stopped torrent as usual. qBittorrent tells which torrents are private. Anything it can't tell about is left alone. To keep one seeding, start it again by hand (it isn't stopped twice), or give it the tag `keep-seeding`.
+
 **Can finished downloads be removed by themselves?**
 Yes, once Sonarr or Radarr has imported them and they're done seeding: Settings → **Download rules** → *Remove after the tracker's seeding goal*. Give private trackers their ratio or days. For the rest, tick *Also when the download app has finished seeding it*, which uses qBittorrent's own share limits. Nothing is removed while it's still waiting to be imported.
 

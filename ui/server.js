@@ -2884,6 +2884,52 @@ async function stillImporting() {
   } catch { busy.add('*'); } }   // an app that does not answer: wait, to be safe
   return busy;
 }
+// Public trackers: a torrent that has finished downloading is stopped instead of seeding on (Settings → Download rules
+// → Stop public torrents when done). Public or private comes from the torrent itself (qBittorrent's "private" flag); on
+// an older qBittorrent that does not say, a tracker with a seeding-goal rule counts as private. When it cannot be told,
+// the torrent is left alone. A torrent stopped once is not stopped again, so starting it by hand keeps it seeding, and
+// the tag "keep-seeding" keeps a torrent out of this.
+const PUBSTOP_DEF = { on: false, cats: [] };
+const pubStopCfg = () => ({ ...PUBSTOP_DEF, ...(db.settings.pubStop || {}) });
+const privCache = new Map();
+async function qbPrivate(s, x) {
+  if (typeof x.private === 'boolean') return x.private;
+  if (typeof x.is_private === 'boolean') return x.is_private;
+  if (privCache.has(x.hash)) return privCache.get(x.hash);
+  let v = null;
+  try { const p = await qb(s, '/api/v2/torrents/properties?hash=' + x.hash); if (typeof p.is_private === 'boolean') v = p.is_private; else if (typeof p.private === 'boolean') v = p.private; } catch {}
+  if (v === null) {
+    let host = trkCache.get(x.hash) || trackerHost(x.tracker);
+    if (!host) { try { host = trackerHost(((await qb(s, '/api/v2/torrents/trackers?hash=' + x.hash)) || []).map(t => t.url).find(u => /^(https?|udp):/.test(u))); } catch {} }
+    if (host) { trkCache.set(x.hash, host); if (seedCfg().rules.some(r => r.tracker && host.includes(r.tracker))) v = true; }
+  }
+  if (v !== null) { if (privCache.size > 5000) privCache.delete(privCache.keys().next().value); privCache.set(x.hash, v); }
+  return v;
+}
+async function pubStop() {
+  const cfg = pubStopCfg(); if (!cfg.on) return [];
+  const cats = (cfg.cats || []).map(c => String(c).toLowerCase()), done = new Set(db.pubStopped || []), stopped = [];
+  for (const s of db.services.filter(x => x.type === 'qbittorrent')) { try {
+    const hs = [];
+    for (const x of await qb(s, '/api/v2/torrents/info?filter=completed')) {
+      if (!(x.progress >= 1) || !/^(uploading|stalledUP|queuedUP)$/.test(x.state || '') || done.has(x.hash)) continue;
+      if (cats.length && !cats.includes(String(x.category || '').toLowerCase())) continue;
+      if (String(x.tags || '').split(',').map(t => t.trim().toLowerCase()).includes('keep-seeding')) continue;
+      if (await qbPrivate(s, x) !== false) continue;
+      hs.push(x.hash); stopped.push({ at: Date.now(), name: x.name, app: s.name, size: +x.size || 0 });
+    }
+    if (!hs.length) continue;
+    const f = { hashes: hs.join('|') };
+    try { await qb(s, '/api/v2/torrents/stop', f); } catch (e) { if (!e.nf) throw e; await qb(s, '/api/v2/torrents/pause', f); }
+    hs.forEach(h => done.add(h));
+  } catch (e) { console.log('[downloads] could not stop public torrents in', s.name + ':', e.message); } }
+  if (stopped.length) {
+    db.pubStopped = [...done].slice(-3000); db.pubLog = [...stopped, ...(db.pubLog || [])].slice(0, 100); save();
+    for (const x of stopped) audit('system', 'Stopped a finished public torrent', x.name);
+    feed('@admins', 'info', 'Finished public torrents stopped', stopped.length === 1 ? `${stopped[0].name} finished downloading and was stopped (public tracker)` : `${stopped.length} finished torrents on public trackers were stopped`, 'downloads');
+  }
+  return stopped;
+}
 async function seedCheck(dry) {
   const cfg = seedCfg(), items = await seedItems(cfg), busy = await stillImporting(), now = Date.now();
   // "Done seeding": the tracker's goal is met, or (when chosen) the download app has stopped seeding it by its own limit.
@@ -2962,6 +3008,7 @@ async function monitor() {
       else if (++st.n >= 2 && st.ok) { st.ok = false; feed('@admins', 'problem', 'App offline', s.name + ' is not responding', 'health'); await notify('offline', 'App offline', s.name + ' is not responding').catch(() => {}); }
     }));
     if (Date.now() - (mon.healT || 0) >= HEAL_MS) { mon.healT = Date.now(); await safe(heal); }
+    if (pubStopCfg().on) await safe(pubStop);
     if (seedCfg().on && Date.now() - (mon.seedT || 0) >= SEED_MS) { mon.seedT = Date.now(); await safe(() => seedCheck(false)); }
     for (const s of db.services.filter(x => x.type === 'unraid')) await safe(async () => {
       const k = (await gql(s, '{ array { capacity { kilobytes { used total } } } }')).array.capacity.kilobytes, pct = +k.used / +k.total * 100, lim = a.diskPct || 90;
@@ -6386,6 +6433,15 @@ const goatServer = http.createServer(async (req, res) => {
       return send(res, 200, { trackers: [...by.values()].map(t => ({ ...t, ratio: t.down ? Math.round(t.up / t.down * 100) / 100 : null, rule: rule(t.host) })).sort((a, b) => b.up - a.up),
         risk: l.filter(x => x.risk).sort((a, b) => (b.stopped - a.stopped) || (a.seedSecs - b.seedSecs)).slice(0, 300).map(x => ({ sid: x.sid, app: x.app, hash: x.hash, name: x.name, host: x.host, need: x.need, stopped: x.stopped, state: x.state, ratio: x.ratio, seedSecs: Math.round(x.seedSecs) })),
         rules: cfg.rules.length > 0 || !!cfg.other });
+    }
+    if (p === '/api/pubstop' && m === 'GET') { if (adminOnly()) return; return send(res, 200, { ...pubStopCfg(), log: (db.pubLog || []).slice(0, 20) }); }
+    if (p === '/api/pubstop' && m === 'PUT') {
+      if (adminOnly()) return;
+      const b = await readBody(req);
+      db.settings.pubStop = { on: !!b.on, cats: (Array.isArray(b.cats) ? b.cats : []).map(c => String(c).trim()).filter(Boolean).slice(0, 50) }; save();
+      audit(me.name, 'Changed stopping public torrents', db.settings.pubStop.on ? 'on' + (db.settings.pubStop.cats.length ? ' for ' + db.settings.pubStop.cats.join(', ') : ', every category') : 'off');
+      if (db.settings.pubStop.on) pubStop().catch(() => {});
+      return send(res, 200, { ...pubStopCfg(), log: (db.pubLog || []).slice(0, 20) });
     }
     if (p === '/api/dlremove' && m === 'GET') return send(res, 200, dlRemoveCfg());
     if (p === '/api/dlremove' && m === 'PUT') {

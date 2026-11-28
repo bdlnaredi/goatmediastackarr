@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- **Stop public torrents when done** (Settings → Download rules): a torrent from a public tracker is stopped as soon as it finishes downloading, instead of seeding on. You can pick categories; with none ticked it applies to every category. Private-tracker torrents keep seeding toward their goals. The app knows public from private by qBittorrent's own flag, and anything it can't tell about is left alone. A torrent you start again by hand, or one tagged `keep-seeding`, keeps seeding.
+
 ## v1.0.42 — 2026-11-28
 
 - **Removing downloads**: Remove asks in one dialog instead of two pop-ups. You can keep or delete the files, **also remove it from Sonarr / Radarr** (off their queue), **blocklist the release** and **search for another**. The same choices are in the Android app.

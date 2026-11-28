@@ -1584,7 +1584,7 @@ const PERMS=[['add','Add downloads and things to the library'],['control','Pause
 const presetOf=u=>{if(!u.perms)return 'std';const v=PERMS.map(([k])=>u.perms[k]!==false);return v.every(Boolean)?'std':v.every(x=>!x)?'view':'custom'};
 
 async function stRules(){
-  const s=first('qbittorrent');if(!s){$('#m').innerHTML=`<div class="panel">Connect qBittorrent for the speed schedule and seeding limits.</div>`;dlRemovePanel();seedGoalsPanel([]);langPrefPanel();importPanel();camPanel();packPanel();return}
+  const s=first('qbittorrent');if(!s){$('#m').innerHTML=`<div class="panel">Connect qBittorrent for the speed schedule and seeding limits.</div>`;pubStopPanel([]);dlRemovePanel();seedGoalsPanel([]);langPrefPanel();importPanel();camPanel();packPanel();return}
   $('#m').innerHTML=skel(3);
   let sch,rules,meta;
   try{[sch,rules,meta]=await Promise.all([api(`/api/qb/${s.id}/schedule`),api('/api/seedrules'),api(`/api/qb/${s.id}/meta`)])}catch(x){$('#m').innerHTML=`<div class="err">${esc(x.message)}</div>`;return}
@@ -1613,7 +1613,7 @@ async function stRules(){
   $('#rl3').onclick=e=>{const d=e.target.closest('[data-d]');if(d)d.closest('[data-rr]').remove()};
   $('#sr3').onclick=async()=>{const list=[...document.querySelectorAll('[data-rr]')].map(r=>({sid:s.id,category:r.querySelector('[data-c]').value,ratio:r.querySelector('[data-r]').value,minutes:r.querySelector('[data-m]').value}));
     try{await api('/api/seedrules','PUT',{rules:list});toast('Rules saved. They apply within a minute.','ok')}catch(x){toast(x.message,'bad')}};
-  dlRemovePanel();seedGoalsPanel(meta.categories.map(c=>c.name));langPrefPanel();importPanel();camPanel();packPanel();
+  pubStopPanel(meta.categories.map(c=>c.name));dlRemovePanel();seedGoalsPanel(meta.categories.map(c=>c.name));langPrefPanel();importPanel();camPanel();packPanel();
 }
 // Tracker seeding goals: each tracker's own rule (ratio, days, or both); finished movies and shows are removed once it is met.
 // Preferred audio languages: the order to prefer them in, set up in Radarr and Sonarr, and marked in interactive search.
@@ -1726,6 +1726,23 @@ async function importPanel(){
     const k=e.target.closest('[data-iskip]'),all=e.target.closest('#iskipall');if(!k&&!all)return;
     if(all&&!confirm("Take every download that waits to be imported off the list? They stay in Downloads; they just won't be imported."))return;
     (k||all).disabled=true;try{const r=await api('/api/import/skip','POST',k?{hash:k.dataset.iskip}:{all:true});toast(r.skipped===1?'Taken off the list':r.skipped+' taken off the list','ok');importPanel()}catch(x){toast(x.message,'bad');(k||all).disabled=false}};
+}
+// Settings → Download rules → Stop public torrents when done: on/off, and which categories.
+async function pubStopPanel(catNames){
+  const box=document.createElement('div');box.className='panel';box.style.cssText='max-width:760px;margin-top:16px';$('#m').append(box);
+  let c;try{c=await api('/api/pubstop')}catch(x){box.innerHTML=`<div class="err">${esc(x.message)}</div>`;return}
+  const cats=[...new Set([...(catNames||[]),...(c.cats||[])])];
+  const draw=()=>{box.innerHTML=`<h3 style="margin-top:0">${T('Stop public torrents when done')}</h3>
+    <p class="mute" style="margin-top:0">${T('A torrent from a public tracker is stopped as soon as it has finished downloading, instead of seeding on. Torrents from private trackers keep seeding (their goals are below).')}</p>
+    <label class="chk" style="display:flex;gap:10px;align-items:center;margin:0 0 12px"><input type="checkbox" id="pso" ${c.on?'checked':''}><b style="font-weight:600">${T('Stop finished public torrents by themselves')}</b></label>
+    <div class="mute" style="font-size:12px;letter-spacing:.06em;text-transform:uppercase;margin:4px 0 8px">${T('Categories')}</div>
+    <div class="row" style="flex-wrap:wrap;gap:6px 16px;margin-bottom:6px">${cats.length?cats.map(n=>`<label class="chk" style="margin:0"><input type="checkbox" data-pc="${esc(n)}" ${(c.cats||[]).includes(n)?'checked':''}>${esc(n)}</label>`).join(''):`<span class="mute">${T('No categories in qBittorrent yet.')}</span>`}</div>
+    <p class="mute" style="font-size:13px;margin-top:4px">${T('None ticked: every category.')} ${T('qBittorrent tells which torrents are private. If it cannot tell (an older qBittorrent), a tracker with a seeding-goal rule below counts as private, and a torrent it still cannot tell is left alone.')} ${T('To keep one seeding, start it again by hand (it is not stopped twice), or give it the tag keep-seeding.')}</p>
+    <div class="row"><button class="primary" id="pss">${T('Save')}</button></div>
+    ${c.log&&c.log.length?`<h4 style="margin:18px 0 6px">${T('Stopped lately')}</h4><div class="mute" style="font-size:13px">${c.log.map(x=>`<div style="display:flex;gap:10px;padding:4px 0;border-top:1px solid var(--line)"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(x.name)}</span><span>${esc(ago(x.at))}</span></div>`).join('')}</div>`:''}`;
+    box.querySelector('#pss').onclick=async()=>{const b={on:box.querySelector('#pso').checked,cats:[...box.querySelectorAll('[data-pc]:checked')].map(x=>x.dataset.pc)};
+      try{c=await api('/api/pubstop','PUT',b);toast(T('Saved'),'ok');draw()}catch(x){toast(x.message,'bad')}}};
+  draw();
 }
 // Settings → Download rules → Removing downloads: an on/off switch for each part.
 async function dlRemovePanel(){
