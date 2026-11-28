@@ -429,7 +429,7 @@ html.pinon body>*:not(.pinlock){visibility:hidden}
 .ov.pg>.dlg{position:relative;z-index:1}
 </style></head><body>
 <div id="app"></div><div id="toasts" aria-live="polite"></div>
-<link rel="stylesheet" href="/statuskit.css"><link rel="stylesheet" href="/cinema.css"><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/settings.css"><link rel="stylesheet" href="/arr.css"><script src="/statuskit.js"></script><script src="/scenes.js"></script><script src="/cinema.js"></script><script src="/qr.js"></script>
+<link rel="stylesheet" href="/statuskit.css"><link rel="stylesheet" href="/cinema.css"><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/settings.css"><link rel="stylesheet" href="/detail.css"><link rel="stylesheet" href="/arr.css"><script src="/statuskit.js"></script><script src="/scenes.js"></script><script src="/cinema.js"></script><script src="/qr.js"></script>
 <script>
 const $=s=>document.querySelector(s);
 // A picture that cannot load (an address that is gone, no internet) leaves an empty space instead of a broken-image sign.
@@ -2618,7 +2618,8 @@ function openLibItem(s,x,cb){
 }
 async function seriesDialog(s,x,cb){
   const admin=me.role==='admin',canAdd=can('add'),z2=n=>String(n).padStart(2,'0');
-  const o=modal(`<button class="pgback" data-x>${ic('back')}Back</button><h2 style="margin:4px 0 0;word-break:break-word">${esc(x.title)}</h2><div id="sd" style="margin-top:12px">${skel(4)}</div><div id="cx" style="margin-top:8px"></div>`,true);pageBg(o,x.fanart||x.poster);o.querySelector('[data-x]').onclick=o.close;
+  const o=modal(`<div id="sd">${arrHead({title:x.title,year:x.year,poster:x.poster,fanart:x.fanart,back:true})}<div style="padding:0 4px">${skel(4)}</div></div><div id="cx" style="margin-top:8px"></div>`,true);o.classList.add('ad');o.firstElementChild.setAttribute('aria-label',x.title);
+  o.addEventListener('click',e=>{if(e.target.closest('[data-x]'))o.close()});
   let d;try{d=await api(`/api/series/${s.id}/${x.id}`)}catch(e){o.querySelector('#sd').innerHTML=`<div class="err">${esc(e.message)}</div>`;return}
   if(d.ids&&d.ids.tmdb)loadExtras(o.querySelector('#cx'),'tv',d.ids.tmdb);
   const nums=[...new Set([...d.seasons.map(q=>q.n),...d.episodes.map(q=>q.season)])].sort((a,b)=>(a===0)-(b===0)||b-a);
@@ -2626,24 +2627,30 @@ async function seriesDialog(s,x,cb){
   const seas=n=>d.seasons.find(q=>q.n===n)||{n,monitored:false};
   const stat=n=>{const e=d.episodes.filter(q=>q.season===n);return{e,have:e.filter(q=>q.has).length,total:e.length,size:e.reduce((a,q)=>a+q.size,0)}};
   const post=async b=>{try{await api('/api/monitor','POST',{sid:s.id,...b});return true}catch(e){toast(e.message,'bad');return false}};
-  const row=e=>`<div class="box row" style="padding:9px 0;margin:0;flex-wrap:wrap;row-gap:4px"><span class="mute" style="min-width:34px">${e.num}</span><div class="grow" style="min-width:0"><span style="word-break:break-word">${esc(e.title||'To be announced')}</span> <span class="mute">${e.date?esc(new Date(e.date).toLocaleDateString()):''}${e.runtime?' · '+e.runtime+' min':''}</span></div>
-    ${e.has?`<span class="pill ok">${esc(e.quality||'Downloaded')}</span>`:e.aired?'<span class="pill bad">Missing</span>':'<span class="pill">Not aired</span>'}
-    <label class="tgl" title="Monitor this episode"><input type="checkbox" data-em="${e.id}" ${e.monitored?'checked':''} ${canAdd?'':'disabled'} aria-label="Monitor episode ${e.num}"></label>
-    ${canAdd?`<button class="icon" data-es="${e.id}" aria-label="Search for episode ${e.num}" title="Search for this episode">${ic('find')}</button><button class="icon" data-ei="${e.id}" aria-label="${T('Choose a release')}: ${e.num}" title="${T('Choose a release (interactive search)')}">${ic('rel')}</button>`:'<span style="width:34px"></span>'}${admin&&e.has?`<button class="icon" data-ed="${e.id}" aria-label="Delete the file of episode ${e.num}" title="Delete this episode's file from disk">${ic('trash')}</button>`:''}
-    ${e.path?`<div class="mute fpath" style="flex-basis:100%;padding-left:42px" title="Where the file is saved">${ic('dl')}<span>${esc(e.path)}</span></div>`:''}
-    ${e.overview?`<div class="mute epo" data-eo title="Tap to read all of it" style="flex-basis:100%;padding-left:42px;margin-top:0">${esc(e.overview)}</div>`:''}</div>`;
+  // An episode: a row of the season's table, like Sonarr's (monitored, number, title, air date, status, actions).
+  const row=e=>`<tr><td class="aem"><label class="tgl" title="Monitor this episode"><input type="checkbox" data-em="${e.id}" ${e.monitored?'checked':''} ${canAdd?'':'disabled'} aria-label="Monitor episode ${e.num}"></label></td>
+    <td class="aen">${e.num}</td>
+    <td class="aet-t"><span class="aett">${esc(e.title||'To be announced')}</span>${e.path?`<div class="mute fpath" title="Where the file is saved">${ic('dl')}<span>${esc(e.path)}</span></div>`:''}${e.overview?`<div class="mute epo" data-eo title="Tap to read all of it">${esc(e.overview)}</div>`:''}</td>
+    <td class="aed mute">${e.date?esc(new Date(e.date).toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'})):''}${e.runtime?`<br><small>${e.runtime} min</small>`:''}</td>
+    <td class="aes">${e.has?`<span class="pill ok">${esc(e.quality||'Downloaded')}</span>`:e.aired?'<span class="pill bad">Missing</span>':'<span class="pill">Not aired</span>'}</td>
+    <td class="aea">${canAdd?`<button class="icon" data-es="${e.id}" aria-label="Search for episode ${e.num}" title="Search for this episode">${ic('find')}</button><button class="icon" data-ei="${e.id}" aria-label="${T('Choose a release')}: ${e.num}" title="${T('Choose a release (interactive search)')}">${ic('rel')}</button>`:''}${admin&&e.has?`<button class="icon" data-ed="${e.id}" aria-label="Delete the file of episode ${e.num}" title="Delete this episode's file from disk">${ic('trash')}</button>`:''}</td></tr>`;
   const draw=()=>{
-    const tot=d.episodes.length,have=d.episodes.filter(q=>q.has).length;
-    o.querySelector('#sd').innerHTML=`<div class="row" style="align-items:flex-start;gap:16px">${x.poster?`<img src="${esc(x.poster)}" alt="" style="width:120px;border-radius:10px;aspect-ratio:2/3;object-fit:cover">`:''}
-      <div class="grow" style="min-width:240px"><div class="mute">${esc([x.year,LSTAT[x.status],x.maker,x.profile].filter(Boolean).join(', '))}</div><div class="mute">${have} of ${tot} episodes downloaded${x.size?', '+fmt(x.size):''}</div>${d.folder?`<div class="mute fpath" title="Where the episodes are saved">${ic('dl')}<span>${esc(d.folder)}</span></div>`:''}${idChips(d.ids,arrBtn(s,arrHref(s,d.slug||x.slug,x.id)))}
-      <p style="margin:8px 0">${esc(x.overview||'No description available.')}</p>
-      <div class="row" style="gap:12px"><label class="tgl"><input type="checkbox" data-mon ${d.monitored?'checked':''} ${canAdd?'':'disabled'}><span>Monitor this series</span></label>
-      ${canAdd?`<button data-sa="1">Monitor all seasons</button><button data-sa="0">Unmonitor all</button><button data-sx>${ic('find')}Search missing</button>`:''}${admin?'<button class="danger" data-rm>Remove</button>':''}</div></div></div>
-      <h3 style="margin:18px 0 8px">Seasons</h3>${nums.map(n=>{const st=stat(n),se=seas(n),isOpen=open.has(n);
-      return `<div class="panel" style="padding:0;margin-bottom:10px;overflow:hidden"><div class="row" data-sh="${n}" style="padding:12px 14px;cursor:pointer;gap:10px"><span class="chev ${isOpen?'o':''}">${ic('chev')}</span><b>${n===0?'Specials':'Season '+n}</b>
-        <span class="mute">${st.have}/${st.total} episodes${st.size?', '+fmt(st.size):''}</span><span class="grow"></span>
-        <label class="tgl" title="Monitor this season"><input type="checkbox" data-sm="${n}" ${se.monitored?'checked':''} ${canAdd?'':'disabled'} aria-label="Monitor season ${n}"></label>${canAdd?`<button data-ss="${n}">Search season</button><button data-si="${n}" title="${T('Choose a season pack yourself from what your indexers have')}">${T('Choose a release')}</button>`:''}${admin&&st.have?`<button class="icon" data-sd="${n}" aria-label="Delete the files of ${n===0?'Specials':'season '+n}" title="Delete this season's files from disk">${ic('trash')}</button>`:''}</div>
-        ${isOpen?`<div style="border-top:1px solid var(--line);padding:2px 14px">${st.e.map(row).join('')||'<p class="mute">No episodes listed.</p>'}</div>`:''}</div>`}).join('')||'<p class="mute">No seasons found.</p>'}`;
+    const tot=d.episodes.length,have=d.episodes.filter(q=>q.has).length,aired=d.episodes.filter(q=>q.aired||q.has).length;
+    const tools=[canAdd&&`<button data-sx>${ic('find')}<span>${T('Search missing')}</span></button>`,canAdd&&`<button data-sa="1">${ic('check')}<span>${T('Monitor all')}</span></button>`,canAdd&&`<button data-sa="0">${ic('x')}<span>${T('Unmonitor all')}</span></button>`,
+      admin&&`<button data-rm class="danger">${ic('trash')}<span>${T('Remove')}</span></button>`].filter(Boolean);
+    const arr=arrHref(s,d.slug||x.slug,x.id);
+    o.querySelector('#sd').innerHTML=arrHead({title:x.title,year:x.year,poster:x.poster,fanart:x.fanart,back:true,tools:tools.join('')+(arr?`<a class="btn" href="${esc(arr)}" target="_blank" rel="noopener noreferrer">${ic('ext')}<span>Sonarr</span></a>`:''),
+      mon:`<label class="tgl" title="${T('Monitor this series')}"><input type="checkbox" data-mon ${d.monitored?'checked':''} ${canAdd?'':'disabled'} aria-label="${T('Monitor this series')}"></label>`,
+      facts:[x.maker,(x.runtime?x.runtime+' min':''),(x.genres||[]).slice(0,3).join(', ')],
+      labels:[[ic('dl'),T('Path'),d.folder],[ic('box'),T('Size'),x.size?fmt(x.size):''],[ic('film'),T('Quality profile'),x.profile],
+        [ic('info'),T('Status'),LSTAT[x.status]||x.status,x.status==='continuing'?'ok':x.status==='ended'?'bad':''],[ic('tv'),T('Episodes'),`${have} / ${tot}`,have>=aired&&aired?'ok':have<aired?'bad':'']],
+      ids:idChips(d.ids,''),overview:x.overview})
+    +`<h3 class="asec">${T('Seasons')}</h3>${nums.map(n=>{const st=stat(n),se=seas(n),isOpen=open.has(n),air=st.e.filter(q=>q.aired||q.has).length,cls=st.total&&st.have>=st.total?'ok':st.have<air?'bad':'acc';
+      return `<section class="asn ${isOpen?'o':''}"><div class="asnh" data-sh="${n}"><span class="chev ${isOpen?'o':''}">${ic('chev')}</span>
+        <label class="tgl" title="Monitor this season"><input type="checkbox" data-sm="${n}" ${se.monitored?'checked':''} ${canAdd?'':'disabled'} aria-label="Monitor season ${n}"></label>
+        <b>${n===0?'Specials':'Season '+n}</b><span class="pill ${cls}" title="${st.have} of ${st.total} episodes downloaded">${st.have}/${st.total}</span>${st.size?`<span class="mute">${fmt(st.size)}</span>`:''}<span class="grow"></span>
+        ${canAdd?`<button class="icon" data-ss="${n}" title="${T('Search season')}" aria-label="${T('Search season')} ${n}">${ic('find')}</button><button class="icon" data-si="${n}" title="${T('Choose a season pack yourself from what your indexers have')}" aria-label="${T('Choose a release')}">${ic('rel')}</button>`:''}${admin&&st.have?`<button class="icon" data-sd="${n}" aria-label="Delete the files of ${n===0?'Specials':'season '+n}" title="Delete this season's files from disk">${ic('trash')}</button>`:''}</div>
+        ${isOpen?(st.e.length?`<div class="aetw"><table class="aet"><thead><tr><th class="aem"></th><th class="aen">#</th><th>${T('Title')}</th><th class="aed">${T('Air date')}</th><th class="aes">${T('Status')}</th><th class="aea"></th></tr></thead><tbody>${st.e.map(row).join('')}</tbody></table></div>`:'<p class="mute" style="padding:0 14px 12px">No episodes listed.</p>'):''}</section>`}).join('')||'<p class="mute">No seasons found.</p>'}`;
   };
   draw();
   const root=o.querySelector('#sd');
@@ -2669,7 +2676,7 @@ async function seriesDialog(s,x,cb){
         d.episodes.forEach(q=>{if(ep?q.id===ep.id:q.season===n){q.has=false;q.size=0;q.quality='';q.path='';q.fileId=0}});binNote(r,r.deleted===1?'File deleted':r.deleted+' files deleted');draw();if(cb.onChange)cb.onChange()}
       catch(ex){(ed||sd).disabled=false;toast(ex.message,'bad')}return}
     const ss=e.target.closest('[data-ss]'),es=e.target.closest('[data-es]'),sa=e.target.closest('[data-sa]'),sx=e.target.closest('[data-sx]'),rm=e.target.closest('[data-rm]');
-    if(ss){ss.disabled=true;try{await api('/api/auto','POST',{sid:s.id,id:x.id,scope:'season',season:+ss.dataset.ss});toast('Searching season '+ss.dataset.ss,'ok')}catch(ex){toast(ex.message,'bad')}ss.disabled=false}
+    if(ss){ss.disabled=true;try{await api('/api/auto','POST',{sid:s.id,id:x.id,scope:'season',season:+ss.dataset.ss});toast('Searching season '+ss.dataset.ss,'ok')}catch(ex){toast(ex.message,'bad')}ss.disabled=false;return}
     if(es){const ep=d.episodes.find(q=>q.id===+es.dataset.es);showDetail({title:x.title,sub:`S${z2(ep.season)}E${z2(ep.num)} ${ep.title}`,date:ep.date,poster:x.poster,overview:ep.overview,about:x.overview,sid:s.id,id:ep.id})}
     if(sx){sx.disabled=true;try{await api('/api/auto','POST',{sid:s.id,id:x.id,scope:'series'});toast('Searching for missing episodes','ok')}catch(ex){toast(ex.message,'bad')}sx.disabled=false}
     if(sa){const v=sa.dataset.sa==='1';sa.disabled=true;let ok=true;
@@ -2677,6 +2684,18 @@ async function seriesDialog(s,x,cb){
       if(ok)toast(v?'All seasons monitored':'All seasons unmonitored','ok');draw()}
     if(rm){if(!confirm('Remove "'+x.title+'" from your library?'))return;const files=confirm('Also delete the downloaded files from disk?\n\nOK = delete the files, Cancel = keep the files');
       try{const r=await api(`/api/library/${s.id}/${x.id}?files=${files?1:0}`,'DELETE');o.close();binNote(r,'Removed');if(cb.onRemove)cb.onRemove()}catch(ex){toast(ex.message,'bad')}}});
+}
+// The top of a show's or movie's page, like Sonarr's and Radarr's: the backdrop behind the poster, the title, a line of
+// facts, labels (path, size, quality profile, status…), the IDs and the overview; the actions as a toolbar above it.
+function arrHead(h){
+  const lab=(h.labels||[]).filter(l=>l[2]).map(([i,k,v,c])=>`<span class="al ${c||''}" title="${esc(k)}">${i}<span class="alk">${esc(k)}</span><span class="alv">${esc(v)}</span></span>`).join('');
+  return `${h.back||h.tools?`<div class="atb">${h.back?`<button data-x class="atbk">${ic('back')}<span>${T('Back')}</span></button>`:''}${h.tools||''}</div>`:''}
+  <div class="ah"${h.fanart||h.poster?` style="--fan:url('${esc(String(h.fanart||h.poster).replace(/'/g,'%27'))}')"`:''}>
+    ${h.poster?`<img class="ahp" src="${esc(h.poster)}" alt="">`:''}
+    <div class="ahm"><div class="aht">${h.mon||''}<h2>${esc(h.title||'')}${h.year?` <span>${esc(h.year)}</span>`:''}</h2></div>
+      ${(h.facts||[]).filter(Boolean).length?`<div class="ahf">${h.facts.filter(Boolean).map(esc).join('<i>·</i>')}</div>`:''}
+      ${lab?`<div class="ahl">${lab}</div>`:''}${h.extra||''}${h.ids||''}
+      ${h.overview!=null?`<p class="aho">${esc(h.overview||T('No description available yet.'))}</p>`:''}</div></div>`;
 }
 // The page of a movie or show inside Radarr or Sonarr itself (admins only).
 const arrHref=(s,slug,id)=>{if(me.role!=='admin'||!s)return '';const b=String(svcOpen(s)||'').replace(/\/+$/,'');if(!b)return '';return b+(s.type==='sonarr'?'/series/'+encodeURIComponent(slug||''):'/movie/'+encodeURIComponent(slug||id))};
@@ -2708,19 +2727,22 @@ async function subsBox(el,x){
 }
 function showDetail(x){
   const o=document.createElement('div');o.className='ov pg';
-  o.innerHTML=`<div class="dlg" role="dialog" aria-modal="true" aria-label="${esc(x.title)}"><button class="pgback" id="bk" style="flex-basis:100%;width:max-content">${ic('back')}Back</button>${x.poster?`<img src="${esc(x.poster)}" alt="" style="width:160px;border-radius:8px;align-self:flex-start">`:''}
-    <div style="flex:1;min-width:220px"><h2 style="margin:0">${esc(x.title)}</h2>
-    <div class="mute">${esc(x.sub||'')}${x.date?' · '+new Date(x.date).toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'}):''}</div>
-    ${x.meta?`<div class="mute">${esc(x.meta)}</div>`:''}
-    ${x.sid&&x.id&&x.scope!=='series'?'<div id="fs" class="chips" style="margin:8px 0" role="status"></div>':''}
-    ${x.sid&&x.id&&ofType('bazarr').length?'<div id="sbz" class="sbz"></div>':''}
-    <p>${esc(x.overview||'No description available yet.')}</p>${x.mon?`<label class="tgl" style="margin:4px 0 10px"><input type="checkbox" id="mon" ${x.mon.monitored?'checked':''} ${can('add')?'':'disabled'}><span>Monitored</span></label>`:''}${x.about?`<h3>About the series</h3><p class="mute">${esc(x.about)}</p>`:''}
-    <div class="row">${x.sid&&x.id&&can('add')?`<button id="au">${x.scope==='series'?'Search missing episodes':'Auto search'}</button>${x.scope==='series'?'':'<button id="in">Interactive search</button>'}`:''}${x.del?'<button id="rm">Remove</button>':''}${x.sid&&x.id&&!me.kids?`<button class="ghost" id="rpb" title="Tell the admin it will not play, has the wrong language, a bad copy…">${ic('chat')}Report a problem</button>`:''}<button class="primary" id="cl">Close</button></div>
-    <div class="mute" id="st" role="status" style="margin-top:8px"></div></div><div id="rl" style="flex-basis:100%"></div><div id="cx" style="flex-basis:100%;min-width:0"></div></div>`;
+  // Laid out like Radarr's movie page (and Sonarr's for an episode): the actions as a toolbar, then the backdrop band
+  // with the poster, title, facts, the file's labels, the IDs and the overview.
+  const yr=/^\d{4}$/.test(String(x.sub||''))?String(x.sub):'',canSearch=x.sid&&x.id&&can('add');
+  const tools=[canSearch&&`<button id="au">${ic('find')}<span>${x.scope==='series'?T('Search missing'):T('Search')}</span></button>`,canSearch&&x.scope!=='series'&&`<button id="in">${ic('rel')}<span>${T('Interactive search')}</span></button>`,
+    x.arr&&x.arr.replace(/^<a class="pill acc"/,'<a class="btn"').replace(/>(Sonarr|Radarr) (<svg[\s\S]*?<\/svg>)<\/a>$/,'>$2<span>$1</span></a>'),x.sid&&x.id&&!me.kids&&`<button id="rpb" title="Tell the admin it will not play, has the wrong language, a bad copy…">${ic('chat')}<span>${T('Report a problem')}</span></button>`,
+    x.del&&`<button id="rm" class="danger">${ic('trash')}<span>${T('Remove')}</span></button>`].filter(Boolean).join('');
+  o.innerHTML=`<div class="dlg" role="dialog" aria-modal="true" aria-label="${esc(x.title)}">${arrHead({title:x.title,year:yr,poster:x.poster,fanart:x.fanart,back:true,tools,
+    mon:x.mon?`<label class="tgl" title="${T('Monitored')}"><input type="checkbox" id="mon" ${x.mon.monitored?'checked':''} ${can('add')?'':'disabled'} aria-label="${T('Monitored')}"></label>`:'',
+    facts:[yr?'':x.sub,x.date?new Date(x.date).toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'}):'',x.meta],
+    extra:`${x.sid&&x.id&&x.scope!=='series'?'<div id="fs" class="ahl" role="status"></div>':''}${x.sid&&x.id&&ofType('bazarr').length?'<div id="sbz" class="sbz"></div>':''}`,overview:x.overview})}
+    ${x.about?`<h3 class="asec">About the series</h3><p class="mute">${esc(x.about)}</p>`:''}
+    <div class="mute" id="st" role="status" style="margin:8px 0"></div><div id="rl"></div><div id="cx" style="min-width:0"></div></div>`;
+  o.classList.add('ad');
   const k=e=>{if(e.key==='Escape')close()},close=()=>{o.remove();document.removeEventListener('keydown',k)};
   document.addEventListener('keydown',k);
-  document.body.append(o);const q=s=>o.querySelector(s),st=q('#st');q('#cl').onclick=close;q('#bk').onclick=close;q('#bk').focus();
-  pageBg(o,x.fanart||x.poster);
+  document.body.append(o);const q=s=>o.querySelector(s),st=q('#st');q('[data-x]').onclick=close;q('[data-x]').focus();
   if(q('#rpb'))q('#rpb').onclick=()=>{const m=modal(`<h2 style="margin-top:0">Report a problem</h2><p class="mute">With ${esc(x.title)}: what is wrong? (Will not play, no sound, wrong language, bad picture, missing episode…) The admin is told and can write back.</p><form id="rpf"><textarea name="text" rows="3" maxlength="500" required style="width:100%" placeholder="What is wrong?"></textarea><div class="err" id="rpe"></div><div class="row"><button class="primary">Send report</button><button type="button" data-x>Cancel</button></div></form>`);
     m.querySelector('[data-x]').onclick=m.close;m.querySelector('textarea').focus();
     m.querySelector('#rpf').onsubmit=async e=>{e.preventDefault();try{await api('/api/reports','POST',{title:x.title+(x.sub&&/^\d{4}$/.test(x.sub)?' ('+x.sub+')':''),text:e.target.text.value,sid:x.sid,key:String(x.id),kind:x.fkind||(x.scope==='series'?'series':'')});m.close();toast('Sent to the admin. You can follow it under Requests.','ok')}catch(y){m.querySelector('#rpe').textContent=y.message}}};
@@ -2728,7 +2750,7 @@ function showDetail(x){
     if(f.have){const fl=f.file||{};b.innerHTML=`<span class="pill ok">File available</span>${fl.quality?`<span class="pill">${esc(fl.quality)}</span>`:''}${fl.codec?`<span class="pill">${esc(fl.codec)}</span>`:''}${(fl.langs||[]).length?`<span class="pill">${esc(fl.langs.join(', '))}</span>`:''}${fl.size?`<span class="pill">${fmt(fl.size)}</span>`:''}${fl.path||fl.name?`<div class="mute fpath" title="Where the file is saved">${ic('dl')}<span>${esc(fl.path||fl.name)}</span></div>`:''}${me.role==='admin'&&fl.id?`<button class="danger sm" id="dfile" style="flex-basis:auto">${ic('trash')}Delete file</button>`:''}`}
     else b.innerHTML=!f.released?'<span class="pill">Not released yet</span>':`<span class="pill bad">No file yet</span><span class="mute">${f.monitored?'Monitored, waiting for a download.':'Not monitored, so nothing will be downloaded.'}</span>`;if(!f.have&&f.folder)b.insertAdjacentHTML('beforeend',`<div class="mute fpath" title="Where it will be saved">${ic('dl')}<span>${esc(f.folder)}</span></div>`);
     const df=q('#dfile');if(df)df.onclick=async()=>{if(!confirm('Delete the downloaded file of "'+x.title+'" from disk? It stays in the library'+(f.monitored?' and is monitored, so it may be downloaded again.':'.')))return;df.disabled=true;
-      try{const r=await api(`/api/files?sid=${encodeURIComponent(x.sid)}&kind=${f.kind==='movie'?'movie':'episode'}&id=${x.id}`,'DELETE');binNote(r,'File deleted');b.innerHTML='<span class="pill bad">File deleted</span>';if(x.onfiles)x.onfiles()}catch(e){df.disabled=false;toast(e.message,'bad')}};if(f.ids||x.arr){b.insertAdjacentHTML('afterend',idChips(f.ids,x.arr));if(f.ids&&f.ids.tmdb)if(f.ids.tmdb)loadExtras(q('#cx'),f.ids.type,f.ids.tmdb)}}).catch(()=>{const b=q('#fs');if(b)b.remove()});
+      try{const r=await api(`/api/files?sid=${encodeURIComponent(x.sid)}&kind=${f.kind==='movie'?'movie':'episode'}&id=${x.id}`,'DELETE');binNote(r,'File deleted');b.innerHTML='<span class="pill bad">File deleted</span>';if(x.onfiles)x.onfiles()}catch(e){df.disabled=false;toast(e.message,'bad')}};if(f.ids){b.insertAdjacentHTML('afterend',idChips(f.ids,''));if(f.ids&&f.ids.tmdb)if(f.ids.tmdb)loadExtras(q('#cx'),f.ids.type,f.ids.tmdb)}}).catch(()=>{const b=q('#fs');if(b)b.remove()});
   if(q('#mon'))q('#mon').onchange=async e=>{const t=e.target,v=t.checked;t.disabled=true;
     try{await api('/api/monitor','POST',{sid:x.mon.sid,kind:x.mon.kind,id:x.mon.id,monitored:v});x.mon.monitored=v;if(x.mon.onChange)x.mon.onChange(v);toast(v?'Now monitored':'No longer monitored','ok')}
     catch(ex){t.checked=!v;st.textContent=ex.message}t.disabled=!can('add')};

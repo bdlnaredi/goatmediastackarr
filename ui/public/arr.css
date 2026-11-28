@@ -37,6 +37,14 @@
   [data-look=arr] main>:not(.ph){margin-left:20px;margin-right:20px}
   [data-look=arr] main>.demo{margin-top:16px}
   /* The page title as the *arr apps' toolbar strip under the header. */
+  /* Pages that open over the page (a title, a person…) open beside the sidebar and under the header, like the
+     *arr apps' own pages; dialogs open over everything. */
+  [data-look=arr] .ov{z-index:30}
+  [data-look=arr] .ov.pg{z-index:15;top:60px;left:240px}
+  html[data-look=arr][data-rail=min] .ov.pg{left:64px}
+  [data-look=arr] .ov.pg>.dlg{max-width:none!important;padding:20px 24px 40px}
+  [data-look=arr] .ov.pg .pgbg{top:60px;left:240px}
+  html[data-look=arr][data-rail=min] .ov.pg .pgbg{left:64px}
   [data-look=arr] .ph{margin:0 0 18px;padding:12px 20px;border-bottom:0;background:var(--arr-tool);box-shadow:0 1px 0 var(--line)}
   [data-look=arr] .ph h1{font-size:20px;font-weight:400;color:var(--arr-title);letter-spacing:0;margin:0}
   [data-look=arr] .ph .phk{display:none}

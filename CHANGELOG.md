@@ -4,6 +4,9 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- **Show and movie pages laid out like Sonarr's and Radarr's** (every style): a toolbar of actions across the top (Back, Search, Interactive search, Monitor all, Remove, open in Sonarr/Radarr), then a band with the backdrop behind the poster, the title and year, the facts, labels (Path, Size, Quality profile, Status, Episodes), the IDs and the overview. A show's seasons are blocks with their own monitor switch, have/total count, size and buttons, and each opens to a table of its episodes (number, title, air date, status).
+- **Arr style: pages open beside the side menu.** A show's or movie's page used to open behind the side menu; it now opens to the right of it, under the top bar.
+
 ## v1.0.41.1 — 2026-11-25
 
 - **The FAQ in the web page and the app**: Settings → Help → **FAQ** (web page) and ☰ → **FAQ** (Android app) show the questions only, in sections; tap one and its answer opens under it. A search box finds questions by their answers too, and the sections at the top jump to their questions. It is the same FAQ as on GitHub ([docs/FAQ.md](docs/FAQ.md)), read from the server, so it is never out of date.

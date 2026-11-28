@@ -1,0 +1,79 @@
+/* A show's or movie's page, laid out like Sonarr's and Radarr's (in every style): a toolbar of actions, a band with the
+   backdrop behind the poster, title, facts, labels and overview, then the seasons as tables of episodes. */
+
+.ov.pg.ad>.dlg{display:block;max-width:1280px!important;padding-top:0!important}
+.ov.pg.ad>.dlg::before{display:none}
+.ov.pg.ad>.dlg>*+*{margin-top:18px}
+.ov.pg.ad>.dlg>.ah,.ov.pg.ad>.dlg>.atb+.ah{margin-top:0}
+
+/* ---- Toolbar: the actions, an icon over each name, kept at the top while scrolling */
+.atb{position:sticky;top:0;z-index:4;display:flex;align-items:stretch;gap:2px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;
+  margin:0 -18px;padding:6px 14px;background:color-mix(in srgb,var(--s1) 94%,transparent);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.atb::-webkit-scrollbar{display:none}
+.atb>button,.atb>a.btn{flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-width:74px;padding:7px 10px;margin:0;
+  border:0!important;border-radius:8px;background:transparent!important;box-shadow:none!important;color:var(--text);font-size:12px;font-weight:500;text-decoration:none;line-height:1.1;white-space:nowrap}
+.atb>button .ic,.atb>a.btn .ic{width:20px;height:20px;margin:0}
+.atb>button:hover:not(:disabled),.atb>a.btn:hover{background:color-mix(in srgb,var(--text) 8%,transparent)!important;color:var(--accent)}
+.atb>button.danger{color:var(--bad,#e5484d)}
+.atb>.atbk{margin-right:8px;border-right:1px solid var(--line)!important;border-radius:8px 0 0 8px}
+
+/* ---- The band: backdrop, poster, title, facts, labels, overview */
+.ah{position:relative;display:flex;gap:28px;align-items:flex-start;margin:0 -18px 24px;padding:30px 28px;overflow:hidden;isolation:isolate}
+.ah::before{content:'';position:absolute;inset:0;z-index:-2;background:var(--fan,none) center 25%/cover no-repeat;filter:blur(2px);transform:scale(1.04)}
+.ah::after{content:'';position:absolute;inset:0;z-index:-1;background:linear-gradient(90deg,color-mix(in srgb,var(--bg) 94%,transparent) 0%,color-mix(in srgb,var(--bg) 82%,transparent) 55%,color-mix(in srgb,var(--bg) 66%,transparent) 100%),linear-gradient(0deg,var(--bg) 0%,transparent 30%)}
+.ahp{flex:none;width:230px;aspect-ratio:2/3;object-fit:cover;border-radius:6px;box-shadow:0 10px 30px rgba(0,0,0,.45)}
+.ahm{flex:1;min-width:0}
+.aht{display:flex;align-items:center;gap:12px}
+.aht h2{margin:0;font-size:clamp(24px,3.2vw,38px);line-height:1.15;font-weight:500;letter-spacing:-.01em;word-break:break-word;color:var(--text)}
+.aht h2 span{font-weight:300;color:var(--mute)}
+.ahf{margin:8px 0 0;color:var(--mute);font-size:15px}.ahf i{font-style:normal;margin:0 8px;opacity:.6}
+.ahl{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 4px}
+.al{display:inline-flex;align-items:center;gap:7px;max-width:100%;padding:6px 10px;border-radius:4px;background:color-mix(in srgb,var(--text) 9%,transparent);font-size:13px;color:var(--text)}
+.al .ic{width:14px;height:14px;flex:none;opacity:.8}
+.al .alk{color:var(--mute)}
+.al .alv{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:420px}
+.al.ok{background:color-mix(in srgb,#27c24c 22%,transparent)}.al.ok .ic{color:#27c24c}
+.al.bad{background:color-mix(in srgb,#f05050 22%,transparent)}.al.bad .ic{color:#f05050}
+/* The file's details (Radarr): the same labels */
+.ah #fs .pill{border-radius:4px;padding:6px 10px;font-size:13px;border:0;background:color-mix(in srgb,var(--text) 9%,transparent)}
+.ah #fs .pill.ok{background:color-mix(in srgb,#27c24c 22%,transparent)}.ah #fs .pill.bad{background:color-mix(in srgb,#f05050 22%,transparent)}
+.ah #fs .fpath{flex-basis:100%}
+.ah .chips{margin:10px 0 0}
+.aho{margin:16px 0 0;max-width:900px;line-height:1.6;font-size:15px;color:var(--text)}
+.ah .sbz{margin-top:10px}
+
+/* ---- Seasons: a block each, its episodes as a table */
+.asec{margin:6px 0 12px;font-size:20px;font-weight:500}
+.asn{margin:0 0 12px;border:1px solid var(--line);border-radius:6px;background:var(--s1);overflow:hidden}
+.asnh{display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;flex-wrap:wrap}
+.asnh b{font-size:17px;font-weight:500}
+.asnh .pill{border-radius:4px;font-weight:600}
+.asnh .pill.acc{background:color-mix(in srgb,var(--accent) 22%,transparent);color:var(--text)}
+.asn.o .asnh{border-bottom:1px solid var(--line)}
+.aetw{overflow-x:auto}
+.aet{width:100%;border-collapse:collapse;font-size:14px}
+.aet th{text-align:left;font-weight:600;color:var(--mute);font-size:12.5px;padding:9px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+.aet td{padding:9px 8px;border-top:1px solid var(--line);vertical-align:top}
+.aet tbody tr:first-child td{border-top:0}
+.aet tbody tr:hover{background:color-mix(in srgb,var(--text) 4%,transparent)}
+.aet .aem{width:48px;padding-left:14px}.aet .aen{width:34px;color:var(--mute);text-align:right}
+.aet .aed{width:120px;white-space:nowrap}.aet .aes{width:1%;white-space:nowrap}.aet .aea{width:1%;white-space:nowrap;text-align:right;padding-right:14px}
+.aet .aes .pill{border-radius:4px}
+.aet .aett{font-weight:500}
+.aet .fpath,.aet .epo{margin-top:4px;font-size:12.5px}
+.aet td .icon{width:32px;height:32px}
+
+/* ---- Phone and narrow screens */
+@media(max-width:760px){
+  .atb{margin:0 -14px;padding:4px 8px}
+  .atb>button,.atb>a.btn{min-width:64px;padding:6px 8px;font-size:11px}
+  .ah{flex-direction:column;gap:16px;margin:0 -14px 18px;padding:20px 16px}
+  .ahp{width:120px}
+  .ah:has(.ahp){display:grid;grid-template-columns:110px 1fr;align-items:start}
+  .ah:has(.ahp) .ahp{width:110px}
+  .ah:has(.ahp) .ahm{display:contents}
+  .ah:has(.ahp) .aht{grid-column:2;align-self:center}
+  .ah:has(.ahp) .ahm>:not(.aht){grid-column:1/-1}
+  .al .alv{max-width:220px}
+  .aet .aed,.aet .aem{display:none}
+}
