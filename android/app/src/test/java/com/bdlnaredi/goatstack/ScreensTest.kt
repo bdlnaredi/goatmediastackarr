@@ -244,7 +244,7 @@ class ScreensTest {
         tap("Discover"); waitFor("Quiet Orbit")
         compose.onAllNodesWithText("Quiet Orbit").onFirst().performClick(); waitFor("Some signals"); shot("31-title")
         // The cast opens a person's page with everything they were in; "More like this" sits under the cast.
-        scrollTo("Ana Reyes"); compose.onAllNodesWithText("Ana Reyes").onFirst().performClick(); waitFor("Filmography (5)"); waitFor("Lisbon, Portugal"); shot("56-person")
+        scrollTo("Ana Reyes"); compose.onAllNodesWithText("Ana Reyes").onFirst().performClick(); waitFor("Complete career 5"); waitFor("Lisbon, Portugal"); shot("56-person")
         tap("Shows 1"); waitFor("Northwind"); back()
         scrollTo("More like this"); waitFor("Paper Kites"); shot("55-more-like-this")
         scrollTo("Cast"); shot("32-title-cast")

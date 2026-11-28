@@ -492,3 +492,25 @@ button.sm{min-height:30px;padding:4px 10px;font-size:13px}
    long download list stays smooth), and the Downloads list's "Show more". */
 #l>.box.tr{content-visibility:auto;contain-intrinsic-size:auto 96px}
 .dlmore{display:block;width:100%;margin-top:10px;padding:12px}
+
+/* A person's page: "Known for" and "Complete career" tabs; the career as a light list by year */
+.ptabs{display:flex;gap:4px;margin:22px 0 14px;border-bottom:1px solid var(--line)}
+.ptabs button{padding:10px 16px;margin:0 0 -1px;border:0;border-bottom:2px solid transparent;border-radius:0;background:none;color:var(--mute);font-weight:600;font-size:15px}
+.ptabs button:hover{color:var(--text)}
+.ptabs button.on{color:var(--text);border-bottom-color:var(--accent)}
+.pfl{display:grid;gap:4px}
+.pfy{display:grid;grid-template-columns:64px minmax(0,1fr);column-gap:12px;padding:6px 0;border-top:1px solid var(--line);content-visibility:auto;contain-intrinsic-size:auto 80px}
+.pfy:first-child{border-top:0}
+.pfy h4{grid-row:span 99;margin:10px 0 0;font-size:15px;color:var(--mute);font-variant-numeric:tabular-nums}
+.pfr{grid-column:2;display:flex;align-items:center;gap:12px;width:100%;padding:6px 8px;border:0;border-radius:8px;background:none;color:inherit;text-align:left}
+.pfr:hover{background:color-mix(in srgb,var(--text) 6%,transparent)}
+.pfp{flex:none;width:40px;aspect-ratio:2/3;border-radius:4px;overflow:hidden;background:var(--s2)}
+.pfp img{width:100%;height:100%;object-fit:cover;display:block}
+.pft{flex:1;min-width:0}.pft b{display:block;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pft small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pfm{flex:none;display:flex;align-items:center;gap:8px;font-size:13px}
+.pfm .cn-have{position:static;inset:auto;margin:0}
+@media(max-width:600px){.pfy{grid-template-columns:40px minmax(0,1fr);column-gap:6px}.pfy h4{font-size:13px}.pfr{gap:10px;padding:6px 4px}.pfm{flex-direction:column;align-items:flex-end;gap:3px;font-size:12px}}
+/* The same look in every style (some give every button a box) */
+.pfr,.pfr:hover{border:0!important;box-shadow:none!important;min-width:0}.pfr{background:none!important}.pfr:hover{background:color-mix(in srgb,var(--text) 6%,transparent)!important}
+.ptabs button{background:none!important;box-shadow:none!important;border-top:0!important;border-left:0!important;border-right:0!important}

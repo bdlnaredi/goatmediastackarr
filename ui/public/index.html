@@ -3215,7 +3215,8 @@ const posterRow=(title,l,sub)=>l&&l.length?`${rowHead(title,sub)}<div class="cn-
 function titleExtras(el,t){
   if(!el||!t)return;
   el.innerHTML=castRow(t.cast)+posterRow('More like this',t.similar);
-  el.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>{const p=t.cast[b.dataset.p];if(p&&p.id)personPage(p.id,p)});
+  el.querySelectorAll('[data-p]').forEach(b=>{b.onclick=()=>{const p=t.cast[b.dataset.p];if(p&&p.id)personPage(p.id,p)};
+    b.addEventListener('pointerenter',()=>{const p=t.cast[b.dataset.p];if(p&&p.id)setTimeout(()=>{if(b.matches(':hover'))personData(p.id)},150)})});
   el.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{const x=t.similar[b.dataset.t];titlePage(x.type,x.id,x)});
   // More from the same studio (movies) or network (shows), fetched after the page is up.
   if(t.maker&&t.maker.id&&!me.kids){const m=document.createElement('div');el.append(m);
@@ -3477,26 +3478,47 @@ async function titleEpisodes(box,t){
     try{const r=await api('/api/requests/episode','POST',{tmdb:t.id,season:se,episode:ep,poster:t.poster});b.outerHTML=`<span class="pill ok">${r.status==='approved'?T('Requested'):T('Sent for approval')}</span>`}
     catch(x){b.disabled=false;toast(x.message,'bad')}};
 }
+// A person's page is kept in the browser for this visit, and fetched as soon as a pointer rests on their cast card, so
+// it usually opens at once.
+const PCACHE=new Map();
+const personData=id=>{id=String(id);if(!PCACHE.has(id)){if(PCACHE.size>40)PCACHE.delete(PCACHE.keys().next().value);
+  const pr=api('/api/person?id='+encodeURIComponent(id));pr.catch(()=>PCACHE.delete(id));PCACHE.set(id,pr)}return PCACHE.get(id)};
 function personPage(id,seed){
-  seed=seed||{};let show='all';
+  seed=seed||{};let tab='known',show='all',cap=80;
   const o=modal(`<button class="pgback" data-x>${ic('back')}Back</button><div id="ppb">${skel(3)}</div>`,true);o.querySelector('[data-x]').onclick=o.close;
-  api('/api/person?id='+encodeURIComponent(id)).then(p=>{
+  personData(id).then(p=>{
     if(!document.contains(o))return;
     const age=(a,b)=>{const x=new Date(a),y=b?new Date(b):new Date();return Math.floor((y-x)/31557600000)};
     const life=[p.known,p.born?`${T('Born')} ${new Date(p.born).toLocaleDateString(undefined,{day:'numeric',month:'long',year:'numeric'})}${p.died?'':' ('+age(p.born)+')'}`:'',p.died?`${T('Died')} ${new Date(p.died).toLocaleDateString(undefined,{day:'numeric',month:'long',year:'numeric'})} (${age(p.born,p.died)})`:'',p.place].filter(Boolean);
-    const box=o.querySelector('#ppb'),cnt=k=>p.credits.filter(x=>k==='all'||(k==='lib'?x.inLib||x.available===5:x.type===k)).length;
+    const box=o.querySelector('#ppb'),inF=(x,k)=>k==='all'||(k==='lib'?x.inLib||x.available===5:x.type===k),cnt=k=>p.credits.filter(x=>inF(x,k)).length;
+    const byK=new Map(p.credits.map(x=>[x.type+':'+x.id,x])),known=(p.knownFor||[]).map(k=>byK.get(k)).filter(Boolean);
+    if(!known.length)tab='all';
     box.innerHTML=`<div class="row" style="align-items:flex-start;gap:20px;flex-wrap:wrap">${p.photo?`<img src="${esc(p.photo)}" alt="" style="width:170px;border-radius:14px;aspect-ratio:2/3;object-fit:cover">`:''}
       <div class="grow" style="min-width:240px"><h2 style="margin:0">${esc(p.name)}</h2><div class="mute" style="margin-top:4px">${life.map(esc).join(' · ')}</div>
       ${p.bio?`<p class="pbio" id="pbio">${esc(p.bio)}</p>${p.bio.length>420?`<button class="lnk" id="pmore">${T('Read more')}</button>`:''}`:''}</div></div>
-      <div class="row" style="margin:20px 0 10px;flex-wrap:wrap;gap:10px"><h3 style="margin:0" class="grow">${T('Filmography')} <span class="mute">${p.credits.length}</span></h3>
-      <div class="seg" id="pf" role="group" aria-label="${T('Show')}">${[['all','All'],['movie','Movies'],['tv','Shows'],['lib','In your library']].map(([k,n])=>`<button data-v="${k}" class="${k===show?'on':''}" aria-pressed="${k===show}">${T(n)} <span class="mute">${cnt(k)}</span></button>`).join('')}</div></div>
-      <div id="pg" class="grid pgrid"></div>`;
+      <div class="ptabs" role="tablist">${known.length?`<button role="tab" data-t="known">${T('Known for')}</button>`:''}<button role="tab" data-t="all">${T('Complete career')} <span class="mute">${p.credits.length}</span></button></div>
+      <div id="pfw" class="row" style="margin:0 0 12px;flex-wrap:wrap;gap:10px"><div class="seg" id="pf" role="group" aria-label="${T('Show')}">${[['all','All'],['movie','Movies'],['tv','Shows'],['lib','In your library']].map(([k,n])=>`<button data-v="${k}">${T(n)} <span class="mute">${cnt(k)}</span></button>`).join('')}</div></div>
+      <div id="pg"></div>`;
     const more=o.querySelector('#pmore');if(more)more.onclick=()=>{o.querySelector('#pbio').classList.toggle('o');more.textContent=o.querySelector('#pbio').classList.contains('o')?T('Show less'):T('Read more')};
-    const draw=()=>{const l=p.credits.filter(x=>show==='all'||(show==='lib'?x.inLib||x.available===5:x.type===show));
-      o.querySelector('#pg').innerHTML=l.map(x=>`<button type="button" class="cn-card" data-k="${x.type}:${x.id}" aria-label="${esc(x.title)}${x.year?', '+x.year:''}"><span class="cn-pw">${x.poster?`<img src="${esc(x.poster)}" alt="" loading="lazy">`:`<span class="cph sq">${esc(x.title)}</span>`}${x.rating?`<span class="cn-badge">★ ${x.rating.toFixed(1)}</span>`:''}${mediaBadge(x)}</span><span class="cn-t">${esc(x.title)}</span><small class="mute cn-y">${esc([x.year||T('Coming'),x.type==='tv'?T('Show'):T('Movie')].join(' · '))}${x.role?'<br>'+esc(x.role):''}</small></button>`).join('')||`<p class="mute">${T('Nothing to show here.')}</p>`;
-      o.querySelector('#pf').querySelectorAll('[data-v]').forEach(b=>{const on=b.dataset.v===show;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on)})};
-    o.querySelector('#pf').onclick=e=>{const b=e.target.closest('[data-v]');if(b){show=b.dataset.v;draw()}};
-    o.querySelector('#pg').onclick=e=>{const b=e.target.closest('[data-k]');if(!b)return;const [type,tid]=b.dataset.k.split(':'),x=p.credits.find(y=>y.type===type&&y.id===+tid);titlePage(type,+tid,x)};
+    const card=x=>`<button type="button" class="cn-card" data-k="${x.type}:${x.id}" aria-label="${esc(x.title)}${x.year?', '+x.year:''}"><span class="cn-pw">${x.poster?`<img src="${esc(x.poster)}" alt="" loading="lazy">`:`<span class="cph sq">${esc(x.title)}</span>`}${x.rating?`<span class="cn-badge">★ ${x.rating.toFixed(1)}</span>`:''}${mediaBadge(x)}</span><span class="cn-t">${esc(x.title)}</span><small class="mute cn-y">${esc([x.year||T('Coming'),x.type==='tv'?T('Show'):T('Movie')].join(' · '))}${x.role?'<br>'+esc(x.role):''}</small></button>`;
+    // The whole career: a list by year (small pictures, quick even for hundreds of credits), 80 at a time.
+    const line=x=>`<button type="button" class="pfr" data-k="${x.type}:${x.id}"><span class="pfp">${x.poster?`<img src="${esc(x.poster.replace('/w342/','/w92/'))}" alt="" loading="lazy" decoding="async">`:''}</span>
+      <span class="pft"><b>${esc(x.title)}</b><small class="mute">${esc([x.type==='tv'?T('Show'):T('Movie'),x.role].filter(Boolean).join(' · '))}</small></span>
+      <span class="pfm">${mediaBadge(x)}${x.rating?`<span class="mute">★ ${x.rating.toFixed(1)}</span>`:''}</span></button>`;
+    const draw=()=>{
+      o.querySelectorAll('.ptabs [data-t]').forEach(b=>{const on=b.dataset.t===tab;b.classList.toggle('on',on);b.setAttribute('aria-selected',on)});
+      o.querySelector('#pfw').hidden=tab!=='all';
+      const g=o.querySelector('#pg');
+      if(tab==='known'){g.className='grid pgrid';g.innerHTML=known.map(card).join('');return}
+      o.querySelectorAll('#pf [data-v]').forEach(b=>{const on=b.dataset.v===show;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on)});
+      const l=p.credits.filter(x=>inF(x,show)),sh=l.slice(0,cap);let yr=null,h='';
+      for(const x of sh){const y=x.year||T('Coming');if(y!==yr){if(yr!==null)h+='</div>';yr=y;h+=`<div class="pfy"><h4>${esc(y)}</h4>`}h+=line(x)}
+      if(yr!==null)h+='</div>';
+      g.className='pfl';g.innerHTML=(h||`<p class="mute">${T('Nothing to show here.')}</p>`)+(l.length>cap?`<button class="ghost" data-more style="width:100%;margin-top:12px">${T('Show more')} <span class="mute">${l.length-cap}</span></button>`:'')};
+    o.querySelector('.ptabs').onclick=e=>{const b=e.target.closest('[data-t]');if(b){tab=b.dataset.t;draw()}};
+    o.querySelector('#pf').onclick=e=>{const b=e.target.closest('[data-v]');if(b){show=b.dataset.v;cap=80;draw()}};
+    o.querySelector('#pg').onclick=e=>{if(e.target.closest('[data-more]')){cap+=120;draw();return}
+      const b=e.target.closest('[data-k]');if(!b)return;const x=byK.get(b.dataset.k);titlePage(x.type,x.id,x)};
     draw();
   }).catch(e=>{const b=o.querySelector('#ppb');if(b)b.innerHTML=`<h2>${esc(seed.name||'')}</h2><div class="err">${esc(e.message)}</div>`});
   return o;

@@ -4599,21 +4599,40 @@ const goatServer = http.createServer(async (req, res) => {
       const id = Math.round(+new URL(req.url, 'http://x').searchParams.get('id'));
       if (!(id > 0)) return send(res, 400, { error: 'Bad request' });
       const sv = db.services.filter(allowed).find(x => x.type === 'seerr');
-      let d = null, cr = null;
-      if (sv) [d, cr] = await Promise.all([call(sv, `/api/v1/person/${id}`).catch(() => null), call(sv, `/api/v1/person/${id}/combined_credits`).catch(() => null)]);
-      if ((!d || !d.name) && listKeys().tmdb) { d = await lists.person(id).catch(() => null); cr = d && d.combined_credits; }
+      // Kept for an hour (and used while a newer copy is fetched for up to a week): Seerr and TMDB take seconds for a
+      // busy person, and this made every visit to a filmography slow.
+      const got = await swr('person:' + (sv ? sv.id : 'tmdb') + ':' + id, 3600e3, 7 * 86400e3, async () => {
+        let d = null, cr = null;
+        if (sv) [d, cr] = await Promise.all([call(sv, `/api/v1/person/${id}`).catch(() => null), call(sv, `/api/v1/person/${id}/combined_credits`).catch(() => null)]);
+        if ((!d || !d.name) && listKeys().tmdb) { d = await lists.person(id).catch(() => null); cr = d && d.combined_credits; }
+        if (!d || !d.name) throw Object.assign(new Error('not found'), { nf: true });
+        return { d, cr };
+      }).catch(() => null);
+      const d = got && got.d, cr = got && got.cr;
       if (!d || !d.name) return send(res, 404, { error: sv ? 'Seerr does not know this person.' : 'This page needs Seerr, or a TMDB key under Settings → Discover lists.' });
       const pk = (a, b) => d[a] != null ? d[a] : d[b], idx = await libIndex().catch(() => null), seen = new Map();
       for (const [list, crew] of [[(cr && cr.cast) || [], false], [(cr && cr.crew) || [], true]]) for (const x of Array.isArray(list) ? list : []) {
         const c = mediaCard(x, idx); if (!c || !kidCard(idx, c)) continue;
         const role = cut(crew ? x.job : x.character, 120), k = c.type + ':' + c.id, e = seen.get(k);
         if (e) { if (role && !e.role.includes(role) && e.role.length < 160) e.role += (e.role ? ', ' : '') + role; continue; }
-        seen.set(k, { ...c, role, crew });
+        // How much this credit counts toward "Known for": how many people rated it, less for a guest spot in a few
+        // episodes of a show, for playing themselves, or for talk, news and reality shows.
+        const pk2 = (a, b) => x[a] != null ? x[a] : x[b], eps = +pk2('episodeCount', 'episode_count') || 0, genres = pk2('genreIds', 'genre_ids') || [];
+        const self = !crew && /\b(self|himself|herself|themselves|narrator|host|guest)\b/i.test(x.character || '');
+        const minor = crew ? !/^(Director|Screenplay|Writer|Creator|Novel|Producer|Executive Producer|Original Music Composer)$/.test(x.job || '') : false;
+        const score = (+pk2('voteCount', 'vote_count') || 0) * (self ? 0.05 : 1) * (minor ? 0.1 : 1) * (c.type === 'tv' && eps > 0 && eps < 3 ? 0.15 : 1) * ([10767, 10763, 10764].some(g => genres.includes(g)) ? 0.05 : 1) + (+x.popularity || 0);
+        seen.set(k, { ...c, role, crew, score, isCast: !crew, low: self || [10767, 10763, 10764].some(g => genres.includes(g)) });
       }
-      const credits = [...seen.values()].sort((a, b) => (b.date || '9999').localeCompare(a.date || '9999') || b.votes - a.votes).slice(0, 400).map(({ votes, ...x }) => x);
+      // "Known for": their best-known titles, roles they played first (a director's or writer's own work when that is
+      // what they are known for).
+      const dept = String(pk('knownForDepartment', 'known_for_department') || 'Acting'), all = [...seen.values()];
+      const out = all.filter(x => x.date && x.date <= new Date().toISOString().slice(0, 10) && (dept === 'Acting' ? x.isCast : true)), real = out.filter(x => !x.low);
+      const pool = real.length >= 4 ? real : out;
+      const knownFor = (pool.length >= 4 ? pool : all).slice().sort((a, b) => b.score - a.score).slice(0, 20).map(x => x.type + ':' + x.id);
+      const credits = all.sort((a, b) => (b.date || '9999').localeCompare(a.date || '9999') || b.votes - a.votes).slice(0, 400).map(({ votes, score, isCast, low, ...x }) => x);
       return send(res, 200, { id, name: cut(d.name, 120), photo: tmdbImg(pk('profilePath', 'profile_path'), 'h632'), bio: cut(d.biography, 6000),
         born: String(d.birthday || '').slice(0, 10), died: String(d.deathday || '').slice(0, 10), place: cut(pk('placeOfBirth', 'place_of_birth'), 160),
-        known: cut(pk('knownForDepartment', 'known_for_department'), 60), seerr: sv ? sv.id : '', credits });
+        known: cut(pk('knownForDepartment', 'known_for_department'), 60), seerr: sv ? sv.id : '', knownFor, credits });
     }
     // ---------- For you: "Because you watched …" from what this person watched (Jellyfin, or Plex through Tautulli),
     // or else from what they asked for and put on their watchlist. Kept for six hours per person.

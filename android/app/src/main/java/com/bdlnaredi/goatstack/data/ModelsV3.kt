@@ -59,6 +59,8 @@ data class MediaCard(
 data class PersonInfo(
     val id: Long = 0, val name: String = "", val photo: String = "", val bio: String = "", val born: String = "", val died: String = "",
     val place: String = "", val known: String = "", val seerr: String = "", val credits: List<MediaCard> = emptyList(),
+    /** The titles they are best known for, as "movie:123" / "tv:456", best first. */
+    val knownFor: List<String> = emptyList(),
 )
 @Serializable data class TitleSeason(val n: Int = 0, val episodes: Int = 0, val name: String = "", val date: String = "")
 @Serializable data class LibLink(val sid: String = "", val id: Long = 0, val kind: String = "movie")

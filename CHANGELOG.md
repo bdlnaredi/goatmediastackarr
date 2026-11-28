@@ -4,6 +4,11 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+- **Filmography: two tabs, and much faster** (web and Android):
+  - **Known for** shows a person's best-known titles first. Ranking is by how many people rated each one; guest spots, playing themselves, talk shows and unreleased titles are left out.
+  - **Complete career** lists every title year by year with small posters, as All, Movies, Shows or In your library, 80 at a time.
+  - The server keeps a person's details for an hour, so pages open quickly. The web page also starts fetching when you rest the pointer on a cast member.
+
 ## v1.0.42.1 — 2026-11-28
 
 - **Stop public torrents when done** (Settings → Download rules): a torrent from a public tracker is stopped as soon as it finishes downloading, instead of seeding on. You can pick categories; with none ticked it applies to every category. Private-tracker torrents keep seeding toward their goals. The app knows public from private by qBittorrent's own flag, and anything it can't tell about is left alone. A torrent you start again by hand, or one tagged `keep-seeding`, keeps seeding.

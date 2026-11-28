@@ -374,11 +374,16 @@ function create(opts = {}) {
         ? [{ id: 5002, mediaType: 'movie', title: 'Salt & Ember', releaseDate: '2023-02-01', posterPath: '/salt.jpg', voteAverage: 6.9 }, { id: 6100, mediaType: 'movie', title: 'Far Lantern', releaseDate: '2021-07-09', posterPath: pic('Far Lantern'), voteAverage: 7.2, mediaInfo: { status: 2 } }]
         : [{ id: 7001, mediaType: 'tv', name: 'Demo show 7001', firstAirDate: '2020-01-01', posterPath: pic('Demo show 7001'), voteAverage: 7.7 }] });
       const pr = sub.match(/^\/api\/v1\/person\/(\d+)(\/combined_credits)?$/);
-      if (pr && !pr[2]) return +pr[1] > 9003 ? json(res, { message: 'Not found' }, 404) : json(res, { id: +pr[1], name: cast[+pr[1] - 9001].name, biography: 'An invented actor for the demo.', birthday: '1984-06-02', placeOfBirth: 'Lisbon, Portugal', profilePath: pic(cast[+pr[1] - 9001].name), knownForDepartment: 'Acting' });
+      if (pr && !pr[2]) return !(+pr[1] >= 9001 && +pr[1] <= 9003) ? json(res, { message: 'Not found' }, 404) : json(res, { id: +pr[1], name: cast[+pr[1] - 9001].name, biography: 'An invented actor for the demo.', birthday: '1984-06-02', placeOfBirth: 'Lisbon, Portugal', profilePath: pic(cast[+pr[1] - 9001].name), knownForDepartment: 'Acting' });
       if (pr) return json(res, { id: +pr[1],
         cast: [{ id: 5001, mediaType: 'movie', title: 'Demo movie 5001', releaseDate: '2025-04-11', character: cast[0].character, posterPath: pic('Demo movie 5001'), voteAverage: 7.6, voteCount: 900 },
           { id: 7002, mediaType: 'tv', name: 'Demo show', firstAirDate: '2022-05-01', character: 'Herself', posterPath: pic('Demo show'), voteAverage: 8.1, voteCount: 400 },
-          { id: 6200, mediaType: 'movie', title: 'Next Year', releaseDate: '', character: 'Lead', posterPath: '/next.jpg', voteCount: 0 }],
+          { id: 6200, mediaType: 'movie', title: 'Next Year', releaseDate: '', character: 'Lead', posterPath: '/next.jpg', voteCount: 0 },
+          { id: 6100, mediaType: 'movie', title: 'Far Lantern', releaseDate: '2021-07-09', character: 'Captain Ines Duarte', posterPath: pic('Far Lantern'), voteAverage: 7.2, voteCount: 2400 },
+          { id: 5002, mediaType: 'movie', title: 'Salt & Ember', releaseDate: '2023-02-01', character: 'Mara', posterPath: '/salt.jpg', voteAverage: 6.9, voteCount: 1300 },
+          { id: 7003, mediaType: 'tv', name: 'Late Night Live', firstAirDate: '2019-03-01', character: 'Self - Guest', posterPath: pic('Late Night Live'), voteCount: 3000, genreIds: [10767], episodeCount: 2 },
+          { id: 6300, mediaType: 'movie', title: 'The Quiet Harbour', releaseDate: '2014-10-10', character: 'Young Ana', posterPath: pic('The Quiet Harbour'), voteAverage: 7.0, voteCount: 650 },
+          { id: 6301, mediaType: 'movie', title: 'Glass Weather', releaseDate: '2017-05-05', character: 'Eva', posterPath: pic('Glass Weather'), voteAverage: 6.4, voteCount: 210 }],
         crew: [{ id: 5001, mediaType: 'movie', title: 'Demo movie 5001', releaseDate: '2025-04-11', job: 'Producer', posterPath: '' }, { id: 1, mediaType: 'person', name: 'skip me' }] });
       const mv = sub.match(/^\/api\/v1\/movie\/(\d+)$/);
       const co = sub.match(/^\/api\/v1\/collection\/(\d+)$/);

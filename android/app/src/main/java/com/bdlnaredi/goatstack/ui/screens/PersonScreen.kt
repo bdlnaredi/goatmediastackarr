@@ -160,6 +160,7 @@ fun PersonScreen(id: Long) {
     val g = LocalGoat.current
     val data = rememberLoad(id) { ctx.api.get<PersonInfo>("/api/person?id=$id") }
     var show by rememberSaveable { androidx.compose.runtime.mutableStateOf("all") }
+    var tab by rememberSaveable { androidx.compose.runtime.mutableStateOf("known") }
     var more by rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
     val back: @Composable () -> Unit = {
         IconButton(onClick = { ctx.back() }, modifier = Modifier.statusBarsPadding().padding(8.dp).clip(CircleShape).background(g.bg.copy(alpha = 0.6f))) {
@@ -174,6 +175,9 @@ fun PersonScreen(id: Long) {
         is Load.Done -> {
             val p = st.value
             val list = p.credits.filter { show == "all" || (show == "lib" && (it.inLib || it.available == 5)) || it.type == show }
+            val byKey = p.credits.associateBy { "${it.type}:${it.id}" }
+            val known = p.knownFor.mapNotNull { byKey[it] }
+            val t = if (known.isEmpty()) "all" else tab
             Box(Modifier.fillMaxSize()) {
                 com.bdlnaredi.goatstack.ui.PageBackground(p.photo)
                 LazyVerticalGrid(GridCells.Adaptive(108.dp), Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 32.dp),
@@ -200,17 +204,53 @@ fun PersonScreen(id: Long) {
                     }
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         Column {
-                            SectionTitle("Filmography (${p.credits.size})", Modifier.padding(start = 0.dp))
-                            val n = { k: String -> p.credits.count { k == "all" || (k == "lib" && (it.inLib || it.available == 5)) || it.type == k } }
-                            ChoiceRow(listOf("all" to "All ${n("all")}", "movie" to "Movies ${n("movie")}", "tv" to "Shows ${n("tv")}", "lib" to "In your library ${n("lib")}"),
-                                show, { show = it }, Modifier.padding(horizontal = 0.dp))
+                            SectionTitle("Filmography", Modifier.padding(start = 0.dp))
+                            // Two tabs: the titles they are best known for, and everything they were in, year by year.
+                            ChoiceRow((if (known.isNotEmpty()) listOf("known" to "Known for") else emptyList()) + listOf("all" to "Complete career ${p.credits.size}"),
+                                t, { tab = it }, Modifier.padding(horizontal = 0.dp))
+                            if (t == "all") {
+                                Spacer(Modifier.height(8.dp))
+                                val n = { k: String -> p.credits.count { k == "all" || (k == "lib" && (it.inLib || it.available == 5)) || it.type == k } }
+                                ChoiceRow(listOf("all" to "All ${n("all")}", "movie" to "Movies ${n("movie")}", "tv" to "Shows ${n("tv")}", "lib" to "In your library ${n("lib")}"),
+                                    show, { show = it }, Modifier.padding(horizontal = 0.dp))
+                            }
                         }
                     }
-                    if (list.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) { Text("Nothing to show here.", color = g.muted, modifier = Modifier.padding(8.dp)) }
-                    items(list, key = { "${it.type}${it.id}" }) { x -> MediaPoster(x, showRole = true) }
+                    if (t == "known") items(known, key = { "k${it.type}${it.id}" }) { x -> MediaPoster(x, showRole = true) }
+                    else {
+                        if (list.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) { Text("Nothing to show here.", color = g.muted, modifier = Modifier.padding(8.dp)) }
+                        list.forEachIndexed { i, x ->
+                            val first = i == 0 || list[i - 1].year != x.year
+                            item(key = "c${x.type}${x.id}", span = { GridItemSpan(maxLineSpan) }) { CareerRow(x, if (first) x.year.ifBlank { "Coming" } else "") }
+                        }
+                    }
                 }
             }
         }
     }
 }
 
+/** One line of a career: the year (on the first title of that year), a small poster, the title and role, and marks. */
+@Composable
+private fun CareerRow(x: MediaCard, year: String) {
+    val ctx = LocalCtx.current
+    val g = LocalGoat.current
+    Column {
+        if (year.isNotEmpty()) Box(Modifier.fillMaxWidth().height(1.dp).background(g.muted.copy(alpha = 0.2f)))
+        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { ctx.title(x.type, x.id) }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(year, style = MaterialTheme.typography.labelLarge, color = g.muted, modifier = Modifier.width(52.dp))
+            Poster(x.poster.replace("/w342/", "/w92/"), x.title, Modifier.width(40.dp), corner = 4.dp)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(x.title, style = MaterialTheme.typography.bodyMedium, color = g.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(listOf(if (x.type == "tv") "Show" else "Movie", x.role).filter { it.isNotBlank() }.joinToString(" · "), style = MaterialTheme.typography.labelSmall, color = g.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            val mark = when { x.available == 5 -> "Available"; x.inLib -> "In library"; x.available in 2..4 -> "Requested"; else -> null }
+            Column(horizontalAlignment = Alignment.End) {
+                if (mark != null) Text(mark, style = MaterialTheme.typography.labelSmall, color = if (mark == "Requested") g.text else g.onPrimary,
+                    modifier = Modifier.clip(RoundedCornerShape(50)).background(if (mark == "Requested") g.muted.copy(alpha = 0.3f) else g.good).padding(horizontal = 8.dp, vertical = 2.dp))
+                if (x.rating > 0) Text("★ %.1f".format(x.rating), style = MaterialTheme.typography.labelSmall, color = g.muted)
+            }
+        }
+    }
+}
