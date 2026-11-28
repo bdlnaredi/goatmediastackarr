@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+## v1.0.42 — 2026-11-28
+
 - **Removing downloads**: Remove asks in one dialog instead of two pop-ups. You can keep or delete the files, **also remove it from Sonarr / Radarr** (off their queue), **blocklist the release** and **search for another**. The same choices are in the Android app.
   - Tick boxes select several downloads at once, and Shift-click takes every download in between.
   - Removed downloads leave the list at once while the removing carries on in the background, so the page no longer waits or freezes.
