@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+## v1.0.42.1 — 2026-11-28
+
 - **Stop public torrents when done** (Settings → Download rules): a torrent from a public tracker is stopped as soon as it finishes downloading, instead of seeding on. You can pick categories; with none ticked it applies to every category. Private-tracker torrents keep seeding toward their goals. The app knows public from private by qBittorrent's own flag, and anything it can't tell about is left alone. A torrent you start again by hand, or one tagged `keep-seeding`, keeps seeding.
 
 ## v1.0.42 — 2026-11-28
