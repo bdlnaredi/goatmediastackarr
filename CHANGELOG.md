@@ -4,6 +4,8 @@ What changed in each GoatMediaStackarr version, newest first. The same list is o
 
 ## Unreleased
 
+## v1.0.42.2 — 2026-11-28
+
 - **Filmography: two tabs, and much faster** (web and Android):
   - **Known for** shows a person's best-known titles first. Ranking is by how many people rated each one; guest spots, playing themselves, talk shows and unreleased titles are left out.
   - **Complete career** lists every title year by year with small posters, as All, Movies, Shows or In your library, 80 at a time.
